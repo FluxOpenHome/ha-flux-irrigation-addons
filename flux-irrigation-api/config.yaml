@@ -1,6 +1,6 @@
 # Flux Open Home - Irrigation Management API Add-on
 name: "Flux Irrigation Management API"
-version: "1.0.0"
+version: "1.0.3"
 slug: "flux_irrigation_api"
 description: "Dual-mode irrigation management for Flux Open Home. Homeowners expose a secure API; management companies monitor and control multiple properties from a single dashboard."
 url: "https://github.com/FluxOpenHome/ha-flux-irrigation-addons"

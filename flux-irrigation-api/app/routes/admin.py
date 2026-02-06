@@ -856,7 +856,7 @@ ADMIN_HTML = """<!DOCTYPE html>
     <div class="card">
         <div class="card-body" style="text-align:center; padding: 24px;">
             <p style="margin-bottom:12px;">Interactive API documentation for management companies:</p>
-            <a href="/api/docs" target="_blank" class="btn btn-primary">Open API Docs (Swagger UI)</a>
+            <a id="docsLink" href="/api/docs" target="_blank" class="btn btn-primary">Open API Docs (Swagger UI)</a>
         </div>
     </div>
 
@@ -900,9 +900,12 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     // --- Status ---
+    // Derive the ingress base path (strip /admin from the end of current path)
+    const INGRESS_BASE = window.location.pathname.replace(/\/admin\/?$/, '');
+
     async function loadStatus() {
         try {
-            const res = await fetch('/api/system/health');
+            const res = await fetch(INGRESS_BASE + '/api/system/health');
             const data = await res.json();
             const dot = document.getElementById('statusDot');
             const text = document.getElementById('statusText');
@@ -1217,6 +1220,8 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     // --- Init ---
+    // Fix docs link for ingress
+    document.getElementById('docsLink').href = INGRESS_BASE + '/api/docs';
     loadSettings();
     loadConnectionKey();
     loadStatus();

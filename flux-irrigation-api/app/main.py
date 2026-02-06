@@ -12,6 +12,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -159,16 +160,10 @@ app.include_router(management.router)
 
 
 @app.get("/", include_in_schema=False)
-async def root():
-    config = get_config()
-    return {
-        "name": "Flux Irrigation Management API",
-        "version": "1.0.0",
-        "mode": config.mode,
-        "docs": "/api/docs" if config.mode == "homeowner" else None,
-        "admin": "/admin",
-        "health": "/api/system/health" if config.mode == "homeowner" else None,
-    }
+async def root(request: Request):
+    """Redirect root to admin UI, preserving ingress path prefix."""
+    # Use a relative redirect so HA ingress path is preserved
+    return RedirectResponse(url="admin", status_code=302)
 
 
 @app.get("/api", include_in_schema=False)
