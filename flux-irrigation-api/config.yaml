@@ -61,5 +61,6 @@ schema:
   rate_limit_per_minute: "int(1,300)"
   log_retention_days: "int(1,365)"
   enable_audit_log: bool
+init: false
 startup: "application"
 boot: "auto"
