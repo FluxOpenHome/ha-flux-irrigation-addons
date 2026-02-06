@@ -180,6 +180,19 @@ async def _proxy_via_nabu_casa(
                 ),
             }
 
+        if response.status_code == 400:
+            return 400, {
+                "error": "HA rejected the service call (HTTP 400)",
+                "detail": (
+                    "Home Assistant returned 400 Bad Request. This usually means the "
+                    "rest_command.irrigation_proxy service is not registered. "
+                    "The homeowner needs to: (1) Ensure configuration.yaml has "
+                    "'homeassistant: packages: !include_dir_named packages', "
+                    "(2) Fully restart Home Assistant (not just reload), "
+                    "(3) Check Developer Tools → Services for 'rest_command.irrigation_proxy'."
+                ),
+            }
+
         if response.status_code != 200:
             try:
                 err_data = response.json()

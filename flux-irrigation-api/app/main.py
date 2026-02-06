@@ -25,6 +25,48 @@ from audit_log import cleanup_old_logs
 from routes import zones, sensors, schedule, history, system, admin, management
 
 
+async def _check_rest_command_service(config):
+    """Check if rest_command.irrigation_proxy is registered as a service in HA."""
+    import httpx
+    try:
+        token = config.supervisor_token
+        if not token:
+            print("[MAIN] Cannot check rest_command service — no supervisor token")
+            return
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Check /api/services for rest_command domain
+            resp = await client.get(
+                "http://supervisor/core/api/services",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code == 200:
+                services = resp.json()
+                # services is a list of {domain, services: {service_name: ...}}
+                rest_cmd = None
+                for svc in services:
+                    if svc.get("domain") == "rest_command":
+                        rest_cmd = svc
+                        break
+                if rest_cmd:
+                    svc_names = list(rest_cmd.get("services", {}).keys())
+                    if "irrigation_proxy" in svc_names:
+                        print(f"[MAIN] ✓ rest_command.irrigation_proxy service is registered in HA")
+                    else:
+                        print(f"[MAIN] ✗ rest_command domain exists but 'irrigation_proxy' is NOT registered!")
+                        print(f"[MAIN]   Available rest_commands: {svc_names}")
+                        print(f"[MAIN]   → Restart Home Assistant to pick up the packages file")
+                else:
+                    print(f"[MAIN] ✗ rest_command domain is NOT registered in HA!")
+                    print(f"[MAIN]   → Check that configuration.yaml has:")
+                    print(f"[MAIN]     homeassistant:")
+                    print(f"[MAIN]       packages: !include_dir_named packages")
+                    print(f"[MAIN]   → Then fully restart Home Assistant (not just reload)")
+            else:
+                print(f"[MAIN] Could not check services: HTTP {resp.status_code}")
+    except Exception as e:
+        print(f"[MAIN] Could not check rest_command service: {e}")
+
+
 def _setup_rest_command_proxy():
     """
     Write a HA packages file that creates the rest_command.irrigation_proxy
@@ -50,7 +92,24 @@ rest_command:
 """
 
     try:
+        # Log filesystem state for debugging
+        print(f"[MAIN] Checking /config directory...")
+        if os.path.exists("/config"):
+            print(f"[MAIN]   /config exists (is_dir={os.path.isdir('/config')})")
+            try:
+                config_contents = os.listdir("/config")
+                print(f"[MAIN]   /config contains {len(config_contents)} items")
+                if "packages" in config_contents:
+                    print(f"[MAIN]   /config/packages already exists")
+                else:
+                    print(f"[MAIN]   /config/packages does NOT exist — will create it")
+            except Exception as e:
+                print(f"[MAIN]   Cannot list /config: {e}")
+        else:
+            print(f"[MAIN]   WARNING: /config does NOT exist!")
+
         os.makedirs(packages_dir, exist_ok=True)
+        print(f"[MAIN]   Created/verified {packages_dir}")
 
         # Check if file already exists with same content
         if os.path.exists(package_file):
@@ -66,16 +125,20 @@ rest_command:
         with open(package_file, "w") as f:
             f.write(PACKAGE_CONTENT)
 
-        print(f"[MAIN] Created rest_command package at {package_file}")
-        print("[MAIN] IMPORTANT: The homeowner must have 'packages' enabled in configuration.yaml:")
-        print("[MAIN]   homeassistant:")
-        print("[MAIN]     packages: !include_dir_named packages")
-        print("[MAIN] Then restart Home Assistant for the rest_command to take effect.")
-    except PermissionError:
-        print(f"[MAIN] WARNING: Cannot write to {packages_dir} — rest_command proxy not configured.")
-        print("[MAIN] Nabu Casa mode will not work until the rest_command is manually configured.")
+        # Verify it was written
+        if os.path.exists(package_file):
+            size = os.path.getsize(package_file)
+            print(f"[MAIN] ✓ Created rest_command package at {package_file} ({size} bytes)")
+        else:
+            print(f"[MAIN] ✗ File write appeared to succeed but file not found!")
+
+        print("[MAIN] IMPORTANT: Restart Home Assistant for the rest_command to take effect.")
+    except PermissionError as e:
+        print(f"[MAIN] ✗ PERMISSION ERROR writing to {packages_dir}: {e}")
+        print("[MAIN]   The add-on needs 'config:rw' in config.yaml map section.")
+        print("[MAIN]   Nabu Casa mode will not work until this is resolved.")
     except Exception as e:
-        print(f"[MAIN] WARNING: Failed to write rest_command package: {e}")
+        print(f"[MAIN] ✗ FAILED to write rest_command package: {type(e).__name__}: {e}")
 
 
 # --- Rate Limiter ---
@@ -127,6 +190,11 @@ async def lifespan(app: FastAPI):
     config = await async_initialize()
     print(f"[MAIN] Flux Irrigation API starting in {config.mode.upper()} mode...")
 
+    # Always set up the rest_command proxy file — needed for Nabu Casa
+    # connectivity regardless of current mode (user may switch modes later)
+    _setup_rest_command_proxy()
+    await _check_rest_command_service(config)
+
     if config.mode == "homeowner":
         print(f"[MAIN] Configured API keys: {len(config.api_keys)}")
         print(f"[MAIN] Irrigation device: {config.irrigation_device_id or '(not configured)'}")
@@ -136,8 +204,6 @@ async def lifespan(app: FastAPI):
         print(f"[MAIN] Audit logging: {'enabled' if config.enable_audit_log else 'disabled'}")
         if config.homeowner_url:
             print(f"[MAIN] External URL: {config.homeowner_url}")
-        # Set up rest_command proxy for Nabu Casa connectivity
-        _setup_rest_command_proxy()
     else:
         from customer_store import load_customers
         customers = load_customers()
