@@ -48,6 +48,21 @@ def _require_management_mode():
         )
 
 
+def _proxy_error(status_code: int, data: dict) -> HTTPException:
+    """Create an HTTPException from a proxy response, ensuring detail is a string."""
+    if isinstance(data, dict):
+        detail = (
+            data.get("detail")
+            or data.get("error")
+            or data.get("message")
+            or data.get("raw")
+            or str(data)
+        )
+    else:
+        detail = str(data)
+    return HTTPException(status_code=status_code, detail=detail)
+
+
 def _get_customer_or_404(customer_id: str) -> customer_store.Customer:
     customer = customer_store.get_customer(customer_id)
     if not customer:
@@ -161,7 +176,7 @@ async def get_customer_status(customer_id: str):
         conn, "GET", "/api/system/status"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -174,7 +189,7 @@ async def get_customer_zones(customer_id: str):
         conn, "GET", "/api/zones"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -195,7 +210,7 @@ async def start_customer_zone(customer_id: str, zone_id: str, request: Request):
         conn, "POST", f"/api/zones/{zone_id}/start", json_body=body
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -211,7 +226,7 @@ async def stop_customer_zone(customer_id: str, zone_id: str):
         conn, "POST", f"/api/zones/{zone_id}/stop"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -227,7 +242,7 @@ async def stop_all_customer_zones(customer_id: str):
         conn, "POST", "/api/zones/stop_all"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -240,7 +255,7 @@ async def get_customer_sensors(customer_id: str):
         conn, "GET", "/api/sensors"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -253,7 +268,7 @@ async def get_customer_schedule(customer_id: str):
         conn, "GET", "/api/schedule"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -270,7 +285,7 @@ async def update_customer_schedule(customer_id: str, request: Request):
         conn, "PUT", "/api/schedule", json_body=body
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -290,7 +305,7 @@ async def add_customer_program(customer_id: str, request: Request):
         conn, "POST", "/api/schedule/program", json_body=body
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -306,7 +321,7 @@ async def delete_customer_program(customer_id: str, program_id: str):
         conn, "DELETE", f"/api/schedule/program/{program_id}"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -326,7 +341,7 @@ async def set_customer_rain_delay(customer_id: str, request: Request):
         conn, "POST", "/api/schedule/rain_delay", json_body=body
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -342,7 +357,7 @@ async def cancel_customer_rain_delay(customer_id: str):
         conn, "DELETE", "/api/schedule/rain_delay"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -358,7 +373,7 @@ async def pause_customer_system(customer_id: str):
         conn, "POST", "/api/system/pause"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -374,7 +389,7 @@ async def resume_customer_system(customer_id: str):
         conn, "POST", "/api/system/resume"
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data
 
 
@@ -395,5 +410,5 @@ async def get_customer_history(
         conn, "GET", "/api/history/runs", params=params
     )
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data)
+        raise _proxy_error(status_code, data)
     return data

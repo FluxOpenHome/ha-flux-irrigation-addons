@@ -19,7 +19,7 @@ def _get_client() -> httpx.AsyncClient:
         _client = httpx.AsyncClient(
             timeout=15.0,
             follow_redirects=True,
-            verify=True,
+            verify=False,  # Allow self-signed certs for DuckDNS/local setups
         )
     return _client
 
@@ -53,16 +53,36 @@ async def proxy_request(
         try:
             data = response.json()
         except Exception:
-            data = {"raw": response.text}
+            # Non-JSON response — likely hitting the wrong server (HA on 8123 instead of add-on on 8099)
+            raw = response.text[:200].strip()
+            data = {"raw": f"{response.status_code}: {raw}"}
         return response.status_code, data
     except httpx.ConnectError as e:
         print(f"[MGMT_CLIENT] ConnectError to {url}: {e}")
+        # Detect Nabu Casa URLs — they don't forward add-on ports
+        if ".ui.nabu.casa" in url or ".nabucasa.com" in url:
+            return 503, {
+                "error": "Nabu Casa URLs cannot be used for API connections",
+                "detail": (
+                    "Nabu Casa only proxies HA's web interface (port 8123), not add-on ports like 8099. "
+                    "The homeowner needs to use router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale."
+                ),
+            }
         return 503, {
             "error": "Cannot connect to homeowner system",
             "detail": f"Connection refused or host unreachable: {url}",
         }
     except httpx.TimeoutException:
         print(f"[MGMT_CLIENT] Timeout connecting to {url}")
+        # Detect Nabu Casa URLs — they always timeout on non-8123 ports
+        if ".ui.nabu.casa" in url or ".nabucasa.com" in url:
+            return 504, {
+                "error": "Nabu Casa URLs cannot be used for API connections",
+                "detail": (
+                    "Nabu Casa only proxies HA's web interface (port 8123), not add-on ports like 8099. "
+                    "The homeowner needs to use router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale."
+                ),
+            }
         return 504, {
             "error": "Homeowner system timeout",
             "detail": f"Request timed out after 15 seconds: {url}",
@@ -85,6 +105,43 @@ def _error_to_string(err) -> str:
     return str(err)
 
 
+def _diagnose_error(status: int, response_data: dict, url: str) -> str:
+    """Analyze a failed response and produce a helpful diagnostic message."""
+    # Detect Nabu Casa URLs — they never work for add-on API traffic
+    if ".ui.nabu.casa" in url or ".nabucasa.com" in url:
+        return (
+            "Nabu Casa URLs cannot be used for API connections. "
+            "Nabu Casa only proxies HA's web interface (port 8123), not add-on ports like 8099. "
+            "The homeowner needs to set up router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale."
+        )
+
+    raw = response_data.get("raw", "")
+
+    # Detect plain-text 404 — hallmark of hitting HA's web server on port 8123
+    if status == 404 and ("Not Found" in raw or "404" in raw) and "detail" not in response_data:
+        # Check if URL is missing port 8099
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        port = parsed.port
+        if port is None or port in (80, 443, 8123):
+            return (
+                f"Got a plain 404 from {parsed.hostname} — this looks like Home Assistant's "
+                f"web server, not the Flux Irrigation API. The connection key URL must "
+                f"include port 8099 (e.g., http://{parsed.hostname}:8099). "
+                f"Port 8099 must also be forwarded on the homeowner's router."
+            )
+        return (
+            f"Got a plain 404 from {url}. The server responded but doesn't have the "
+            f"Flux Irrigation API. Check that the add-on is running on the homeowner's HA instance."
+        )
+
+    # Detect JSON 404 from our own API (mode guard or wrong path)
+    if status == 404 and "detail" in response_data:
+        return response_data["detail"]
+
+    return _error_to_string(response_data)
+
+
 async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
     """
     Test connectivity to a homeowner's system.
@@ -96,9 +153,20 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
     # Phase 1: health check (no auth required)
     status, health = await proxy_request(connection, "GET", "/api/system/health")
     if status != 200:
-        error_msg = _error_to_string(health)
+        error_msg = _diagnose_error(status, health, connection.url)
         print(f"[MGMT_CLIENT] Health check failed: status={status}, error={error_msg}")
         return {"reachable": False, "authenticated": False, "error": error_msg}
+
+    # Verify the health response looks like our API (not some random server)
+    if not isinstance(health, dict) or "status" not in health:
+        return {
+            "reachable": False,
+            "authenticated": False,
+            "error": (
+                f"The server at {connection.url} responded, but it doesn't appear to be "
+                f"a Flux Irrigation API. Make sure the URL points to port 8099."
+            ),
+        }
 
     # Phase 2: authenticated status check
     status, system_status = await proxy_request(
@@ -117,7 +185,7 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
             "error": "API key lacks permissions",
         }
     if status != 200:
-        error_msg = _error_to_string(system_status)
+        error_msg = _diagnose_error(status, system_status, connection.url)
         return {
             "reachable": True,
             "authenticated": False,

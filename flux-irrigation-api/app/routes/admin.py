@@ -450,6 +450,62 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     }
 
 
+@router.post("/api/test-url", summary="Test if a URL is reachable from this add-on")
+async def test_url(body: dict):
+    """Test connectivity to a URL from the server side (inside the Docker container).
+    This is what matters for management client connectivity."""
+    import httpx
+
+    url = body.get("url", "").rstrip("/")
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required")
+
+    # Detect Nabu Casa URLs and warn immediately
+    if ".ui.nabu.casa" in url or ".nabucasa.com" in url:
+        return {
+            "success": False,
+            "url_tested": url,
+            "error": "Nabu Casa URLs cannot be used for API connections.",
+            "help": (
+                "Nabu Casa Remote UI only proxies Home Assistant's web interface (port 8123). "
+                "It does not forward port 8099 used by this add-on. "
+                "Use router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale instead."
+            ),
+        }
+
+    test_url = f"{url}/api/system/health"
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, verify=False) as client:
+            response = await client.get(test_url)
+            return {
+                "success": True,
+                "url_tested": test_url,
+                "status_code": response.status_code,
+                "response": response.json() if response.status_code == 200 else response.text[:200],
+                "message": "URL is reachable from this add-on",
+            }
+    except httpx.ConnectError as e:
+        return {
+            "success": False,
+            "url_tested": test_url,
+            "error": f"Connection failed: {e}",
+            "help": "Make sure port 8099 is enabled in the add-on Network config and accessible from the network.",
+        }
+    except httpx.TimeoutException:
+        return {
+            "success": False,
+            "url_tested": test_url,
+            "error": "Connection timed out after 10 seconds",
+            "help": "The server didn't respond. Check firewall and port forwarding settings.",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "url_tested": test_url,
+            "error": f"{type(e).__name__}: {e}",
+        }
+
+
 @router.get("/api/connection-key", summary="Get current connection key info")
 async def get_connection_key_info():
     """Get the current connection key configuration."""
@@ -842,12 +898,35 @@ ADMIN_HTML = """<!DOCTYPE html>
             </p>
             <div class="form-group">
                 <label>Your External API URL</label>
-                <input type="text" id="homeownerUrl" placeholder="https://your-domain.duckdns.org:8099">
+                <div style="display:flex;gap:8px;align-items:flex-start;">
+                    <input type="text" id="homeownerUrl" placeholder="https://your-domain.duckdns.org:8099" style="flex:1;">
+                    <button class="btn btn-secondary btn-sm" onclick="testExternalUrl()" style="white-space:nowrap;margin-top:2px;">Test URL</button>
+                </div>
+                <div id="urlTestResult" style="font-size:12px;margin-top:4px;display:none;"></div>
                 <p style="font-size:12px; color:#999; margin-top:4px;">
-                    The URL where this API is reachable from the internet (Nabu Casa + port forwarding,
-                    DuckDNS, Cloudflare Tunnel, etc.).<br>
-                    For testing on the same HA instance, use: <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">http://localhost:8099</code>
+                    The URL where this API is reachable from the internet. Your management company
+                    will connect to this URL.<br><br>
+                    <strong>Setup required:</strong> Port 8099 must be accessible externally. Options:<br>
+                    &bull; <strong>Port forwarding</strong> on your router (forward external port to HA host IP:8099) + DuckDNS for dynamic DNS<br>
+                    &bull; <strong>Cloudflare Tunnel</strong> pointing to <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">localhost:8099</code><br>
+                    &bull; <strong>Tailscale / WireGuard</strong> VPN between both HA instances<br><br>
+                    Make sure the port is enabled in the add-on Configuration tab under "Network".<br>
+                    For same-device testing: <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">http://localhost:8099</code>
                 </p>
+                <div style="background:#fff3e0;border:1px solid #ffcc02;border-radius:8px;padding:12px;margin-top:10px;font-size:13px;">
+                    <strong style="color:#e65100;">&#9888; Nabu Casa URLs will NOT work</strong><br>
+                    <span style="color:#555;">
+                        Nabu Casa Remote UI only proxies the Home Assistant web interface (port 8123).
+                        It does <strong>not</strong> forward port 8099 used by this add-on.
+                        A URL like <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">https://xxxxx.ui.nabu.casa</code>
+                        or <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">https://xxxxx.ui.nabu.casa:8099</code>
+                        will either return a 404 or time out.<br><br>
+                        <strong>Recommended alternatives:</strong><br>
+                        1. <strong>Router port forwarding</strong> — Forward port 8099 to your HA host, use DuckDNS for a stable hostname<br>
+                        2. <strong>Cloudflare Tunnel</strong> — Free, no port forwarding needed, install the Cloudflared add-on and point a tunnel to <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">localhost:8099</code><br>
+                        3. <strong>Tailscale</strong> — Install on both HA instances for a private VPN connection
+                    </span>
+                </div>
             </div>
             <div class="form-group">
                 <label>Property Label (optional)</label>
@@ -1239,6 +1318,40 @@ ADMIN_HTML = """<!DOCTYPE html>
                 document.getElementById('connectionKeyDisplay').style.display = 'block';
             }
         } catch(e) { /* first time, no key yet */ }
+    }
+
+    async function testExternalUrl() {
+        const url = document.getElementById('homeownerUrl').value.trim();
+        const resultEl = document.getElementById('urlTestResult');
+        if (!url) { showToast('Enter a URL first', 'error'); return; }
+
+        // Detect Nabu Casa URLs and warn immediately
+        if (url.includes('.ui.nabu.casa') || url.includes('.nabucasa.com')) {
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '<span style="color:#e74c3c;"><strong>&#9888; Nabu Casa URLs will not work.</strong> ' +
+                'Nabu Casa only proxies the HA web interface (port 8123), not add-on ports like 8099. ' +
+                'Use router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale instead.</span>';
+            return;
+        }
+
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = '<span style="color:#666;">Testing from server: ' + escHtml(url) + '/api/system/health ...</span>';
+        try {
+            const res = await fetch(`${BASE}/test-url`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                resultEl.innerHTML = '<span style="color:#27ae60;">&#10004; ' + escHtml(data.message) + ' (HTTP ' + data.status_code + ')</span>';
+            } else {
+                resultEl.innerHTML = '<span style="color:#e74c3c;">&#10008; ' + escHtml(data.error) + '</span>' +
+                    (data.help ? '<br><span style="color:#999;font-size:11px;">' + escHtml(data.help) + '</span>' : '');
+            }
+        } catch(e) {
+            resultEl.innerHTML = '<span style="color:#e74c3c;">&#10008; Test failed: ' + escHtml(e.message) + '</span>';
+        }
     }
 
     async function generateConnectionKey() {
