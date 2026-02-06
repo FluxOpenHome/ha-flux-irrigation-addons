@@ -41,6 +41,10 @@ class Config:
 
         # Load supervisor token
         config.supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+        if config.supervisor_token:
+            print(f"[CONFIG] SUPERVISOR_TOKEN loaded ({len(config.supervisor_token)} chars)")
+        else:
+            print("[CONFIG] WARNING: SUPERVISOR_TOKEN is empty/missing - HA API calls will fail")
 
         # Load add-on options
         options_str = os.environ.get("ADDON_OPTIONS")

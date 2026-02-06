@@ -1040,7 +1040,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                     ${['zones.read','zones.control','schedule.read','schedule.write','sensors.read','history.read','system.control'].map(p => `
                         <label class="perm-checkbox">
                             <input type="checkbox" ${(key.permissions||[]).includes(p) ? 'checked' : ''} onchange="updateKeyPermissions(${i})">
-                            ${p.replace('.', ': ').replace(/\b\w/g, c => c.toUpperCase())}
+                            ${p.replace('.', ': ').replace(/\\b\\w/g, c => c.toUpperCase())}
                         </label>
                     `).join('')}
                 </div>

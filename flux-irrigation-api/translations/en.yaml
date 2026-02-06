@@ -15,6 +15,20 @@ configuration:
     description: >-
       A friendly label for your property (e.g., "123 Main St"). Included
       in the connection key so your management company can identify your system.
+  homeowner_address:
+    name: Street Address
+    description: >-
+      Street address of this property. Included in the connection key
+      for your management company.
+  homeowner_city:
+    name: City
+    description: City of this property.
+  homeowner_state:
+    name: State
+    description: State abbreviation (e.g., "TX", "CA").
+  homeowner_zip:
+    name: ZIP Code
+    description: ZIP or postal code for this property.
   api_keys:
     name: API Keys
     description: API keys for management companies. Each key has a name and list of permissions.

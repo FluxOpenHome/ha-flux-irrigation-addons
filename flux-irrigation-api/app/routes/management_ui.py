@@ -309,7 +309,14 @@ async function api(path, options = {}) {
 async function loadCustomers() {
     try {
         const data = await api('/customers');
-        renderCustomerGrid(data.customers || []);
+        allCustomers = data.customers || [];
+        populateStateFilter(allCustomers);
+        if (allCustomers.length > 2) {
+            document.getElementById('searchBar').style.display = 'flex';
+        } else {
+            document.getElementById('searchBar').style.display = 'none';
+        }
+        filterCustomers();
     } catch (e) {
         document.getElementById('customerGrid').innerHTML =
             '<div class="empty-state"><h3>Error loading properties</h3><p>' + e.message + '</p></div>';
@@ -319,12 +326,17 @@ async function loadCustomers() {
 function renderCustomerGrid(customers) {
     const grid = document.getElementById('customerGrid');
     if (customers.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><h3>No properties connected</h3><p>Click "+ Add Property" to connect a homeowner\\'s irrigation system.</p></div>';
+        const isFiltered = document.getElementById('searchInput').value || document.getElementById('filterState').value || document.getElementById('filterStatus').value;
+        grid.innerHTML = isFiltered
+            ? '<div class="empty-state"><h3>No matching properties</h3><p>Try adjusting your search or filters.</p></div>'
+            : '<div class="empty-state"><h3>No properties connected</h3><p>Click "+ Add Property" to connect a homeowner\\'s irrigation system.</p></div>';
         return;
     }
     grid.innerHTML = customers.map(c => {
         const status = getCustomerStatus(c);
         const stats = getQuickStats(c);
+        const addr = formatAddress(c);
+        const zoneInfo = c.zone_count ? '<span class="customer-stat"><strong>' + c.zone_count + '</strong> zones</span>' : '';
         return `
         <div class="customer-card ${status}" onclick="viewCustomer('${c.id}')">
             <div class="customer-card-body">
@@ -335,9 +347,10 @@ function renderCustomerGrid(customers) {
                         ${status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Unknown'}
                     </span>
                 </div>
+                ${addr ? '<div class="customer-address">' + esc(addr) + '</div>' : ''}
                 ${c.notes ? '<div style="font-size:13px;color:#7f8c8d;margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
                 <div class="customer-stats">
-                    ${stats}
+                    ${zoneInfo}${stats}
                 </div>
                 <div class="customer-actions" onclick="event.stopPropagation()">
                     <button class="btn btn-secondary btn-sm" onclick="checkCustomer('${c.id}')">Test Connection</button>
@@ -346,6 +359,50 @@ function renderCustomerGrid(customers) {
             </div>
         </div>`;
     }).join('');
+}
+
+function formatAddress(c) {
+    const parts = [];
+    if (c.address) parts.push(c.address);
+    const cityStateZip = [];
+    if (c.city) cityStateZip.push(c.city);
+    if (c.state) cityStateZip.push(c.state);
+    if (cityStateZip.length > 0) {
+        let line = cityStateZip.join(', ');
+        if (c.zip) line += ' ' + c.zip;
+        parts.push(line);
+    } else if (c.zip) {
+        parts.push(c.zip);
+    }
+    return parts.join(', ');
+}
+
+function populateStateFilter(customers) {
+    const select = document.getElementById('filterState');
+    const currentVal = select.value;
+    const states = [...new Set(customers.map(c => c.state).filter(Boolean))].sort();
+    select.innerHTML = '<option value="">All States</option>' + states.map(s => '<option value="' + esc(s) + '">' + esc(s) + '</option>').join('');
+    select.value = currentVal;
+}
+
+function filterCustomers() {
+    const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+    const stateFilter = document.getElementById('filterState').value;
+    const statusFilter = document.getElementById('filterStatus').value;
+    let filtered = allCustomers;
+    if (search) {
+        filtered = filtered.filter(c => {
+            const haystack = [c.name, c.address, c.city, c.state, c.zip, c.notes].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(search);
+        });
+    }
+    if (stateFilter) {
+        filtered = filtered.filter(c => c.state === stateFilter);
+    }
+    if (statusFilter) {
+        filtered = filtered.filter(c => getCustomerStatus(c) === statusFilter);
+    }
+    renderCustomerGrid(filtered);
 }
 
 function getCustomerStatus(c) {
@@ -391,8 +448,16 @@ function previewKey() {
     if (key.length < 10) { preview.classList.remove('visible'); return; }
     try {
         const decoded = JSON.parse(atob(key.replace(/-/g, '+').replace(/_/g, '/')));
-        content.innerHTML = `URL: <strong>${esc(decoded.url)}</strong>` +
-            (decoded.label ? `<br>Label: <strong>${esc(decoded.label)}</strong>` : '');
+        let html = 'URL: <strong>' + esc(decoded.url) + '</strong>';
+        if (decoded.label) html += '<br>Label: <strong>' + esc(decoded.label) + '</strong>';
+        const addrParts = [];
+        if (decoded.address) addrParts.push(decoded.address);
+        if (decoded.city) addrParts.push(decoded.city);
+        if (decoded.state) addrParts.push(decoded.state);
+        if (decoded.zip) addrParts.push(decoded.zip);
+        if (addrParts.length > 0) html += '<br>Address: <strong>' + esc(addrParts.join(', ')) + '</strong>';
+        if (decoded.zone_count) html += '<br>Zones: <strong>' + decoded.zone_count + '</strong>';
+        content.innerHTML = html;
         preview.classList.add('visible');
     } catch (e) {
         content.innerHTML = '<span style="color:#e74c3c;">Invalid key format</span>';
@@ -462,8 +527,17 @@ async function viewCustomer(id) {
     try {
         const customer = await api('/customers/' + id);
         document.getElementById('detailName').textContent = customer.name;
+        const addr = formatAddress(customer);
+        const addrEl = document.getElementById('detailAddress');
+        if (addr) {
+            addrEl.textContent = addr;
+            addrEl.style.display = 'block';
+        } else {
+            addrEl.style.display = 'none';
+        }
     } catch (e) {
         document.getElementById('detailName').textContent = 'Unknown Property';
+        document.getElementById('detailAddress').style.display = 'none';
     }
 
     loadDetailData(id);
