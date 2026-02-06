@@ -238,6 +238,7 @@ async def select_device(body: DeviceSelect):
         "device_id": body.device_id,
         "zones": entities.get("zones", []),
         "sensors": entities.get("sensors", []),
+        "other": entities.get("other", []),
         "allowed_zone_entities": config.allowed_zone_entities,
         "allowed_sensor_entities": config.allowed_sensor_entities,
     }
@@ -253,6 +254,7 @@ async def get_device_entities():
             "device_id": "",
             "zones": [],
             "sensors": [],
+            "other": [],
         }
 
     import ha_client
@@ -260,12 +262,13 @@ async def get_device_entities():
     try:
         entities = await ha_client.get_device_entities(config.irrigation_device_id)
     except Exception:
-        entities = {"zones": [], "sensors": []}
+        entities = {"zones": [], "sensors": [], "other": []}
 
     return {
         "device_id": config.irrigation_device_id,
         "zones": entities.get("zones", []),
         "sensors": entities.get("sensors", []),
+        "other": entities.get("other", []),
     }
 
 
@@ -968,7 +971,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             const data = await res.json();
 
             if (data.success) {
-                renderDeviceEntities(data.zones || [], data.sensors || []);
+                renderDeviceEntities(data.zones || [], data.sensors || [], data.other || []);
                 showToast('Device selected — entities resolved');
             }
         } catch (e) {
@@ -981,25 +984,26 @@ ADMIN_HTML = """<!DOCTYPE html>
             const res = await fetch(`${BASE}/device/entities`);
             const data = await res.json();
             if (data.device_id) {
-                renderDeviceEntities(data.zones || [], data.sensors || []);
+                renderDeviceEntities(data.zones || [], data.sensors || [], data.other || []);
             }
         } catch (e) {
             // Silently fail — device might not be configured yet
         }
     }
 
-    function renderDeviceEntities(zones, sensors) {
+    function renderDeviceEntities(zones, sensors, other) {
         const container = document.getElementById('deviceEntities');
+        const total = zones.length + sensors.length + (other ? other.length : 0);
 
-        if (zones.length === 0 && sensors.length === 0) {
-            container.innerHTML = '<div class="device-info empty">No switch or sensor entities found on this device.</div>';
+        if (total === 0) {
+            container.innerHTML = '<div class="device-info empty">No entities found on this device. Make sure the device has switch, valve, or sensor entities.</div>';
             return;
         }
 
         let html = '';
 
         if (zones.length > 0) {
-            html += '<div class="entity-list"><h4>Zone Switches (' + zones.length + ')</h4>';
+            html += '<div class="entity-list"><h4>Zones — switches & valves (' + zones.length + ')</h4>';
             for (const z of zones) {
                 html += `<div class="entity-item"><span class="entity-id">${escHtml(z.entity_id)}</span><span class="entity-name">${escHtml(z.name || z.original_name || '')}</span></div>`;
             }
@@ -1010,6 +1014,14 @@ ADMIN_HTML = """<!DOCTYPE html>
             html += '<div class="entity-list" style="margin-top:8px;"><h4>Sensors (' + sensors.length + ')</h4>';
             for (const s of sensors) {
                 html += `<div class="entity-item"><span class="entity-id">${escHtml(s.entity_id)}</span><span class="entity-name">${escHtml(s.name || s.original_name || '')}</span></div>`;
+            }
+            html += '</div>';
+        }
+
+        if (other && other.length > 0) {
+            html += '<div class="entity-list" style="margin-top:8px;"><h4>Other Entities (' + other.length + ')</h4>';
+            for (const o of other) {
+                html += `<div class="entity-item"><span class="entity-id">${escHtml(o.entity_id)}</span><span class="entity-name">${escHtml(o.name || o.original_name || '')}</span></div>`;
             }
             html += '</div>';
         }

@@ -35,16 +35,28 @@ class SensorSummary(BaseModel):
 
 
 def _sensor_name(entity_id: str) -> str:
-    """Derive sensor name from entity_id by stripping the 'sensor.' domain."""
-    return entity_id.removeprefix("sensor.")
+    """Derive sensor name from entity_id by stripping the domain prefix."""
+    if "." in entity_id:
+        return entity_id.split(".", 1)[1]
+    return entity_id
 
 
 def _resolve_sensor_entity(sensor_id: str, config) -> str:
-    """Resolve a sensor_id to a full entity_id, validating it's allowed."""
-    entity_id = f"sensor.{sensor_id}"
-    if entity_id not in config.allowed_sensor_entities:
-        raise HTTPException(status_code=404, detail=f"Sensor '{sensor_id}' not found.")
-    return entity_id
+    """Resolve a sensor_id to a full entity_id, validating it's allowed.
+
+    Tries sensor.{id} and binary_sensor.{id}, or accepts a full entity_id.
+    """
+    # Check if it's already a full entity_id
+    if sensor_id in config.allowed_sensor_entities:
+        return sensor_id
+
+    # Try common sensor domains
+    for domain in ("sensor", "binary_sensor"):
+        entity_id = f"{domain}.{sensor_id}"
+        if entity_id in config.allowed_sensor_entities:
+            return entity_id
+
+    raise HTTPException(status_code=404, detail=f"Sensor '{sensor_id}' not found.")
 
 
 @router.get(

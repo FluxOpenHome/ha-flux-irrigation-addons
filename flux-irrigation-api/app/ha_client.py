@@ -162,16 +162,28 @@ async def _get_entities_via_template() -> list[dict]:
 async def get_device_entities(device_id: str) -> dict:
     """Get all entities belonging to a specific device, categorized by domain.
 
+    Zones can be switch.* or valve.* entities (irrigation controllers vary).
+    Sensors include sensor.* and binary_sensor.* entities.
+    All other entity types are included in the "other" list for full visibility.
+
     Returns:
         {
-            "zones": [{"entity_id": "switch.xxx", ...}, ...],
-            "sensors": [{"entity_id": "sensor.xxx", ...}, ...],
+            "zones": [{"entity_id": "switch.xxx", "domain": "switch", ...}, ...],
+            "sensors": [{"entity_id": "sensor.xxx", "domain": "sensor", ...}, ...],
+            "other": [{"entity_id": "number.xxx", "domain": "number", ...}, ...],
         }
     """
     entities = await get_entity_registry()
 
+    # Domains that represent controllable irrigation zones
+    ZONE_DOMAINS = {"switch", "valve"}
+    # Domains that represent sensor readings
+    SENSOR_DOMAINS = {"sensor", "binary_sensor"}
+
     zones = []
     sensors = []
+    other = []
+    matched_count = 0
 
     for entity in entities:
         if entity.get("device_id") != device_id:
@@ -180,19 +192,37 @@ async def get_device_entities(device_id: str) -> dict:
             continue
 
         eid = entity.get("entity_id", "")
+        domain = eid.split(".")[0] if "." in eid else ""
+        matched_count += 1
+
         entry = {
             "entity_id": eid,
             "original_name": entity.get("original_name", ""),
             "name": entity.get("name") or entity.get("original_name", ""),
             "platform": entity.get("platform", ""),
+            "domain": domain,
         }
 
-        if eid.startswith("switch."):
+        if domain in ZONE_DOMAINS:
             zones.append(entry)
-        elif eid.startswith("sensor."):
+        elif domain in SENSOR_DOMAINS:
             sensors.append(entry)
+        else:
+            other.append(entry)
 
-    return {"zones": zones, "sensors": sensors}
+    print(f"[HA_CLIENT] Device {device_id}: {matched_count} total entities, "
+          f"{len(zones)} zones, {len(sensors)} sensors, {len(other)} other")
+    if matched_count > 0 and len(zones) == 0 and len(sensors) == 0:
+        # Log what domains we did find for debugging
+        all_domains = set()
+        for entity in entities:
+            if entity.get("device_id") == device_id and not entity.get("disabled_by"):
+                eid = entity.get("entity_id", "")
+                if "." in eid:
+                    all_domains.add(eid.split(".")[0])
+        print(f"[HA_CLIENT] Entity domains found on device: {all_domains}")
+
+    return {"zones": zones, "sensors": sensors, "other": other}
 
 
 # --- REST API helpers ---

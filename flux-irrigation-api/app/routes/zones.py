@@ -41,16 +41,47 @@ class ZoneActionResponse(BaseModel):
 
 
 def _zone_name(entity_id: str) -> str:
-    """Derive zone name from entity_id by stripping the 'switch.' domain."""
-    return entity_id.removeprefix("switch.")
+    """Derive zone name from entity_id by stripping the domain prefix."""
+    if "." in entity_id:
+        return entity_id.split(".", 1)[1]
+    return entity_id
 
 
 def _resolve_zone_entity(zone_id: str, config) -> str:
-    """Resolve a zone_id to a full entity_id, validating it's allowed."""
-    entity_id = f"switch.{zone_id}"
-    if entity_id not in config.allowed_zone_entities:
-        raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
-    return entity_id
+    """Resolve a zone_id to a full entity_id, validating it's allowed.
+
+    Tries switch.{zone_id} and valve.{zone_id} to support both entity types.
+    Also accepts a full entity_id directly if it's in the allowed list.
+    """
+    # Check if zone_id is already a full entity_id
+    if zone_id in config.allowed_zone_entities:
+        return zone_id
+
+    # Try common zone domains
+    for domain in ("switch", "valve"):
+        entity_id = f"{domain}.{zone_id}"
+        if entity_id in config.allowed_zone_entities:
+            return entity_id
+
+    raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
+
+
+def _get_zone_service(entity_id: str, action: str) -> tuple[str, str]:
+    """Get the correct HA service domain and service name for a zone entity.
+
+    Args:
+        entity_id: The full entity_id (e.g., switch.zone_1 or valve.zone_1)
+        action: Either "on" or "off"
+
+    Returns:
+        Tuple of (service_domain, service_name)
+    """
+    domain = entity_id.split(".")[0] if "." in entity_id else "switch"
+
+    if domain == "valve":
+        return ("valve", "open" if action == "on" else "close")
+    else:
+        return ("switch", "turn_on" if action == "on" else "turn_off")
 
 
 @router.get(
@@ -148,9 +179,10 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     if entity is None:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
 
-    # Turn on the zone
+    # Turn on the zone (supports both switch and valve entities)
+    svc_domain, svc_name = _get_zone_service(entity_id, "on")
     service_data = {"entity_id": entity_id}
-    success = await ha_client.call_service("switch", "turn_on", service_data)
+    success = await ha_client.call_service(svc_domain, svc_name, service_data)
 
     if not success:
         raise HTTPException(status_code=502, detail="Failed to communicate with Home Assistant.")
@@ -209,8 +241,9 @@ async def stop_zone(zone_id: str, request: Request):
     if entity is None:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
 
+    svc_domain, svc_name = _get_zone_service(entity_id, "off")
     service_data = {"entity_id": entity_id}
-    success = await ha_client.call_service("switch", "turn_off", service_data)
+    success = await ha_client.call_service(svc_domain, svc_name, service_data)
 
     if not success:
         raise HTTPException(status_code=502, detail="Failed to communicate with Home Assistant.")
@@ -248,9 +281,11 @@ async def stop_all_zones(request: Request):
 
     for entity in entities:
         entity_id = entity["entity_id"]
-        if entity.get("state") == "on":
+        state = entity.get("state", "")
+        if state in ("on", "open"):
+            svc_domain, svc_name = _get_zone_service(entity_id, "off")
             await ha_client.call_service(
-                "switch", "turn_off", {"entity_id": entity_id}
+                svc_domain, svc_name, {"entity_id": entity_id}
             )
             stopped.append(entity_id)
 
