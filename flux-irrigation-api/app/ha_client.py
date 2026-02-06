@@ -56,13 +56,107 @@ async def _ws_command(command: str) -> list[dict]:
 
 
 async def get_device_registry() -> list[dict]:
-    """Get all registered devices from Home Assistant."""
-    return await _ws_command("config/device_registry/list")
+    """Get all registered devices from Home Assistant.
+
+    Uses the template API as a reliable fallback since WebSocket auth
+    through the Supervisor proxy can fail with SUPERVISOR_TOKEN.
+    """
+    try:
+        return await _ws_command("config/device_registry/list")
+    except Exception as ws_err:
+        print(f"[HA_CLIENT] WebSocket device registry failed ({ws_err}), using template API fallback")
+        return await _get_devices_via_template()
+
+
+async def _get_devices_via_template() -> list[dict]:
+    """Get devices using the template API (REST-based fallback)."""
+    # Use Jinja template to extract device info from HA
+    template = """
+{%- set ns = namespace(devices=[]) -%}
+{%- for state in states -%}
+  {%- set did = device_id(state.entity_id) -%}
+  {%- if did and did not in ns.devices -%}
+    {%- set ns.devices = ns.devices + [did] -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- set result = [] -%}
+{%- for did in ns.devices -%}
+  {%- set d_name = device_attr(did, 'name') or '' -%}
+  {%- set d_name_by_user = device_attr(did, 'name_by_user') or '' -%}
+  {%- set d_manufacturer = device_attr(did, 'manufacturer') or '' -%}
+  {%- set d_model = device_attr(did, 'model') or '' -%}
+  {%- set d_area = device_attr(did, 'area_id') or '' -%}
+  {%- set entry = '{"id":"' ~ did ~ '","name":"' ~ (d_name_by_user or d_name) | replace('"', '\\"') ~ '","manufacturer":"' ~ d_manufacturer | replace('"', '\\"') ~ '","model":"' ~ d_model | replace('"', '\\"') ~ '","area_id":"' ~ d_area ~ '"}' -%}
+  {%- if loop.first -%}[{{ entry }}{%- else -%},{{ entry }}{%- endif -%}
+  {%- if loop.last -%}]{%- endif -%}
+{%- endfor -%}
+{%- if ns.devices | length == 0 -%}[]{%- endif -%}
+"""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{HA_BASE_URL}/template",
+            headers=_get_headers(),
+            json={"template": template},
+            timeout=30.0,
+        )
+        if response.status_code == 200:
+            import json as json_mod
+            try:
+                return json_mod.loads(response.text)
+            except Exception as e:
+                print(f"[HA_CLIENT] Template response parse error: {e}")
+                print(f"[HA_CLIENT] Raw response: {response.text[:500]}")
+                return []
+        else:
+            print(f"[HA_CLIENT] Template API returned {response.status_code}: {response.text[:200]}")
+            return []
 
 
 async def get_entity_registry() -> list[dict]:
-    """Get all registered entities from Home Assistant."""
-    return await _ws_command("config/entity_registry/list")
+    """Get all registered entities from Home Assistant.
+
+    Uses the template API as a reliable fallback since WebSocket auth
+    through the Supervisor proxy can fail with SUPERVISOR_TOKEN.
+    """
+    try:
+        return await _ws_command("config/entity_registry/list")
+    except Exception as ws_err:
+        print(f"[HA_CLIENT] WebSocket entity registry failed ({ws_err}), using template API fallback")
+        return await _get_entities_via_template()
+
+
+async def _get_entities_via_template() -> list[dict]:
+    """Get entities with device_id using the template API (REST-based fallback)."""
+    template = """
+{%- set result = [] -%}
+{%- for state in states -%}
+  {%- set eid = state.entity_id -%}
+  {%- set did = device_id(eid) or '' -%}
+  {%- set fname = state.name | replace('"', '\\\\"') -%}
+  {%- set entry = '{"entity_id":"' ~ eid ~ '","device_id":"' ~ did ~ '","name":"' ~ fname ~ '","original_name":"' ~ fname ~ '","disabled_by":null,"platform":""}' -%}
+  {%- if loop.first -%}[{{ entry }}{%- else -%},{{ entry }}{%- endif -%}
+  {%- if loop.last -%}]{%- endif -%}
+{%- endfor -%}
+{%- if states | list | length == 0 -%}[]{%- endif -%}
+"""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{HA_BASE_URL}/template",
+            headers=_get_headers(),
+            json={"template": template},
+            timeout=30.0,
+        )
+        if response.status_code == 200:
+            import json as json_mod
+            try:
+                return json_mod.loads(response.text)
+            except Exception as e:
+                print(f"[HA_CLIENT] Entity template parse error: {e}")
+                print(f"[HA_CLIENT] Raw response: {response.text[:500]}")
+                return []
+        else:
+            print(f"[HA_CLIENT] Entity template API returned {response.status_code}: {response.text[:200]}")
+            return []
 
 
 async def get_device_entities(device_id: str) -> dict:
