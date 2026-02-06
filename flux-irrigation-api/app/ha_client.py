@@ -31,7 +31,10 @@ async def _ws_command(command: str) -> list[dict]:
     config = get_config()
     token = config.supervisor_token
 
-    async with websockets.connect(HA_WS_URL) as ws:
+    # Pass auth header during WebSocket upgrade handshake (required by Supervisor proxy)
+    extra_headers = {"Authorization": f"Bearer {token}"}
+
+    async with websockets.connect(HA_WS_URL, additional_headers=extra_headers) as ws:
         # Step 1: Receive auth_required
         msg = json.loads(await ws.recv())
         if msg.get("type") != "auth_required":

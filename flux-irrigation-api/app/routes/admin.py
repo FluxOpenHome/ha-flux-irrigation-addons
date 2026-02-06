@@ -178,9 +178,10 @@ async def list_devices():
     try:
         devices = await ha_client.get_device_registry()
     except Exception as e:
+        print(f"[ADMIN] Failed to fetch device registry: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to fetch device registry: {e}",
+            detail=f"Failed to fetch device registry: {type(e).__name__}: {e}",
         )
 
     # Return devices with useful display info
@@ -865,7 +866,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <div class="toast" id="toast"></div>
 
 <script>
-    const BASE = (window.location.pathname.replace(/\/+$/, '')) + '/api';
+    const BASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api';
 
     // --- Toast ---
     function showToast(msg, type = 'success') {
@@ -901,7 +902,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 
     // --- Status ---
     // Derive the ingress base path (strip /admin from the end of current path)
-    const INGRESS_BASE = window.location.pathname.replace(/\/admin\/?$/, '');
+    const INGRESS_BASE = window.location.pathname.replace(/\\/admin\\/?$/, '');
 
     async function loadStatus() {
         try {
