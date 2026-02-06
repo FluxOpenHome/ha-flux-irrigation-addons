@@ -41,8 +41,24 @@ async def proxy_request(
     Routes through HA REST API proxy for nabu_casa mode.
     Returns (status_code, response_json).
     """
+    # Validate URL before attempting any request
+    url = (connection.url or "").strip()
+    print(f"[MGMT_CLIENT] proxy_request: url='{url}', mode='{connection.mode}', ha_token={'SET' if connection.ha_token else 'EMPTY'}, method={method}, path={path}")
+    if not url:
+        return 400, {"error": "No URL configured", "detail": "The connection key has no URL. Remove and re-add this customer with a valid connection key."}
+    if not url.startswith("http://") and not url.startswith("https://"):
+        return 400, {"error": "Invalid URL", "detail": f"URL must start with http:// or https:// — got: {url[:50]}"}
+
     if connection.mode == "nabu_casa" and connection.ha_token:
         return await _proxy_via_nabu_casa(connection, method, path, json_body, params)
+
+    # If mode is nabu_casa but token is missing, give a clear error
+    if connection.mode == "nabu_casa" and not connection.ha_token:
+        return 400, {
+            "error": "Missing HA token",
+            "detail": "This customer uses Nabu Casa mode but the HA Long-Lived Access Token is missing. Re-generate the connection key on the homeowner side.",
+        }
+
     return await _proxy_direct(connection, method, path, json_body, params)
 
 

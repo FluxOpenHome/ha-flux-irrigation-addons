@@ -71,6 +71,7 @@ def _get_customer_or_404(customer_id: str) -> customer_store.Customer:
 
 
 def _customer_connection(customer: customer_store.Customer) -> ConnectionKeyData:
+    print(f"[MGMT] Building connection for {customer.name}: url='{customer.url}', mode='{customer.connection_mode}', ha_token={'SET' if customer.ha_token else 'EMPTY'}")
     return ConnectionKeyData(
         url=customer.url,
         key=customer.api_key,
@@ -118,6 +119,8 @@ async def add_customer(body: AddCustomerRequest):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    print(f"[MGMT] Customer added: name={customer.name}, url='{customer.url}', mode={customer.connection_mode}, ha_token={'SET('+str(len(customer.ha_token))+'chars)' if customer.ha_token else 'EMPTY'}")
 
     # Test connectivity immediately
     conn = _customer_connection(customer)

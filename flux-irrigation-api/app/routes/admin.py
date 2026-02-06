@@ -397,8 +397,17 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     options["homeowner_city"] = body.city
     options["homeowner_state"] = body.state
     options["homeowner_zip"] = body.zip
-    options["homeowner_ha_token"] = body.ha_token
     options["homeowner_connection_mode"] = body.connection_mode
+
+    # Preserve existing HA token if not provided (UI sends empty when unchanged)
+    effective_ha_token = body.ha_token.strip() if body.ha_token else ""
+    if effective_ha_token:
+        options["homeowner_ha_token"] = effective_ha_token
+    else:
+        # Keep whatever was already saved
+        effective_ha_token = options.get("homeowner_ha_token", "")
+
+    print(f"[ADMIN] generate_connection_key: mode={body.connection_mode}, url={body.url}, ha_token={'SET('+str(len(effective_ha_token))+'chars)' if effective_ha_token else 'EMPTY'}")
 
     # Auto-detect zone count from selected device
     zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
@@ -437,7 +446,7 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         state=body.state or None,
         zip=body.zip or None,
         zone_count=zone_count,
-        ha_token=body.ha_token or None,
+        ha_token=effective_ha_token or None,
         mode=body.connection_mode or "direct",
     )
     encoded = encode_connection_key(key_data)

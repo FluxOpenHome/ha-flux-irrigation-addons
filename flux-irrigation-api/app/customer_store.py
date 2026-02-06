@@ -70,6 +70,7 @@ def add_customer(
 ) -> Customer:
     """Decode a connection key and add a new customer. Returns the Customer."""
     key_data = decode_connection_key(encoded_key)
+    print(f"[CUST_STORE] Decoded key: url='{key_data.url}', mode='{key_data.mode}', ha_token={'SET('+str(len(key_data.ha_token))+'chars)' if key_data.ha_token else 'NONE'}")
 
     customers = load_customers()
 
