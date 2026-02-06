@@ -1,0 +1,53 @@
+# Flux Open Home - Irrigation Management API Add-on
+name: "Flux Irrigation Management API"
+version: "1.0.0"
+slug: "flux_irrigation_api"
+description: "Exposes a secure, scoped API for irrigation management companies to monitor and control Flux Open Home irrigation systems."
+url: "https://github.com/FluxOpenHome/ha-flux-irrigation-addons"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+  - armhf
+  - i386
+homeassistant_api: true
+hassio_api: true
+auth_api: true
+ingress: true
+ingress_port: 8099
+panel_icon: "mdi:sprinkler-variant"
+panel_title: "Irrigation API"
+ports:
+  "8099/tcp": 8099
+ports_description:
+  "8099/tcp": "Irrigation Management API"
+options:
+  api_keys:
+    - key: "CHANGE_ME_GENERATE_A_SECURE_KEY"
+      name: "Default Management Company"
+      permissions:
+        - "zones.read"
+        - "zones.control"
+        - "schedule.read"
+        - "schedule.write"
+        - "sensors.read"
+        - "history.read"
+        - "system.control"
+  irrigation_entity_prefix: "switch.irrigation_"
+  sensor_entity_prefix: "sensor.irrigation_"
+  rate_limit_per_minute: 60
+  log_retention_days: 30
+  enable_audit_log: true
+schema:
+  api_keys:
+    - key: str
+      name: str
+      permissions:
+        - str
+  irrigation_entity_prefix: str
+  sensor_entity_prefix: str
+  rate_limit_per_minute: "int(1,300)"
+  log_retention_days: "int(1,365)"
+  enable_audit_log: bool
+startup: "application"
+boot: "auto"

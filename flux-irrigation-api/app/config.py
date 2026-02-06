@@ -1,0 +1,96 @@
+"""
+Configuration management for the Flux Irrigation Management API.
+Loads settings from the HA add-on options.
+"""
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class ApiKeyConfig:
+    key: str
+    name: str
+    permissions: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Config:
+    api_keys: list[ApiKeyConfig] = field(default_factory=list)
+    irrigation_entity_prefix: str = "switch.irrigation_"
+    sensor_entity_prefix: str = "sensor.irrigation_"
+    rate_limit_per_minute: int = 60
+    log_retention_days: int = 30
+    enable_audit_log: bool = True
+    supervisor_token: Optional[str] = None
+
+    @classmethod
+    def load(cls) -> "Config":
+        """Load configuration from add-on options or environment."""
+        config = cls()
+
+        # Load supervisor token
+        config.supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+
+        # Load add-on options
+        options_str = os.environ.get("ADDON_OPTIONS")
+        if options_str:
+            try:
+                options = json.loads(options_str)
+            except json.JSONDecodeError:
+                options = {}
+        else:
+            # Fallback: try reading options.json directly (standard HA add-on path)
+            options_path = "/data/options.json"
+            if os.path.exists(options_path):
+                with open(options_path, "r") as f:
+                    options = json.load(f)
+            else:
+                options = {}
+
+        # Parse API keys
+        for key_entry in options.get("api_keys", []):
+            config.api_keys.append(
+                ApiKeyConfig(
+                    key=key_entry.get("key", ""),
+                    name=key_entry.get("name", "Unknown"),
+                    permissions=key_entry.get("permissions", []),
+                )
+            )
+
+        config.irrigation_entity_prefix = options.get(
+            "irrigation_entity_prefix", config.irrigation_entity_prefix
+        )
+        config.sensor_entity_prefix = options.get(
+            "sensor_entity_prefix", config.sensor_entity_prefix
+        )
+        config.rate_limit_per_minute = options.get(
+            "rate_limit_per_minute", config.rate_limit_per_minute
+        )
+        config.log_retention_days = options.get(
+            "log_retention_days", config.log_retention_days
+        )
+        config.enable_audit_log = options.get(
+            "enable_audit_log", config.enable_audit_log
+        )
+
+        return config
+
+
+# Global config instance
+_config: Optional[Config] = None
+
+
+def get_config() -> Config:
+    global _config
+    if _config is None:
+        _config = Config.load()
+    return _config
+
+
+def reload_config() -> Config:
+    global _config
+    _config = Config.load()
+    return _config

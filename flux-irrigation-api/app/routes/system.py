@@ -1,0 +1,183 @@
+"""
+System control endpoints.
+Pause/resume the irrigation system, health checks, and system info.
+"""
+
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
+from typing import Optional
+from auth import require_permission, authenticate, ApiKeyConfig
+from config import get_config
+import ha_client
+import audit_log
+
+
+router = APIRouter(prefix="/system", tags=["System"])
+
+
+class SystemStatus(BaseModel):
+    online: bool
+    ha_connected: bool
+    system_paused: bool
+    total_zones: int
+    active_zones: int
+    total_sensors: int
+    rain_delay_active: bool
+    rain_delay_until: Optional[str] = None
+    api_version: str = "1.0.0"
+    uptime_check: str
+
+
+class PauseResponse(BaseModel):
+    success: bool
+    system_paused: bool
+    message: str
+
+
+@router.get(
+    "/health",
+    summary="Health check (no auth required)",
+)
+async def health_check():
+    """Basic health check endpoint. No authentication required."""
+    ha_connected = await ha_client.check_connection()
+    return {
+        "status": "healthy" if ha_connected else "degraded",
+        "ha_connected": ha_connected,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get(
+    "/status",
+    response_model=SystemStatus,
+    dependencies=[Depends(require_permission("zones.read"))],
+    summary="Get full system status",
+)
+async def get_system_status(request: Request):
+    """Get a comprehensive status overview of the irrigation system."""
+    config = get_config()
+    key_config: ApiKeyConfig = request.state.api_key_config
+
+    ha_connected = await ha_client.check_connection()
+
+    # Count zones and active zones
+    zones = await ha_client.get_entities_by_prefix(config.irrigation_entity_prefix)
+    active_zones = [z for z in zones if z.get("state") == "on"]
+
+    # Count sensors
+    sensors = await ha_client.get_entities_by_prefix(config.sensor_entity_prefix)
+
+    # Check schedule state for pause/rain delay
+    from routes.schedule import _load_schedules
+    schedule_data = _load_schedules()
+
+    rain_delay_until = schedule_data.get("rain_delay_until")
+    rain_delay_active = False
+    if rain_delay_until:
+        try:
+            delay_end = datetime.fromisoformat(rain_delay_until)
+            rain_delay_active = datetime.now(timezone.utc) < delay_end
+        except ValueError:
+            pass
+
+    audit_log.log_action(
+        api_key_name=key_config.name,
+        method="GET",
+        path="/api/system/status",
+        action="get_system_status",
+        client_ip=request.client.host if request.client else None,
+    )
+
+    return SystemStatus(
+        online=True,
+        ha_connected=ha_connected,
+        system_paused=schedule_data.get("system_paused", False),
+        total_zones=len(zones),
+        active_zones=len(active_zones),
+        total_sensors=len(sensors),
+        rain_delay_active=rain_delay_active,
+        rain_delay_until=rain_delay_until if rain_delay_active else None,
+        uptime_check=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@router.post(
+    "/pause",
+    response_model=PauseResponse,
+    dependencies=[Depends(require_permission("system.control"))],
+    summary="Pause the irrigation system",
+)
+async def pause_system(request: Request):
+    """Pause all irrigation. Active zones will be stopped and schedules suspended."""
+    config = get_config()
+    key_config: ApiKeyConfig = request.state.api_key_config
+
+    # Stop all active zones
+    zones = await ha_client.get_entities_by_prefix(config.irrigation_entity_prefix)
+    for zone in zones:
+        if zone.get("state") == "on":
+            await ha_client.call_service(
+                "switch", "turn_off", {"entity_id": zone["entity_id"]}
+            )
+
+    # Update schedule state
+    from routes.schedule import _load_schedules, _save_schedules
+    data = _load_schedules()
+    data["system_paused"] = True
+    _save_schedules(data)
+
+    await ha_client.fire_event(
+        "flux_irrigation_system_paused",
+        {"source": f"api:{key_config.name}"},
+    )
+
+    audit_log.log_action(
+        api_key_name=key_config.name,
+        method="POST",
+        path="/api/system/pause",
+        action="pause_system",
+        client_ip=request.client.host if request.client else None,
+    )
+
+    return PauseResponse(
+        success=True,
+        system_paused=True,
+        message="Irrigation system paused. All active zones stopped.",
+    )
+
+
+@router.post(
+    "/resume",
+    response_model=PauseResponse,
+    dependencies=[Depends(require_permission("system.control"))],
+    summary="Resume the irrigation system",
+)
+async def resume_system(request: Request):
+    """Resume the irrigation system after a pause."""
+    key_config: ApiKeyConfig = request.state.api_key_config
+
+    from routes.schedule import _load_schedules, _save_schedules
+    data = _load_schedules()
+    data["system_paused"] = False
+    _save_schedules(data)
+
+    await ha_client.fire_event(
+        "flux_irrigation_system_resumed",
+        {"source": f"api:{key_config.name}"},
+    )
+
+    audit_log.log_action(
+        api_key_name=key_config.name,
+        method="POST",
+        path="/api/system/resume",
+        action="resume_system",
+        client_ip=request.client.host if request.client else None,
+    )
+
+    return PauseResponse(
+        success=True,
+        system_paused=False,
+        message="Irrigation system resumed.",
+    )

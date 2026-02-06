@@ -1,0 +1,19 @@
+configuration:
+  api_keys:
+    name: API Keys
+    description: API keys for management companies. Each key has a name and list of permissions.
+  irrigation_entity_prefix:
+    name: Irrigation Entity Prefix
+    description: Entity ID prefix for irrigation zone switches (e.g., switch.irrigation_)
+  sensor_entity_prefix:
+    name: Sensor Entity Prefix
+    description: Entity ID prefix for irrigation sensors (e.g., sensor.irrigation_)
+  rate_limit_per_minute:
+    name: Rate Limit (per minute)
+    description: Maximum API requests per minute per client
+  log_retention_days:
+    name: Log Retention (days)
+    description: Number of days to keep audit logs
+  enable_audit_log:
+    name: Enable Audit Log
+    description: Log all API actions for transparency
