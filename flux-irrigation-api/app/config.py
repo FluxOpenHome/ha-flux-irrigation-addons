@@ -35,8 +35,14 @@ class Config:
     supervisor_token: Optional[str] = None
 
     @classmethod
-    def load(cls) -> "Config":
-        """Load configuration from add-on options or environment."""
+    def load(cls, prefer_file: bool = False) -> "Config":
+        """Load configuration from add-on options or environment.
+
+        Args:
+            prefer_file: If True, always read from /data/options.json instead of
+                the ADDON_OPTIONS env var. Used by reload_config() to pick up
+                changes saved at runtime (e.g., mode switch, device selection).
+        """
         config = cls()
 
         # Load supervisor token
@@ -46,21 +52,24 @@ class Config:
         else:
             print("[CONFIG] WARNING: SUPERVISOR_TOKEN is empty/missing - HA API calls will fail")
 
-        # Load add-on options
-        options_str = os.environ.get("ADDON_OPTIONS")
-        if options_str:
-            try:
-                options = json.loads(options_str)
-            except json.JSONDecodeError:
-                options = {}
+        # Load add-on options — always prefer the file for runtime reloads
+        # because the ADDON_OPTIONS env var is set at startup and becomes stale
+        options = {}
+        options_path = "/data/options.json"
+
+        if prefer_file and os.path.exists(options_path):
+            with open(options_path, "r") as f:
+                options = json.load(f)
         else:
-            # Fallback: try reading options.json directly (standard HA add-on path)
-            options_path = "/data/options.json"
-            if os.path.exists(options_path):
+            options_str = os.environ.get("ADDON_OPTIONS")
+            if options_str:
+                try:
+                    options = json.loads(options_str)
+                except json.JSONDecodeError:
+                    options = {}
+            elif os.path.exists(options_path):
                 with open(options_path, "r") as f:
                     options = json.load(f)
-            else:
-                options = {}
 
         # Parse API keys
         for key_entry in options.get("api_keys", []):
@@ -138,9 +147,14 @@ def get_config() -> Config:
 
 
 async def reload_config() -> Config:
-    """Reload config from disk and re-resolve device entities."""
+    """Reload config from disk and re-resolve device entities.
+
+    Uses prefer_file=True so runtime changes (mode switch, device selection)
+    are picked up from /data/options.json rather than the stale env var.
+    """
     global _config
-    _config = Config.load()
+    _config = Config.load(prefer_file=True)
     if _config.mode == "homeowner":
         await _config.resolve_device_entities()
+    print(f"[CONFIG] Reloaded: mode={_config.mode}, device={_config.irrigation_device_id or '(none)'}")
     return _config

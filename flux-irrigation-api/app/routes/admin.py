@@ -272,6 +272,62 @@ async def get_device_entities():
     }
 
 
+@router.get("/api/device/debug", summary="Debug device entity resolution")
+async def debug_device_entities():
+    """Diagnostic endpoint: shows raw entity registry data for the selected device."""
+    config = get_config()
+    import ha_client
+
+    result = {
+        "device_id": config.irrigation_device_id or "(not set)",
+        "supervisor_token_available": bool(config.supervisor_token),
+        "supervisor_token_length": len(config.supervisor_token) if config.supervisor_token else 0,
+        "mode": config.mode,
+        "allowed_zone_entities": config.allowed_zone_entities,
+        "allowed_sensor_entities": config.allowed_sensor_entities,
+    }
+
+    if not config.irrigation_device_id:
+        result["error"] = "No device selected"
+        return result
+
+    # Try WebSocket first
+    try:
+        ws_entities = await ha_client._ws_command("config/entity_registry/list")
+        ws_matched = [e for e in ws_entities if e.get("device_id") == config.irrigation_device_id]
+        result["ws_total_entities"] = len(ws_entities)
+        result["ws_matched_entities"] = len(ws_matched)
+        result["ws_matched_sample"] = ws_matched[:10]
+        result["ws_status"] = "ok"
+    except Exception as e:
+        result["ws_status"] = f"failed: {type(e).__name__}: {e}"
+
+    # Try template fallback
+    try:
+        tpl_entities = await ha_client._get_entities_via_template()
+        tpl_matched = [e for e in tpl_entities if e.get("device_id") == config.irrigation_device_id]
+        result["template_total_entities"] = len(tpl_entities)
+        result["template_matched_entities"] = len(tpl_matched)
+        result["template_matched_sample"] = tpl_matched[:10]
+        result["template_status"] = "ok"
+    except Exception as e:
+        result["template_status"] = f"failed: {type(e).__name__}: {e}"
+
+    # Show what get_device_entities returns
+    try:
+        dev_entities = await ha_client.get_device_entities(config.irrigation_device_id)
+        result["categorized"] = {
+            "zones": len(dev_entities.get("zones", [])),
+            "sensors": len(dev_entities.get("sensors", [])),
+            "other": len(dev_entities.get("other", [])),
+        }
+        result["categorized_detail"] = dev_entities
+    except Exception as e:
+        result["categorized_error"] = str(e)
+
+    return result
+
+
 @router.put("/api/general", summary="Update general settings")
 async def update_general_settings(body: SettingsUpdate):
     """Update rate limiting, logging, and other general settings."""
@@ -996,7 +1052,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         const total = zones.length + sensors.length + (other ? other.length : 0);
 
         if (total === 0) {
-            container.innerHTML = '<div class="device-info empty">No entities found on this device. Make sure the device has switch, valve, or sensor entities.</div>';
+            container.innerHTML = '<div class="device-info empty">No entities found on this device. Make sure the device has switch, valve, or sensor entities.<br><a href="' + BASE + '/device/debug" target="_blank" style="color:#1a7a4c;font-size:12px;">View debug info</a></div>';
             return;
         }
 

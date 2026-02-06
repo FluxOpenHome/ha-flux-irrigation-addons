@@ -69,29 +69,25 @@ async def get_device_registry() -> list[dict]:
 
 
 async def _get_devices_via_template() -> list[dict]:
-    """Get devices using the template API (REST-based fallback)."""
-    # Use Jinja template to extract device info from HA
-    template = """
-{%- set ns = namespace(devices=[]) -%}
+    """Get devices using the template API (REST-based fallback).
+
+    Uses pipe-delimited format to avoid JSON escaping issues.
+    """
+    template = """{%- set ns = namespace(devices=[]) -%}
 {%- for state in states -%}
   {%- set did = device_id(state.entity_id) -%}
   {%- if did and did not in ns.devices -%}
     {%- set ns.devices = ns.devices + [did] -%}
   {%- endif -%}
 {%- endfor -%}
-{%- set result = [] -%}
 {%- for did in ns.devices -%}
-  {%- set d_name = device_attr(did, 'name') or '' -%}
-  {%- set d_name_by_user = device_attr(did, 'name_by_user') or '' -%}
-  {%- set d_manufacturer = device_attr(did, 'manufacturer') or '' -%}
-  {%- set d_model = device_attr(did, 'model') or '' -%}
-  {%- set d_area = device_attr(did, 'area_id') or '' -%}
-  {%- set entry = '{"id":"' ~ did ~ '","name":"' ~ (d_name_by_user or d_name) | replace('"', '\\"') ~ '","manufacturer":"' ~ d_manufacturer | replace('"', '\\"') ~ '","model":"' ~ d_model | replace('"', '\\"') ~ '","area_id":"' ~ d_area ~ '"}' -%}
-  {%- if loop.first -%}[{{ entry }}{%- else -%},{{ entry }}{%- endif -%}
-  {%- if loop.last -%}]{%- endif -%}
-{%- endfor -%}
-{%- if ns.devices | length == 0 -%}[]{%- endif -%}
-"""
+{%- set d_name = device_attr(did, 'name') or '' -%}
+{%- set d_name_by_user = device_attr(did, 'name_by_user') or '' -%}
+{%- set d_manufacturer = device_attr(did, 'manufacturer') or '' -%}
+{%- set d_model = device_attr(did, 'model') or '' -%}
+{%- set d_area = device_attr(did, 'area_id') or '' -%}
+{{ did }}|{{ (d_name_by_user or d_name) | replace('|', ' ') }}|{{ d_manufacturer | replace('|', ' ') }}|{{ d_model | replace('|', ' ') }}|{{ d_area }}
+{% endfor -%}"""
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{HA_BASE_URL}/template",
@@ -100,13 +96,22 @@ async def _get_devices_via_template() -> list[dict]:
             timeout=30.0,
         )
         if response.status_code == 200:
-            import json as json_mod
-            try:
-                return json_mod.loads(response.text)
-            except Exception as e:
-                print(f"[HA_CLIENT] Template response parse error: {e}")
-                print(f"[HA_CLIENT] Raw response: {response.text[:500]}")
-                return []
+            devices = []
+            for line in response.text.strip().split("\n"):
+                line = line.strip()
+                if not line or "|" not in line:
+                    continue
+                parts = line.split("|", 4)
+                if len(parts) >= 2:
+                    devices.append({
+                        "id": parts[0].strip(),
+                        "name": parts[1].strip() if len(parts) > 1 else "",
+                        "manufacturer": parts[2].strip() if len(parts) > 2 else "",
+                        "model": parts[3].strip() if len(parts) > 3 else "",
+                        "area_id": parts[4].strip() if len(parts) > 4 else "",
+                    })
+            print(f"[HA_CLIENT] Template fallback returned {len(devices)} devices")
+            return devices
         else:
             print(f"[HA_CLIENT] Template API returned {response.status_code}: {response.text[:200]}")
             return []
@@ -126,19 +131,16 @@ async def get_entity_registry() -> list[dict]:
 
 
 async def _get_entities_via_template() -> list[dict]:
-    """Get entities with device_id using the template API (REST-based fallback)."""
-    template = """
-{%- set result = [] -%}
-{%- for state in states -%}
-  {%- set eid = state.entity_id -%}
-  {%- set did = device_id(eid) or '' -%}
-  {%- set fname = state.name | replace('"', '\\\\"') -%}
-  {%- set entry = '{"entity_id":"' ~ eid ~ '","device_id":"' ~ did ~ '","name":"' ~ fname ~ '","original_name":"' ~ fname ~ '","disabled_by":null,"platform":""}' -%}
-  {%- if loop.first -%}[{{ entry }}{%- else -%},{{ entry }}{%- endif -%}
-  {%- if loop.last -%}]{%- endif -%}
-{%- endfor -%}
-{%- if states | list | length == 0 -%}[]{%- endif -%}
-"""
+    """Get entities with device_id using the template API (REST-based fallback).
+
+    Uses a simple line-per-entity format to avoid JSON escaping issues in Jinja,
+    then parses the lines into dicts.
+    """
+    # Output one line per entity: entity_id|device_id|name
+    # Using pipe-delimited format avoids all JSON/quote escaping problems
+    template = """{%- for state in states -%}
+{{ state.entity_id }}|{{ device_id(state.entity_id) or '' }}|{{ state.name | replace('|', ' ') }}
+{% endfor -%}"""
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{HA_BASE_URL}/template",
@@ -147,13 +149,26 @@ async def _get_entities_via_template() -> list[dict]:
             timeout=30.0,
         )
         if response.status_code == 200:
-            import json as json_mod
-            try:
-                return json_mod.loads(response.text)
-            except Exception as e:
-                print(f"[HA_CLIENT] Entity template parse error: {e}")
-                print(f"[HA_CLIENT] Raw response: {response.text[:500]}")
-                return []
+            entities = []
+            for line in response.text.strip().split("\n"):
+                line = line.strip()
+                if not line or "|" not in line:
+                    continue
+                parts = line.split("|", 2)
+                if len(parts) >= 2:
+                    eid = parts[0].strip()
+                    did = parts[1].strip()
+                    name = parts[2].strip() if len(parts) > 2 else ""
+                    entities.append({
+                        "entity_id": eid,
+                        "device_id": did,
+                        "name": name,
+                        "original_name": name,
+                        "disabled_by": None,
+                        "platform": "",
+                    })
+            print(f"[HA_CLIENT] Template fallback returned {len(entities)} entities")
+            return entities
         else:
             print(f"[HA_CLIENT] Entity template API returned {response.status_code}: {response.text[:200]}")
             return []
