@@ -18,6 +18,13 @@ class ApiKeyConfig:
 
 @dataclass
 class Config:
+    mode: str = "homeowner"
+    homeowner_url: str = ""
+    homeowner_label: str = ""
+    homeowner_address: str = ""
+    homeowner_city: str = ""
+    homeowner_state: str = ""
+    homeowner_zip: str = ""
     api_keys: list[ApiKeyConfig] = field(default_factory=list)
     irrigation_device_id: str = ""
     allowed_zone_entities: list[str] = field(default_factory=list)
@@ -61,6 +68,13 @@ class Config:
                 )
             )
 
+        config.mode = options.get("mode", config.mode)
+        config.homeowner_url = options.get("homeowner_url", config.homeowner_url)
+        config.homeowner_label = options.get("homeowner_label", config.homeowner_label)
+        config.homeowner_address = options.get("homeowner_address", config.homeowner_address)
+        config.homeowner_city = options.get("homeowner_city", config.homeowner_city)
+        config.homeowner_state = options.get("homeowner_state", config.homeowner_state)
+        config.homeowner_zip = options.get("homeowner_zip", config.homeowner_zip)
         config.irrigation_device_id = options.get(
             "irrigation_device_id", config.irrigation_device_id
         )
@@ -107,7 +121,8 @@ async def async_initialize() -> Config:
     """Load config and resolve device entities. Call once at startup."""
     global _config
     _config = Config.load()
-    await _config.resolve_device_entities()
+    if _config.mode == "homeowner":
+        await _config.resolve_device_entities()
     return _config
 
 
@@ -122,5 +137,6 @@ async def reload_config() -> Config:
     """Reload config from disk and re-resolve device entities."""
     global _config
     _config = Config.load()
-    await _config.resolve_device_entities()
+    if _config.mode == "homeowner":
+        await _config.resolve_device_entities()
     return _config

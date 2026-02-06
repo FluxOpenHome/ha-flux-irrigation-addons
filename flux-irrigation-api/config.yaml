@@ -2,7 +2,7 @@
 name: "Flux Irrigation Management API"
 version: "1.0.0"
 slug: "flux_irrigation_api"
-description: "Exposes a secure, scoped API for irrigation management companies to monitor and control Flux Open Home irrigation systems."
+description: "Dual-mode irrigation management for Flux Open Home. Homeowners expose a secure API; management companies monitor and control multiple properties from a single dashboard."
 url: "https://github.com/FluxOpenHome/ha-flux-irrigation-addons"
 arch:
   - amd64
@@ -22,6 +22,13 @@ ports:
 ports_description:
   "8099/tcp": "Irrigation Management API"
 options:
+  mode: "homeowner"
+  homeowner_url: ""
+  homeowner_label: ""
+  homeowner_address: ""
+  homeowner_city: ""
+  homeowner_state: ""
+  homeowner_zip: ""
   api_keys:
     - key: "CHANGE_ME_GENERATE_A_SECURE_KEY"
       name: "Default Management Company"
@@ -38,6 +45,13 @@ options:
   log_retention_days: 30
   enable_audit_log: true
 schema:
+  mode: "list(homeowner|management)"
+  homeowner_url: "str?"
+  homeowner_label: "str?"
+  homeowner_address: "str?"
+  homeowner_city: "str?"
+  homeowner_state: "str?"
+  homeowner_zip: "str?"
   api_keys:
     - key: str
       name: str

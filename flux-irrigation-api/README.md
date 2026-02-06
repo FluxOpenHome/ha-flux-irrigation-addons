@@ -1,57 +1,89 @@
 # Flux Irrigation Management API
 
-A Home Assistant add-on that provides a secure, scoped REST API for irrigation management companies to monitor and control Flux Open Home irrigation systems — without accessing any other devices or entities in the homeowner's Home Assistant instance.
+A Home Assistant add-on that provides dual-mode irrigation management for Flux Open Home. Homeowners expose a secure API for their irrigation system; management companies monitor and control multiple properties from a single dashboard.
 
-## Overview
+## How It Works
 
-This add-on acts as a middleware layer between an irrigation management company and the homeowner's Home Assistant. The management company authenticates with API keys and can only interact with irrigation-related entities. All actions are logged in an audit trail visible to the homeowner.
+This add-on runs in one of two modes:
+
+### Homeowner Mode
+The homeowner installs the add-on on their Home Assistant instance. They select their irrigation controller device, and the add-on exposes a secure REST API scoped only to irrigation entities. The homeowner generates a **connection key** and shares it with their management company.
+
+### Management Company Mode
+The management company installs the same add-on on their own Home Assistant instance and switches it to management mode. They paste connection keys from homeowners into their dashboard, which gives them a single interface to monitor and control all their customers' irrigation systems.
+
+## Quick Start
+
+### For Homeowners
+
+1. Add this repository to your Home Assistant add-on store
+2. Install the "Flux Irrigation Management API" add-on
+3. Start the add-on and open the admin panel
+4. Select your irrigation controller device from the dropdown
+5. In the "Connection Key" section, enter your external API URL and click **Generate Connection Key**
+6. Share the connection key with your management company
+
+### For Management Companies
+
+1. Install the same add-on on your Home Assistant instance
+2. In the HA add-on Configuration tab, change **mode** to "management"
+3. Restart the add-on and open the admin panel
+4. Click **+ Add Property** and paste the connection key from a homeowner
+5. The dashboard will show all connected properties with live status
 
 ## Features
 
+- **Dual-mode operation** — Same add-on works for homeowners and management companies
+- **Connection keys** — Simple base64 key encodes the API URL and credentials for easy sharing
 - **Scoped access** — Only irrigation zones and sensors are exposed. No access to lights, locks, cameras, or any other HA entities.
 - **API key authentication** — Each management company gets their own API key with configurable permissions.
 - **Granular permissions** — Control what each API key can do: read zones, control zones, modify schedules, read sensors, view history.
 - **Audit logging** — Every API action is logged with timestamp, API key, action, and details.
 - **Rate limiting** — Configurable request limits to protect the homeowner's HA instance.
-- **Schedule management** — Management companies can view and update irrigation schedules.
+- **Management dashboard** — Grid view of all properties with live status, zone control, sensors, schedules, and run history.
+- **Schedule management** — View and update irrigation schedules remotely.
 - **Rain delay** — Set and cancel rain delays through the API.
 - **System pause/resume** — Emergency pause that stops all zones and suspends schedules.
 - **Interactive API docs** — Built-in Swagger UI at `/api/docs` for testing and exploration.
 
-## Installation
-
-1. Add this repository to your Home Assistant add-on store
-2. Install the "Flux Irrigation Management API" add-on
-3. Start the add-on
-4. Open the admin panel and select your irrigation controller device
-5. Configure API keys for your management company
-
 ## Configuration
 
 ```yaml
+mode: "homeowner"              # "homeowner" or "management"
+homeowner_url: ""              # External URL where API is reachable (homeowner mode)
+homeowner_label: ""            # Friendly property name for connection key
 api_keys:
-  - key: "your-secure-api-key-here"     # Generate a strong key
-    name: "ABC Irrigation Management"    # Friendly name for audit logs
+  - key: "your-secure-api-key"
+    name: "ABC Irrigation Management"
     permissions:
-      - zones.read        # View zone status
-      - zones.control     # Start/stop zones
-      - schedule.read     # View schedules
-      - schedule.write    # Modify schedules
-      - sensors.read      # Read sensor data
-      - history.read      # View run history
-      - system.control    # Pause/resume, rain delay
-
-irrigation_device_id: ""    # Set via admin panel device picker
+      - zones.read
+      - zones.control
+      - schedule.read
+      - schedule.write
+      - sensors.read
+      - history.read
+      - system.control
+irrigation_device_id: ""       # Set via admin panel device picker
 rate_limit_per_minute: 60
 log_retention_days: 30
 enable_audit_log: true
 ```
 
-### Device Selection
+### Device Selection (Homeowner Mode)
 
-The add-on discovers irrigation entities by device. Open the admin panel (Irrigation API in the sidebar) and select your irrigation controller device from the dropdown. The add-on will automatically find all switch entities (zones) and sensor entities belonging to that device.
+Open the admin panel and select your irrigation controller device from the dropdown. The add-on automatically finds all switch entities (zones) and sensor entities belonging to that device.
 
-## API Endpoints
+### Connection Key (Homeowner Mode)
+
+The connection key encodes your external API URL and an auto-generated API key. Your management company pastes this into their dashboard to connect. You can revoke access at any time by deleting the auto-generated API key from the API Keys section.
+
+**External URL**: The management company needs to reach your API over the internet. Options include:
+- **Nabu Casa** with port forwarding
+- **Cloudflare Tunnel**
+- **DuckDNS** with a reverse proxy
+- Any other method that makes port 8099 reachable
+
+## API Endpoints (Homeowner Mode)
 
 ### Zones
 | Method | Endpoint | Permission | Description |
@@ -97,16 +129,8 @@ The add-on discovers irrigation entities by device. Open the admin panel (Irriga
 All endpoints (except `/api/system/health`) require an `X-API-Key` header:
 
 ```bash
-curl -H "X-API-Key: your-api-key" https://your-ha-instance/api/zones
+curl -H "X-API-Key: your-api-key" https://your-ha-instance:8099/api/zones
 ```
-
-## Remote Access
-
-The management company needs to reach the add-on over the internet. Recommended options:
-
-1. **Nabu Casa** — Easiest. Handles SSL and remote access automatically.
-2. **Cloudflare Tunnel** — Free, secure tunnel to your HA instance.
-3. **Reverse proxy (Nginx/Caddy)** — Full control, requires port forwarding and SSL setup.
 
 ## HA Events
 

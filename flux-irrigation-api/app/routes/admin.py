@@ -78,6 +78,7 @@ async def get_settings():
         api_keys.append(masked)
 
     return {
+        "mode": config.mode,
         "api_keys": api_keys,
         "irrigation_device_id": options.get("irrigation_device_id", ""),
         "allowed_zone_entities": config.allowed_zone_entities,
@@ -85,6 +86,12 @@ async def get_settings():
         "rate_limit_per_minute": options.get("rate_limit_per_minute", 60),
         "log_retention_days": options.get("log_retention_days", 30),
         "enable_audit_log": options.get("enable_audit_log", True),
+        "homeowner_url": options.get("homeowner_url", ""),
+        "homeowner_label": options.get("homeowner_label", ""),
+        "homeowner_address": options.get("homeowner_address", ""),
+        "homeowner_city": options.get("homeowner_city", ""),
+        "homeowner_state": options.get("homeowner_state", ""),
+        "homeowner_zip": options.get("homeowner_zip", ""),
     }
 
 
@@ -161,6 +168,11 @@ async def delete_api_key(key_index: int):
 @router.get("/api/devices", summary="List available HA devices")
 async def list_devices():
     """List all Home Assistant devices for selection."""
+    config = get_config()
+    if config.mode != "homeowner":
+        raise HTTPException(
+            status_code=400, detail="Device management is only available in homeowner mode."
+        )
     import ha_client
 
     try:
@@ -197,6 +209,11 @@ async def list_devices():
 @router.put("/api/device", summary="Select irrigation device")
 async def select_device(body: DeviceSelect):
     """Select the irrigation controller device and resolve its entities."""
+    config = get_config()
+    if config.mode != "homeowner":
+        raise HTTPException(
+            status_code=400, detail="Device management is only available in homeowner mode."
+        )
     import ha_client
 
     # Verify the device exists and get its entities
@@ -267,12 +284,167 @@ async def update_general_settings(body: SettingsUpdate):
     return {"success": True}
 
 
+# --- Mode Switch ---
+
+
+class ModeSwitch(BaseModel):
+    mode: str = Field(pattern=r"^(homeowner|management)$")
+
+
+@router.put("/api/mode", summary="Switch operating mode")
+async def switch_mode(body: ModeSwitch):
+    """Switch between homeowner and management mode."""
+    options = _load_options()
+    options["mode"] = body.mode
+    await _save_options(options)
+    return {
+        "success": True,
+        "mode": body.mode,
+        "message": f"Switched to {body.mode} mode. Reload the page.",
+    }
+
+
+# --- Connection Key (Homeowner Mode) ---
+
+
+class ConnectionKeyRequest(BaseModel):
+    url: str = Field(min_length=1, description="Externally reachable API URL")
+    label: str = Field("", max_length=100, description="Property label")
+    address: str = Field("", max_length=200, description="Street address")
+    city: str = Field("", max_length=100, description="City")
+    state: str = Field("", max_length=50, description="State")
+    zip: str = Field("", max_length=20, description="ZIP code")
+
+
+@router.post("/api/connection-key", summary="Generate a connection key")
+async def generate_connection_key(body: ConnectionKeyRequest):
+    """Generate a connection key for sharing with a management company."""
+    from connection_key import ConnectionKeyData, encode_connection_key
+
+    config = get_config()
+    if config.mode != "homeowner":
+        raise HTTPException(
+            status_code=400,
+            detail="Connection keys can only be generated in homeowner mode.",
+        )
+
+    options = _load_options()
+    options["homeowner_url"] = body.url
+    options["homeowner_label"] = body.label
+    options["homeowner_address"] = body.address
+    options["homeowner_city"] = body.city
+    options["homeowner_state"] = body.state
+    options["homeowner_zip"] = body.zip
+
+    # Auto-detect zone count from selected device
+    zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
+
+    # Find or create a dedicated management company key
+    existing_keys = options.get("api_keys", [])
+    mgmt_key_name = "Management Company (Connection Key)"
+    mgmt_key = None
+
+    for key_entry in existing_keys:
+        if key_entry.get("name") == mgmt_key_name:
+            mgmt_key = key_entry["key"]
+            break
+
+    if not mgmt_key:
+        mgmt_key = secrets.token_urlsafe(32)
+        existing_keys.append({
+            "key": mgmt_key,
+            "name": mgmt_key_name,
+            "permissions": [
+                "zones.read", "zones.control", "schedule.read",
+                "schedule.write", "sensors.read", "history.read",
+                "system.control",
+            ],
+        })
+        options["api_keys"] = existing_keys
+
+    await _save_options(options)
+
+    key_data = ConnectionKeyData(
+        url=body.url,
+        key=mgmt_key,
+        label=body.label,
+        address=body.address or None,
+        city=body.city or None,
+        state=body.state or None,
+        zip=body.zip or None,
+        zone_count=zone_count,
+    )
+    encoded = encode_connection_key(key_data)
+
+    return {
+        "success": True,
+        "connection_key": encoded,
+        "url": body.url,
+        "label": body.label,
+        "address": body.address,
+        "city": body.city,
+        "state": body.state,
+        "zip": body.zip,
+        "zone_count": zone_count,
+        "api_key_name": mgmt_key_name,
+    }
+
+
+@router.get("/api/connection-key", summary="Get current connection key info")
+async def get_connection_key_info():
+    """Get the current connection key configuration."""
+    options = _load_options()
+    url = options.get("homeowner_url", "")
+    label = options.get("homeowner_label", "")
+    address = options.get("homeowner_address", "")
+    city = options.get("homeowner_city", "")
+    state = options.get("homeowner_state", "")
+    zip_code = options.get("homeowner_zip", "")
+
+    config = get_config()
+    zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
+
+    mgmt_key_name = "Management Company (Connection Key)"
+    mgmt_key = None
+    for key_entry in options.get("api_keys", []):
+        if key_entry.get("name") == mgmt_key_name:
+            mgmt_key = key_entry["key"]
+            break
+
+    connection_key = None
+    if mgmt_key and url:
+        from connection_key import ConnectionKeyData, encode_connection_key
+        key_data = ConnectionKeyData(
+            url=url, key=mgmt_key, label=label,
+            address=address or None, city=city or None,
+            state=state or None, zip=zip_code or None,
+            zone_count=zone_count,
+        )
+        connection_key = encode_connection_key(key_data)
+
+    return {
+        "configured": bool(url and mgmt_key),
+        "url": url,
+        "label": label,
+        "address": address,
+        "city": city,
+        "state": state,
+        "zip": zip_code,
+        "zone_count": zone_count,
+        "connection_key": connection_key,
+    }
+
+
 # --- Web UI ---
 
 
 @router.get("", response_class=HTMLResponse, include_in_schema=False)
 async def admin_ui(request: Request):
-    """Serve the admin settings UI."""
+    """Serve the admin settings UI (mode-dependent)."""
+    config = get_config()
+    if config.mode == "management":
+        from routes.management_ui import MANAGEMENT_HTML
+        return HTMLResponse(content=MANAGEMENT_HTML)
     return HTMLResponse(content=ADMIN_HTML)
 
 
@@ -520,6 +692,10 @@ ADMIN_HTML = """<!DOCTYPE html>
         <h1>Flux Irrigation Management API</h1>
         <div class="subtitle">Configure API access for irrigation management companies</div>
     </div>
+    <div>
+        <span style="background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:12px;font-size:12px;">Homeowner Mode</span>
+        <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="switchToManagement()">Switch to Management</button>
+    </div>
 </div>
 
 <div class="container">
@@ -594,6 +770,61 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Connection Key -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Connection Key for Management Company</h2>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom:16px; color:#666; font-size:14px;">
+                Generate a connection key to share with your irrigation management company.
+                They paste this key into their Flux Irrigation add-on to connect to your system.
+            </p>
+            <div class="form-group">
+                <label>Your External API URL</label>
+                <input type="text" id="homeownerUrl" placeholder="https://your-domain.duckdns.org:8099">
+                <p style="font-size:12px; color:#999; margin-top:4px;">
+                    The URL where this API is reachable from the internet (Nabu Casa + port forwarding,
+                    DuckDNS, Cloudflare Tunnel, etc.)
+                </p>
+            </div>
+            <div class="form-group">
+                <label>Property Label (optional)</label>
+                <input type="text" id="homeownerLabel" placeholder="e.g., Smith Residence">
+            </div>
+            <div class="form-group">
+                <label>Street Address</label>
+                <input type="text" id="homeownerAddress" placeholder="e.g., 123 Main Street">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>City</label>
+                    <input type="text" id="homeownerCity" placeholder="e.g., Springfield">
+                </div>
+                <div class="form-group">
+                    <label>State</label>
+                    <input type="text" id="homeownerState" placeholder="e.g., IL">
+                </div>
+            </div>
+            <div class="form-group" style="max-width:200px;">
+                <label>ZIP Code</label>
+                <input type="text" id="homeownerZip" placeholder="e.g., 62704">
+            </div>
+            <div id="zoneCountInfo" class="device-info" style="margin-bottom:16px;display:none;">
+                <strong>Enabled Zones:</strong> <span id="zoneCountValue">0</span>
+                <span style="font-size:12px;color:#999;margin-left:8px;">(auto-detected from selected device)</span>
+            </div>
+            <button class="btn btn-primary" onclick="generateConnectionKey()">Generate Connection Key</button>
+
+            <div id="connectionKeyDisplay" class="new-key-display" style="display:none;">
+                <strong>Connection Key</strong>
+                <code id="connectionKeyValue" style="font-size:13px;"></code>
+                <p class="warning">Share this key with your management company. They paste it into their Flux Irrigation add-on.</p>
+                <button class="btn btn-secondary btn-sm" onclick="copyConnectionKey()">Copy to Clipboard</button>
+            </div>
+        </div>
+    </div>
+
     <!-- General Settings -->
     <div class="card">
         <div class="card-header">
@@ -634,7 +865,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <div class="toast" id="toast"></div>
 
 <script>
-    const BASE = '/admin/api';
+    const BASE = (window.location.pathname.replace(/\/+$/, '')) + '/api';
 
     // --- Toast ---
     function showToast(msg, type = 'success') {
@@ -915,8 +1146,79 @@ ADMIN_HTML = """<!DOCTYPE html>
 
     function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
+    // --- Connection Key ---
+    async function loadConnectionKey() {
+        try {
+            const res = await fetch(`${BASE}/connection-key`);
+            const data = await res.json();
+            if (data.url) document.getElementById('homeownerUrl').value = data.url;
+            if (data.label) document.getElementById('homeownerLabel').value = data.label;
+            if (data.address) document.getElementById('homeownerAddress').value = data.address;
+            if (data.city) document.getElementById('homeownerCity').value = data.city;
+            if (data.state) document.getElementById('homeownerState').value = data.state;
+            if (data.zip) document.getElementById('homeownerZip').value = data.zip;
+            if (data.zone_count !== null && data.zone_count !== undefined) {
+                document.getElementById('zoneCountValue').textContent = data.zone_count;
+                document.getElementById('zoneCountInfo').style.display = 'block';
+            }
+            if (data.connection_key) {
+                document.getElementById('connectionKeyValue').textContent = data.connection_key;
+                document.getElementById('connectionKeyDisplay').style.display = 'block';
+            }
+        } catch(e) { /* first time, no key yet */ }
+    }
+
+    async function generateConnectionKey() {
+        const url = document.getElementById('homeownerUrl').value.trim();
+        if (!url) { showToast('Enter your external API URL', 'error'); return; }
+        const label = document.getElementById('homeownerLabel').value.trim();
+        const address = document.getElementById('homeownerAddress').value.trim();
+        const city = document.getElementById('homeownerCity').value.trim();
+        const state = document.getElementById('homeownerState').value.trim();
+        const zip = document.getElementById('homeownerZip').value.trim();
+
+        try {
+            const res = await fetch(`${BASE}/connection-key`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url, label, address, city, state, zip }),
+            });
+            const data = await res.json();
+            if (data.connection_key) {
+                document.getElementById('connectionKeyValue').textContent = data.connection_key;
+                document.getElementById('connectionKeyDisplay').style.display = 'block';
+                if (data.zone_count !== null && data.zone_count !== undefined) {
+                    document.getElementById('zoneCountValue').textContent = data.zone_count;
+                    document.getElementById('zoneCountInfo').style.display = 'block';
+                }
+                showToast('Connection key generated');
+                loadSettings();
+            }
+        } catch(e) { showToast('Failed to generate key', 'error'); }
+    }
+
+    function copyConnectionKey() {
+        const key = document.getElementById('connectionKeyValue').textContent;
+        navigator.clipboard.writeText(key).then(() => showToast('Connection key copied!'));
+    }
+
+    // --- Mode Switch ---
+    async function switchToManagement() {
+        if (!confirm('Switch to Management mode? The homeowner settings will no longer be available until you switch back.')) return;
+        try {
+            await fetch(`${BASE}/mode`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ mode: 'management' }),
+            });
+            showToast('Switching to management mode...');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch(e) { showToast(e.message, 'error'); }
+    }
+
     // --- Init ---
     loadSettings();
+    loadConnectionKey();
     loadStatus();
     setInterval(loadStatus, 30000);
 </script>
