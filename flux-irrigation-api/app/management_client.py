@@ -55,21 +55,34 @@ async def proxy_request(
         except Exception:
             data = {"raw": response.text}
         return response.status_code, data
-    except httpx.ConnectError:
+    except httpx.ConnectError as e:
+        print(f"[MGMT_CLIENT] ConnectError to {url}: {e}")
         return 503, {
             "error": "Cannot connect to homeowner system",
-            "detail": "Connection refused or host unreachable",
+            "detail": f"Connection refused or host unreachable: {url}",
         }
     except httpx.TimeoutException:
+        print(f"[MGMT_CLIENT] Timeout connecting to {url}")
         return 504, {
             "error": "Homeowner system timeout",
-            "detail": "Request timed out after 15 seconds",
+            "detail": f"Request timed out after 15 seconds: {url}",
         }
     except Exception as e:
+        print(f"[MGMT_CLIENT] Error connecting to {url}: {type(e).__name__}: {e}")
         return 502, {
             "error": "Communication error",
             "detail": str(e),
         }
+
+
+def _error_to_string(err) -> str:
+    """Convert an error value (str, dict, or other) to a readable string."""
+    if isinstance(err, str):
+        return err
+    if isinstance(err, dict):
+        # Try common keys for a human-readable message
+        return err.get("detail") or err.get("error") or err.get("message") or str(err)
+    return str(err)
 
 
 async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
@@ -78,10 +91,14 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
     Phase 1: /api/system/health (no auth) to check reachability.
     Phase 2: /api/system/status (with auth) to verify API key.
     """
+    print(f"[MGMT_CLIENT] Testing connection to {connection.url}")
+
     # Phase 1: health check (no auth required)
     status, health = await proxy_request(connection, "GET", "/api/system/health")
     if status != 200:
-        return {"reachable": False, "authenticated": False, "error": health}
+        error_msg = _error_to_string(health)
+        print(f"[MGMT_CLIENT] Health check failed: status={status}, error={error_msg}")
+        return {"reachable": False, "authenticated": False, "error": error_msg}
 
     # Phase 2: authenticated status check
     status, system_status = await proxy_request(
@@ -100,10 +117,11 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
             "error": "API key lacks permissions",
         }
     if status != 200:
+        error_msg = _error_to_string(system_status)
         return {
             "reachable": True,
             "authenticated": False,
-            "error": system_status,
+            "error": error_msg,
         }
 
     return {

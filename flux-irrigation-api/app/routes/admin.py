@@ -845,7 +845,8 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <input type="text" id="homeownerUrl" placeholder="https://your-domain.duckdns.org:8099">
                 <p style="font-size:12px; color:#999; margin-top:4px;">
                     The URL where this API is reachable from the internet (Nabu Casa + port forwarding,
-                    DuckDNS, Cloudflare Tunnel, etc.)
+                    DuckDNS, Cloudflare Tunnel, etc.).<br>
+                    For testing on the same HA instance, use: <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">http://localhost:8099</code>
                 </p>
             </div>
             <div class="form-group">

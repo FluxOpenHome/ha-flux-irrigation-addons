@@ -135,6 +135,7 @@ def update_customer_status(customer_id: str, status: dict):
     for c in customers:
         if c.id == customer_id:
             c.last_status = status
-            c.last_seen_online = datetime.now(timezone.utc).isoformat()
+            if status.get("reachable") and status.get("authenticated"):
+                c.last_seen_online = datetime.now(timezone.utc).isoformat()
             save_customers(customers)
             return

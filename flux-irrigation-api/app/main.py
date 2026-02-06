@@ -126,25 +126,12 @@ app.add_middleware(
 
 @app.middleware("http")
 async def mode_guard_middleware(request: Request, call_next):
-    """Block local irrigation API routes in management mode."""
-    config = get_config()
-    if config.mode == "management":
-        path = request.url.path
-        # Block homeowner-only API routes in management mode
-        if (
-            path.startswith("/api/")
-            and not path.startswith("/api/docs")
-            and not path.startswith("/api/redoc")
-            and not path.startswith("/api/openapi")
-        ):
-            return Response(
-                content=json.dumps({
-                    "detail": "This instance is running in management mode. "
-                    "Local irrigation API is not available."
-                }),
-                status_code=404,
-                media_type="application/json",
-            )
+    """In management mode, the homeowner API routes still work so that:
+    1. Remote management companies can reach this homeowner's API
+    2. Same-instance management testing works (loopback)
+    The homeowner API routes are protected by API key auth, so they're safe.
+    Only the admin UI (GET /admin) switches between homeowner and management views.
+    """
     response = await call_next(request)
     return response
 
