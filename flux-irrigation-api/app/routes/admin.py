@@ -390,8 +390,18 @@ async def generate_connection_key(body: ConnectionKeyRequest):
             detail="Connection keys can only be generated in homeowner mode.",
         )
 
+    # Validate URL before saving
+    url = body.url.strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"URL must start with http:// or https:// — got: '{url[:50]}'. "
+                   f"Please enter your full Nabu Casa URL (e.g., https://xxxxxxxx.ui.nabu.casa) "
+                   f"or direct URL (e.g., http://your-ip:8099).",
+        )
+
     options = _load_options()
-    options["homeowner_url"] = body.url
+    options["homeowner_url"] = url
     options["homeowner_label"] = body.label
     options["homeowner_address"] = body.address
     options["homeowner_city"] = body.city
@@ -407,7 +417,7 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         # Keep whatever was already saved
         effective_ha_token = options.get("homeowner_ha_token", "")
 
-    print(f"[ADMIN] generate_connection_key: mode={body.connection_mode}, url={body.url}, ha_token={'SET('+str(len(effective_ha_token))+'chars)' if effective_ha_token else 'EMPTY'}")
+    print(f"[ADMIN] generate_connection_key: mode={body.connection_mode}, url={url}, ha_token={'SET('+str(len(effective_ha_token))+'chars)' if effective_ha_token else 'EMPTY'}")
 
     # Auto-detect zone count from selected device
     zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
@@ -438,7 +448,7 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     await _save_options(options)
 
     key_data = ConnectionKeyData(
-        url=body.url,
+        url=url,
         key=mgmt_key,
         label=body.label,
         address=body.address or None,
@@ -454,7 +464,7 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     return {
         "success": True,
         "connection_key": encoded,
-        "url": body.url,
+        "url": url,
         "label": body.label,
         "address": body.address,
         "city": body.city,
@@ -1438,6 +1448,16 @@ ADMIN_HTML = """<!DOCTYPE html>
         const mode = getConnectionMode();
         const url = getEffectiveUrl();
         if (!url) { showToast('Enter your URL', 'error'); return; }
+
+        // Validate URL format
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            showToast('URL must start with http:// or https://', 'error');
+            return;
+        }
+        if (mode === 'nabu_casa' && !url.includes('.ui.nabu.casa') && !url.includes('.nabucasa.com') && !url.startsWith('https://')) {
+            showToast('Nabu Casa URL should start with https://', 'error');
+            return;
+        }
 
         const ha_token = mode === 'nabu_casa' ? document.getElementById('haToken').value.trim() : '';
         if (mode === 'nabu_casa' && (!ha_token || ha_token === '********')) {

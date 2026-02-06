@@ -153,12 +153,17 @@ async def _proxy_via_nabu_casa(
 
     try:
         print(f"[MGMT_CLIENT] Nabu Casa proxy: {method} {path} via {base_url}")
+        print(f"[MGMT_CLIENT]   -> POST {service_url}")
+        print(f"[MGMT_CLIENT]   -> service_data: {json.dumps(service_data)[:200]}")
         response = await client.request(
             method="POST",
             url=service_url,
             headers=headers,
             json=service_data,
         )
+
+        print(f"[MGMT_CLIENT]   <- HA responded: HTTP {response.status_code}")
+        print(f"[MGMT_CLIENT]   <- Body: {response.text[:500]}")
 
         if response.status_code == 401:
             return 401, {
@@ -196,13 +201,18 @@ async def _proxy_via_nabu_casa(
 
         # Extract the rest_command's response from service_response
         service_response = ha_response.get("service_response", {})
+        print(f"[MGMT_CLIENT]   <- service_response keys: {list(service_response.keys()) if isinstance(service_response, dict) else type(service_response)}")
+
         # rest_command returns: {"status": int, "content": str/dict, "headers": dict}
         # The service_response may be nested under rest_command.irrigation_proxy
         if "rest_command" in service_response:
             service_response = service_response.get("rest_command", {}).get("irrigation_proxy", service_response)
+            print(f"[MGMT_CLIENT]   <- unwrapped service_response keys: {list(service_response.keys()) if isinstance(service_response, dict) else type(service_response)}")
 
         inner_status = service_response.get("status", 502)
         inner_content = service_response.get("content", {})
+
+        print(f"[MGMT_CLIENT]   <- inner_status={inner_status}, inner_content type={type(inner_content).__name__}, preview={str(inner_content)[:200]}")
 
         # content may be a string (JSON) or already parsed dict
         if isinstance(inner_content, str):
@@ -227,9 +237,17 @@ async def _proxy_via_nabu_casa(
         }
     except Exception as e:
         print(f"[MGMT_CLIENT] Error with Nabu Casa proxy {base_url}: {type(e).__name__}: {e}")
+        detail = str(e)
+        # Give a clearer message for the most common issue
+        if "UnsupportedProtocol" in type(e).__name__ or "missing" in detail.lower() and "protocol" in detail.lower():
+            detail = (
+                f"The customer URL '{base_url}' is not a valid URL. "
+                f"It must start with https:// (e.g., https://xxxxxxxx.ui.nabu.casa). "
+                f"Delete this customer and re-add with a corrected connection key."
+            )
         return 502, {
             "error": "Communication error",
-            "detail": str(e),
+            "detail": detail,
         }
 
 
