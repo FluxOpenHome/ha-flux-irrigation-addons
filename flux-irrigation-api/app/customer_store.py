@@ -33,6 +33,8 @@ class Customer:
     zone_count: Optional[int] = None
     last_seen_online: Optional[str] = None
     last_status: Optional[dict] = field(default=None)
+    ha_token: str = ""
+    connection_mode: str = "direct"  # "direct" or "nabu_casa"
 
 
 def load_customers() -> list[Customer]:
@@ -42,7 +44,13 @@ def load_customers() -> list[Customer]:
     try:
         with open(CUSTOMERS_FILE, "r") as f:
             data = json.load(f)
-        return [Customer(**c) for c in data.get("customers", [])]
+        customers = []
+        for c in data.get("customers", []):
+            # Handle missing fields from older versions
+            c.setdefault("ha_token", "")
+            c.setdefault("connection_mode", "direct")
+            customers.append(Customer(**c))
+        return customers
     except (json.JSONDecodeError, IOError, TypeError):
         return []
 
@@ -85,6 +93,8 @@ def add_customer(
         state=key_data.state or "",
         zip=key_data.zip or "",
         zone_count=key_data.zone_count,
+        ha_token=key_data.ha_token or "",
+        connection_mode=key_data.mode or "direct",
     )
     customers.append(customer)
     save_customers(customers)

@@ -71,7 +71,12 @@ def _get_customer_or_404(customer_id: str) -> customer_store.Customer:
 
 
 def _customer_connection(customer: customer_store.Customer) -> ConnectionKeyData:
-    return ConnectionKeyData(url=customer.url, key=customer.api_key)
+    return ConnectionKeyData(
+        url=customer.url,
+        key=customer.api_key,
+        ha_token=customer.ha_token or None,
+        mode=customer.connection_mode or "direct",
+    )
 
 
 def _customer_response(customer: customer_store.Customer) -> dict:

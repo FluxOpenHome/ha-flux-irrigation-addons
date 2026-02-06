@@ -3,8 +3,13 @@ Flux Open Home - Management Client
 ====================================
 HTTP client for management mode. Connects to remote homeowner
 irrigation APIs using connection key credentials.
+
+Supports two connection modes:
+  - "direct": Connect directly to homeowner's add-on (port 8099)
+  - "nabu_casa": Route through HA REST API → rest_command proxy → add-on
 """
 
+import json
 import httpx
 from typing import Optional
 from connection_key import ConnectionKeyData
@@ -17,7 +22,7 @@ def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None:
         _client = httpx.AsyncClient(
-            timeout=15.0,
+            timeout=20.0,
             follow_redirects=True,
             verify=False,  # Allow self-signed certs for DuckDNS/local setups
         )
@@ -33,8 +38,22 @@ async def proxy_request(
 ) -> tuple[int, dict]:
     """
     Send a request to a remote homeowner's irrigation API.
+    Routes through HA REST API proxy for nabu_casa mode.
     Returns (status_code, response_json).
     """
+    if connection.mode == "nabu_casa" and connection.ha_token:
+        return await _proxy_via_nabu_casa(connection, method, path, json_body, params)
+    return await _proxy_direct(connection, method, path, json_body, params)
+
+
+async def _proxy_direct(
+    connection: ConnectionKeyData,
+    method: str,
+    path: str,
+    json_body: Optional[dict] = None,
+    params: Optional[dict] = None,
+) -> tuple[int, dict]:
+    """Direct HTTP connection to homeowner's add-on on port 8099."""
     client = _get_client()
     url = f"{connection.url.rstrip('/')}{path}"
     headers = {
@@ -53,42 +72,145 @@ async def proxy_request(
         try:
             data = response.json()
         except Exception:
-            # Non-JSON response — likely hitting the wrong server (HA on 8123 instead of add-on on 8099)
             raw = response.text[:200].strip()
             data = {"raw": f"{response.status_code}: {raw}"}
         return response.status_code, data
     except httpx.ConnectError as e:
         print(f"[MGMT_CLIENT] ConnectError to {url}: {e}")
-        # Detect Nabu Casa URLs — they don't forward add-on ports
-        if ".ui.nabu.casa" in url or ".nabucasa.com" in url:
-            return 503, {
-                "error": "Nabu Casa URLs cannot be used for API connections",
-                "detail": (
-                    "Nabu Casa only proxies HA's web interface (port 8123), not add-on ports like 8099. "
-                    "The homeowner needs to use router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale."
-                ),
-            }
         return 503, {
             "error": "Cannot connect to homeowner system",
             "detail": f"Connection refused or host unreachable: {url}",
         }
     except httpx.TimeoutException:
         print(f"[MGMT_CLIENT] Timeout connecting to {url}")
-        # Detect Nabu Casa URLs — they always timeout on non-8123 ports
-        if ".ui.nabu.casa" in url or ".nabucasa.com" in url:
-            return 504, {
-                "error": "Nabu Casa URLs cannot be used for API connections",
-                "detail": (
-                    "Nabu Casa only proxies HA's web interface (port 8123), not add-on ports like 8099. "
-                    "The homeowner needs to use router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale."
-                ),
-            }
         return 504, {
             "error": "Homeowner system timeout",
-            "detail": f"Request timed out after 15 seconds: {url}",
+            "detail": f"Request timed out after 20 seconds: {url}",
         }
     except Exception as e:
         print(f"[MGMT_CLIENT] Error connecting to {url}: {type(e).__name__}: {e}")
+        return 502, {
+            "error": "Communication error",
+            "detail": str(e),
+        }
+
+
+async def _proxy_via_nabu_casa(
+    connection: ConnectionKeyData,
+    method: str,
+    path: str,
+    json_body: Optional[dict] = None,
+    params: Optional[dict] = None,
+) -> tuple[int, dict]:
+    """
+    Route request through HA REST API → rest_command/irrigation_proxy.
+
+    The homeowner's HA has a rest_command called 'irrigation_proxy' that
+    forwards requests to localhost:8099. We call it via:
+      POST {nabu_casa_url}/api/services/rest_command/irrigation_proxy?return_response
+
+    The HA REST API returns:
+      { "service_response": { "status": 200, "content": "...", "headers": {...} } }
+    """
+    client = _get_client()
+    base_url = connection.url.rstrip("/")
+    service_url = f"{base_url}/api/services/rest_command/irrigation_proxy?return_response"
+
+    # Build the full path with query params if any
+    full_path = path
+    if params:
+        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        full_path = f"{path}?{qs}"
+
+    # Service call data — these become template variables in the rest_command
+    service_data = {
+        "path": full_path.lstrip("/"),
+        "method": method.upper(),
+        "payload": json.dumps(json_body) if json_body else "{}",
+        "api_key": connection.key,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {connection.ha_token}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        print(f"[MGMT_CLIENT] Nabu Casa proxy: {method} {path} via {base_url}")
+        response = await client.request(
+            method="POST",
+            url=service_url,
+            headers=headers,
+            json=service_data,
+        )
+
+        if response.status_code == 401:
+            return 401, {
+                "error": "HA token rejected",
+                "detail": "The Home Assistant Long-Lived Access Token was rejected. The homeowner may need to generate a new token.",
+            }
+
+        if response.status_code == 404:
+            return 404, {
+                "error": "rest_command not found",
+                "detail": (
+                    "The irrigation_proxy rest_command is not configured on the homeowner's HA. "
+                    "The homeowner needs to restart their Flux Irrigation add-on to auto-configure it."
+                ),
+            }
+
+        if response.status_code != 200:
+            try:
+                err_data = response.json()
+            except Exception:
+                err_data = {"raw": response.text[:200]}
+            return response.status_code, {
+                "error": f"HA API error (HTTP {response.status_code})",
+                "detail": _error_to_string(err_data),
+            }
+
+        # Parse the HA service response
+        try:
+            ha_response = response.json()
+        except Exception:
+            return 502, {
+                "error": "Invalid response from HA",
+                "detail": f"Could not parse HA response: {response.text[:200]}",
+            }
+
+        # Extract the rest_command's response from service_response
+        service_response = ha_response.get("service_response", {})
+        # rest_command returns: {"status": int, "content": str/dict, "headers": dict}
+        # The service_response may be nested under rest_command.irrigation_proxy
+        if "rest_command" in service_response:
+            service_response = service_response.get("rest_command", {}).get("irrigation_proxy", service_response)
+
+        inner_status = service_response.get("status", 502)
+        inner_content = service_response.get("content", {})
+
+        # content may be a string (JSON) or already parsed dict
+        if isinstance(inner_content, str):
+            try:
+                inner_content = json.loads(inner_content)
+            except (json.JSONDecodeError, ValueError):
+                inner_content = {"raw": inner_content[:200]}
+
+        return inner_status, inner_content
+
+    except httpx.ConnectError as e:
+        print(f"[MGMT_CLIENT] ConnectError to Nabu Casa {base_url}: {e}")
+        return 503, {
+            "error": "Cannot reach homeowner's Home Assistant",
+            "detail": f"Connection failed to {base_url}. Check that the Nabu Casa URL is correct and the homeowner's HA is online.",
+        }
+    except httpx.TimeoutException:
+        print(f"[MGMT_CLIENT] Timeout connecting to Nabu Casa {base_url}")
+        return 504, {
+            "error": "Homeowner system timeout",
+            "detail": f"Request timed out connecting to {base_url}. The homeowner's HA may be offline or slow.",
+        }
+    except Exception as e:
+        print(f"[MGMT_CLIENT] Error with Nabu Casa proxy {base_url}: {type(e).__name__}: {e}")
         return 502, {
             "error": "Communication error",
             "detail": str(e),
@@ -100,26 +222,16 @@ def _error_to_string(err) -> str:
     if isinstance(err, str):
         return err
     if isinstance(err, dict):
-        # Try common keys for a human-readable message
         return err.get("detail") or err.get("error") or err.get("message") or str(err)
     return str(err)
 
 
 def _diagnose_error(status: int, response_data: dict, url: str) -> str:
     """Analyze a failed response and produce a helpful diagnostic message."""
-    # Detect Nabu Casa URLs — they never work for add-on API traffic
-    if ".ui.nabu.casa" in url or ".nabucasa.com" in url:
-        return (
-            "Nabu Casa URLs cannot be used for API connections. "
-            "Nabu Casa only proxies HA's web interface (port 8123), not add-on ports like 8099. "
-            "The homeowner needs to set up router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale."
-        )
-
     raw = response_data.get("raw", "")
 
     # Detect plain-text 404 — hallmark of hitting HA's web server on port 8123
     if status == 404 and ("Not Found" in raw or "404" in raw) and "detail" not in response_data:
-        # Check if URL is missing port 8099
         from urllib.parse import urlparse
         parsed = urlparse(url)
         port = parsed.port
@@ -148,16 +260,49 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
     Phase 1: /api/system/health (no auth) to check reachability.
     Phase 2: /api/system/status (with auth) to verify API key.
     """
-    print(f"[MGMT_CLIENT] Testing connection to {connection.url}")
+    print(f"[MGMT_CLIENT] Testing connection to {connection.url} (mode={connection.mode})")
 
-    # Phase 1: health check (no auth required)
+    # Phase 1: health check (no auth required for direct, but
+    # nabu_casa always needs HA token — so for nabu_casa we go straight to status)
+    if connection.mode == "nabu_casa":
+        # For Nabu Casa, test with an authenticated call directly
+        status, system_status = await proxy_request(
+            connection, "GET", "/api/system/status"
+        )
+        if status == 401:
+            # Could be HA token OR API key issue — check which
+            return {
+                "reachable": False,
+                "authenticated": False,
+                "error": "Authentication failed. Check that the HA Long-Lived Access Token is still valid and the API key is correct.",
+            }
+        if status == 404:
+            return {
+                "reachable": False,
+                "authenticated": False,
+                "error": _error_to_string(system_status),
+            }
+        if status != 200:
+            error_msg = _error_to_string(system_status)
+            return {
+                "reachable": False,
+                "authenticated": False,
+                "error": error_msg,
+            }
+        return {
+            "reachable": True,
+            "authenticated": True,
+            "system_status": system_status,
+        }
+
+    # Direct mode — original two-phase check
     status, health = await proxy_request(connection, "GET", "/api/system/health")
     if status != 200:
         error_msg = _diagnose_error(status, health, connection.url)
         print(f"[MGMT_CLIENT] Health check failed: status={status}, error={error_msg}")
         return {"reachable": False, "authenticated": False, "error": error_msg}
 
-    # Verify the health response looks like our API (not some random server)
+    # Verify the health response looks like our API
     if not isinstance(health, dict) or "status" not in health:
         return {
             "reachable": False,

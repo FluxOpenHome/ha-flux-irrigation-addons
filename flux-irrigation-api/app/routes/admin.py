@@ -374,6 +374,8 @@ class ConnectionKeyRequest(BaseModel):
     city: str = Field("", max_length=100, description="City")
     state: str = Field("", max_length=50, description="State")
     zip: str = Field("", max_length=20, description="ZIP code")
+    ha_token: str = Field("", description="HA Long-Lived Access Token (for Nabu Casa mode)")
+    connection_mode: str = Field("direct", description="Connection mode: 'nabu_casa' or 'direct'")
 
 
 @router.post("/api/connection-key", summary="Generate a connection key")
@@ -395,6 +397,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     options["homeowner_city"] = body.city
     options["homeowner_state"] = body.state
     options["homeowner_zip"] = body.zip
+    options["homeowner_ha_token"] = body.ha_token
+    options["homeowner_connection_mode"] = body.connection_mode
 
     # Auto-detect zone count from selected device
     zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
@@ -433,6 +437,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         state=body.state or None,
         zip=body.zip or None,
         zone_count=zone_count,
+        ha_token=body.ha_token or None,
+        mode=body.connection_mode or "direct",
     )
     encoded = encode_connection_key(key_data)
 
@@ -460,16 +466,15 @@ async def test_url(body: dict):
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
 
-    # Detect Nabu Casa URLs and warn immediately
+    # Detect Nabu Casa URLs in direct mode testing — they won't reach port 8099
     if ".ui.nabu.casa" in url or ".nabucasa.com" in url:
         return {
             "success": False,
             "url_tested": url,
-            "error": "Nabu Casa URLs cannot be used for API connections.",
+            "error": "Nabu Casa URLs cannot reach port 8099 directly.",
             "help": (
-                "Nabu Casa Remote UI only proxies Home Assistant's web interface (port 8123). "
-                "It does not forward port 8099 used by this add-on. "
-                "Use router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale instead."
+                "Use the 'Nabu Casa' connection mode instead (recommended). "
+                "It routes through Home Assistant's REST API automatically."
             ),
         }
 
@@ -516,6 +521,8 @@ async def get_connection_key_info():
     city = options.get("homeowner_city", "")
     state = options.get("homeowner_state", "")
     zip_code = options.get("homeowner_zip", "")
+    ha_token = options.get("homeowner_ha_token", "")
+    connection_mode = options.get("homeowner_connection_mode", "direct")
 
     config = get_config()
     zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
@@ -535,6 +542,8 @@ async def get_connection_key_info():
             address=address or None, city=city or None,
             state=state or None, zip=zip_code or None,
             zone_count=zone_count,
+            ha_token=ha_token or None,
+            mode=connection_mode,
         )
         connection_key = encode_connection_key(key_data)
 
@@ -548,6 +557,8 @@ async def get_connection_key_info():
         "zip": zip_code,
         "zone_count": zone_count,
         "connection_key": connection_key,
+        "ha_token_set": bool(ha_token),
+        "connection_mode": connection_mode,
     }
 
 
@@ -896,36 +907,73 @@ ADMIN_HTML = """<!DOCTYPE html>
                 Generate a connection key to share with your irrigation management company.
                 They paste this key into their Flux Irrigation add-on to connect to your system.
             </p>
+
+            <!-- Connection Mode Selection -->
             <div class="form-group">
-                <label>Your External API URL</label>
-                <div style="display:flex;gap:8px;align-items:flex-start;">
-                    <input type="text" id="homeownerUrl" placeholder="https://your-domain.duckdns.org:8099" style="flex:1;">
-                    <button class="btn btn-secondary btn-sm" onclick="testExternalUrl()" style="white-space:nowrap;margin-top:2px;">Test URL</button>
+                <label>Connection Method</label>
+                <div style="display:flex;gap:12px;margin-bottom:8px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;padding:10px 16px;border:2px solid #ddd;border-radius:8px;flex:1;" id="modeNabuLabel">
+                        <input type="radio" name="connMode" value="nabu_casa" checked onchange="toggleConnectionMode()">
+                        <div>
+                            <strong>Nabu Casa</strong> <span style="color:#27ae60;font-size:12px;">(Recommended)</span><br>
+                            <span style="font-size:12px;color:#888;">Works with your existing Nabu Casa subscription. No extra setup needed.</span>
+                        </div>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;padding:10px 16px;border:2px solid #ddd;border-radius:8px;flex:1;" id="modeDirectLabel">
+                        <input type="radio" name="connMode" value="direct" onchange="toggleConnectionMode()">
+                        <div>
+                            <strong>Direct Connection</strong><br>
+                            <span style="font-size:12px;color:#888;">Requires port forwarding, Cloudflare Tunnel, or VPN.</span>
+                        </div>
+                    </label>
                 </div>
-                <div id="urlTestResult" style="font-size:12px;margin-top:4px;display:none;"></div>
-                <p style="font-size:12px; color:#999; margin-top:4px;">
-                    The URL where this API is reachable from the internet. Your management company
-                    will connect to this URL.<br><br>
-                    <strong>Setup required:</strong> Port 8099 must be accessible externally. Options:<br>
-                    &bull; <strong>Port forwarding</strong> on your router (forward external port to HA host IP:8099) + DuckDNS for dynamic DNS<br>
-                    &bull; <strong>Cloudflare Tunnel</strong> pointing to <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">localhost:8099</code><br>
-                    &bull; <strong>Tailscale / WireGuard</strong> VPN between both HA instances<br><br>
-                    Make sure the port is enabled in the add-on Configuration tab under "Network".<br>
-                    For same-device testing: <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">http://localhost:8099</code>
-                </p>
-                <div style="background:#fff3e0;border:1px solid #ffcc02;border-radius:8px;padding:12px;margin-top:10px;font-size:13px;">
-                    <strong style="color:#e65100;">&#9888; Nabu Casa URLs will NOT work</strong><br>
+            </div>
+
+            <!-- Nabu Casa Mode Fields -->
+            <div id="nabuCasaFields">
+                <div class="form-group">
+                    <label>Your Nabu Casa URL</label>
+                    <input type="text" id="homeownerUrl" placeholder="https://xxxxxxxx.ui.nabu.casa">
+                    <p style="font-size:12px; color:#999; margin-top:4px;">
+                        Find this in HA: <strong>Settings &rarr; Home Assistant Cloud &rarr; Remote Control</strong>. Copy the URL shown there.
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label>Home Assistant Long-Lived Access Token</label>
+                    <input type="password" id="haToken" placeholder="Paste your HA token here">
+                    <p style="font-size:12px; color:#999; margin-top:4px;">
+                        Create one in HA: Go to your <strong>Profile</strong> (click your name, bottom-left) &rarr; scroll to
+                        <strong>Long-Lived Access Tokens</strong> &rarr; <strong>Create Token</strong>. Name it "Irrigation Management" and paste it above.
+                    </p>
+                </div>
+                <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">
+                    <strong style="color:#1a7a4c;">&#9989; One-time setup required</strong><br>
                     <span style="color:#555;">
-                        Nabu Casa Remote UI only proxies the Home Assistant web interface (port 8123).
-                        It does <strong>not</strong> forward port 8099 used by this add-on.
-                        A URL like <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">https://xxxxx.ui.nabu.casa</code>
-                        or <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">https://xxxxx.ui.nabu.casa:8099</code>
-                        will either return a 404 or time out.<br><br>
-                        <strong>Recommended alternatives:</strong><br>
-                        1. <strong>Router port forwarding</strong> — Forward port 8099 to your HA host, use DuckDNS for a stable hostname<br>
-                        2. <strong>Cloudflare Tunnel</strong> — Free, no port forwarding needed, install the Cloudflared add-on and point a tunnel to <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">localhost:8099</code><br>
-                        3. <strong>Tailscale</strong> — Install on both HA instances for a private VPN connection
+                        After generating the connection key, add this to your HA <strong>configuration.yaml</strong>
+                        (if not already present):<br>
+                        <code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;display:inline-block;margin-top:4px;">homeassistant:</code><br>
+                        <code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;display:inline-block;margin-left:16px;">packages: !include_dir_named packages</code><br>
+                        <span style="font-size:11px;color:#888;margin-top:4px;display:block;">Then restart Home Assistant once. The add-on automatically creates the needed proxy configuration.</span>
                     </span>
+                </div>
+            </div>
+
+            <!-- Direct Mode Fields -->
+            <div id="directFields" style="display:none;">
+                <div class="form-group">
+                    <label>Your External API URL</label>
+                    <div style="display:flex;gap:8px;align-items:flex-start;">
+                        <input type="text" id="homeownerUrlDirect" placeholder="https://your-domain.duckdns.org:8099" style="flex:1;">
+                        <button class="btn btn-secondary btn-sm" onclick="testExternalUrl()" style="white-space:nowrap;margin-top:2px;">Test URL</button>
+                    </div>
+                    <div id="urlTestResult" style="font-size:12px;margin-top:4px;display:none;"></div>
+                    <p style="font-size:12px; color:#999; margin-top:4px;">
+                        Port 8099 must be accessible externally. Options:<br>
+                        &bull; <strong>Port forwarding</strong> on your router + DuckDNS for dynamic DNS<br>
+                        &bull; <strong>Cloudflare Tunnel</strong> pointing to <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">localhost:8099</code><br>
+                        &bull; <strong>Tailscale / WireGuard</strong> VPN between both HA instances<br><br>
+                        Make sure the port is enabled in the add-on Configuration tab under "Network".
+                    </p>
                 </div>
             </div>
             <div class="form-group">
@@ -1299,11 +1347,43 @@ ADMIN_HTML = """<!DOCTYPE html>
     function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
     // --- Connection Key ---
+    function getConnectionMode() {
+        const radios = document.querySelectorAll('input[name="connMode"]');
+        for (const r of radios) { if (r.checked) return r.value; }
+        return 'nabu_casa';
+    }
+
+    function toggleConnectionMode() {
+        const mode = getConnectionMode();
+        document.getElementById('nabuCasaFields').style.display = mode === 'nabu_casa' ? 'block' : 'none';
+        document.getElementById('directFields').style.display = mode === 'direct' ? 'block' : 'none';
+        // Highlight selected radio card
+        document.getElementById('modeNabuLabel').style.borderColor = mode === 'nabu_casa' ? '#2ecc71' : '#ddd';
+        document.getElementById('modeDirectLabel').style.borderColor = mode === 'direct' ? '#2ecc71' : '#ddd';
+    }
+
+    function getEffectiveUrl() {
+        const mode = getConnectionMode();
+        if (mode === 'nabu_casa') return document.getElementById('homeownerUrl').value.trim();
+        return document.getElementById('homeownerUrlDirect').value.trim();
+    }
+
     async function loadConnectionKey() {
         try {
             const res = await fetch(`${BASE}/connection-key`);
             const data = await res.json();
-            if (data.url) document.getElementById('homeownerUrl').value = data.url;
+            // Set connection mode
+            if (data.connection_mode === 'direct') {
+                const directRadio = document.querySelector('input[name="connMode"][value="direct"]');
+                if (directRadio) directRadio.checked = true;
+                if (data.url) document.getElementById('homeownerUrlDirect').value = data.url;
+            } else {
+                const nabuRadio = document.querySelector('input[name="connMode"][value="nabu_casa"]');
+                if (nabuRadio) nabuRadio.checked = true;
+                if (data.url) document.getElementById('homeownerUrl').value = data.url;
+            }
+            toggleConnectionMode();
+            if (data.ha_token_set) document.getElementById('haToken').value = '********';
             if (data.label) document.getElementById('homeownerLabel').value = data.label;
             if (data.address) document.getElementById('homeownerAddress').value = data.address;
             if (data.city) document.getElementById('homeownerCity').value = data.city;
@@ -1321,21 +1401,12 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     async function testExternalUrl() {
-        const url = document.getElementById('homeownerUrl').value.trim();
+        const url = document.getElementById('homeownerUrlDirect').value.trim();
         const resultEl = document.getElementById('urlTestResult');
         if (!url) { showToast('Enter a URL first', 'error'); return; }
 
-        // Detect Nabu Casa URLs and warn immediately
-        if (url.includes('.ui.nabu.casa') || url.includes('.nabucasa.com')) {
-            resultEl.style.display = 'block';
-            resultEl.innerHTML = '<span style="color:#e74c3c;"><strong>&#9888; Nabu Casa URLs will not work.</strong> ' +
-                'Nabu Casa only proxies the HA web interface (port 8123), not add-on ports like 8099. ' +
-                'Use router port forwarding + DuckDNS, Cloudflare Tunnel, or Tailscale instead.</span>';
-            return;
-        }
-
         resultEl.style.display = 'block';
-        resultEl.innerHTML = '<span style="color:#666;">Testing from server: ' + escHtml(url) + '/api/system/health ...</span>';
+        resultEl.innerHTML = '<span style="color:#666;">Testing: ' + escHtml(url) + '/api/system/health ...</span>';
         try {
             const res = await fetch(`${BASE}/test-url`, {
                 method: 'POST',
@@ -1355,19 +1426,31 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     async function generateConnectionKey() {
-        const url = document.getElementById('homeownerUrl').value.trim();
-        if (!url) { showToast('Enter your external API URL', 'error'); return; }
+        const mode = getConnectionMode();
+        const url = getEffectiveUrl();
+        if (!url) { showToast('Enter your URL', 'error'); return; }
+
+        const ha_token = mode === 'nabu_casa' ? document.getElementById('haToken').value.trim() : '';
+        if (mode === 'nabu_casa' && (!ha_token || ha_token === '********')) {
+            if (!ha_token) { showToast('Enter your HA Long-Lived Access Token', 'error'); return; }
+        }
+
         const label = document.getElementById('homeownerLabel').value.trim();
         const address = document.getElementById('homeownerAddress').value.trim();
         const city = document.getElementById('homeownerCity').value.trim();
         const state = document.getElementById('homeownerState').value.trim();
         const zip = document.getElementById('homeownerZip').value.trim();
 
+        const body = { url, label, address, city, state, zip, connection_mode: mode };
+        if (mode === 'nabu_casa' && ha_token && ha_token !== '********') {
+            body.ha_token = ha_token;
+        }
+
         try {
             const res = await fetch(`${BASE}/connection-key`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ url, label, address, city, state, zip }),
+                body: JSON.stringify(body),
             });
             const data = await res.json();
             if (data.connection_key) {
@@ -1377,7 +1460,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                     document.getElementById('zoneCountValue').textContent = data.zone_count;
                     document.getElementById('zoneCountInfo').style.display = 'block';
                 }
-                showToast('Connection key generated');
+                showToast('Connection key generated' + (mode === 'nabu_casa' ? ' (Nabu Casa mode)' : ''));
                 loadSettings();
             }
         } catch(e) { showToast('Failed to generate key', 'error'); }

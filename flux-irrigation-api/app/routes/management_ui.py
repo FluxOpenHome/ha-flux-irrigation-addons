@@ -448,7 +448,9 @@ function previewKey() {
     if (key.length < 10) { preview.classList.remove('visible'); return; }
     try {
         const decoded = JSON.parse(atob(key.replace(/-/g, '+').replace(/_/g, '/')));
+        const connMode = decoded.mode === 'nabu_casa' ? 'Nabu Casa' : 'Direct';
         let html = 'URL: <strong>' + esc(decoded.url) + '</strong>';
+        html += '<br>Mode: <strong>' + connMode + '</strong>';
         if (decoded.label) html += '<br>Label: <strong>' + esc(decoded.label) + '</strong>';
         const addrParts = [];
         if (decoded.address) addrParts.push(decoded.address);

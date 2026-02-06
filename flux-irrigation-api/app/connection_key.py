@@ -5,12 +5,14 @@ Encodes and decodes connection keys used to link homeowner
 irrigation systems with management company dashboards.
 
 A connection key is a base64url-encoded JSON object containing:
-  - url: Externally reachable API URL
-  - key: API key with full permissions
+  - url: Externally reachable URL (Nabu Casa URL or direct IP)
+  - key: API key with full permissions for the irrigation add-on
   - v: Version number (for future-proofing)
   - label: Optional friendly name (e.g., property address)
   - address, city, state, zip: Property location for management filtering
   - zone_count: Number of enabled irrigation zones (auto-detected)
+  - ha_token: HA Long-Lived Access Token (for Nabu Casa proxy mode)
+  - mode: "nabu_casa" or "direct" — how to reach the add-on
 """
 
 import base64
@@ -18,7 +20,7 @@ import json
 from dataclasses import dataclass
 from typing import Optional
 
-CONNECTION_KEY_VERSION = 1
+CONNECTION_KEY_VERSION = 2
 
 
 @dataclass
@@ -32,11 +34,13 @@ class ConnectionKeyData:
     state: Optional[str] = None
     zip: Optional[str] = None
     zone_count: Optional[int] = None
+    ha_token: Optional[str] = None
+    mode: str = "direct"  # "direct" or "nabu_casa"
 
 
 def encode_connection_key(data: ConnectionKeyData) -> str:
     """Encode connection data into a base64url string for sharing."""
-    payload = {"url": data.url, "key": data.key, "v": data.v}
+    payload = {"url": data.url, "key": data.key, "v": data.v, "mode": data.mode}
     if data.label:
         payload["label"] = data.label
     if data.address:
@@ -49,6 +53,8 @@ def encode_connection_key(data: ConnectionKeyData) -> str:
         payload["zip"] = data.zip
     if data.zone_count is not None:
         payload["zone_count"] = data.zone_count
+    if data.ha_token:
+        payload["ha_token"] = data.ha_token
     json_str = json.dumps(payload, separators=(",", ":"))
     return base64.urlsafe_b64encode(json_str.encode()).decode()
 
@@ -80,4 +86,6 @@ def decode_connection_key(encoded: str) -> ConnectionKeyData:
         state=payload.get("state"),
         zip=payload.get("zip"),
         zone_count=payload.get("zone_count"),
+        ha_token=payload.get("ha_token"),
+        mode=payload.get("mode", "direct"),
     )
