@@ -1,14 +1,18 @@
 """
 Home Assistant Supervisor API client.
 Communicates with HA to read entity states and call services.
+Uses REST API for states/services and WebSocket API for device/entity registry.
 """
 
+import json
 import httpx
-from typing import Any, Optional
+import websockets
+from typing import Optional
 from config import get_config
 
 
 HA_BASE_URL = "http://supervisor/core/api"
+HA_WS_URL = "ws://supervisor/core/websocket"
 
 
 def _get_headers() -> dict:
@@ -17,6 +21,84 @@ def _get_headers() -> dict:
         "Authorization": f"Bearer {config.supervisor_token}",
         "Content-Type": "application/json",
     }
+
+
+# --- WebSocket helpers for device/entity registry ---
+
+
+async def _ws_command(command: str) -> list[dict]:
+    """Connect to HA WebSocket, authenticate, run a single command, and return the result."""
+    config = get_config()
+    token = config.supervisor_token
+
+    async with websockets.connect(HA_WS_URL) as ws:
+        # Step 1: Receive auth_required
+        msg = json.loads(await ws.recv())
+        if msg.get("type") != "auth_required":
+            raise ConnectionError(f"Unexpected WS message: {msg}")
+
+        # Step 2: Authenticate
+        await ws.send(json.dumps({"type": "auth", "access_token": token}))
+        msg = json.loads(await ws.recv())
+        if msg.get("type") != "auth_ok":
+            raise PermissionError(f"WS authentication failed: {msg}")
+
+        # Step 3: Send command
+        await ws.send(json.dumps({"id": 1, "type": command}))
+        msg = json.loads(await ws.recv())
+        if not msg.get("success"):
+            raise RuntimeError(f"WS command '{command}' failed: {msg}")
+
+        return msg.get("result", [])
+
+
+async def get_device_registry() -> list[dict]:
+    """Get all registered devices from Home Assistant."""
+    return await _ws_command("config/device_registry/list")
+
+
+async def get_entity_registry() -> list[dict]:
+    """Get all registered entities from Home Assistant."""
+    return await _ws_command("config/entity_registry/list")
+
+
+async def get_device_entities(device_id: str) -> dict:
+    """Get all entities belonging to a specific device, categorized by domain.
+
+    Returns:
+        {
+            "zones": [{"entity_id": "switch.xxx", ...}, ...],
+            "sensors": [{"entity_id": "sensor.xxx", ...}, ...],
+        }
+    """
+    entities = await get_entity_registry()
+
+    zones = []
+    sensors = []
+
+    for entity in entities:
+        if entity.get("device_id") != device_id:
+            continue
+        if entity.get("disabled_by"):
+            continue
+
+        eid = entity.get("entity_id", "")
+        entry = {
+            "entity_id": eid,
+            "original_name": entity.get("original_name", ""),
+            "name": entity.get("name") or entity.get("original_name", ""),
+            "platform": entity.get("platform", ""),
+        }
+
+        if eid.startswith("switch."):
+            zones.append(entry)
+        elif eid.startswith("sensor."):
+            sensors.append(entry)
+
+    return {"zones": zones, "sensors": sensors}
+
+
+# --- REST API helpers ---
 
 
 async def get_entity_state(entity_id: str) -> Optional[dict]:
@@ -45,10 +127,13 @@ async def get_all_states() -> list[dict]:
         return []
 
 
-async def get_entities_by_prefix(prefix: str) -> list[dict]:
-    """Get all entities matching a given prefix."""
+async def get_entities_by_ids(entity_ids: list[str]) -> list[dict]:
+    """Get states for a specific list of entity IDs."""
+    if not entity_ids:
+        return []
     all_states = await get_all_states()
-    return [s for s in all_states if s.get("entity_id", "").startswith(prefix)]
+    allowed = set(entity_ids)
+    return [s for s in all_states if s.get("entity_id", "") in allowed]
 
 
 async def call_service(

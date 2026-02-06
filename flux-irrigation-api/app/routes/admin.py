@@ -1,6 +1,6 @@
 """
 Admin settings endpoints and web UI.
-Allows the homeowner to configure API keys, entity prefixes,
+Allows the homeowner to configure API keys, device selection,
 and permissions through the add-on's ingress panel.
 """
 
@@ -27,12 +27,12 @@ def _load_options() -> dict:
     return {}
 
 
-def _save_options(options: dict):
+async def _save_options(options: dict):
     """Save options to persistent storage and reload config."""
     os.makedirs(os.path.dirname(OPTIONS_FILE), exist_ok=True)
     with open(OPTIONS_FILE, "w") as f:
         json.dump(options, f, indent=2)
-    reload_config()
+    await reload_config()
 
 
 # --- API Endpoints for Settings ---
@@ -49,9 +49,8 @@ class ApiKeyUpdate(BaseModel):
     regenerate_key: bool = False
 
 
-class PrefixUpdate(BaseModel):
-    irrigation_entity_prefix: Optional[str] = None
-    sensor_entity_prefix: Optional[str] = None
+class DeviceSelect(BaseModel):
+    device_id: str = Field(min_length=1)
 
 
 class SettingsUpdate(BaseModel):
@@ -64,6 +63,8 @@ class SettingsUpdate(BaseModel):
 async def get_settings():
     """Get all current add-on settings."""
     options = _load_options()
+    config = get_config()
+
     # Mask API keys for display
     api_keys = []
     for key_entry in options.get("api_keys", []):
@@ -78,8 +79,9 @@ async def get_settings():
 
     return {
         "api_keys": api_keys,
-        "irrigation_entity_prefix": options.get("irrigation_entity_prefix", "switch.irrigation_"),
-        "sensor_entity_prefix": options.get("sensor_entity_prefix", "sensor.irrigation_"),
+        "irrigation_device_id": options.get("irrigation_device_id", ""),
+        "allowed_zone_entities": config.allowed_zone_entities,
+        "allowed_sensor_entities": config.allowed_sensor_entities,
         "rate_limit_per_minute": options.get("rate_limit_per_minute", 60),
         "log_retention_days": options.get("log_retention_days", 30),
         "enable_audit_log": options.get("enable_audit_log", True),
@@ -100,7 +102,7 @@ async def create_api_key(body: ApiKeyCreate):
         "permissions": body.permissions,
     }
     options["api_keys"].append(key_entry)
-    _save_options(options)
+    await _save_options(options)
 
     return {
         "success": True,
@@ -131,7 +133,7 @@ async def update_api_key(key_index: int, body: ApiKeyUpdate):
         keys[key_index]["key"] = new_key_value
 
     options["api_keys"] = keys
-    _save_options(options)
+    await _save_options(options)
 
     result = {"success": True, "name": keys[key_index]["name"]}
     if new_key_value:
@@ -151,23 +153,102 @@ async def delete_api_key(key_index: int):
 
     removed = keys.pop(key_index)
     options["api_keys"] = keys
-    _save_options(options)
+    await _save_options(options)
 
     return {"success": True, "removed": removed["name"]}
 
 
-@router.put("/api/prefixes", summary="Update entity prefixes")
-async def update_prefixes(body: PrefixUpdate):
-    """Update the entity prefixes used to discover irrigation entities."""
+@router.get("/api/devices", summary="List available HA devices")
+async def list_devices():
+    """List all Home Assistant devices for selection."""
+    import ha_client
+
+    try:
+        devices = await ha_client.get_device_registry()
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch device registry: {e}",
+        )
+
+    # Return devices with useful display info
+    result = []
+    for device in devices:
+        name = device.get("name_by_user") or device.get("name") or ""
+        manufacturer = device.get("manufacturer") or ""
+        model = device.get("model") or ""
+
+        if not name:
+            continue
+
+        result.append({
+            "id": device.get("id", ""),
+            "name": name,
+            "manufacturer": manufacturer,
+            "model": model,
+            "area_id": device.get("area_id", ""),
+        })
+
+    # Sort by name for display
+    result.sort(key=lambda d: d["name"].lower())
+    return result
+
+
+@router.put("/api/device", summary="Select irrigation device")
+async def select_device(body: DeviceSelect):
+    """Select the irrigation controller device and resolve its entities."""
+    import ha_client
+
+    # Verify the device exists and get its entities
+    try:
+        entities = await ha_client.get_device_entities(body.device_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch device entities: {e}",
+        )
+
+    # Save device_id to options
     options = _load_options()
+    options["irrigation_device_id"] = body.device_id
+    await _save_options(options)
 
-    if body.irrigation_entity_prefix is not None:
-        options["irrigation_entity_prefix"] = body.irrigation_entity_prefix
-    if body.sensor_entity_prefix is not None:
-        options["sensor_entity_prefix"] = body.sensor_entity_prefix
+    config = get_config()
 
-    _save_options(options)
-    return {"success": True}
+    return {
+        "success": True,
+        "device_id": body.device_id,
+        "zones": entities.get("zones", []),
+        "sensors": entities.get("sensors", []),
+        "allowed_zone_entities": config.allowed_zone_entities,
+        "allowed_sensor_entities": config.allowed_sensor_entities,
+    }
+
+
+@router.get("/api/device/entities", summary="Get selected device entities")
+async def get_device_entities():
+    """Get the entities resolved from the currently selected device."""
+    config = get_config()
+
+    if not config.irrigation_device_id:
+        return {
+            "device_id": "",
+            "zones": [],
+            "sensors": [],
+        }
+
+    import ha_client
+
+    try:
+        entities = await ha_client.get_device_entities(config.irrigation_device_id)
+    except Exception:
+        entities = {"zones": [], "sensors": []}
+
+    return {
+        "device_id": config.irrigation_device_id,
+        "zones": entities.get("zones", []),
+        "sensors": entities.get("sensors", []),
+    }
 
 
 @router.put("/api/general", summary="Update general settings")
@@ -182,76 +263,8 @@ async def update_general_settings(body: SettingsUpdate):
     if body.enable_audit_log is not None:
         options["enable_audit_log"] = body.enable_audit_log
 
-    _save_options(options)
+    await _save_options(options)
     return {"success": True}
-
-
-@router.get("/api/discover", summary="Discover irrigation entities")
-async def discover_entities():
-    """Scan Home Assistant for entities that could be irrigation-related."""
-    import ha_client
-
-    all_states = await ha_client.get_all_states()
-
-    # Look for common irrigation-related patterns
-    irrigation_keywords = [
-        "irrigation", "sprinkler", "zone", "valve", "water",
-        "lawn", "garden", "drip", "spray",
-    ]
-    sensor_keywords = [
-        "moisture", "soil", "rain", "flow", "humidity",
-        "precipitation", "water_level",
-    ]
-
-    switches = []
-    sensors = []
-
-    for entity in all_states:
-        eid = entity.get("entity_id", "").lower()
-        fname = entity.get("attributes", {}).get("friendly_name", "").lower()
-        combined = f"{eid} {fname}"
-
-        if eid.startswith("switch."):
-            if any(kw in combined for kw in irrigation_keywords):
-                switches.append({
-                    "entity_id": entity["entity_id"],
-                    "friendly_name": entity.get("attributes", {}).get("friendly_name", ""),
-                    "state": entity.get("state", "unknown"),
-                })
-
-        elif eid.startswith("sensor."):
-            if any(kw in combined for kw in sensor_keywords + irrigation_keywords):
-                sensors.append({
-                    "entity_id": entity["entity_id"],
-                    "friendly_name": entity.get("attributes", {}).get("friendly_name", ""),
-                    "state": entity.get("state", "unknown"),
-                    "unit": entity.get("attributes", {}).get("unit_of_measurement", ""),
-                })
-
-    return {
-        "discovered_switches": switches,
-        "discovered_sensors": sensors,
-        "suggestion": {
-            "irrigation_entity_prefix": _suggest_prefix([s["entity_id"] for s in switches]),
-            "sensor_entity_prefix": _suggest_prefix([s["entity_id"] for s in sensors]),
-        },
-    }
-
-
-def _suggest_prefix(entity_ids: list[str]) -> str:
-    """Try to find a common prefix among entity IDs."""
-    if not entity_ids:
-        return ""
-    if len(entity_ids) == 1:
-        # Use everything up to the last underscore + digit
-        eid = entity_ids[0]
-        parts = eid.rsplit("_", 1)
-        if len(parts) == 2 and parts[1].isdigit():
-            return parts[0] + "_"
-        return eid
-    # Find common prefix
-    prefix = os.path.commonprefix(entity_ids)
-    return prefix
 
 
 # --- Web UI ---
@@ -415,14 +428,18 @@ ADMIN_HTML = """<!DOCTYPE html>
         }
         .new-key-display .warning { color: #e65100; font-weight: 600; font-size: 13px; }
 
-        .discover-results {
-            max-height: 300px;
-            overflow-y: auto;
+        .entity-list {
             border: 1px solid #eee;
             border-radius: 8px;
             padding: 12px;
             margin-top: 12px;
-            display: none;
+        }
+        .entity-list h4 {
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 8px;
         }
         .entity-item {
             padding: 6px 0;
@@ -433,7 +450,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         }
         .entity-item:last-child { border-bottom: none; }
         .entity-id { font-family: monospace; }
-        .entity-state { color: #888; }
+        .entity-name { color: #888; }
 
         .toggle-switch {
             position: relative;
@@ -480,13 +497,27 @@ ADMIN_HTML = """<!DOCTYPE html>
         .status-dot.green { background: #2ecc71; }
         .status-dot.red { background: #e74c3c; }
         .status-dot.yellow { background: #f39c12; }
+
+        .device-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-top: 12px;
+            font-size: 13px;
+            color: #666;
+        }
+        .device-info.empty {
+            text-align: center;
+            color: #999;
+            padding: 24px;
+        }
     </style>
 </head>
 <body>
 
 <div class="header">
     <div>
-        <h1>🌱 Flux Irrigation Management API</h1>
+        <h1>Flux Irrigation Management API</h1>
         <div class="subtitle">Configure API access for irrigation management companies</div>
     </div>
 </div>
@@ -502,30 +533,24 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Entity Prefixes -->
+    <!-- Device Selection -->
     <div class="card">
         <div class="card-header">
-            <h2>Entity Configuration</h2>
-            <button class="btn btn-secondary btn-sm" onclick="discoverEntities()">🔍 Auto-Discover</button>
+            <h2>Irrigation Controller Device</h2>
+            <button class="btn btn-secondary btn-sm" onclick="loadDevices()">Refresh Devices</button>
         </div>
         <div class="card-body">
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Irrigation Zone Prefix</label>
-                    <input type="text" id="irrigationPrefix" placeholder="switch.irrigation_">
-                </div>
-                <div class="form-group">
-                    <label>Sensor Prefix</label>
-                    <input type="text" id="sensorPrefix" placeholder="sensor.irrigation_">
-                </div>
+            <div class="form-group">
+                <label>Select Device</label>
+                <select id="deviceSelect" onchange="onDeviceChange()">
+                    <option value="">-- Select your irrigation controller --</option>
+                </select>
             </div>
-            <button class="btn btn-primary" onclick="savePrefixes()">Save Prefixes</button>
 
-            <div class="discover-results" id="discoverResults">
-                <strong>Discovered Entities</strong>
-                <div id="discoverSwitches"></div>
-                <div id="discoverSensors"></div>
-                <div id="discoverSuggestion" style="margin-top:12px;"></div>
+            <div id="deviceEntities">
+                <div class="device-info empty" id="noDeviceMsg">
+                    Select your irrigation controller device above to configure which entities are exposed through the API.
+                </div>
             </div>
         </div>
     </div>
@@ -559,10 +584,10 @@ ADMIN_HTML = """<!DOCTYPE html>
             </div>
 
             <div id="newKeyDisplay" class="new-key-display">
-                <strong>🔑 New API Key Created</strong>
+                <strong>New API Key Created</strong>
                 <code id="newKeyValue"></code>
-                <p class="warning">⚠️ Copy this key now — it will not be shown again!</p>
-                <button class="btn btn-secondary btn-sm" onclick="copyKey()">📋 Copy to Clipboard</button>
+                <p class="warning">Copy this key now — it will not be shown again!</p>
+                <button class="btn btn-secondary btn-sm" onclick="copyKey()">Copy to Clipboard</button>
             </div>
 
             <div id="apiKeysList"></div>
@@ -625,13 +650,19 @@ ADMIN_HTML = """<!DOCTYPE html>
             const res = await fetch(`${BASE}/settings`);
             const data = await res.json();
 
-            document.getElementById('irrigationPrefix').value = data.irrigation_entity_prefix || '';
-            document.getElementById('sensorPrefix').value = data.sensor_entity_prefix || '';
             document.getElementById('rateLimit').value = data.rate_limit_per_minute || 60;
             document.getElementById('logRetention').value = data.log_retention_days || 30;
             document.getElementById('auditLogEnabled').checked = data.enable_audit_log !== false;
 
             renderApiKeys(data.api_keys || []);
+
+            // Load devices and set current selection
+            await loadDevices(data.irrigation_device_id || '');
+
+            // Show resolved entities if device is selected
+            if (data.irrigation_device_id) {
+                await loadDeviceEntities();
+            }
         } catch (e) {
             showToast('Failed to load settings', 'error');
         }
@@ -657,6 +688,100 @@ ADMIN_HTML = """<!DOCTYPE html>
         }
     }
 
+    // --- Device Selection ---
+    async function loadDevices(selectedId) {
+        try {
+            const res = await fetch(`${BASE}/devices`);
+            const devices = await res.json();
+            const select = document.getElementById('deviceSelect');
+
+            // Preserve current selection if not passed
+            if (selectedId === undefined) {
+                selectedId = select.value;
+            }
+
+            select.innerHTML = '<option value="">-- Select your irrigation controller --</option>';
+            for (const device of devices) {
+                const label = device.manufacturer || device.model
+                    ? `${device.name} (${[device.manufacturer, device.model].filter(Boolean).join(' ')})`
+                    : device.name;
+                const opt = document.createElement('option');
+                opt.value = device.id;
+                opt.textContent = label;
+                if (device.id === selectedId) opt.selected = true;
+                select.appendChild(opt);
+            }
+        } catch (e) {
+            showToast('Failed to load devices', 'error');
+        }
+    }
+
+    async function onDeviceChange() {
+        const deviceId = document.getElementById('deviceSelect').value;
+        if (!deviceId) {
+            document.getElementById('deviceEntities').innerHTML =
+                '<div class="device-info empty">Select your irrigation controller device above to configure which entities are exposed through the API.</div>';
+            return;
+        }
+
+        try {
+            const res = await fetch(`${BASE}/device`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ device_id: deviceId }),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                renderDeviceEntities(data.zones || [], data.sensors || []);
+                showToast('Device selected — entities resolved');
+            }
+        } catch (e) {
+            showToast('Failed to select device', 'error');
+        }
+    }
+
+    async function loadDeviceEntities() {
+        try {
+            const res = await fetch(`${BASE}/device/entities`);
+            const data = await res.json();
+            if (data.device_id) {
+                renderDeviceEntities(data.zones || [], data.sensors || []);
+            }
+        } catch (e) {
+            // Silently fail — device might not be configured yet
+        }
+    }
+
+    function renderDeviceEntities(zones, sensors) {
+        const container = document.getElementById('deviceEntities');
+
+        if (zones.length === 0 && sensors.length === 0) {
+            container.innerHTML = '<div class="device-info empty">No switch or sensor entities found on this device.</div>';
+            return;
+        }
+
+        let html = '';
+
+        if (zones.length > 0) {
+            html += '<div class="entity-list"><h4>Zone Switches (' + zones.length + ')</h4>';
+            for (const z of zones) {
+                html += `<div class="entity-item"><span class="entity-id">${escHtml(z.entity_id)}</span><span class="entity-name">${escHtml(z.name || z.original_name || '')}</span></div>`;
+            }
+            html += '</div>';
+        }
+
+        if (sensors.length > 0) {
+            html += '<div class="entity-list" style="margin-top:8px;"><h4>Sensors (' + sensors.length + ')</h4>';
+            for (const s of sensors) {
+                html += `<div class="entity-item"><span class="entity-id">${escHtml(s.entity_id)}</span><span class="entity-name">${escHtml(s.name || s.original_name || '')}</span></div>`;
+            }
+            html += '</div>';
+        }
+
+        container.innerHTML = html;
+    }
+
     // --- API Keys ---
     function renderApiKeys(keys) {
         const container = document.getElementById('apiKeysList');
@@ -672,7 +797,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                         <span class="api-key-preview">${escHtml(key.key_preview)}</span>
                     </div>
                     <div style="display:flex; gap:8px;">
-                        <button class="btn btn-secondary btn-sm" onclick="regenerateKey(${i})">🔄 Regenerate</button>
+                        <button class="btn btn-secondary btn-sm" onclick="regenerateKey(${i})">Regenerate</button>
                         <button class="btn btn-danger btn-sm" onclick="deleteKey(${i}, '${escHtml(key.name)}')">Delete</button>
                     </div>
                 </div>
@@ -754,15 +879,6 @@ ADMIN_HTML = """<!DOCTYPE html>
 
     async function updateKeyPermissions(index) {
         const card = document.querySelectorAll('.api-key-card')[index];
-        const perms = [...card.querySelectorAll('input[type=checkbox]:checked')]
-            .map(c => c.parentElement.textContent.trim().toLowerCase().replace(': ', '.'));
-        // Map display names back to permission strings
-        const permMap = {
-            'zones: read': 'zones.read', 'zones: control': 'zones.control',
-            'schedule: read': 'schedule.read', 'schedule: write': 'schedule.write',
-            'sensors: read': 'sensors.read', 'history: read': 'history.read',
-            'system: control': 'system.control',
-        };
         const checked = [...card.querySelectorAll('input[type=checkbox]')];
         const allPerms = ['zones.read','zones.control','schedule.read','schedule.write','sensors.read','history.read','system.control'];
         const selectedPerms = allPerms.filter((_, i) => checked[i]?.checked);
@@ -777,60 +893,6 @@ ADMIN_HTML = """<!DOCTYPE html>
         } catch (e) {
             showToast('Failed to update permissions', 'error');
         }
-    }
-
-    // --- Prefixes ---
-    async function savePrefixes() {
-        try {
-            await fetch(`${BASE}/prefixes`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    irrigation_entity_prefix: document.getElementById('irrigationPrefix').value,
-                    sensor_entity_prefix: document.getElementById('sensorPrefix').value,
-                }),
-            });
-            showToast('Entity prefixes saved');
-        } catch (e) {
-            showToast('Failed to save prefixes', 'error');
-        }
-    }
-
-    // --- Discover ---
-    async function discoverEntities() {
-        try {
-            const res = await fetch(`${BASE}/discover`);
-            const data = await res.json();
-            const container = document.getElementById('discoverResults');
-            container.style.display = 'block';
-
-            const swDiv = document.getElementById('discoverSwitches');
-            swDiv.innerHTML = '<p style="margin:8px 0; font-weight:600;">Switches (possible zones):</p>' +
-                (data.discovered_switches.length ? data.discovered_switches.map(e =>
-                    `<div class="entity-item"><span class="entity-id">${escHtml(e.entity_id)}</span><span>${escHtml(e.friendly_name)}</span><span class="entity-state">${e.state}</span></div>`
-                ).join('') : '<p style="color:#999;">None found</p>');
-
-            const senDiv = document.getElementById('discoverSensors');
-            senDiv.innerHTML = '<p style="margin:8px 0; font-weight:600;">Sensors:</p>' +
-                (data.discovered_sensors.length ? data.discovered_sensors.map(e =>
-                    `<div class="entity-item"><span class="entity-id">${escHtml(e.entity_id)}</span><span>${escHtml(e.friendly_name)}</span><span class="entity-state">${e.state} ${e.unit||''}</span></div>`
-                ).join('') : '<p style="color:#999;">None found</p>');
-
-            const sug = data.suggestion;
-            if (sug.irrigation_entity_prefix || sug.sensor_entity_prefix) {
-                document.getElementById('discoverSuggestion').innerHTML =
-                    `<button class="btn btn-secondary btn-sm" onclick="applySuggestion('${escHtml(sug.irrigation_entity_prefix)}','${escHtml(sug.sensor_entity_prefix)}')">` +
-                    `Apply suggested prefixes</button>`;
-            }
-        } catch (e) {
-            showToast('Discovery failed', 'error');
-        }
-    }
-
-    function applySuggestion(irr, sen) {
-        if (irr) document.getElementById('irrigationPrefix').value = irr;
-        if (sen) document.getElementById('sensorPrefix').value = sen;
-        showToast('Suggestions applied — click Save Prefixes to confirm');
     }
 
     // --- General ---

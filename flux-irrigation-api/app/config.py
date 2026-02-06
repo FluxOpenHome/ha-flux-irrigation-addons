@@ -19,8 +19,9 @@ class ApiKeyConfig:
 @dataclass
 class Config:
     api_keys: list[ApiKeyConfig] = field(default_factory=list)
-    irrigation_entity_prefix: str = "switch.irrigation_"
-    sensor_entity_prefix: str = "sensor.irrigation_"
+    irrigation_device_id: str = ""
+    allowed_zone_entities: list[str] = field(default_factory=list)
+    allowed_sensor_entities: list[str] = field(default_factory=list)
     rate_limit_per_minute: int = 60
     log_retention_days: int = 30
     enable_audit_log: bool = True
@@ -60,11 +61,8 @@ class Config:
                 )
             )
 
-        config.irrigation_entity_prefix = options.get(
-            "irrigation_entity_prefix", config.irrigation_entity_prefix
-        )
-        config.sensor_entity_prefix = options.get(
-            "sensor_entity_prefix", config.sensor_entity_prefix
+        config.irrigation_device_id = options.get(
+            "irrigation_device_id", config.irrigation_device_id
         )
         config.rate_limit_per_minute = options.get(
             "rate_limit_per_minute", config.rate_limit_per_minute
@@ -78,9 +76,39 @@ class Config:
 
         return config
 
+    async def resolve_device_entities(self):
+        """Resolve the allowed entity lists from the selected device."""
+        if not self.irrigation_device_id:
+            self.allowed_zone_entities = []
+            self.allowed_sensor_entities = []
+            return
+
+        import ha_client
+
+        try:
+            result = await ha_client.get_device_entities(self.irrigation_device_id)
+            self.allowed_zone_entities = [
+                e["entity_id"] for e in result.get("zones", [])
+            ]
+            self.allowed_sensor_entities = [
+                e["entity_id"] for e in result.get("sensors", [])
+            ]
+        except Exception as e:
+            print(f"[CONFIG] Failed to resolve device entities: {e}")
+            self.allowed_zone_entities = []
+            self.allowed_sensor_entities = []
+
 
 # Global config instance
 _config: Optional[Config] = None
+
+
+async def async_initialize() -> Config:
+    """Load config and resolve device entities. Call once at startup."""
+    global _config
+    _config = Config.load()
+    await _config.resolve_device_entities()
+    return _config
 
 
 def get_config() -> Config:
@@ -90,7 +118,9 @@ def get_config() -> Config:
     return _config
 
 
-def reload_config() -> Config:
+async def reload_config() -> Config:
+    """Reload config from disk and re-resolve device entities."""
     global _config
     _config = Config.load()
+    await _config.resolve_device_entities()
     return _config

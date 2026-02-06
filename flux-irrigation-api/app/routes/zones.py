@@ -40,6 +40,19 @@ class ZoneActionResponse(BaseModel):
     message: str
 
 
+def _zone_name(entity_id: str) -> str:
+    """Derive zone name from entity_id by stripping the 'switch.' domain."""
+    return entity_id.removeprefix("switch.")
+
+
+def _resolve_zone_entity(zone_id: str, config) -> str:
+    """Resolve a zone_id to a full entity_id, validating it's allowed."""
+    entity_id = f"switch.{zone_id}"
+    if entity_id not in config.allowed_zone_entities:
+        raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
+    return entity_id
+
+
 @router.get(
     "",
     response_model=list[ZoneStatus],
@@ -51,7 +64,7 @@ async def list_zones(request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
-    entities = await ha_client.get_entities_by_prefix(config.irrigation_entity_prefix)
+    entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
 
     zones = []
     for entity in entities:
@@ -59,7 +72,7 @@ async def list_zones(request: Request):
         zones.append(
             ZoneStatus(
                 entity_id=entity["entity_id"],
-                name=entity["entity_id"].replace(config.irrigation_entity_prefix, ""),
+                name=_zone_name(entity["entity_id"]),
                 state=entity.get("state", "unknown"),
                 friendly_name=attrs.get("friendly_name"),
                 last_changed=entity.get("last_changed"),
@@ -90,7 +103,7 @@ async def get_zone(zone_id: str, request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
-    entity_id = f"{config.irrigation_entity_prefix}{zone_id}"
+    entity_id = _resolve_zone_entity(zone_id, config)
     entity = await ha_client.get_entity_state(entity_id)
 
     if entity is None:
@@ -128,9 +141,9 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
-    entity_id = f"{config.irrigation_entity_prefix}{zone_id}"
+    entity_id = _resolve_zone_entity(zone_id, config)
 
-    # Verify zone exists
+    # Verify zone exists in HA
     entity = await ha_client.get_entity_state(entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
@@ -142,8 +155,7 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     if not success:
         raise HTTPException(status_code=502, detail="Failed to communicate with Home Assistant.")
 
-    # If duration specified, schedule an auto-off via an HA automation/script
-    # or fire an event that the user's automation can handle
+    # If duration specified, fire an event that the user's automation can handle
     if body.duration_minutes:
         await ha_client.fire_event(
             "flux_irrigation_timed_run",
@@ -190,9 +202,9 @@ async def stop_zone(zone_id: str, request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
-    entity_id = f"{config.irrigation_entity_prefix}{zone_id}"
+    entity_id = _resolve_zone_entity(zone_id, config)
 
-    # Verify zone exists
+    # Verify zone exists in HA
     entity = await ha_client.get_entity_state(entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
@@ -231,7 +243,7 @@ async def stop_all_zones(request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
-    entities = await ha_client.get_entities_by_prefix(config.irrigation_entity_prefix)
+    entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
     stopped = []
 
     for entity in entities:

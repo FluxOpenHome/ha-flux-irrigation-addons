@@ -16,7 +16,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from config import get_config
+from config import get_config, async_initialize
 from audit_log import cleanup_old_logs
 from routes import zones, sensors, schedule, history, system, admin
 
@@ -39,11 +39,12 @@ async def _periodic_log_cleanup():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
-    config = get_config()
+    config = await async_initialize()
     print(f"[MAIN] Flux Irrigation API starting...")
     print(f"[MAIN] Configured API keys: {len(config.api_keys)}")
-    print(f"[MAIN] Irrigation prefix: {config.irrigation_entity_prefix}")
-    print(f"[MAIN] Sensor prefix: {config.sensor_entity_prefix}")
+    print(f"[MAIN] Irrigation device: {config.irrigation_device_id or '(not configured)'}")
+    print(f"[MAIN] Resolved zones: {len(config.allowed_zone_entities)}")
+    print(f"[MAIN] Resolved sensors: {len(config.allowed_sensor_entities)}")
     print(f"[MAIN] Rate limit: {config.rate_limit_per_minute}/min")
     print(f"[MAIN] Audit logging: {'enabled' if config.enable_audit_log else 'disabled'}")
 

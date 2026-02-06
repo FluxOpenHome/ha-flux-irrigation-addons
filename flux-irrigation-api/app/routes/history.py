@@ -4,7 +4,7 @@ View irrigation run history, water usage, and activity logs.
 """
 
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from typing import Optional
 from auth import require_permission, ApiKeyConfig
@@ -42,6 +42,11 @@ class AuditLogEntry(BaseModel):
     status_code: int = 200
 
 
+def _zone_name(entity_id: str) -> str:
+    """Derive zone name from entity_id by stripping the 'switch.' domain."""
+    return entity_id.removeprefix("switch.")
+
+
 @router.get(
     "/runs",
     response_model=HistoryResponse,
@@ -64,7 +69,10 @@ async def get_run_history(
 
     if zone_id:
         # Single zone history
-        entity_id = f"{config.irrigation_entity_prefix}{zone_id}"
+        entity_id = f"switch.{zone_id}"
+        if entity_id not in config.allowed_zone_entities:
+            raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
+
         history = await ha_client.get_history(
             entity_id=entity_id,
             start_time=start_time.isoformat(),
@@ -94,13 +102,13 @@ async def get_run_history(
                 prev_event = event
     else:
         # All zones history
-        zone_entities = await ha_client.get_entities_by_prefix(
-            config.irrigation_entity_prefix
+        zone_entities = await ha_client.get_entities_by_ids(
+            config.allowed_zone_entities
         )
 
         for entity in zone_entities:
             entity_id = entity["entity_id"]
-            zone_name = entity_id.replace(config.irrigation_entity_prefix, "")
+            zone_name = _zone_name(entity_id)
 
             history = await ha_client.get_history(
                 entity_id=entity_id,

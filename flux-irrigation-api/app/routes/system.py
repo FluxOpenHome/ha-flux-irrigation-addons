@@ -63,11 +63,11 @@ async def get_system_status(request: Request):
     ha_connected = await ha_client.check_connection()
 
     # Count zones and active zones
-    zones = await ha_client.get_entities_by_prefix(config.irrigation_entity_prefix)
+    zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
     active_zones = [z for z in zones if z.get("state") == "on"]
 
     # Count sensors
-    sensors = await ha_client.get_entities_by_prefix(config.sensor_entity_prefix)
+    sensors = await ha_client.get_entities_by_ids(config.allowed_sensor_entities)
 
     # Check schedule state for pause/rain delay
     from routes.schedule import _load_schedules
@@ -115,7 +115,7 @@ async def pause_system(request: Request):
     key_config: ApiKeyConfig = request.state.api_key_config
 
     # Stop all active zones
-    zones = await ha_client.get_entities_by_prefix(config.irrigation_entity_prefix)
+    zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
     for zone in zones:
         if zone.get("state") == "on":
             await ha_client.call_service(

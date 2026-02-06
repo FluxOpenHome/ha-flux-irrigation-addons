@@ -33,8 +33,7 @@ options:
         - "sensors.read"
         - "history.read"
         - "system.control"
-  irrigation_entity_prefix: "switch.irrigation_"
-  sensor_entity_prefix: "sensor.irrigation_"
+  irrigation_device_id: ""
   rate_limit_per_minute: 60
   log_retention_days: 30
   enable_audit_log: true
@@ -44,8 +43,7 @@ schema:
       name: str
       permissions:
         - str
-  irrigation_entity_prefix: str
-  sensor_entity_prefix: str
+  irrigation_device_id: str
   rate_limit_per_minute: "int(1,300)"
   log_retention_days: "int(1,365)"
   enable_audit_log: bool

@@ -34,6 +34,19 @@ class SensorSummary(BaseModel):
     warnings: list[str] = []
 
 
+def _sensor_name(entity_id: str) -> str:
+    """Derive sensor name from entity_id by stripping the 'sensor.' domain."""
+    return entity_id.removeprefix("sensor.")
+
+
+def _resolve_sensor_entity(sensor_id: str, config) -> str:
+    """Resolve a sensor_id to a full entity_id, validating it's allowed."""
+    entity_id = f"sensor.{sensor_id}"
+    if entity_id not in config.allowed_sensor_entities:
+        raise HTTPException(status_code=404, detail=f"Sensor '{sensor_id}' not found.")
+    return entity_id
+
+
 @router.get(
     "",
     response_model=SensorSummary,
@@ -45,7 +58,7 @@ async def list_sensors(request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
-    entities = await ha_client.get_entities_by_prefix(config.sensor_entity_prefix)
+    entities = await ha_client.get_entities_by_ids(config.allowed_sensor_entities)
 
     sensors = []
     warnings = []
@@ -56,7 +69,7 @@ async def list_sensors(request: Request):
 
         sensor = SensorReading(
             entity_id=entity["entity_id"],
-            name=entity["entity_id"].replace(config.sensor_entity_prefix, ""),
+            name=_sensor_name(entity["entity_id"]),
             state=state,
             unit_of_measurement=attrs.get("unit_of_measurement"),
             device_class=attrs.get("device_class"),
@@ -108,7 +121,7 @@ async def get_sensor(sensor_id: str, request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
-    entity_id = f"{config.sensor_entity_prefix}{sensor_id}"
+    entity_id = _resolve_sensor_entity(sensor_id, config)
     entity = await ha_client.get_entity_state(entity_id)
 
     if entity is None:

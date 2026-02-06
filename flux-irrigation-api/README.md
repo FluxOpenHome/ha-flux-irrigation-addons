@@ -22,8 +22,9 @@ This add-on acts as a middleware layer between an irrigation management company 
 
 1. Add this repository to your Home Assistant add-on store
 2. Install the "Flux Irrigation Management API" add-on
-3. Configure your API keys and entity prefixes in the add-on settings
-4. Start the add-on
+3. Start the add-on
+4. Open the admin panel and select your irrigation controller device
+5. Configure API keys for your management company
 
 ## Configuration
 
@@ -40,19 +41,15 @@ api_keys:
       - history.read      # View run history
       - system.control    # Pause/resume, rain delay
 
-irrigation_entity_prefix: "switch.irrigation_"   # Must match your ESPHome config
-sensor_entity_prefix: "sensor.irrigation_"        # Must match your ESPHome config
+irrigation_device_id: ""    # Set via admin panel device picker
 rate_limit_per_minute: 60
 log_retention_days: 30
 enable_audit_log: true
 ```
 
-### Entity Naming Convention
+### Device Selection
 
-The add-on discovers irrigation entities by prefix. Your ESPHome irrigation controller should use consistent entity naming:
-
-- **Zones:** `switch.irrigation_zone_1`, `switch.irrigation_zone_2`, etc.
-- **Sensors:** `sensor.irrigation_soil_moisture`, `sensor.irrigation_flow_rate`, `sensor.irrigation_rain_sensor`, etc.
+The add-on discovers irrigation entities by device. Open the admin panel (Irrigation API in the sidebar) and select your irrigation controller device from the dropdown. The add-on will automatically find all switch entities (zones) and sensor entities belonging to that device.
 
 ## API Endpoints
 
