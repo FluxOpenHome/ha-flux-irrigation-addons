@@ -494,6 +494,25 @@ async def generate_connection_key(body: ConnectionKeyRequest):
 
     print(f"[ADMIN] generate_connection_key: mode={body.connection_mode}, url={url}, ha_token={'SET('+str(len(effective_ha_token))+'chars)' if effective_ha_token else 'EMPTY'}")
 
+    # Validate HA token for Nabu Casa mode — a real HA Long-Lived Access Token
+    # is typically 180+ characters. If it's too short, it's corrupted or missing.
+    if body.connection_mode == "nabu_casa":
+        if not effective_ha_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Nabu Casa mode requires a Home Assistant Long-Lived Access Token. "
+                       "Go to your HA Profile → Long-Lived Access Tokens → Create Token, "
+                       "then paste it in the HA Token field.",
+            )
+        if len(effective_ha_token) < 100:
+            raise HTTPException(
+                status_code=400,
+                detail=f"The saved HA token is only {len(effective_ha_token)} characters — "
+                       f"a valid Long-Lived Access Token is typically 180+ characters. "
+                       f"Please re-enter your full HA token. Go to your HA Profile → "
+                       f"Long-Lived Access Tokens → Create Token, then paste it in the HA Token field.",
+            )
+
     # Auto-detect zone count from selected device
     zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
 
