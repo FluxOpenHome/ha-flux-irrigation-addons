@@ -25,6 +25,7 @@ class Config:
     homeowner_city: str = ""
     homeowner_state: str = ""
     homeowner_zip: str = ""
+    homeowner_phone: str = ""
     api_keys: list[ApiKeyConfig] = field(default_factory=list)
     irrigation_device_id: str = ""
     allowed_zone_entities: list[str] = field(default_factory=list)
@@ -106,6 +107,7 @@ class Config:
         config.homeowner_city = options.get("homeowner_city", config.homeowner_city)
         config.homeowner_state = options.get("homeowner_state", config.homeowner_state)
         config.homeowner_zip = options.get("homeowner_zip", config.homeowner_zip)
+        config.homeowner_phone = options.get("homeowner_phone", config.homeowner_phone)
         config.irrigation_device_id = options.get(
             "irrigation_device_id", config.irrigation_device_id
         )

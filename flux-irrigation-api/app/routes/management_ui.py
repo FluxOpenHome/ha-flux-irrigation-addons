@@ -184,7 +184,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 </div>
 
                 <div class="search-bar" id="searchBar" style="display:none;">
-                    <input type="text" id="searchInput" placeholder="Search by name, address, or notes..." oninput="filterCustomers()">
+                    <input type="text" id="searchInput" placeholder="Search by name, address, phone, or notes..." oninput="filterCustomers()">
                     <select id="filterState" onchange="filterCustomers()">
                         <option value="">All States</option>
                     </select>
@@ -236,6 +236,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div>
                 <h2 id="detailName"></h2>
                 <div id="detailAddress" class="customer-address" style="font-size:14px;margin-top:4px;"></div>
+                <div id="detailPhone" style="font-size:13px;color:#7f8c8d;margin-top:2px;display:none;">&#128222; <a id="detailPhoneLink" href="" style="color:#3498db;text-decoration:none;"></a></div>
             </div>
             <div style="display:flex;gap:8px;">
                 <button class="btn btn-secondary btn-sm" onclick="refreshDetail()">Refresh</button>
@@ -430,6 +431,7 @@ function renderCustomerGrid(customers) {
                     </span>
                 </div>
                 ${addr ? '<div class="customer-address">' + esc(addr) + '</div>' : ''}
+                ${c.phone ? '<div style="font-size:12px;color:#7f8c8d;margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:#3498db;text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
                 ${c.notes ? '<div style="font-size:13px;color:#7f8c8d;margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
                 <div class="customer-stats">
                     ${zoneInfo}${stats}
@@ -501,7 +503,7 @@ function filterCustomers() {
     let filtered = allCustomers;
     if (search) {
         filtered = filtered.filter(c => {
-            const haystack = [c.name, c.address, c.city, c.state, c.zip, c.notes].filter(Boolean).join(' ').toLowerCase();
+            const haystack = [c.name, c.address, c.city, c.state, c.zip, c.phone, c.notes].filter(Boolean).join(' ').toLowerCase();
             return haystack.includes(search);
         });
     }
@@ -804,6 +806,15 @@ async function viewCustomer(id) {
         } else {
             addrEl.style.display = 'none';
         }
+        // Show phone
+        const phoneEl = document.getElementById('detailPhone');
+        if (customer.phone) {
+            document.getElementById('detailPhoneLink').textContent = customer.phone;
+            document.getElementById('detailPhoneLink').href = 'tel:' + customer.phone;
+            phoneEl.style.display = 'block';
+        } else {
+            phoneEl.style.display = 'none';
+        }
         // Show notes section
         const notesSection = document.getElementById('detailNotesSection');
         const notesText = document.getElementById('detailNotesText');
@@ -815,6 +826,7 @@ async function viewCustomer(id) {
     } catch (e) {
         document.getElementById('detailName').textContent = 'Unknown Property';
         document.getElementById('detailAddress').style.display = 'none';
+        document.getElementById('detailPhone').style.display = 'none';
         document.getElementById('detailMap').style.display = 'none';
         document.getElementById('detailNotesSection').style.display = 'none';
     }

@@ -29,6 +29,11 @@ configuration:
   homeowner_zip:
     name: ZIP Code
     description: ZIP or postal code for this property.
+  homeowner_phone:
+    name: Phone Number
+    description: >-
+      Homeowner phone number. Shared with your management company
+      so they can contact you if needed.
   api_keys:
     name: API Keys
     description: API keys for management companies. Each key has a name and list of permissions.

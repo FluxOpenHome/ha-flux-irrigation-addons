@@ -172,13 +172,81 @@ The add-on can automatically adjust irrigation based on weather conditions using
 
 ### Supported Weather Integrations
 
-Any Home Assistant weather integration that provides a `weather.*` entity will work, including:
+Any Home Assistant weather integration that provides a `weather.*` entity will work. No separate API keys are configured in this add-on — you simply select the `weather.*` entity that your integration creates.
 
-- **National Weather Service (NWS)** — Free, built into HA for US locations
-- **Weather Underground** — Requires a personal weather station or API key
-- **OpenWeatherMap** — Free tier available
-- **Met.no** — Free, default weather for many HA installations
-- **AccuWeather**, **Tomorrow.io**, and others
+Below are the most common integrations and how to set them up:
+
+#### National Weather Service (NWS) — Free, US Only
+
+The NWS integration is free, requires no API key, and provides excellent forecast data for US locations.
+
+1. Go to **Settings → Devices & Services → + Add Integration**
+2. Search for **National Weather Service (NWS)**
+3. Enter your **latitude and longitude** (pre-filled from your HA config)
+4. Enter a **station ID** (optional — HA will find the nearest one automatically)
+5. Click **Submit** — a `weather.home` (or similar) entity will be created
+
+> **Best for:** US-based users who want a reliable, free, no-signup weather source.
+
+#### OpenWeatherMap — Free Tier Available, Worldwide
+
+OpenWeatherMap provides global coverage with a generous free tier (1,000 API calls/day).
+
+1. Go to [openweathermap.org](https://openweathermap.org) and create a free account
+2. Navigate to **My API Keys** in your account dashboard
+3. Copy your **API key** (a new key may take a few hours to activate)
+4. In Home Assistant, go to **Settings → Devices & Services → + Add Integration**
+5. Search for **OpenWeatherMap**
+6. Paste your API key, select your **mode** (free = `onecall_daily`), and confirm your location
+7. Click **Submit** — a `weather.openweathermap` entity will be created
+
+> **Best for:** Users outside the US, or anyone who wants global coverage with a free account.
+
+#### Met.no — Free, No API Key, Worldwide
+
+Met.no (Norwegian Meteorological Institute) is the default weather integration that comes pre-installed with many Home Assistant setups.
+
+1. Go to **Settings → Devices & Services → + Add Integration**
+2. Search for **Meteorologisk institutt (Met.no)**
+3. Confirm your **location** and **elevation**
+4. Click **Submit** — a `weather.forecast_home` (or similar) entity will be created
+
+> **Best for:** Users who want a zero-configuration weather source. If you see a `weather.*` entity already in your HA, it may be Met.no.
+
+#### Weather Underground — Personal Weather Station
+
+Weather Underground provides hyper-local data from nearby personal weather stations.
+
+1. Go to [wunderground.com](https://www.wunderground.com) and create a free account
+2. If you have a personal weather station, register it to get an **API key**
+3. Alternatively, apply for a free API key at the [Weather Underground API portal](https://www.wunderground.com/member/api-keys)
+4. In Home Assistant, install the **Weather Underground** integration via HACS (Home Assistant Community Store), as this is a custom integration
+5. Enter your API key and station ID during setup
+
+> **Best for:** Users with a personal weather station who want the most accurate local data.
+
+#### AccuWeather — Free Tier Available, Worldwide
+
+1. Go to [developer.accuweather.com](https://developer.accuweather.com) and create a free account
+2. Create an **app** in the developer portal to get an API key (free tier: 50 calls/day)
+3. In Home Assistant, go to **Settings → Devices & Services → + Add Integration**
+4. Search for **AccuWeather**
+5. Paste your API key and confirm your location
+6. Click **Submit**
+
+> **Best for:** Users who prefer AccuWeather forecasts. Note the free tier has a low daily call limit.
+
+#### Other Integrations
+
+Any HA weather integration that creates a `weather.*` entity will work, including **Tomorrow.io**, **Pirate Weather**, **Environment Canada**, and others. Check the [Home Assistant Integrations directory](https://www.home-assistant.io/integrations/#weather) for a full list.
+
+#### Verify Your Weather Entity
+
+After installing any weather integration:
+
+1. Go to **Settings → Devices & Services** and confirm your weather integration is loaded
+2. Go to **Developer Tools → States** and search for `weather.` — you should see your entity with attributes like `temperature`, `humidity`, `wind_speed`, and `forecast`
+3. In the Flux Irrigation **Configuration** page, your entity will appear in the **Weather Entity** dropdown
 
 ### Weather Rules
 

@@ -423,6 +423,7 @@ class ConnectionKeyRequest(BaseModel):
     city: str = Field("", max_length=100, description="City")
     state: str = Field("", max_length=50, description="State")
     zip: str = Field("", max_length=20, description="ZIP code")
+    phone: str = Field("", max_length=20, description="Homeowner phone number")
     ha_token: str = Field("", description="HA Long-Lived Access Token (for Nabu Casa mode)")
     connection_mode: str = Field("direct", description="Connection mode: 'nabu_casa' or 'direct'")
 
@@ -456,6 +457,7 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     options["homeowner_city"] = body.city
     options["homeowner_state"] = body.state
     options["homeowner_zip"] = body.zip
+    options["homeowner_phone"] = body.phone
     options["homeowner_connection_mode"] = body.connection_mode
 
     # Preserve existing HA token if not provided (UI sends empty when unchanged)
@@ -518,6 +520,7 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         city=body.city or None,
         state=body.state or None,
         zip=body.zip or None,
+        phone=body.phone or None,
         zone_count=zone_count,
         ha_token=effective_ha_token or None,
         mode=body.connection_mode or "direct",
@@ -533,6 +536,7 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         "city": body.city,
         "state": body.state,
         "zip": body.zip,
+        "phone": body.phone,
         "zone_count": zone_count,
         "api_key_name": mgmt_key_name,
     }
@@ -623,6 +627,7 @@ async def get_connection_key_info():
     city = options.get("homeowner_city", "")
     state = options.get("homeowner_state", "")
     zip_code = options.get("homeowner_zip", "")
+    phone = options.get("homeowner_phone", "")
     ha_token = options.get("homeowner_ha_token", "")
     connection_mode = options.get("homeowner_connection_mode", "direct")
 
@@ -643,6 +648,7 @@ async def get_connection_key_info():
             url=url, key=mgmt_key, label=label,
             address=address or None, city=city or None,
             state=state or None, zip=zip_code or None,
+            phone=phone or None,
             zone_count=zone_count,
             ha_token=ha_token or None,
             mode=connection_mode,
@@ -657,6 +663,7 @@ async def get_connection_key_info():
         "city": city,
         "state": state,
         "zip": zip_code,
+        "phone": phone,
         "zone_count": zone_count,
         "connection_key": connection_key,
         "ha_token_set": bool(ha_token),
@@ -918,6 +925,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             padding: 24px;
         }
     </style>
+    <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
 </head>
 <body>
 
@@ -1105,9 +1113,18 @@ ADMIN_HTML = """<!DOCTYPE html>
                     <input type="text" id="homeownerState" placeholder="e.g., IL">
                 </div>
             </div>
-            <div class="form-group" style="max-width:200px;">
-                <label>ZIP Code</label>
-                <input type="text" id="homeownerZip" placeholder="e.g., 62704">
+            <div class="form-row">
+                <div class="form-group" style="max-width:200px;">
+                    <label>ZIP Code</label>
+                    <input type="text" id="homeownerZip" placeholder="e.g., 62704">
+                </div>
+                <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="tel" id="homeownerPhone" placeholder="e.g., (555) 123-4567">
+                    <p style="font-size:12px; color:#999; margin-top:4px;">
+                        Shared with your management company so they can contact you if needed.
+                    </p>
+                </div>
             </div>
             <div id="zoneCountInfo" class="device-info" style="margin-bottom:16px;display:none;">
                 <strong>Enabled Zones:</strong> <span id="zoneCountValue">0</span>
@@ -1119,7 +1136,29 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <strong>Connection Key</strong>
                 <code id="connectionKeyValue" style="font-size:13px;"></code>
                 <p class="warning">Share this key with your management company. They paste it into their Flux Irrigation add-on.</p>
-                <button class="btn btn-secondary btn-sm" onclick="copyConnectionKey()">Copy to Clipboard</button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="copyConnectionKey()">&#128203; Copy to Clipboard</button>
+                    <button class="btn btn-secondary btn-sm" onclick="emailConnectionKey()">&#9993; Email Key</button>
+                    <button class="btn btn-secondary btn-sm" onclick="showQRCode()">&#9783; QR Code</button>
+                </div>
+            </div>
+
+            <!-- QR Code Modal -->
+            <div id="qrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center;">
+                <div style="background:white;border-radius:16px;padding:24px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <h3 style="font-size:16px;font-weight:600;margin:0;">Connection Key QR Code</h3>
+                        <button onclick="closeQRModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;padding:0 4px;">&times;</button>
+                    </div>
+                    <div id="qrCodeContainer" style="display:flex;justify-content:center;padding:16px;background:#fff;border-radius:8px;"></div>
+                    <p style="font-size:12px;color:#888;text-align:center;margin-top:12px;">
+                        Your management company can scan this QR code to import the connection key.
+                    </p>
+                    <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;">
+                        <button class="btn btn-secondary btn-sm" onclick="downloadQRCode()">&#128190; Download QR</button>
+                        <button class="btn btn-secondary btn-sm" onclick="closeQRModal()">Close</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1542,6 +1581,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             if (data.city) document.getElementById('homeownerCity').value = data.city;
             if (data.state) document.getElementById('homeownerState').value = data.state;
             if (data.zip) document.getElementById('homeownerZip').value = data.zip;
+            if (data.phone) document.getElementById('homeownerPhone').value = data.phone;
             if (data.zone_count !== null && data.zone_count !== undefined) {
                 document.getElementById('zoneCountValue').textContent = data.zone_count;
                 document.getElementById('zoneCountInfo').style.display = 'block';
@@ -1603,8 +1643,9 @@ ADMIN_HTML = """<!DOCTYPE html>
         const city = document.getElementById('homeownerCity').value.trim();
         const state = document.getElementById('homeownerState').value.trim();
         const zip = document.getElementById('homeownerZip').value.trim();
+        const phone = document.getElementById('homeownerPhone').value.trim();
 
-        const body = { url, label, address, city, state, zip, connection_mode: mode };
+        const body = { url, label, address, city, state, zip, phone, connection_mode: mode };
         if (mode === 'nabu_casa' && ha_token && ha_token !== '********') {
             body.ha_token = ha_token;
         }
@@ -1633,6 +1674,133 @@ ADMIN_HTML = """<!DOCTYPE html>
         const key = document.getElementById('connectionKeyValue').textContent;
         navigator.clipboard.writeText(key).then(() => showToast('Connection key copied!'));
     }
+
+    function emailConnectionKey() {
+        const key = document.getElementById('connectionKeyValue').textContent;
+        if (!key) { showToast('No connection key to email', 'error'); return; }
+        const label = document.getElementById('homeownerLabel').value.trim() || 'My Property';
+        const subject = encodeURIComponent(label + ' — Flux Irrigation Connection Key');
+        const body = encodeURIComponent(
+            'Hello,\\n\\n' +
+            'Here is the connection key for "' + label + '":\\n\\n' +
+            key + '\\n\\n' +
+            'To connect:\\n' +
+            '1. Open your Flux Irrigation Management add-on\\n' +
+            '2. Click "+ Add Property"\\n' +
+            '3. Paste this connection key\\n\\n' +
+            'Thanks!'
+        );
+        window.open('mailto:?subject=' + subject + '&body=' + body, '_self');
+    }
+
+    function showQRCode() {
+        const key = document.getElementById('connectionKeyValue').textContent;
+        if (!key) { showToast('No connection key to generate QR code', 'error'); return; }
+        const container = document.getElementById('qrCodeContainer');
+        container.innerHTML = '';
+
+        if (typeof qrcode === 'undefined') {
+            container.innerHTML = '<p style="color:#e74c3c;font-size:13px;">QR code library failed to load. Please check your internet connection.</p>';
+            document.getElementById('qrModal').style.display = 'flex';
+            return;
+        }
+
+        // Use error correction level L and auto-detect type number
+        const qr = qrcode(0, 'L');
+        qr.addData(key);
+        qr.make();
+
+        // Render QR code to canvas for high-quality output
+        const cellSize = 6;
+        const margin = 4;
+        const moduleCount = qr.getModuleCount();
+        const size = moduleCount * cellSize + margin * 2 * cellSize;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        canvas.id = 'qrCodeCanvas';
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = '#000000';
+        for (let row = 0; row < moduleCount; row++) {
+            for (let col = 0; col < moduleCount; col++) {
+                if (qr.isDark(row, col)) {
+                    ctx.fillRect(
+                        (col + margin) * cellSize,
+                        (row + margin) * cellSize,
+                        cellSize, cellSize
+                    );
+                }
+            }
+        }
+        canvas.style.cssText = 'max-width:100%;border-radius:4px;image-rendering:pixelated;';
+        container.appendChild(canvas);
+
+        // Add label below QR
+        const label = document.getElementById('homeownerLabel').value.trim();
+        if (label) {
+            const labelEl = document.createElement('div');
+            labelEl.style.cssText = 'text-align:center;font-size:13px;font-weight:600;color:#333;margin-top:8px;';
+            labelEl.textContent = label;
+            container.appendChild(labelEl);
+        }
+
+        document.getElementById('qrModal').style.display = 'flex';
+    }
+
+    function closeQRModal() {
+        document.getElementById('qrModal').style.display = 'none';
+    }
+
+    function downloadQRCode() {
+        const qrCanvas = document.getElementById('qrCodeCanvas');
+        if (!qrCanvas) return;
+        const label = document.getElementById('homeownerLabel').value.trim() || 'connection-key';
+        const filename = label.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() + '_qr.png';
+
+        // Create a new canvas with padding and label
+        const padding = 32;
+        const labelText = document.getElementById('homeownerLabel').value.trim() || '';
+        const labelHeight = labelText ? 30 : 0;
+
+        const dlCanvas = document.createElement('canvas');
+        const ctx = dlCanvas.getContext('2d');
+        dlCanvas.width = qrCanvas.width + padding * 2;
+        dlCanvas.height = qrCanvas.height + padding * 2 + labelHeight;
+
+        // White background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, dlCanvas.width, dlCanvas.height);
+
+        // Draw QR code
+        ctx.drawImage(qrCanvas, padding, padding);
+
+        // Draw label
+        if (labelText) {
+            ctx.fillStyle = '#333333';
+            ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(labelText, dlCanvas.width / 2, qrCanvas.height + padding + labelHeight - 4);
+        }
+
+        // Trigger download
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = dlCanvas.toDataURL('image/png');
+        link.click();
+        showToast('QR code downloaded');
+    }
+
+    // Close QR modal on Escape key or backdrop click
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('qrModal').style.display === 'flex') {
+            closeQRModal();
+        }
+    });
+    document.getElementById('qrModal').addEventListener('click', function(e) {
+        if (e.target === this) closeQRModal();
+    });
 
     // --- Weather Settings ---
     async function loadWeatherEntities() {
