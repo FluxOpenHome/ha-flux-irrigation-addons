@@ -107,7 +107,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <span class="nav-tab active">Homeowner</span>
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Switch to Management</button>
+        <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
 
