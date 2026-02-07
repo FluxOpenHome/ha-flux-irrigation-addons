@@ -1231,7 +1231,39 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <strong>Enabled Zones:</strong> <span id="zoneCountValue">0</span>
                 <span style="font-size:12px;color:#999;margin-left:8px;">(auto-detected from selected device)</span>
             </div>
-            <button class="btn btn-primary" onclick="generateConnectionKey()">Generate Connection Key</button>
+            <div id="generateKeyArea">
+                <div id="generateKeyUnlocked" style="display:block;">
+                    <button class="btn btn-primary" onclick="generateConnectionKey()">Generate Connection Key</button>
+                </div>
+                <div id="generateKeyLocked" style="display:none;">
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <button class="btn btn-primary" disabled style="opacity:0.5;cursor:not-allowed;" id="generateBtnLocked">
+                            &#128274; Generate Connection Key
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="unlockGenerateKey()" style="font-size:12px;">
+                            &#128275; Unlock to Regenerate
+                        </button>
+                    </div>
+                    <p style="font-size:12px;color:#999;margin-top:6px;">
+                        Regenerating will invalidate the current connection key. Your management company will need the new key.
+                    </p>
+                </div>
+                <div id="generateKeyConfirm" style="display:none;">
+                    <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 16px;margin-bottom:12px;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                            <span style="font-size:18px;">&#9888;</span>
+                            <strong style="color:#856404;font-size:13px;">This will replace your current connection key</strong>
+                        </div>
+                        <p style="font-size:12px;color:#856404;margin:0;">
+                            The old key will stop working immediately. Your management company will need the new key to reconnect.
+                        </p>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-primary" onclick="generateConnectionKey()">Regenerate Connection Key</button>
+                        <button class="btn btn-secondary" onclick="lockGenerateKey()">Cancel</button>
+                    </div>
+                </div>
+            </div>
 
             <div id="connectionKeyDisplay" class="new-key-display" style="display:none;">
                 <strong>Connection Key</strong>
@@ -1729,9 +1761,13 @@ ADMIN_HTML = """<!DOCTYPE html>
                 document.getElementById('connectionKeyValue').textContent = data.connection_key;
                 document.getElementById('connectionKeyDisplay').style.display = 'block';
                 document.getElementById('revokeSection').style.display = 'block';
+                // Lock the generate button since a key already exists
+                lockGenerateKey();
             } else {
                 document.getElementById('connectionKeyDisplay').style.display = 'none';
                 document.getElementById('revokeSection').style.display = 'none';
+                // No key yet — show unlocked generate button
+                showUnlockedGenerate();
             }
         } catch(e) { /* first time, no key yet */ }
     }
