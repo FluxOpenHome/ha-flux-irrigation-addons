@@ -15,7 +15,7 @@ hassio_api: true
 auth_api: true
 ingress: true
 ingress_port: 8099
-panel_icon: "mdi:home"
+panel_icon: "mdi:sprinkler"
 panel_title: "Flux Open Home"
 ports:
   "8099/tcp": 8099
