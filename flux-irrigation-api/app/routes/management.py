@@ -376,3 +376,24 @@ async def get_customer_history(
     if status_code != 200:
         raise _proxy_error(status_code, data)
     return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/weather",
+    summary="Get customer weather data",
+)
+async def get_customer_weather(customer_id: str):
+    """Get weather conditions and adjustments for a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/weather"
+    )
+    if status_code != 200:
+        # Weather may not be configured on the homeowner side — return safe default
+        return {
+            "weather_enabled": False,
+            "weather": {"error": "Not available"},
+        }
+    return data

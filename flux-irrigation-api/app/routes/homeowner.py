@@ -473,7 +473,7 @@ async def homeowner_geocode(q: str = Query(..., min_length=3, description="Addre
             resp = await client.get(
                 "https://nominatim.openstreetmap.org/search",
                 params={"format": "json", "limit": "1", "q": q},
-                headers={"User-Agent": "FluxIrrigationAPI/1.1.7"},
+                headers={"User-Agent": "FluxIrrigationAPI/1.1.8"},
             )
             resp.raise_for_status()
             results = resp.json()
@@ -482,6 +482,25 @@ async def homeowner_geocode(q: str = Query(..., min_length=3, description="Addre
             return {"lat": None, "lon": None}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Geocoding failed: {e}")
+
+
+@router.get("/weather", summary="Get weather data for dashboard")
+async def homeowner_weather():
+    """Get current weather conditions and active adjustments for the dashboard."""
+    config = get_config()
+    if not config.weather_enabled or not config.weather_entity_id:
+        return {"weather_enabled": False, "weather": {"error": "Not configured"}}
+
+    from routes.weather import get_weather_data, _load_weather_rules
+    weather = await get_weather_data()
+    rules_data = _load_weather_rules()
+    return {
+        "weather_enabled": True,
+        "weather": weather,
+        "active_adjustments": rules_data.get("active_adjustments", []),
+        "watering_multiplier": rules_data.get("watering_multiplier", 1.0),
+        "last_evaluation": rules_data.get("last_evaluation"),
+    }
 
 
 @router.get("/zone_aliases", summary="Get zone aliases")

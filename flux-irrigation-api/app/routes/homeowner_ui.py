@@ -130,6 +130,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         </div>
     </div>
 
+    <!-- Weather Card -->
+    <div class="card" id="weatherCard" style="display:none;">
+        <div class="card-header">
+            <h2>Weather Conditions</h2>
+            <span id="weatherMultBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:#d4edda;color:#155724;">1.0x</span>
+        </div>
+        <div class="card-body" id="weatherCardBody">
+            <div class="loading">Loading weather...</div>
+        </div>
+    </div>
+
     <!-- Zones Card -->
     <div class="card">
         <div class="card-header"><h2>Zones</h2></div>
@@ -379,6 +390,7 @@ function showMap(lat, lon, label) {
 // --- Dashboard Loading ---
 async function loadDashboard() {
     loadStatus();
+    loadWeather();
     loadZones();
     loadSensors();
     loadControls();
@@ -896,6 +908,100 @@ function formatTime(ts) {
         const d = new Date(ts);
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch { return ts; }
+}
+
+// --- Weather ---
+async function loadWeather() {
+    const card = document.getElementById('weatherCard');
+    const body = document.getElementById('weatherCardBody');
+    const badge = document.getElementById('weatherMultBadge');
+    try {
+        const data = await api('/weather');
+        if (!data.weather_enabled) {
+            card.style.display = 'none';
+            return;
+        }
+        card.style.display = 'block';
+        const w = data.weather || {};
+        if (w.error) {
+            body.innerHTML = '<div style="color:#999;text-align:center;padding:12px;">' + esc(w.error) + '</div>';
+            return;
+        }
+
+        const condIcons = {
+            'sunny': '☀️', 'clear-night': '🌙', 'partlycloudy': '⛅',
+            'cloudy': '☁️', 'rainy': '🌧️', 'pouring': '🌧️',
+            'snowy': '❄️', 'windy': '💨', 'fog': '🌫️',
+            'lightning': '⚡', 'lightning-rainy': '⛈️', 'hail': '🧊',
+        };
+        const icon = condIcons[w.condition] || '🌡️';
+        const mult = data.watering_multiplier != null ? data.watering_multiplier : 1.0;
+        let multColor = '#27ae60';
+        if (mult < 1) multColor = '#f39c12';
+        if (mult > 1) multColor = '#e74c3c';
+        if (mult === 0) multColor = '#999';
+        badge.textContent = mult + 'x';
+        badge.style.background = mult === 1.0 ? '#d4edda' : mult < 1 ? '#fff3cd' : '#f8d7da';
+        badge.style.color = mult === 1.0 ? '#155724' : mult < 1 ? '#856404' : '#721c24';
+
+        let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">';
+        html += '<div style="background:#f0f8ff;border-radius:8px;padding:10px;text-align:center;">';
+        html += '<div style="font-size:24px;">' + icon + '</div>';
+        html += '<div style="font-weight:600;text-transform:capitalize;font-size:13px;">' + esc(w.condition || 'unknown') + '</div>';
+        html += '</div>';
+        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
+        html += '<div style="color:#999;font-size:11px;">Temperature</div>';
+        html += '<div style="font-weight:600;font-size:16px;">' + (w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A') + '</div>';
+        html += '</div>';
+        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
+        html += '<div style="color:#999;font-size:11px;">Humidity</div>';
+        html += '<div style="font-weight:600;font-size:16px;">' + (w.humidity != null ? w.humidity + '%' : 'N/A') + '</div>';
+        html += '</div>';
+        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
+        html += '<div style="color:#999;font-size:11px;">Wind</div>';
+        html += '<div style="font-weight:600;font-size:16px;">' + (w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A') + '</div>';
+        html += '</div>';
+        html += '</div>';
+
+        // 3-day forecast
+        const forecast = w.forecast || [];
+        if (forecast.length > 0) {
+            html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:#7f8c8d;text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
+            html += '<div style="display:flex;gap:8px;overflow-x:auto;">';
+            for (let i = 0; i < Math.min(forecast.length, 5); i++) {
+                const f = forecast[i];
+                const dt = f.datetime ? new Date(f.datetime) : null;
+                const dayLabel = dt ? dt.toLocaleDateString('en-US', { weekday: 'short' }) : '';
+                const fIcon = condIcons[f.condition] || '🌡️';
+                const precip = f.precipitation_probability || 0;
+                html += '<div style="flex:0 0 auto;background:#f8f9fa;border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;">';
+                html += '<div style="font-size:11px;color:#999;">' + esc(dayLabel) + '</div>';
+                html += '<div style="font-size:18px;">' + fIcon + '</div>';
+                html += '<div style="font-size:12px;font-weight:600;">' + (f.temperature != null ? f.temperature + '°' : '') + '</div>';
+                if (precip > 0) {
+                    html += '<div style="font-size:10px;color:#3498db;">💧 ' + precip + '%</div>';
+                }
+                html += '</div>';
+            }
+            html += '</div></div>';
+        }
+
+        // Active adjustments
+        const adjustments = data.active_adjustments || [];
+        if (adjustments.length > 0) {
+            html += '<div style="margin-top:12px;padding:10px;background:#fff3cd;border-radius:8px;font-size:12px;">';
+            html += '<strong style="color:#856404;">Active Weather Adjustments:</strong>';
+            html += '<ul style="margin:4px 0 0 16px;color:#856404;">';
+            for (const adj of adjustments) {
+                html += '<li>' + esc(adj.reason || adj.rule) + '</li>';
+            }
+            html += '</ul></div>';
+        }
+
+        body.innerHTML = html;
+    } catch (e) {
+        card.style.display = 'none';
+    }
 }
 
 // --- Init ---

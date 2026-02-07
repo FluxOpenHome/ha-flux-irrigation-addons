@@ -33,6 +33,9 @@ class Config:
     rate_limit_per_minute: int = 60
     log_retention_days: int = 30
     enable_audit_log: bool = True
+    weather_entity_id: str = ""
+    weather_enabled: bool = False
+    weather_check_interval_minutes: int = 15
     supervisor_token: Optional[str] = None
 
     @classmethod
@@ -114,6 +117,15 @@ class Config:
         )
         config.enable_audit_log = options.get(
             "enable_audit_log", config.enable_audit_log
+        )
+        config.weather_entity_id = options.get(
+            "weather_entity_id", config.weather_entity_id
+        )
+        config.weather_enabled = options.get(
+            "weather_enabled", config.weather_enabled
+        )
+        config.weather_check_interval_minutes = options.get(
+            "weather_check_interval_minutes", config.weather_check_interval_minutes
         )
 
         return config

@@ -22,7 +22,7 @@ import os
 
 from config import get_config, async_initialize
 from audit_log import cleanup_old_logs
-from routes import zones, sensors, entities, history, system, admin, management, homeowner
+from routes import zones, sensors, entities, history, system, admin, management, homeowner, weather
 
 
 PROXY_SERVICE_NAMES = [
@@ -197,6 +197,25 @@ async def _periodic_log_cleanup():
         await asyncio.sleep(86400)  # 24 hours
 
 
+async def _periodic_weather_check():
+    """Periodically evaluate weather rules for irrigation adjustments."""
+    while True:
+        try:
+            config = get_config()
+            if config.weather_enabled and config.weather_entity_id:
+                from routes.weather import run_weather_evaluation
+                result = await run_weather_evaluation()
+                if result.get("triggered_rules"):
+                    print(f"[MAIN] Weather evaluation: {len(result['triggered_rules'])} rule(s) triggered, "
+                          f"multiplier={result.get('watering_multiplier', 1.0)}")
+        except Exception as e:
+            print(f"[MAIN] Weather check error: {e}")
+
+        config = get_config()
+        interval = max(config.weather_check_interval_minutes, 5) * 60
+        await asyncio.sleep(interval)
+
+
 async def _periodic_customer_health_check():
     """Periodically check connectivity to all customers (management mode only)."""
     while True:
@@ -256,8 +275,13 @@ async def lifespan(app: FastAPI):
     # Start background tasks
     cleanup_task = asyncio.create_task(_periodic_log_cleanup())
     health_task = None
+    weather_task = None
     if config.mode == "management":
         health_task = asyncio.create_task(_periodic_customer_health_check())
+    if config.weather_enabled and config.weather_entity_id:
+        weather_task = asyncio.create_task(_periodic_weather_check())
+        print(f"[MAIN] Weather control active: entity={config.weather_entity_id}, "
+              f"interval={config.weather_check_interval_minutes}min")
 
     yield
 
@@ -265,6 +289,8 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     if health_task:
         health_task.cancel()
+    if weather_task:
+        weather_task.cancel()
     print("[MAIN] Flux Irrigation API shutting down.")
 
 
@@ -317,6 +343,7 @@ app.include_router(system.router, prefix="/api")
 app.include_router(admin.router)
 app.include_router(management.router)
 app.include_router(homeowner.router)
+app.include_router(weather.router)
 
 
 @app.get("/", include_in_schema=False)
