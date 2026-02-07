@@ -22,13 +22,18 @@ ALIASES_FILE = "/data/homeowner_aliases.json"
 
 
 def _require_homeowner_mode():
-    """Raise 400 if not in homeowner mode."""
-    config = get_config()
-    if config.mode != "homeowner":
-        raise HTTPException(
-            status_code=400,
-            detail="This endpoint is only available in homeowner mode.",
-        )
+    """No-op — homeowner endpoints are always available.
+
+    Previously this blocked requests when not in homeowner mode, but the
+    dashboard auto-refreshes every 30 seconds. If the user switches to
+    management mode from the Configuration page while the homeowner tab
+    is still open, the refresh calls would fail with 400 errors.
+
+    The mode setting only controls which HTML page is served by default
+    at GET /admin. The underlying API should work regardless of mode
+    since it runs behind authenticated HA ingress.
+    """
+    pass
 
 
 # --- Zone Aliases ---
