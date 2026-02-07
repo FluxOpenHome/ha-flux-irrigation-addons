@@ -1151,6 +1151,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         <a href="?" style="color:white;text-decoration:none;padding:6px 14px;background:rgba(255,255,255,0.15);border-radius:8px;font-size:13px;">&#8592; Homeowner</a>
         <span style="background:rgba(255,255,255,0.25);padding:4px 12px;border-radius:12px;font-size:12px;font-weight:500;">Configuration</span>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
+        <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -1518,6 +1519,17 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
+</div>
+
+<!-- Help Modal -->
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:640px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Configuration Help</h3>
+            <button onclick="closeHelpModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div id="helpContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:14px;color:var(--text-secondary);line-height:1.6;"></div>
+    </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -2308,6 +2320,83 @@ ADMIN_HTML = """<!DOCTYPE html>
             setTimeout(() => window.location.reload(), 1000);
         } catch(e) { showToast(e.message, 'error'); }
     }
+
+    // --- Help Modal ---
+    const HELP_CONTENT = `
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 8px 0;">Configuration Overview</h4>
+<p style="margin-bottom:10px;">This page lets you configure your irrigation system for remote management. You can select your controller device, create API keys, generate connection keys to share with your management company, and configure weather integration.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Irrigation Controller Device</h4>
+<p style="margin-bottom:10px;">Select the ESPHome or other irrigation controller device connected to Home Assistant. This tells the add-on which switches, valves, and sensors to expose through the API.</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your controller from the dropdown. Only devices with switches or valves are shown.</li>
+<li style="margin-bottom:4px;"><strong>Refresh Devices</strong> — Re-scan Home Assistant if your device isn't listed (e.g., after adding a new ESPHome device).</li>
+<li style="margin-bottom:4px;"><strong>Entity List</strong> — After selecting a device, you'll see all zones, sensors, and other entities that will be accessible through the API.</li>
+</ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 If you change your irrigation controller hardware, re-select the new device here to update the exposed entities.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">API Keys</h4>
+<p style="margin-bottom:10px;">API keys authenticate requests from management companies. Each key can have specific permissions to control what the management company can access.</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Zones: Read</strong> — View zone states and information</li>
+<li style="margin-bottom:4px;"><strong>Zones: Control</strong> — Start and stop irrigation zones remotely</li>
+<li style="margin-bottom:4px;"><strong>Schedule: Read</strong> — View watering schedules</li>
+<li style="margin-bottom:4px;"><strong>Schedule: Write</strong> — Create and modify watering schedules</li>
+<li style="margin-bottom:4px;"><strong>Sensors: Read</strong> — View sensor data (soil moisture, flow, etc.)</li>
+<li style="margin-bottom:4px;"><strong>History: Read</strong> — View run history and logs</li>
+<li style="margin-bottom:4px;"><strong>System: Control</strong> — Pause/resume the entire system and emergency stop</li>
+</ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 API keys are shown only once when created. Copy and store them securely. You don't need to manually share API keys — they are embedded in the connection key.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Connection Key</h4>
+<p style="margin-bottom:10px;">The connection key is a single encoded string that contains everything your management company needs to connect: your URL, API key, and property details. Share this key with your management company so they can add your property to their dashboard.</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Nabu Casa (Cloud)</strong> — Uses your Home Assistant Cloud URL. Works from anywhere without port forwarding. Recommended for most users.</li>
+<li style="margin-bottom:4px;"><strong>Direct (Local/VPN)</strong> — Uses a direct URL you provide. Best for local network or VPN setups.</li>
+<li style="margin-bottom:4px;"><strong>Generate Key</strong> — Creates a new connection key with the selected mode and an API key with standard permissions.</li>
+<li style="margin-bottom:4px;"><strong>🔒 Lock / Unlock</strong> — The generate button is locked after a key is created to prevent accidentally overwriting it. Click 🔓 to unlock if you need to regenerate.</li>
+</ul>
+<p style="margin-bottom:10px;">You can share the connection key by:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Copy</strong> — Copy to clipboard and paste into an email or message</li>
+<li style="margin-bottom:4px;"><strong>Email</strong> — Opens your email client with the key pre-filled</li>
+<li style="margin-bottom:4px;"><strong>QR Code</strong> — Generate a scannable QR code (useful for in-person sharing)</li>
+</ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 If you regenerate a connection key, the old one will stop working. Your management company will need to update their connection with the new key.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Settings</h4>
+<p style="margin-bottom:10px;">Enable weather-aware irrigation by connecting a Home Assistant weather entity. When enabled, weather data is used for smart watering adjustments on the Homeowner Dashboard.</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Weather Entity</strong> — Select a weather integration from Home Assistant (e.g., OpenWeatherMap, Met.no, or your local weather station).</li>
+<li style="margin-bottom:4px;"><strong>Check Interval</strong> — How often to refresh weather data (5–60 minutes). Lower values give more responsive adjustments but use more API calls.</li>
+</ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Weather rules and thresholds (rain skip, wind delay, temperature adjustments, etc.) are configured from the Homeowner Dashboard's weather section.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Revoking Access</h4>
+<p style="margin-bottom:10px;">If you need to disconnect a management company, use the <strong>Revoke Access</strong> button. This immediately invalidates the current API key and connection key, preventing any further remote access.</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;">All remote API calls will be rejected immediately</li>
+<li style="margin-bottom:4px;">Your local irrigation system continues to operate normally</li>
+<li style="margin-bottom:4px;">To re-enable access, generate a new connection key and share it with your management company</li>
+</ul>
+`;
+
+    function showHelp() {
+        document.getElementById('helpContent').innerHTML = HELP_CONTENT;
+        document.getElementById('helpModal').style.display = 'flex';
+    }
+    function closeHelpModal() {
+        document.getElementById('helpModal').style.display = 'none';
+    }
+    // Close help modal on Escape key or backdrop click
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('helpModal').style.display === 'flex') {
+            closeHelpModal();
+        }
+    });
+    document.getElementById('helpModal').addEventListener('click', function(e) {
+        if (e.target === this) closeHelpModal();
+    });
 
     // --- Init ---
     loadSettings();

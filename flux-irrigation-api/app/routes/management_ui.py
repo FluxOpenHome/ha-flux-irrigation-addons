@@ -264,6 +264,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <span class="mode-badge">Management Mode</span>
         <button class="btn btn-secondary btn-sm" onclick="switchToHomeowner()">Homeowner</button>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
+        <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
     </div>
 </div>
 
@@ -503,6 +504,17 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
             <button class="btn btn-secondary" onclick="closeKeyModal()">Cancel</button>
             <button class="btn btn-primary" onclick="saveModalKey()">&#128273; Update Key</button>
         </div>
+    </div>
+</div>
+
+<!-- Help Modal -->
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:640px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Management Dashboard Help</h3>
+            <button onclick="closeHelpModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div id="helpContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:14px;color:var(--text-secondary);line-height:1.6;"></div>
     </div>
 </div>
 
@@ -2175,6 +2187,111 @@ async function switchToHomeowner() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+// --- Help Modal ---
+const HELP_CONTENT = `
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 8px 0;">Dashboard Overview</h4>
+<p style="margin-bottom:10px;">The Management Dashboard lets you monitor and control irrigation systems across multiple properties from a single interface. Each property is a homeowner who has shared their connection key with you.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Adding Properties</h4>
+<p style="margin-bottom:10px;">To add a property, click <strong>+ Add Property</strong> and paste the connection key provided by the homeowner. The key is generated from their Flux Open Home Irrigation Control add-on's Configuration page.</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;">The key is automatically decoded to preview the property name, address, and connection type</li>
+<li style="margin-bottom:4px;">You can optionally set a custom display name and notes</li>
+<li style="margin-bottom:4px;">Click <strong>Connect</strong> to add the property to your dashboard</li>
+</ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Connection keys contain the URL, API key, and property details. You don't need to configure anything else.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Property Cards</h4>
+<p style="margin-bottom:10px;">Each property is displayed as a card showing its current status:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>🟢 Online</strong> — System is reachable and responding</li>
+<li style="margin-bottom:4px;"><strong>🔴 Offline</strong> — System is unreachable (check network or Home Assistant)</li>
+<li style="margin-bottom:4px;"><strong>🟡 Revoked</strong> — Homeowner has revoked your access</li>
+<li style="margin-bottom:4px;"><strong>Zone count</strong> — Number of irrigation zones configured</li>
+<li style="margin-bottom:4px;"><strong>Running / Idle / Paused</strong> — Current system state</li>
+<li style="margin-bottom:4px;"><strong>WiFi signal</strong> — Connection quality indicator (if available)</li>
+</ul>
+<p style="margin-bottom:10px;">Click any property card to open the detail view for full control.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Search &amp; Filtering</h4>
+<p style="margin-bottom:10px;">Use the search bar and filters to quickly find properties:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Search</strong> — Filter by name, address, phone number, or notes</li>
+<li style="margin-bottom:4px;"><strong>State / City</strong> — Filter by location</li>
+<li style="margin-bottom:4px;"><strong>Zone count</strong> — Filter by number of zones</li>
+<li style="margin-bottom:4px;"><strong>Status</strong> — Filter by online/offline/revoked</li>
+<li style="margin-bottom:4px;"><strong>System State</strong> — Filter by running/idle/paused</li>
+<li style="margin-bottom:4px;"><strong>Sort</strong> — Order by name, city, state, zones, status, or last seen</li>
+</ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Property Detail View</h4>
+<p style="margin-bottom:10px;">Click a property card to see its full details including zone controls, sensors, schedule, weather, and run history. Use the <strong>← Back</strong> button to return to the property list.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Remote Zone Control</h4>
+<p style="margin-bottom:10px;">From the detail view, you can remotely control any irrigation zone:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Start</strong> — Turn on a zone (optionally set a timed run in minutes)</li>
+<li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a specific zone</li>
+<li style="margin-bottom:4px;"><strong>🛑 Stop All Zones</strong> — Emergency stop for all zones at once</li>
+<li style="margin-bottom:4px;"><strong>⏸ Pause / ▶ Resume</strong> — Pause or resume the entire irrigation system</li>
+</ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 When the system is paused, any zone that turns on (even from an ESPHome schedule) will be immediately shut off.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Schedule Management</h4>
+<p style="margin-bottom:10px;">View and manage watering schedules for each property:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Days</strong> — Select which days of the week to water</li>
+<li style="margin-bottom:4px;"><strong>Start Times</strong> — Set one or more daily start times</li>
+<li style="margin-bottom:4px;"><strong>Zone Durations</strong> — Configure how long each zone runs (in minutes)</li>
+<li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle the schedule on or off without deleting it</li>
+</ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Rules</h4>
+<p style="margin-bottom:10px;">If the homeowner has configured weather integration, you can view and manage weather-based watering adjustments:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Rain Skip</strong> — Skip watering when rain is detected or forecasted</li>
+<li style="margin-bottom:4px;"><strong>Wind Delay</strong> — Delay watering during high winds</li>
+<li style="margin-bottom:4px;"><strong>Temperature Adjustments</strong> — Increase or decrease watering based on temperature</li>
+<li style="margin-bottom:4px;"><strong>Watering Multiplier</strong> — See the current weather-adjusted multiplier applied to run times</li>
+</ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
+<p style="margin-bottom:10px;">View a detailed log of all irrigation activity for each property:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;">Each entry shows the zone, start/stop time, duration, and source (API, schedule, manual, etc.)</li>
+<li style="margin-bottom:4px;">Weather conditions at the time of each run are captured</li>
+<li style="margin-bottom:4px;"><strong>CSV Export</strong> — Download the run history as a spreadsheet</li>
+<li style="margin-bottom:4px;"><strong>Clear History</strong> — Remove old entries (this cannot be undone)</li>
+</ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Notes &amp; Zone Aliases</h4>
+<p style="margin-bottom:10px;">Customize how properties and zones appear in your dashboard:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Notes</strong> — Add private notes to any property (e.g., "new sod in backyard", "drip system needs repair")</li>
+<li style="margin-bottom:4px;"><strong>Zone Aliases</strong> — Rename zones to friendly names (e.g., "Front Lawn", "Garden Beds") that override the default hardware names</li>
+</ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Notes and zone aliases are stored locally in your management add-on — the homeowner won't see them.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Updating Connection Keys</h4>
+<p style="margin-bottom:10px;">If a homeowner regenerates their connection key (e.g., after revoking access or changing their setup), you'll need to update the key for that property:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;">Click the <strong>🔑 Update Key</strong> button in the property detail view</li>
+<li style="margin-bottom:4px;">Paste the new connection key from the homeowner</li>
+<li style="margin-bottom:4px;">Your notes and zone aliases are preserved when updating a key</li>
+</ul>
+`;
+
+function showHelp() {
+    document.getElementById('helpContent').innerHTML = HELP_CONTENT;
+    document.getElementById('helpModal').style.display = 'flex';
+}
+function closeHelpModal() {
+    document.getElementById('helpModal').style.display = 'none';
+}
+document.getElementById('helpModal').addEventListener('click', function(e) {
+    if (e.target === this) closeHelpModal();
+});
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
     // Fix docs link for ingress — page is served at /admin, strip it to get ingress base
@@ -2185,7 +2302,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close modals on backdrop click or Escape
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-            if (document.getElementById('keyModal').style.display === 'flex') closeKeyModal();
+            if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
+            else if (document.getElementById('keyModal').style.display === 'flex') closeKeyModal();
             else if (document.getElementById('notesModal').style.display === 'flex') closeNotesModal();
         }
     });

@@ -203,6 +203,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
+        <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -301,6 +302,17 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-body" id="detailHistory">
             <div class="loading">Loading history...</div>
         </div>
+    </div>
+</div>
+
+<!-- Help Modal -->
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:640px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Homeowner Dashboard Help</h3>
+            <button onclick="closeHelpModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div id="helpContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:14px;color:var(--text-secondary);line-height:1.6;"></div>
     </div>
 </div>
 
@@ -1520,6 +1532,57 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Auto-refresh every 30 seconds
     refreshTimer = setInterval(loadDashboard, 30000);
+});
+
+// --- Help Modal ---
+const HELP_CONTENT = `
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 8px 0;">Dashboard Overview</h4>
+<p style="margin-bottom:10px;">This is your irrigation control center. From here you can monitor and control every aspect of your irrigation system — zones, sensors, schedules, weather rules, and run history.</p>
+<p style="margin-bottom:10px;">The dashboard auto-refreshes every 30 seconds to keep everything up to date.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Zone Control</h4>
+<p style="margin-bottom:10px;">Each zone tile shows the current state (running or off). You can:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Start</strong> — Turn a zone on immediately with no time limit</li><li style="margin-bottom:4px;"><strong>Timed Start</strong> — Enter a duration in minutes and click <strong>Timed</strong> to run the zone for a set period, then auto-shutoff</li><li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a running zone immediately</li><li style="margin-bottom:4px;"><strong>Emergency Stop All</strong> — Instantly stops every active zone on the system</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Green-highlighted tiles indicate zones that are currently running.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Sensors</h4>
+<p style="margin-bottom:10px;">The sensors card shows real-time readings from your irrigation controller — soil moisture, temperature, Wi-Fi signal strength, and any other sensors exposed by your device. Wi-Fi signal includes a quality badge (Great/Good/Poor/Bad) based on signal strength in dBm.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Schedule Management</h4>
+<p style="margin-bottom:10px;">Your irrigation schedule is configured through your Flux Open Home controller and managed via its ESPHome entities:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Schedule Enable/Disable</strong> — Master toggle to turn the entire schedule on or off</li><li style="margin-bottom:4px;"><strong>Days of Week</strong> — Click day buttons to toggle which days the schedule runs</li><li style="margin-bottom:4px;"><strong>Start Times</strong> — Set when each schedule program begins (HH:MM format)</li><li style="margin-bottom:4px;"><strong>Zone Settings</strong> — Enable/disable individual zones and set run durations for each</li><li style="margin-bottom:4px;"><strong>Zone Modes</strong> — Some zones may have special modes (Pump Start Relay, Master Valve) that are firmware-controlled</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Schedule changes take effect immediately on your controller — no restart needed.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather-Based Control</h4>
+<p style="margin-bottom:10px;">When weather is enabled (configured on the Configuration page), the dashboard shows current conditions and a <strong>watering multiplier</strong>:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>1.0x</strong> (green) — Normal watering, no adjustments active</li><li style="margin-bottom:4px;"><strong>Below 1.0x</strong> (yellow) — Reduced watering due to cool temps, humidity, etc.</li><li style="margin-bottom:4px;"><strong>Above 1.0x</strong> (red) — Increased watering due to hot temperatures</li><li style="margin-bottom:4px;"><strong>Skip/Pause</strong> — Watering paused entirely due to rain, freezing, or high wind</li></ul>
+<p style="margin-bottom:10px;">Configure weather rules by expanding the <strong>Weather Rules</strong> section. Each rule can be individually enabled/disabled. Click <strong>Test Rules Now</strong> to see which rules would trigger under current conditions.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
+<p style="margin-bottom:10px;">The run history table shows every zone on/off event with:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone name</strong> and source (API, schedule, weather pause, etc.)</li><li style="margin-bottom:4px;"><strong>State</strong> — ON (green) or OFF</li><li style="margin-bottom:4px;"><strong>Time</strong> and <strong>duration</strong> of each run</li><li style="margin-bottom:4px;"><strong>Weather conditions</strong> at the time of the event</li></ul>
+<p style="margin-bottom:10px;">Use the time range dropdown to view the last 24 hours, 7 days, 30 days, 90 days, or full year. Click <strong>Export CSV</strong> to download history as a spreadsheet.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">System Pause / Resume</h4>
+<p style="margin-bottom:10px;"><strong>Pause System</strong> immediately stops all active zones and prevents any new zones from starting — including ESPHome schedule programs. While paused, any zone that tries to turn on will be automatically shut off.</p>
+<p style="margin-bottom:10px;"><strong>Resume System</strong> lifts the pause and allows normal operation. Weather-triggered pauses auto-resume when conditions clear; manual pauses require clicking Resume.</p>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Use <strong>Emergency Stop All</strong> for a quick one-time stop. Use <strong>Pause System</strong> when you need to keep everything off until you manually resume.</div>
+`;
+
+function showHelp() {
+    document.getElementById('helpContent').innerHTML = HELP_CONTENT;
+    document.getElementById('helpModal').style.display = 'flex';
+}
+function closeHelpModal() {
+    document.getElementById('helpModal').style.display = 'none';
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('helpModal').style.display === 'flex') {
+        closeHelpModal();
+    }
+});
+document.getElementById('helpModal').addEventListener('click', function(e) {
+    if (e.target === this) closeHelpModal();
 });
 </script>
 </body>
