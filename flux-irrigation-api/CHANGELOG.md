@@ -54,7 +54,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Changed
 
-- **Moisture Probe Configuration on Configuration Page** — Probes are now discovered, added, and configured from the Configuration page (instead of only the Homeowner Dashboard); the Homeowner Dashboard shows the moisture card once probes are added and enabled
+- **Moisture Probe Configuration on Configuration Page** — Probes are now configured from the Configuration page using a device picker dropdown (instead of keyword-based sensor scanning); select your Gophr device from a filtered list, map its sensors to shallow/mid/deep depths, and add the probe; the Homeowner Dashboard shows the moisture card once probes are added and enabled
+- **Gophr Logo** — The Gophr logo is displayed next to the Moisture Probes card header on the Configuration page
 - **Collapsible Device Entities** — The device entity list on the Configuration page (zones, sensors, controls) is now collapsed by default; click to expand and see the full list
 - **Smart Device Filtering** — The device selection dropdown on the Configuration page now filters to show only irrigation-related devices by default (matching keywords like "Flux", "irrigation", "sprinkler", or "ESPHome"); click "Show all devices" to see the full list if needed
 - **ESPHome Schedule Control** — System pause/resume now disables/restores ESPHome schedule programs on the controller, preventing the controller from starting runs while paused

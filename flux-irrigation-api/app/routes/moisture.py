@@ -120,6 +120,96 @@ async def discover_moisture_probes() -> list[dict]:
     return candidates
 
 
+# Keywords for filtering HA devices to likely moisture probes
+DEVICE_KEYWORDS = ["gophr", "moisture", "soil", "probe"]
+
+
+async def list_moisture_devices(show_all: bool = False) -> dict:
+    """List HA devices, optionally filtered to likely moisture probe devices.
+
+    Returns devices in the same format as admin device listing.
+    """
+    devices = await ha_client.get_device_registry()
+
+    all_devices = []
+    for device in devices:
+        name = device.get("name_by_user") or device.get("name") or ""
+        manufacturer = device.get("manufacturer") or ""
+        model = device.get("model") or ""
+
+        if not name:
+            continue
+
+        all_devices.append({
+            "id": device.get("id", ""),
+            "name": name,
+            "manufacturer": manufacturer,
+            "model": model,
+            "area_id": device.get("area_id", ""),
+        })
+
+    if show_all:
+        result = all_devices
+    else:
+        # Filter to moisture/probe-related devices
+        def _is_moisture_device(name: str, manufacturer: str, model: str) -> bool:
+            searchable = f"{name} {manufacturer} {model}".lower()
+            return any(kw in searchable for kw in DEVICE_KEYWORDS)
+
+        result = [d for d in all_devices if _is_moisture_device(
+            d["name"], d["manufacturer"], d["model"]
+        )]
+
+    result.sort(key=lambda d: d["name"].lower())
+    return {"devices": result, "total_count": len(all_devices), "filtered": not show_all}
+
+
+async def get_device_sensors(device_id: str) -> list[dict]:
+    """Get all sensor entities belonging to a specific device.
+
+    Returns sensor entities with their current state, for the user
+    to map as probe depth sensors (shallow/mid/deep).
+    """
+    entity_registry = await ha_client.get_entity_registry()
+    all_states = await ha_client.get_all_states()
+
+    # Build a lookup of entity_id → state data
+    state_lookup = {}
+    for s in all_states:
+        state_lookup[s.get("entity_id", "")] = s
+
+    sensors = []
+    for entity in entity_registry:
+        if entity.get("device_id") != device_id:
+            continue
+        if entity.get("disabled_by"):
+            continue
+
+        eid = entity.get("entity_id", "")
+        domain = eid.split(".")[0] if "." in eid else ""
+
+        # Only include sensor entities
+        if domain != "sensor":
+            continue
+
+        state_data = state_lookup.get(eid, {})
+        attrs = state_data.get("attributes", {})
+        friendly_name = attrs.get("friendly_name", entity.get("original_name", eid))
+
+        sensors.append({
+            "entity_id": eid,
+            "friendly_name": friendly_name,
+            "state": state_data.get("state", "unknown"),
+            "unit_of_measurement": attrs.get("unit_of_measurement", ""),
+            "device_class": attrs.get("device_class", ""),
+            "last_updated": state_data.get("last_updated", ""),
+            "original_name": entity.get("original_name", ""),
+        })
+
+    sensors.sort(key=lambda s: s["entity_id"])
+    return sensors
+
+
 # --- Sensor State Fetching ---
 
 async def _get_probe_sensor_states(probes: dict) -> dict:
@@ -640,6 +730,26 @@ async def api_discover_probes():
     """Scan all HA sensors for entities that look like moisture probes."""
     candidates = await discover_moisture_probes()
     return {"candidates": candidates, "total": len(candidates)}
+
+
+@router.get("/devices", summary="List devices for moisture probe selection")
+async def api_list_devices(show_all: bool = False):
+    """List HA devices, optionally filtered to likely moisture probe devices.
+
+    By default filters to devices matching keywords: gophr, moisture, soil, probe.
+    Pass ?show_all=true to return every device.
+    """
+    return await list_moisture_devices(show_all=show_all)
+
+
+@router.get("/devices/{device_id}/sensors", summary="Get sensor entities for a device")
+async def api_get_device_sensors(device_id: str):
+    """Get all sensor entities belonging to a specific device.
+
+    Returns sensors that can be mapped as probe depth readings.
+    """
+    sensors = await get_device_sensors(device_id)
+    return {"device_id": device_id, "sensors": sensors, "total": len(sensors)}
 
 
 @router.get("/probes", summary="Get probe configuration and live readings")

@@ -1223,6 +1223,22 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Gophr Moisture Probes -->
+    <div class="card">
+        <div class="card-header" style="cursor:pointer;" onclick="document.getElementById('moistureCardBody').style.display = document.getElementById('moistureCardBody').style.display === 'none' ? 'block' : 'none'; document.getElementById('moistureChevron').textContent = document.getElementById('moistureCardBody').style.display === 'none' ? '▶' : '▼';">
+            <h2 style="display:flex;align-items:center;gap:10px;"><img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQABLAEsAAD/4QCgRXhpZgAATU0AKgAAAAgABAEaAAUAAAABAAAAPgEbAAUAAAABAAAARgEoAAMAAAABAAIAAIdpAAQAAAABAAAATgAAAAAAAAEsAAAAAQAAASwAAAABAASQBAACAAAAFAAAAISgAQADAAAAAQABAACgAgAEAAAAAQAAAGSgAwAEAAAAAQAAADkAAAAAMjAyMDowMToyOCAyMjowMzo1OAD/4QoFaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLwA8P3hwYWNrZXQgYmVnaW49Iu+7vyIgaWQ9Ilc1TTBNcENlaGlIenJlU3pOVGN6a2M5ZCI/PiA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA2LjAuMCI+IDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+IDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyIgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIiB4bXA6Q3JlYXRlRGF0ZT0iMjAyMC0wMS0yOFQyMjowMzo1OCI+IDxkYzp0aXRsZT4gPHJkZjpBbHQ+IDxyZGY6bGkgeG1sOmxhbmc9IngtZGVmYXVsdCI+Z29waHI8L3JkZjpsaT4gPC9yZGY6QWx0PiA8L2RjOnRpdGxlPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg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" alt="Gophr" style="height:24px;width:auto;"> Moisture Probes</h2>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span id="moistureStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">—</span>
+                <span id="moistureChevron" style="font-size:12px;color:var(--text-muted);">▶</span>
+            </div>
+        </div>
+        <div class="card-body" id="moistureCardBody" style="display:none;">
+            <div id="moistureConfigContent">
+                <div class="loading">Loading moisture configuration...</div>
+            </div>
+        </div>
+    </div>
+
     <!-- API Keys -->
     <div class="card">
         <div class="card-header">
@@ -1553,21 +1569,6 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Moisture Probes -->
-    <div class="card">
-        <div class="card-header" style="cursor:pointer;" onclick="document.getElementById('moistureCardBody').style.display = document.getElementById('moistureCardBody').style.display === 'none' ? 'block' : 'none'; document.getElementById('moistureChevron').textContent = document.getElementById('moistureCardBody').style.display === 'none' ? '▶' : '▼';">
-            <h2>Moisture Probes (Gophr)</h2>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span id="moistureStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">—</span>
-                <span id="moistureChevron" style="font-size:12px;color:var(--text-muted);">▶</span>
-            </div>
-        </div>
-        <div class="card-body" id="moistureCardBody" style="display:none;">
-            <div id="moistureConfigContent">
-                <div class="loading">Loading moisture configuration...</div>
-            </div>
-        </div>
-    </div>
 
 </div>
 
@@ -2493,8 +2494,8 @@ ADMIN_HTML = """<!DOCTYPE html>
             html += '<button class="btn btn-primary" onclick="saveMoistureConfig()">Save Moisture Settings</button>';
             html += '<hr style="margin:20px 0;border:none;border-top:1px solid var(--border-light);">';
 
-            // Probe discovery + management
-            html += '<h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">Probes</h3>';
+            // Probe management
+            html += '<h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">Gophr Moisture Probes</h3>';
 
             // Existing probes
             if (probeCount > 0) {
@@ -2514,13 +2515,27 @@ ADMIN_HTML = """<!DOCTYPE html>
                 }
                 html += '</div>';
             } else {
-                html += '<p style="color:var(--text-muted);margin-bottom:16px;">No probes configured yet. Click <strong>Discover Probes</strong> to scan Home Assistant for Gophr moisture sensors.</p>';
+                html += '<p style="color:var(--text-muted);margin-bottom:16px;">No probes configured yet. Select a Gophr device below to add a probe.</p>';
             }
 
-            html += '<button class="btn btn-secondary" onclick="discoverMoistureProbesCfg()">Discover Probes</button>';
-            html += '<div id="cfgMoistureDiscoverResults" style="margin-top:12px;"></div>';
+            // Device picker for adding probes
+            html += '<div style="margin-top:8px;">';
+            html += '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Add Probe from Device</label>';
+            html += '<div style="display:flex;gap:8px;align-items:start;">';
+            html += '<div style="flex:1;">';
+            html += '<select id="cfgMoistureDeviceSelect" onchange="onMoistureDeviceChange()" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">';
+            html += '<option value="">-- Select a Gophr device --</option>';
+            html += '</select>';
+            html += '<p id="moistureDeviceFilterToggle" style="display:none;font-size:12px;color:var(--text-muted);margin-top:4px;"></p>';
+            html += '</div>';
+            html += '<button class="btn btn-secondary btn-sm" onclick="refreshMoistureDevices()" style="white-space:nowrap;">Refresh</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div id="cfgMoistureDeviceSensors" style="margin-top:12px;"></div>';
 
             content.innerHTML = html;
+            // Populate device dropdown after rendering
+            loadMoistureDevices();
         } catch (e) {
             content.innerHTML = '<div style="color:var(--color-danger);">Failed to load moisture configuration: ' + esc(e.message) + '</div>';
         }
@@ -2550,85 +2565,137 @@ ADMIN_HTML = """<!DOCTYPE html>
         } catch (e) { showToast(e.message, 'error'); }
     }
 
-    async function discoverMoistureProbesCfg() {
-        const el = document.getElementById('cfgMoistureDiscoverResults');
-        el.innerHTML = '<div class="loading">Scanning Home Assistant for moisture sensors...</div>';
+    let moistureShowingAllDevices = false;
+
+    async function loadMoistureDevices(showAll) {
+        const select = document.getElementById('cfgMoistureDeviceSelect');
+        if (!select) return;
         try {
-            const data = await mcfg('/probes/discover');
-            const candidates = data.candidates || [];
-            if (candidates.length === 0) {
-                el.innerHTML = '<p style="color:var(--text-muted);">No moisture probe sensors found. Make sure your Gophr probes are connected to Home Assistant and showing sensor entities with names containing "gophr", "moisture", or "soil".</p>';
-                return;
-            }
-            let html = '<div style="margin-bottom:8px;font-size:13px;font-weight:600;">' + candidates.length + ' candidate sensor(s) found:</div>';
-            // Group candidates by possible probe (look for common prefixes)
-            const grouped = {};
-            for (const c of candidates) {
-                // Try to find a probe prefix: e.g., sensor.gophr_backyard_shallow → gophr_backyard
-                const name = c.entity_id.replace('sensor.', '');
-                const parts = name.split('_');
-                let prefix = name;
-                for (const depth of ['shallow', 'mid', 'deep', 'moisture', 'soil']) {
-                    const idx = parts.indexOf(depth);
-                    if (idx > 0) {
-                        prefix = parts.slice(0, idx).join('_');
-                        break;
-                    }
-                }
-                if (!grouped[prefix]) grouped[prefix] = [];
-                grouped[prefix].push(c);
+            const all = showAll !== undefined ? showAll : moistureShowingAllDevices;
+            const data = await mcfg('/devices' + (all ? '?show_all=true' : ''));
+            const devices = data.devices || [];
+            const totalCount = data.total_count || devices.length;
+            const filtered = data.filtered !== false;
+
+            select.innerHTML = '<option value="">-- Select a Gophr device --</option>';
+            for (const device of devices) {
+                const label = device.manufacturer || device.model
+                    ? device.name + ' (' + [device.manufacturer, device.model].filter(Boolean).join(' ') + ')'
+                    : device.name;
+                const opt = document.createElement('option');
+                opt.value = device.id;
+                opt.textContent = label;
+                select.appendChild(opt);
             }
 
-            for (const [prefix, sensors] of Object.entries(grouped)) {
-                html += '<div style="background:var(--bg-tile);border-radius:8px;padding:12px;margin-bottom:8px;border:1px solid var(--border-light);">';
-                html += '<div style="font-weight:600;margin-bottom:6px;">Probe: ' + esc(prefix) + '</div>';
-                html += '<div style="font-size:12px;margin-bottom:8px;">';
-                for (const s of sensors) {
-                    const state = s.state != null ? s.state : '—';
-                    html += '<div>' + esc(s.entity_id) + ' = <strong>' + esc(String(state)) + '</strong> ' + esc(s.unit || '') + '</div>';
-                }
-                html += '</div>';
-                html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">';
-                for (const depth of ['shallow', 'mid', 'deep']) {
-                    html += '<div><label style="font-size:11px;color:var(--text-muted);">' + depth.charAt(0).toUpperCase() + depth.slice(1) + ' sensor</label>';
-                    html += '<select id="cfgProbe_' + prefix + '_' + depth + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;">';
-                    html += '<option value="">None</option>';
-                    for (const s of sensors) {
-                        const auto = s.entity_id.includes(depth) ? ' (auto)' : '';
-                        const selected = s.entity_id.includes(depth) ? ' selected' : '';
-                        html += '<option value="' + s.entity_id + '"' + selected + '>' + s.entity_id.replace('sensor.', '') + auto + '</option>';
-                    }
-                    html += '</select></div>';
-                }
-                html += '</div>';
-                html += '<div style="margin-bottom:6px;"><label style="font-size:11px;color:var(--text-muted);">Display Name</label>';
-                var defaultName = prefix.replace(/_/g, ' ').split(' ').map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(' ');
-                html += '<input type="text" id="cfgProbe_' + prefix + '_name" value="' + esc(defaultName) + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;"></div>';
-                html += '<button class="btn btn-primary btn-sm" onclick="addDiscoveredProbe(\\'' + esc(prefix) + '\\')">Add Probe</button>';
-                html += '</div>';
+            const toggleEl = document.getElementById('moistureDeviceFilterToggle');
+            if (filtered && devices.length < totalCount) {
+                toggleEl.innerHTML = 'Showing ' + devices.length + ' moisture device' + (devices.length !== 1 ? 's' : '') +
+                    ' of ' + totalCount + ' total. <a href="#" onclick="showAllMoistureDevices(event)">Show all devices</a>';
+                toggleEl.style.display = '';
+            } else if (!filtered && totalCount > 0) {
+                toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="showFilteredMoistureDevices(event)">Show only moisture devices</a>';
+                toggleEl.style.display = '';
+            } else {
+                toggleEl.style.display = 'none';
             }
-            el.innerHTML = html;
         } catch (e) {
-            el.innerHTML = '<div style="color:var(--color-danger);">Discovery failed: ' + esc(e.message) + '</div>';
+            select.innerHTML = '<option value="">Failed to load devices</option>';
         }
     }
 
-    async function addDiscoveredProbe(prefix) {
+    function showAllMoistureDevices(e) {
+        e.preventDefault();
+        moistureShowingAllDevices = true;
+        loadMoistureDevices(true);
+    }
+
+    function showFilteredMoistureDevices(e) {
+        e.preventDefault();
+        moistureShowingAllDevices = false;
+        loadMoistureDevices(false);
+    }
+
+    function refreshMoistureDevices() {
+        loadMoistureDevices();
+        showToast('Device list refreshed');
+    }
+
+    async function onMoistureDeviceChange() {
+        const deviceId = document.getElementById('cfgMoistureDeviceSelect').value;
+        const el = document.getElementById('cfgMoistureDeviceSensors');
+        if (!deviceId) {
+            el.innerHTML = '';
+            return;
+        }
+        el.innerHTML = '<div class="loading">Loading sensors for this device...</div>';
+        try {
+            const data = await mcfg('/devices/' + encodeURIComponent(deviceId) + '/sensors');
+            const sensors = data.sensors || [];
+            if (sensors.length === 0) {
+                el.innerHTML = '<p style="color:var(--text-muted);">No sensor entities found on this device.</p>';
+                return;
+            }
+            let html = '<div style="background:var(--bg-tile);border-radius:8px;padding:12px;border:1px solid var(--border-light);">';
+            html += '<div style="font-weight:600;margin-bottom:6px;">' + sensors.length + ' sensor(s) found on this device</div>';
+            html += '<div style="font-size:12px;margin-bottom:10px;color:var(--text-muted);">';
+            for (const s of sensors) {
+                const state = s.state != null ? s.state : '—';
+                const unit = s.unit_of_measurement || '';
+                html += '<div>' + esc(s.entity_id) + ' = <strong>' + esc(String(state)) + '</strong> ' + esc(unit) + '</div>';
+            }
+            html += '</div>';
+
+            // Depth mapping dropdowns
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">';
+            for (const depth of ['shallow', 'mid', 'deep']) {
+                html += '<div><label style="font-size:11px;color:var(--text-muted);">' + depth.charAt(0).toUpperCase() + depth.slice(1) + ' sensor</label>';
+                html += '<select id="cfgProbeDevice_' + depth + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;">';
+                html += '<option value="">None</option>';
+                for (const s of sensors) {
+                    const eidShort = s.entity_id.replace('sensor.', '');
+                    const nameLabel = s.friendly_name || eidShort;
+                    const auto = s.entity_id.toLowerCase().includes(depth) || (s.friendly_name || '').toLowerCase().includes(depth) ? ' (auto)' : '';
+                    const selected = (s.entity_id.toLowerCase().includes(depth) || (s.friendly_name || '').toLowerCase().includes(depth)) ? ' selected' : '';
+                    html += '<option value="' + esc(s.entity_id) + '"' + selected + '>' + esc(nameLabel) + auto + '</option>';
+                }
+                html += '</select></div>';
+            }
+            html += '</div>';
+
+            // Display name
+            html += '<div style="margin-bottom:8px;"><label style="font-size:11px;color:var(--text-muted);">Display Name</label>';
+            // Derive a default name from the device
+            const select = document.getElementById('cfgMoistureDeviceSelect');
+            const deviceName = select.options[select.selectedIndex] ? select.options[select.selectedIndex].textContent : 'Probe';
+            html += '<input type="text" id="cfgProbeDevice_name" value="' + esc(deviceName) + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;"></div>';
+
+            html += '<button class="btn btn-primary btn-sm" onclick="addProbeFromDevice()">Add Probe</button>';
+            html += '</div>';
+            el.innerHTML = html;
+        } catch (e) {
+            el.innerHTML = '<div style="color:var(--color-danger);">Failed to load device sensors: ' + esc(e.message) + '</div>';
+        }
+    }
+
+    async function addProbeFromDevice() {
         try {
             const sensors = {};
             for (const depth of ['shallow', 'mid', 'deep']) {
-                const sel = document.getElementById('cfgProbe_' + prefix + '_' + depth);
+                const sel = document.getElementById('cfgProbeDevice_' + depth);
                 if (sel && sel.value) sensors[depth] = sel.value;
             }
             if (Object.keys(sensors).length === 0) {
                 showToast('Select at least one sensor for this probe', 'error');
                 return;
             }
-            const nameInput = document.getElementById('cfgProbe_' + prefix + '_name');
-            const displayName = nameInput ? nameInput.value : prefix;
-            const probeId = 'probe_' + prefix;
+            const nameInput = document.getElementById('cfgProbeDevice_name');
+            const displayName = nameInput ? nameInput.value.trim() : 'Gophr Probe';
 
-            // Get all zone entities to offer for mapping
+            // Build a probe ID from the display name
+            const probeId = 'probe_' + displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+            // Get all zone entities to map by default
             const zonesRes = await fetch(BASE + '/homeowner/zones');
             const zonesData = await zonesRes.json();
             const allZones = (Array.isArray(zonesData) ? zonesData : zonesData.zones || []).map(function(z) { return z.entity_id; });
@@ -2637,7 +2704,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 probe_id: probeId,
                 display_name: displayName,
                 sensors: sensors,
-                zone_mappings: allZones, // Map to all zones by default
+                zone_mappings: allZones,
             });
             showToast('Probe "' + displayName + '" added and mapped to all zones');
             loadMoistureConfig();
@@ -2708,12 +2775,13 @@ ADMIN_HTML = """<!DOCTYPE html>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Weather rules and thresholds (rain skip, wind delay, temperature adjustments, etc.) are configured from the Homeowner Dashboard's weather section.</div>
 
-<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Moisture Probes (Gophr)</h4>
-<p style="margin-bottom:10px;">Integrate Gophr moisture probes with your irrigation system for data-driven watering adjustments. Expand the Moisture Probes card below to configure:</p>
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Gophr Moisture Probes</h4>
+<p style="margin-bottom:10px;">Integrate Gophr moisture probes with your irrigation system for data-driven watering adjustments. Expand the Moisture Probes card to configure:</p>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle moisture-aware irrigation on or off</li>
-<li style="margin-bottom:4px;"><strong>Discover Probes</strong> — Scan HA sensors for keywords like "gophr", "moisture", or "soil" to auto-detect probes</li>
-<li style="margin-bottom:4px;"><strong>Add Probes</strong> — Map discovered sensors to shallow/mid/deep depths and add them. New probes are mapped to all zones by default</li>
+<li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your Gophr device from the dropdown. The list is filtered to show devices matching "gophr", "moisture", "soil", or "probe". Click "Show all devices" if your device doesn't appear.</li>
+<li style="margin-bottom:4px;"><strong>Map Sensors</strong> — After selecting a device, map its sensor entities to shallow, mid, and deep depth readings. Sensors with matching depth names are auto-selected.</li>
+<li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. New probes are mapped to all irrigation zones by default.</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Configure stale data threshold, depth weights, and moisture scaling thresholds</li>
 <li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings, zone multipliers, and duration controls</li>
 </ul>
