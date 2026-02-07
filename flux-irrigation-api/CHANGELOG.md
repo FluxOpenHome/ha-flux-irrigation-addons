@@ -49,11 +49,12 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Dark Mode** — All pages (Homeowner Dashboard, Configuration, Management Dashboard) support a 🌙/☀️ dark mode toggle; uses CSS custom properties for consistent theming; preference saved per-device in localStorage with separate keys for homeowner and management sides
 - **In-App Help** — Every page has a ❓ help button in the header that opens a scrollable modal with page-specific documentation:
   - Homeowner Dashboard: 7 sections (dashboard overview, zone control, sensors, schedules, weather, run history, system pause)
-  - Configuration: 6 sections (overview, device selection, API keys, connection keys, weather settings, revoking access)
+  - Configuration: 7 sections (overview, device selection, API keys, connection keys, weather settings, moisture probes, revoking access)
   - Management Dashboard: 11 sections (overview, adding properties, property cards, search/filtering, detail view, remote control, schedules, weather rules, run history, notes/aliases, updating keys)
 
 ### Changed
 
+- **Moisture Probe Configuration on Configuration Page** — Probes are now discovered, added, and configured from the Configuration page (instead of only the Homeowner Dashboard); the Homeowner Dashboard shows the moisture card once probes are added and enabled
 - **Collapsible Device Entities** — The device entity list on the Configuration page (zones, sensors, controls) is now collapsed by default; click to expand and see the full list
 - **Smart Device Filtering** — The device selection dropdown on the Configuration page now filters to show only irrigation-related devices by default (matching keywords like "Flux", "irrigation", "sprinkler", or "ESPHome"); click "Show all devices" to see the full list if needed
 - **ESPHome Schedule Control** — System pause/resume now disables/restores ESPHome schedule programs on the controller, preventing the controller from starting runs while paused
@@ -69,6 +70,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - Connection key regeneration after revoke no longer silently fails — fixed schema validation, stale API key reuse, and HA token corruption issues that prevented the revoke → regenerate → reconnect flow from working
 - Management dashboard no longer incorrectly shows "Access Revoked" when the API key is simply stale — only the explicit revoked flag from the homeowner triggers revoked status
 - HA Long-Lived Access Token validation prevents generating broken Nabu Casa connection keys when the token is missing or corrupted
+- Homeowner dashboard JavaScript fatal error caused by unescaped single quotes in moisture probe onclick handlers — prevented all dashboard functionality from loading
+- Moisture probe API helper `mapi()` was using undefined `BASE` variable instead of `HBASE` — moisture probe API calls would always fail
 
 ---
 

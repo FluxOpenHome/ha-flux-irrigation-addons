@@ -1553,6 +1553,22 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Moisture Probes -->
+    <div class="card">
+        <div class="card-header" style="cursor:pointer;" onclick="document.getElementById('moistureCardBody').style.display = document.getElementById('moistureCardBody').style.display === 'none' ? 'block' : 'none'; document.getElementById('moistureChevron').textContent = document.getElementById('moistureCardBody').style.display === 'none' ? '▶' : '▼';">
+            <h2>Moisture Probes (Gophr)</h2>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span id="moistureStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">—</span>
+                <span id="moistureChevron" style="font-size:12px;color:var(--text-muted);">▶</span>
+            </div>
+        </div>
+        <div class="card-body" id="moistureCardBody" style="display:none;">
+            <div id="moistureConfigContent">
+                <div class="loading">Loading moisture configuration...</div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- Help Modal -->
@@ -2407,6 +2423,239 @@ ADMIN_HTML = """<!DOCTYPE html>
         } catch(e) { showToast(e.message, 'error'); }
     }
 
+    // --- Moisture Probes ---
+    const MBASE = BASE + '/homeowner/moisture';
+
+    async function mcfg(path, method = 'GET', bodyData = null) {
+        const opts = { method, headers: {} };
+        if (bodyData) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(bodyData);
+        }
+        const res = await fetch(MBASE + path, opts);
+        const data = await res.json();
+        if (!res.ok) {
+            const detail = data.detail || data.error || JSON.stringify(data);
+            throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+        }
+        return data;
+    }
+
+    async function loadMoistureConfig() {
+        const content = document.getElementById('moistureConfigContent');
+        const badge = document.getElementById('moistureStatusBadge');
+        try {
+            const data = await mcfg('/probes');
+            const settings = await mcfg('/settings');
+            const probes = data.probes || {};
+            const probeCount = Object.keys(probes).length;
+
+            if (settings.enabled) {
+                badge.textContent = probeCount + ' probe(s)';
+                badge.style.background = 'var(--bg-success-light)';
+                badge.style.color = 'var(--text-success-dark)';
+            } else {
+                badge.textContent = probeCount > 0 ? 'Disabled' : 'Not Configured';
+                badge.style.background = 'var(--bg-tile)';
+                badge.style.color = 'var(--text-muted)';
+            }
+
+            let html = '';
+
+            // Enable toggle + settings
+            html += '<div style="margin-bottom:16px;">';
+            html += '<label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" id="cfgMoistureEnabled" ' + (settings.enabled ? 'checked' : '') + '> Enable Moisture Probe Integration</label>';
+            html += '<p style="font-size:12px;color:var(--text-muted);margin-top:4px;">When enabled, soil moisture data from Gophr probes adjusts irrigation durations automatically.</p>';
+            html += '</div>';
+
+            // Stale threshold + depth weights
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px;">';
+            html += '<div><label style="font-size:12px;color:var(--text-muted);">Stale Threshold (min)</label>';
+            html += '<input type="number" id="cfgMoistureStale" value="' + (settings.stale_reading_threshold_minutes || 120) + '" min="5" max="1440" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);"></div>';
+            const dw = settings.depth_weights || {shallow: 0.2, mid: 0.5, deep: 0.3};
+            for (const d of ['shallow', 'mid', 'deep']) {
+                html += '<div><label style="font-size:12px;color:var(--text-muted);">' + d.charAt(0).toUpperCase() + d.slice(1) + ' Weight</label>';
+                html += '<input type="number" id="cfgMoistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);"></div>';
+            }
+            html += '</div>';
+
+            // Default thresholds
+            const dt = settings.default_thresholds || {};
+            html += '<div style="margin-bottom:16px;">';
+            html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;">Default Thresholds (%)</label>';
+            html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">';
+            for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry'], ['max_increase_percent','Max +'], ['max_decrease_percent','Max -']]) {
+                html += '<div><label style="font-size:11px;color:var(--text-muted);">' + label + '</label>';
+                html += '<input type="number" id="cfgMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);"></div>';
+            }
+            html += '</div></div>';
+
+            html += '<button class="btn btn-primary" onclick="saveMoistureConfig()">Save Moisture Settings</button>';
+            html += '<hr style="margin:20px 0;border:none;border-top:1px solid var(--border-light);">';
+
+            // Probe discovery + management
+            html += '<h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">Probes</h3>';
+
+            // Existing probes
+            if (probeCount > 0) {
+                html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px;">';
+                for (const [pid, probe] of Object.entries(probes)) {
+                    const ss = probe.sensors || {};
+                    const zones = probe.zone_mappings || [];
+                    html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+                    html += '<strong style="font-size:14px;">' + esc(probe.display_name || pid) + '</strong>';
+                    html += '<button class="btn btn-danger btn-sm" onclick="removeMoistureProbe(\\'' + esc(pid) + '\\')">Remove</button>';
+                    html += '</div>';
+                    html += '<div style="font-size:12px;color:var(--text-muted);">ID: ' + esc(pid) + '</div>';
+                    html += '<div style="font-size:12px;margin-top:4px;"><strong>Sensors:</strong> ' + Object.entries(ss).map(function(e){return e[0] + ' = ' + e[1];}).join(', ') + '</div>';
+                    html += '<div style="font-size:12px;margin-top:2px;"><strong>Zones:</strong> ' + (zones.length > 0 ? zones.map(function(z){return z.split(".").pop();}).join(', ') : '<em>None mapped</em>') + '</div>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            } else {
+                html += '<p style="color:var(--text-muted);margin-bottom:16px;">No probes configured yet. Click <strong>Discover Probes</strong> to scan Home Assistant for Gophr moisture sensors.</p>';
+            }
+
+            html += '<button class="btn btn-secondary" onclick="discoverMoistureProbesCfg()">Discover Probes</button>';
+            html += '<div id="cfgMoistureDiscoverResults" style="margin-top:12px;"></div>';
+
+            content.innerHTML = html;
+        } catch (e) {
+            content.innerHTML = '<div style="color:var(--color-danger);">Failed to load moisture configuration: ' + esc(e.message) + '</div>';
+        }
+    }
+
+    async function saveMoistureConfig() {
+        try {
+            const settings = {
+                enabled: document.getElementById('cfgMoistureEnabled').checked,
+                stale_reading_threshold_minutes: parseInt(document.getElementById('cfgMoistureStale').value) || 120,
+                depth_weights: {
+                    shallow: parseFloat(document.getElementById('cfgMoistureWeight_shallow').value) || 0.2,
+                    mid: parseFloat(document.getElementById('cfgMoistureWeight_mid').value) || 0.5,
+                    deep: parseFloat(document.getElementById('cfgMoistureWeight_deep').value) || 0.3,
+                },
+                default_thresholds: {
+                    skip_threshold: parseInt(document.getElementById('cfgMoistureThresh_skip_threshold').value) || 80,
+                    scale_wet: parseInt(document.getElementById('cfgMoistureThresh_scale_wet').value) || 70,
+                    scale_dry: parseInt(document.getElementById('cfgMoistureThresh_scale_dry').value) || 30,
+                    max_increase_percent: parseInt(document.getElementById('cfgMoistureThresh_max_increase_percent').value) || 50,
+                    max_decrease_percent: parseInt(document.getElementById('cfgMoistureThresh_max_decrease_percent').value) || 50,
+                },
+            };
+            await mcfg('/settings', 'PUT', settings);
+            showToast('Moisture settings saved');
+            loadMoistureConfig();
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function discoverMoistureProbesCfg() {
+        const el = document.getElementById('cfgMoistureDiscoverResults');
+        el.innerHTML = '<div class="loading">Scanning Home Assistant for moisture sensors...</div>';
+        try {
+            const data = await mcfg('/probes/discover');
+            const candidates = data.candidates || [];
+            if (candidates.length === 0) {
+                el.innerHTML = '<p style="color:var(--text-muted);">No moisture probe sensors found. Make sure your Gophr probes are connected to Home Assistant and showing sensor entities with names containing "gophr", "moisture", or "soil".</p>';
+                return;
+            }
+            let html = '<div style="margin-bottom:8px;font-size:13px;font-weight:600;">' + candidates.length + ' candidate sensor(s) found:</div>';
+            // Group candidates by possible probe (look for common prefixes)
+            const grouped = {};
+            for (const c of candidates) {
+                // Try to find a probe prefix: e.g., sensor.gophr_backyard_shallow → gophr_backyard
+                const name = c.entity_id.replace('sensor.', '');
+                const parts = name.split('_');
+                let prefix = name;
+                for (const depth of ['shallow', 'mid', 'deep', 'moisture', 'soil']) {
+                    const idx = parts.indexOf(depth);
+                    if (idx > 0) {
+                        prefix = parts.slice(0, idx).join('_');
+                        break;
+                    }
+                }
+                if (!grouped[prefix]) grouped[prefix] = [];
+                grouped[prefix].push(c);
+            }
+
+            for (const [prefix, sensors] of Object.entries(grouped)) {
+                html += '<div style="background:var(--bg-tile);border-radius:8px;padding:12px;margin-bottom:8px;border:1px solid var(--border-light);">';
+                html += '<div style="font-weight:600;margin-bottom:6px;">Probe: ' + esc(prefix) + '</div>';
+                html += '<div style="font-size:12px;margin-bottom:8px;">';
+                for (const s of sensors) {
+                    const state = s.state != null ? s.state : '—';
+                    html += '<div>' + esc(s.entity_id) + ' = <strong>' + esc(String(state)) + '</strong> ' + esc(s.unit || '') + '</div>';
+                }
+                html += '</div>';
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">';
+                for (const depth of ['shallow', 'mid', 'deep']) {
+                    html += '<div><label style="font-size:11px;color:var(--text-muted);">' + depth.charAt(0).toUpperCase() + depth.slice(1) + ' sensor</label>';
+                    html += '<select id="cfgProbe_' + prefix + '_' + depth + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;">';
+                    html += '<option value="">None</option>';
+                    for (const s of sensors) {
+                        const auto = s.entity_id.includes(depth) ? ' (auto)' : '';
+                        const selected = s.entity_id.includes(depth) ? ' selected' : '';
+                        html += '<option value="' + s.entity_id + '"' + selected + '>' + s.entity_id.replace('sensor.', '') + auto + '</option>';
+                    }
+                    html += '</select></div>';
+                }
+                html += '</div>';
+                html += '<div style="margin-bottom:6px;"><label style="font-size:11px;color:var(--text-muted);">Display Name</label>';
+                var defaultName = prefix.replace(/_/g, ' ').split(' ').map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(' ');
+                html += '<input type="text" id="cfgProbe_' + prefix + '_name" value="' + esc(defaultName) + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;"></div>';
+                html += '<button class="btn btn-primary btn-sm" onclick="addDiscoveredProbe(\\'' + esc(prefix) + '\\')">Add Probe</button>';
+                html += '</div>';
+            }
+            el.innerHTML = html;
+        } catch (e) {
+            el.innerHTML = '<div style="color:var(--color-danger);">Discovery failed: ' + esc(e.message) + '</div>';
+        }
+    }
+
+    async function addDiscoveredProbe(prefix) {
+        try {
+            const sensors = {};
+            for (const depth of ['shallow', 'mid', 'deep']) {
+                const sel = document.getElementById('cfgProbe_' + prefix + '_' + depth);
+                if (sel && sel.value) sensors[depth] = sel.value;
+            }
+            if (Object.keys(sensors).length === 0) {
+                showToast('Select at least one sensor for this probe', 'error');
+                return;
+            }
+            const nameInput = document.getElementById('cfgProbe_' + prefix + '_name');
+            const displayName = nameInput ? nameInput.value : prefix;
+            const probeId = 'probe_' + prefix;
+
+            // Get all zone entities to offer for mapping
+            const zonesRes = await fetch(BASE + '/homeowner/zones');
+            const zonesData = await zonesRes.json();
+            const allZones = (Array.isArray(zonesData) ? zonesData : zonesData.zones || []).map(function(z) { return z.entity_id; });
+
+            await mcfg('/probes', 'POST', {
+                probe_id: probeId,
+                display_name: displayName,
+                sensors: sensors,
+                zone_mappings: allZones, // Map to all zones by default
+            });
+            showToast('Probe "' + displayName + '" added and mapped to all zones');
+            loadMoistureConfig();
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function removeMoistureProbe(probeId) {
+        if (!confirm('Remove this moisture probe?')) return;
+        try {
+            await mcfg('/probes/' + encodeURIComponent(probeId), 'DELETE');
+            showToast('Probe removed');
+            loadMoistureConfig();
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    // Load moisture config on page load
+    loadMoistureConfig();
+
     // --- Help Modal ---
     const HELP_CONTENT = `
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 8px 0;">Configuration Overview</h4>
@@ -2460,13 +2709,15 @@ ADMIN_HTML = """<!DOCTYPE html>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Weather rules and thresholds (rain skip, wind delay, temperature adjustments, etc.) are configured from the Homeowner Dashboard's weather section.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Moisture Probes (Gophr)</h4>
-<p style="margin-bottom:10px;">Gophr moisture probes are automatically detected from Home Assistant sensors. Configuration and probe-to-zone mapping are managed from the <strong>Homeowner Dashboard</strong>.</p>
+<p style="margin-bottom:10px;">Integrate Gophr moisture probes with your irrigation system for data-driven watering adjustments. Expand the Moisture Probes card below to configure:</p>
 <ul style="margin:4px 0 12px 20px;">
-<li style="margin-bottom:4px;">Probes are discovered by scanning HA sensors for keywords like "gophr", "moisture", or "soil"</li>
-<li style="margin-bottom:4px;">Each probe has up to 3 depth sensors (shallow, mid, deep) measuring 0–100% moisture</li>
-<li style="margin-bottom:4px;">Probes are mapped to irrigation zones for automatic watering adjustments</li>
-<li style="margin-bottom:4px;">The combined weather &times; moisture multiplier adjusts both timed runs and ESPHome scheduled durations</li>
+<li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle moisture-aware irrigation on or off</li>
+<li style="margin-bottom:4px;"><strong>Discover Probes</strong> — Scan HA sensors for keywords like "gophr", "moisture", or "soil" to auto-detect probes</li>
+<li style="margin-bottom:4px;"><strong>Add Probes</strong> — Map discovered sensors to shallow/mid/deep depths and add them. New probes are mapped to all zones by default</li>
+<li style="margin-bottom:4px;"><strong>Settings</strong> — Configure stale data threshold, depth weights, and moisture scaling thresholds</li>
+<li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings, zone multipliers, and duration controls</li>
 </ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The combined weather &times; moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled durations automatically.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Revoking Access</h4>
 <p style="margin-bottom:10px;">If you need to disconnect a management company, use the <strong>Revoke Access</strong> button. This immediately invalidates the current API key and connection key, preventing any further remote access.</p>

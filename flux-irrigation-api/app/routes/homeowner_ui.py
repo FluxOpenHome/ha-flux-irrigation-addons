@@ -1523,14 +1523,17 @@ async function loadMoisture() {
         const data = await mapi('/probes');
         const settings = await mapi('/settings');
 
-        if (!settings.enabled && Object.keys(data.probes || {}).length === 0) {
+        const probes = data.probes || {};
+        const probeCount = Object.keys(probes).length;
+
+        // Hide the card on the dashboard if no probes are configured
+        // (probes are added via the Configuration page)
+        if (!settings.enabled && probeCount === 0) {
             card.style.display = 'none';
             return;
         }
         card.style.display = 'block';
 
-        const probes = data.probes || {};
-        const probeCount = Object.keys(probes).length;
         badge.textContent = settings.enabled ? probeCount + ' probe(s)' : 'Disabled';
         badge.style.background = settings.enabled ? 'var(--bg-success-light)' : 'var(--bg-tile)';
         badge.style.color = settings.enabled ? 'var(--text-success-dark)' : 'var(--text-muted)';
@@ -1629,7 +1632,7 @@ async function loadMoisture() {
         // Expandable sections
         // Settings
         html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:12px;">';
-        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\'settings\')">';
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\\'settings\\')">';
         html += '<span style="font-size:13px;font-weight:600;">Settings</span>';
         html += '<span id="moistureSettingsChevron" style="font-size:12px;color:var(--text-muted);">' + (_moistureExpanded.settings ? '▼' : '▶') + '</span>';
         html += '</div>';
@@ -1659,7 +1662,7 @@ async function loadMoisture() {
 
         // Probe Management
         html += '<div style="margin-top:12px;border-top:1px solid var(--border-light);padding-top:12px;">';
-        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\'management\')">';
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\\'management\\')">';
         html += '<span style="font-size:13px;font-weight:600;">Manage Probes</span>';
         html += '<span id="moistureManagementChevron" style="font-size:12px;color:var(--text-muted);">' + (_moistureExpanded.management ? '▼' : '▶') + '</span>';
         html += '</div>';
@@ -1672,7 +1675,7 @@ async function loadMoisture() {
             html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--border-light);">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
             html += '<strong>' + esc(probe.display_name || pid) + '</strong>';
-            html += '<button class="btn btn-danger btn-sm" onclick="deleteMoistureProbe(\'' + esc(pid) + '\')">Remove</button>';
+            html += '<button class="btn btn-danger btn-sm" onclick="deleteMoistureProbe(\\'' + esc(pid) + '\\')">Remove</button>';
             html += '</div>';
             html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">ID: ' + esc(pid) + '</div>';
             const ss = probe.sensors || {};
@@ -1684,7 +1687,7 @@ async function loadMoisture() {
 
         // Duration Controls
         html += '<div style="margin-top:12px;border-top:1px solid var(--border-light);padding-top:12px;">';
-        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\'durations\')">';
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\\'durations\\')">';
         html += '<span style="font-size:13px;font-weight:600;">Duration Controls</span>';
         html += '<span id="moistureDurationsChevron" style="font-size:12px;color:var(--text-muted);">' + (_moistureExpanded.durations ? '▼' : '▶') + '</span>';
         html += '</div>';
@@ -1710,8 +1713,13 @@ async function mapi(path, method = 'GET', bodyData = null) {
         opts.headers['Content-Type'] = 'application/json';
         opts.body = JSON.stringify(bodyData);
     }
-    const res = await fetch(BASE + '/moisture' + path, opts);
-    return await res.json();
+    const res = await fetch(HBASE + '/moisture' + path, opts);
+    const data = await res.json();
+    if (!res.ok) {
+        const detail = data.detail || data.error || JSON.stringify(data);
+        throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+    return data;
 }
 
 function toggleMoistureSection(section) {
