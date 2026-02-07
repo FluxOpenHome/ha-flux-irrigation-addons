@@ -7,6 +7,7 @@ and permissions through the add-on's ingress panel.
 import json
 import os
 import secrets
+import httpx
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -28,10 +29,43 @@ def _load_options() -> dict:
 
 
 async def _save_options(options: dict):
-    """Save options to persistent storage and reload config."""
+    """Save options to persistent storage, persist to Supervisor, and reload config.
+
+    We write to both:
+      1. /data/options.json — for immediate runtime use
+      2. Supervisor API (POST /addons/self/options) — so settings survive add-on rebuilds
+
+    The HA Supervisor controls /data/options.json on add-on start. If we only write
+    to the local file, a rebuild/restart wipes our changes back to the Supervisor's
+    stored values. By pushing to the Supervisor API, we ensure persistence.
+    """
+    # 1. Write to local file for immediate use
     os.makedirs(os.path.dirname(OPTIONS_FILE), exist_ok=True)
     with open(OPTIONS_FILE, "w") as f:
         json.dump(options, f, indent=2)
+
+    # 2. Push to Supervisor API so settings survive rebuilds
+    supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+    if supervisor_token:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "http://supervisor/addons/self/options",
+                    headers={
+                        "Authorization": f"Bearer {supervisor_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"options": options},
+                )
+                if resp.status_code == 200:
+                    print(f"[ADMIN] ✓ Options persisted to Supervisor API")
+                else:
+                    print(f"[ADMIN] ✗ Supervisor API returned {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            print(f"[ADMIN] ✗ Failed to persist options to Supervisor: {type(e).__name__}: {e}")
+    else:
+        print(f"[ADMIN] ⚠ No SUPERVISOR_TOKEN — options saved locally only (may not survive rebuild)")
+
     await reload_config()
 
 

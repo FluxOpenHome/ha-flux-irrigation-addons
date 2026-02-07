@@ -119,18 +119,25 @@ async def _proxy_via_nabu_casa(
     params: Optional[dict] = None,
 ) -> tuple[int, dict]:
     """
-    Route request through HA REST API → rest_command/irrigation_proxy.
+    Route request through HA REST API → rest_command/irrigation_proxy_*.
 
-    The homeowner's HA has a rest_command called 'irrigation_proxy' that
-    forwards requests to localhost:8099. We call it via:
-      POST {nabu_casa_url}/api/services/rest_command/irrigation_proxy?return_response
+    The homeowner's HA has per-method rest_commands (irrigation_proxy_get,
+    irrigation_proxy_post, etc.) that forward requests to localhost:8099.
+    We call the appropriate one via:
+      POST {nabu_casa_url}/api/services/rest_command/irrigation_proxy_{method}?return_response
 
     The HA REST API returns:
       { "service_response": { "status": 200, "content": "...", "headers": {...} } }
     """
     client = _get_client()
     base_url = connection.url.rstrip("/")
-    service_url = f"{base_url}/api/services/rest_command/irrigation_proxy?return_response"
+
+    # Pick the correct per-method rest_command service
+    method_lower = method.lower()
+    if method_lower not in ("get", "post", "put", "delete"):
+        return 400, {"error": f"Unsupported HTTP method: {method}"}
+    service_name = f"irrigation_proxy_{method_lower}"
+    service_url = f"{base_url}/api/services/rest_command/{service_name}?return_response"
 
     # Build the full path with query params if any
     full_path = path
@@ -141,10 +148,11 @@ async def _proxy_via_nabu_casa(
     # Service call data — these become template variables in the rest_command
     service_data = {
         "path": full_path.lstrip("/"),
-        "method": method.upper(),
-        "payload": json.dumps(json_body) if json_body else "{}",
         "api_key": connection.key,
     }
+    # Only include payload for methods that use it
+    if method_lower in ("post", "put"):
+        service_data["payload"] = json.dumps(json_body) if json_body else "{}"
 
     headers = {
         "Authorization": f"Bearer {connection.ha_token}",
@@ -153,7 +161,7 @@ async def _proxy_via_nabu_casa(
 
     try:
         print(f"[MGMT_CLIENT] Nabu Casa proxy: {method} {path} via {base_url}")
-        print(f"[MGMT_CLIENT]   -> POST {service_url}")
+        print(f"[MGMT_CLIENT]   -> POST {service_url} (service: {service_name})")
         print(f"[MGMT_CLIENT]   -> service_data: {json.dumps(service_data)[:200]}")
         response = await client.request(
             method="POST",
@@ -175,8 +183,8 @@ async def _proxy_via_nabu_casa(
             return 404, {
                 "error": "rest_command not found",
                 "detail": (
-                    "The irrigation_proxy rest_command is not configured on the homeowner's HA. "
-                    "The homeowner needs to restart their Flux Irrigation add-on to auto-configure it."
+                    f"The rest_command.{service_name} service is not configured on the homeowner's HA. "
+                    "The homeowner needs to rebuild the Flux Irrigation add-on and then restart HA."
                 ),
             }
 
@@ -184,12 +192,12 @@ async def _proxy_via_nabu_casa(
             return 400, {
                 "error": "HA rejected the service call (HTTP 400)",
                 "detail": (
-                    "Home Assistant returned 400 Bad Request. This usually means the "
-                    "rest_command.irrigation_proxy service is not registered. "
+                    f"Home Assistant returned 400 Bad Request for rest_command.{service_name}. "
+                    "This usually means the service is not registered. "
                     "The homeowner needs to: (1) Ensure configuration.yaml has "
                     "'homeassistant: packages: !include_dir_named packages', "
-                    "(2) Fully restart Home Assistant (not just reload), "
-                    "(3) Check Developer Tools → Services for 'rest_command.irrigation_proxy'."
+                    "(2) Rebuild the Flux Irrigation add-on (to regenerate the packages file), "
+                    "(3) Fully restart Home Assistant (not just reload)."
                 ),
             }
 
@@ -217,9 +225,9 @@ async def _proxy_via_nabu_casa(
         print(f"[MGMT_CLIENT]   <- service_response keys: {list(service_response.keys()) if isinstance(service_response, dict) else type(service_response)}")
 
         # rest_command returns: {"status": int, "content": str/dict, "headers": dict}
-        # The service_response may be nested under rest_command.irrigation_proxy
+        # The service_response may be nested under rest_command.{service_name}
         if "rest_command" in service_response:
-            service_response = service_response.get("rest_command", {}).get("irrigation_proxy", service_response)
+            service_response = service_response.get("rest_command", {}).get(service_name, service_response)
             print(f"[MGMT_CLIENT]   <- unwrapped service_response keys: {list(service_response.keys()) if isinstance(service_response, dict) else type(service_response)}")
 
         inner_status = service_response.get("status", 502)
