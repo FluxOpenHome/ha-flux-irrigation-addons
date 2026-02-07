@@ -431,9 +431,15 @@ async def run_weather_evaluation() -> dict:
     if should_pause:
         schedule_data = _load_schedules()
         if not schedule_data.get("system_paused"):
+            # Disable ESPHome schedule programs so the controller can't start runs
+            import schedule_control
+            saved_states = await schedule_control.disable_schedules()
+
             schedule_data["system_paused"] = True
             schedule_data["weather_paused"] = True
             schedule_data["weather_pause_reason"] = pause_reason
+            if saved_states:
+                schedule_data["saved_schedule_states"] = saved_states
             _save_schedules(schedule_data)
 
             # Stop all active zones
@@ -465,14 +471,28 @@ async def run_weather_evaluation() -> dict:
                 "humidity": weather.get("humidity"),
                 "wind_speed": weather.get("wind_speed"),
             })
+            # Log to run history so it appears alongside zone events
+            import run_log
+            run_log.log_zone_event(
+                entity_id="system",
+                state="weather_pause",
+                source="weather",
+                zone_name=f"Weather Pause: {pause_reason}",
+            )
             print(f"[WEATHER] System paused: {pause_reason}")
     else:
         # Auto-resume if previously weather-paused and conditions cleared
         schedule_data = _load_schedules()
         if schedule_data.get("weather_paused") and schedule_data.get("system_paused"):
+            # Restore ESPHome schedule programs to their prior state
+            import schedule_control
+            saved_states = schedule_data.get("saved_schedule_states", {})
+            await schedule_control.restore_schedules(saved_states)
+
             schedule_data["system_paused"] = False
             schedule_data["weather_paused"] = False
             schedule_data.pop("weather_pause_reason", None)
+            schedule_data.pop("saved_schedule_states", None)
             _save_schedules(schedule_data)
 
             await ha_client.fire_event("flux_irrigation_weather_resume", {
@@ -485,6 +505,14 @@ async def run_weather_evaluation() -> dict:
                 "humidity": weather.get("humidity"),
                 "wind_speed": weather.get("wind_speed"),
             })
+            # Log to run history so it appears alongside zone events
+            import run_log
+            run_log.log_zone_event(
+                entity_id="system",
+                state="weather_resume",
+                source="weather",
+                zone_name="Weather Resume: conditions cleared",
+            )
             print("[WEATHER] System auto-resumed: weather conditions cleared")
 
     # Log evaluation if any rules triggered

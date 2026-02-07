@@ -171,6 +171,9 @@ async def watch_zone_states():
     This catches zone runs triggered by ESPHome schedules, HA automations,
     or any other source that bypasses our API (since we don't have HA
     event listeners, polling is the fallback).
+
+    Also enforces system pause: if the system is paused and a zone turns on
+    (e.g., ESPHome schedule bypassed our disable), immediately turn it off.
     """
     import asyncio
     import ha_client
@@ -185,12 +188,44 @@ async def watch_zone_states():
                 await asyncio.sleep(30)
                 continue
 
+            # Check if system is currently paused
+            system_paused = False
+            try:
+                from routes.schedule import _load_schedules
+                schedule_data = _load_schedules()
+                system_paused = schedule_data.get("system_paused", False)
+            except Exception:
+                pass
+
             entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
 
             for entity in entities:
                 entity_id = entity["entity_id"]
                 current_state = entity.get("state", "unknown")
                 prev_state = _zone_states.get(entity_id)
+
+                # Enforce pause: if system is paused and a zone just turned on,
+                # immediately turn it off (safety net for ESPHome schedule bypass)
+                if system_paused and current_state in ("on", "open"):
+                    if prev_state not in ("on", "open"):
+                        # Zone just came on while paused — suppress it
+                        domain = entity_id.split(".")[0] if "." in entity_id else "switch"
+                        if domain == "valve":
+                            await ha_client.call_service("valve", "close", {"entity_id": entity_id})
+                        else:
+                            await ha_client.call_service("switch", "turn_off", {"entity_id": entity_id})
+                        attrs = entity.get("attributes", {})
+                        zone_name = attrs.get("friendly_name", entity_id)
+                        log_zone_event(
+                            entity_id=entity_id,
+                            state="off",
+                            source="pause_enforced",
+                            zone_name=zone_name,
+                        )
+                        print(f"[RUN_LOG] Pause enforced: turned off {entity_id} "
+                              f"(zone started while system paused)")
+                        _zone_states[entity_id] = "off"
+                        continue
 
                 # Detect transitions
                 if prev_state is not None and current_state != prev_state:

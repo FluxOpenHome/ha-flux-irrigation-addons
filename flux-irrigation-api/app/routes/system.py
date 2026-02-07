@@ -145,10 +145,16 @@ async def pause_system(request: Request):
                 zone_name=attrs.get("friendly_name", entity_id),
             )
 
+    # Disable ESPHome schedule programs so the controller can't start runs
+    import schedule_control
+    saved_states = await schedule_control.disable_schedules()
+
     # Update schedule state
     from routes.schedule import _load_schedules, _save_schedules
     data = _load_schedules()
     data["system_paused"] = True
+    if saved_states:
+        data["saved_schedule_states"] = saved_states
     _save_schedules(data)
 
     await ha_client.fire_event(
@@ -181,9 +187,17 @@ async def resume_system(request: Request):
     """Resume the irrigation system after a pause."""
     key_config: ApiKeyConfig = request.state.api_key_config
 
+    # Restore ESPHome schedule programs to their prior state
+    import schedule_control
     from routes.schedule import _load_schedules, _save_schedules
     data = _load_schedules()
+    saved_states = data.get("saved_schedule_states", {})
+    await schedule_control.restore_schedules(saved_states)
+
     data["system_paused"] = False
+    data.pop("weather_paused", None)
+    data.pop("weather_pause_reason", None)
+    data.pop("saved_schedule_states", None)
     _save_schedules(data)
 
     await ha_client.fire_event(

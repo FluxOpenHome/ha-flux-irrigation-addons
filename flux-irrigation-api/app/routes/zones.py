@@ -196,6 +196,22 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
+    # Check if system is paused — block zone starts while paused
+    from routes.schedule import _load_schedules
+    schedule_data = _load_schedules()
+    if schedule_data.get("system_paused"):
+        pause_reason = ""
+        if schedule_data.get("weather_paused"):
+            pause_reason = schedule_data.get("weather_pause_reason", "weather conditions")
+            raise HTTPException(
+                status_code=409,
+                detail=f"System is paused due to {pause_reason}. Resume the system before starting zones.",
+            )
+        raise HTTPException(
+            status_code=409,
+            detail="System is paused. Resume the system before starting zones.",
+        )
+
     entity_id = _resolve_zone_entity(zone_id, config)
 
     # Verify zone exists in HA
