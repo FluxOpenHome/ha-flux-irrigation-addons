@@ -503,6 +503,131 @@ async def homeowner_weather():
     }
 
 
+@router.get("/history/runs/csv", summary="Export run history as CSV")
+async def homeowner_history_csv(
+    hours: int = Query(24, ge=1, le=720, description="Hours of history"),
+):
+    """Export irrigation run history as a downloadable CSV file."""
+    from fastapi.responses import Response
+
+    _require_homeowner_mode()
+    config = get_config()
+
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(hours=hours)
+
+    events = []
+    zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+
+    for entity in zone_entities:
+        entity_id = entity["entity_id"]
+        zone_name_str = _zone_name(entity_id)
+
+        history = await ha_client.get_history(
+            entity_id=entity_id,
+            start_time=start_time.isoformat(),
+            end_time=end_time.isoformat(),
+        )
+
+        if history and len(history) > 0:
+            prev_event = None
+            for entry in history[0]:
+                event = {
+                    "entity_id": entity_id,
+                    "zone_name": zone_name_str,
+                    "state": entry.get("state", "unknown"),
+                    "timestamp": entry.get("last_changed", ""),
+                    "duration_seconds": None,
+                }
+
+                if prev_event and prev_event["state"] == "on" and event["state"] == "off":
+                    try:
+                        on_time = datetime.fromisoformat(prev_event["timestamp"])
+                        off_time = datetime.fromisoformat(event["timestamp"])
+                        event["duration_seconds"] = (off_time - on_time).total_seconds()
+                    except ValueError:
+                        pass
+
+                events.append(event)
+                prev_event = event
+
+    events.sort(key=lambda e: e["timestamp"], reverse=True)
+
+    lines = ["timestamp,zone_name,entity_id,state,duration_minutes"]
+    for e in events:
+        dur = ""
+        if e["duration_seconds"] is not None:
+            dur = str(round(e["duration_seconds"] / 60, 1))
+        line = ",".join([
+            e.get("timestamp", ""),
+            _csv_escape(e.get("zone_name", "")),
+            e.get("entity_id", ""),
+            e.get("state", ""),
+            dur,
+        ])
+        lines.append(line)
+
+    csv_content = "\n".join(lines) + "\n"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=irrigation_history_{hours}h.csv"},
+    )
+
+
+@router.get("/weather/log", summary="Get weather event log")
+async def homeowner_weather_log(
+    limit: int = Query(200, ge=1, le=1000),
+    hours: int = Query(0, ge=0, le=8760),
+):
+    """Get the weather event log for the homeowner dashboard."""
+    from routes.weather import get_weather_log
+    return {"events": get_weather_log(limit=limit, hours=hours)}
+
+
+@router.get("/weather/log/csv", summary="Export weather log as CSV")
+async def homeowner_weather_log_csv(
+    hours: int = Query(0, ge=0, le=8760),
+):
+    """Export the weather event log as a downloadable CSV."""
+    from fastapi.responses import Response
+    from routes.weather import get_weather_log
+
+    events = get_weather_log(limit=10000, hours=hours)
+
+    lines = ["timestamp,event,condition,temperature,humidity,wind_speed,watering_multiplier,rules_triggered,reason"]
+    for e in events:
+        rules = ";".join(e.get("triggered_rules", []))
+        line = ",".join([
+            _csv_escape(e.get("timestamp", "")),
+            _csv_escape(e.get("event", "")),
+            _csv_escape(str(e.get("condition", ""))),
+            _csv_escape(str(e.get("temperature", ""))),
+            _csv_escape(str(e.get("humidity", ""))),
+            _csv_escape(str(e.get("wind_speed", ""))),
+            _csv_escape(str(e.get("watering_multiplier", ""))),
+            _csv_escape(rules),
+            _csv_escape(e.get("reason", "")),
+        ])
+        lines.append(line)
+
+    csv_content = "\n".join(lines) + "\n"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=weather_log.csv"},
+    )
+
+
+def _csv_escape(value: str) -> str:
+    """Escape a value for CSV output."""
+    if not value or value == "None":
+        return ""
+    if "," in value or '"' in value or "\n" in value:
+        return '"' + value.replace('"', '""') + '"'
+    return value
+
+
 @router.get("/zone_aliases", summary="Get zone aliases")
 async def homeowner_get_aliases():
     """Get the homeowner's zone display name aliases."""

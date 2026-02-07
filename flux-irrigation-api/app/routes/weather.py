@@ -17,6 +17,75 @@ import ha_client
 router = APIRouter(prefix="/admin/api", tags=["Weather Control"])
 
 WEATHER_RULES_FILE = "/data/weather_rules.json"
+WEATHER_LOG_FILE = "/data/weather_log.jsonl"
+
+
+# --- Weather Event Log ---
+
+def _log_weather_event(event_type: str, details: dict):
+    """Append a weather event to the persistent weather log."""
+    try:
+        os.makedirs(os.path.dirname(WEATHER_LOG_FILE), exist_ok=True)
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": event_type,
+            **details,
+        }
+        with open(WEATHER_LOG_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        print(f"[WEATHER] Failed to write log: {e}")
+
+
+def get_weather_log(limit: int = 200, hours: int = 0) -> list[dict]:
+    """Read weather log entries. If hours > 0, filter to that window."""
+    if not os.path.exists(WEATHER_LOG_FILE):
+        return []
+    cutoff = None
+    if hours > 0:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    entries = []
+    try:
+        with open(WEATHER_LOG_FILE, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if cutoff and entry.get("timestamp", "") < cutoff:
+                        continue
+                    entries.append(entry)
+                except json.JSONDecodeError:
+                    continue
+    except Exception:
+        return []
+    return entries[-limit:]
+
+
+def cleanup_weather_log(retention_days: int = 30):
+    """Remove weather log entries older than retention period."""
+    if not os.path.exists(WEATHER_LOG_FILE):
+        return
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    kept = []
+    try:
+        with open(WEATHER_LOG_FILE, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("timestamp", "") >= cutoff:
+                        kept.append(line)
+                except json.JSONDecodeError:
+                    continue
+        with open(WEATHER_LOG_FILE, "w") as f:
+            for line in kept:
+                f.write(line + "\n")
+    except Exception as e:
+        print(f"[WEATHER] Failed to cleanup log: {e}")
 
 DEFAULT_RULES = {
     "rules_version": 1,
@@ -316,6 +385,14 @@ async def run_weather_evaluation() -> dict:
                 "reason": pause_reason,
                 "rules_triggered": [t["rule"] for t in triggered],
             })
+            _log_weather_event("weather_pause", {
+                "reason": pause_reason,
+                "rules_triggered": [t["rule"] for t in triggered],
+                "condition": weather.get("condition"),
+                "temperature": weather.get("temperature"),
+                "humidity": weather.get("humidity"),
+                "wind_speed": weather.get("wind_speed"),
+            })
             print(f"[WEATHER] System paused: {pause_reason}")
     else:
         # Auto-resume if previously weather-paused and conditions cleared
@@ -329,7 +406,27 @@ async def run_weather_evaluation() -> dict:
             await ha_client.fire_event("flux_irrigation_weather_resume", {
                 "reason": "Weather conditions cleared",
             })
+            _log_weather_event("weather_resume", {
+                "reason": "Weather conditions cleared",
+                "condition": weather.get("condition"),
+                "temperature": weather.get("temperature"),
+                "humidity": weather.get("humidity"),
+                "wind_speed": weather.get("wind_speed"),
+            })
             print("[WEATHER] System auto-resumed: weather conditions cleared")
+
+    # Log evaluation if any rules triggered
+    if triggered:
+        _log_weather_event("weather_evaluation", {
+            "triggered_rules": [t["rule"] for t in triggered],
+            "actions": [t["action"] for t in triggered],
+            "watering_multiplier": round(multiplier, 2),
+            "should_pause": should_pause,
+            "condition": weather.get("condition"),
+            "temperature": weather.get("temperature"),
+            "humidity": weather.get("humidity"),
+            "wind_speed": weather.get("wind_speed"),
+        })
 
     # Save evaluation results
     rules_data["last_evaluation"] = datetime.now(timezone.utc).isoformat()
@@ -406,8 +503,59 @@ async def update_weather_rules(body: dict):
     return {"success": True, "message": "Weather rules updated"}
 
 
+@router.get("/weather/log", summary="Get weather event log")
+async def get_weather_event_log(
+    limit: int = Query(200, ge=1, le=1000, description="Max entries"),
+    hours: int = Query(0, ge=0, le=8760, description="Filter to last N hours (0=all)"),
+):
+    """Get the weather event log — all evaluations, pauses, and resumes."""
+    return {"events": get_weather_log(limit=limit, hours=hours)}
+
+
+@router.get("/weather/log/csv", summary="Export weather log as CSV")
+async def export_weather_log_csv(
+    hours: int = Query(0, ge=0, le=8760, description="Filter to last N hours (0=all)"),
+):
+    """Export the weather event log as a downloadable CSV file."""
+    from fastapi.responses import Response
+
+    events = get_weather_log(limit=10000, hours=hours)
+
+    lines = ["timestamp,event,condition,temperature,humidity,wind_speed,watering_multiplier,rules_triggered,reason"]
+    for e in events:
+        rules = ";".join(e.get("triggered_rules", []))
+        line = ",".join([
+            _csv_escape(e.get("timestamp", "")),
+            _csv_escape(e.get("event", "")),
+            _csv_escape(str(e.get("condition", ""))),
+            _csv_escape(str(e.get("temperature", ""))),
+            _csv_escape(str(e.get("humidity", ""))),
+            _csv_escape(str(e.get("wind_speed", ""))),
+            _csv_escape(str(e.get("watering_multiplier", ""))),
+            _csv_escape(rules),
+            _csv_escape(e.get("reason", "")),
+        ])
+        lines.append(line)
+
+    csv_content = "\n".join(lines) + "\n"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=weather_log.csv"},
+    )
+
+
 @router.post("/weather/evaluate", summary="Manually trigger weather evaluation")
 async def evaluate_weather_now():
     """Manually trigger a weather rules evaluation cycle."""
     result = await run_weather_evaluation()
     return result
+
+
+def _csv_escape(value: str) -> str:
+    """Escape a value for CSV output."""
+    if not value or value == "None":
+        return ""
+    if "," in value or '"' in value or "\n" in value:
+        return '"' + value.replace('"', '""') + '"'
+    return value

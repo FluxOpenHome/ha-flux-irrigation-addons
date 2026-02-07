@@ -188,12 +188,18 @@ limiter = Limiter(key_func=get_remote_address)
 
 # --- Periodic Tasks ---
 async def _periodic_log_cleanup():
-    """Run audit log cleanup once per day."""
+    """Run audit log and weather log cleanup once per day."""
     while True:
         try:
             cleanup_old_logs()
         except Exception as e:
             print(f"[MAIN] Log cleanup error: {e}")
+        try:
+            from routes.weather import cleanup_weather_log
+            config = get_config()
+            cleanup_weather_log(retention_days=config.log_retention_days)
+        except Exception as e:
+            print(f"[MAIN] Weather log cleanup error: {e}")
         await asyncio.sleep(86400)  # 24 hours
 
 

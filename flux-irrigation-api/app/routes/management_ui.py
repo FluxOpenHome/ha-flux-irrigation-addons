@@ -281,7 +281,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div class="card">
             <div class="card-header">
                 <h2>Recent Run History</h2>
-                <span style="font-size:12px;color:#999;">Last 24 hours</span>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <span style="font-size:12px;color:#999;">Last 24 hours</span>
+                    <button class="btn btn-secondary btn-sm" onclick="mgmtExportHistoryCSV(24)">Export CSV</button>
+                </div>
             </div>
             <div class="card-body" id="detailHistory">
                 <div class="loading">Loading history...</div>
@@ -727,6 +730,7 @@ async function loadDetailWeather(id) {
         html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
         html += '<div style="display:flex;gap:6px;">';
         html += '<button class="btn btn-secondary btn-sm" onclick="mgmtEvaluateWeather()">Test Rules Now</button>';
+        html += '<button class="btn btn-secondary btn-sm" onclick="mgmtExportWeatherLogCSV()">Export Log</button>';
         html += '</div>';
         html += '</div>';
         html += '<div id="mgmtWeatherRulesContainer"><div class="loading">Loading rules...</div></div>';
@@ -948,6 +952,19 @@ async function mgmtEvaluateWeather() {
     } catch (e) {
         showToast('Evaluation failed: ' + e.message, 'error');
     }
+}
+
+// --- CSV Export ---
+function mgmtExportHistoryCSV(hours) {
+    if (!currentCustomerId) return;
+    const url = BASE + '/customers/' + currentCustomerId + '/history/runs/csv?hours=' + hours;
+    window.open(url, '_blank');
+}
+
+function mgmtExportWeatherLogCSV() {
+    if (!currentCustomerId) return;
+    const url = BASE + '/customers/' + currentCustomerId + '/weather/log/csv';
+    window.open(url, '_blank');
 }
 
 // --- Detail: Status ---

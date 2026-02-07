@@ -452,3 +452,125 @@ async def evaluate_customer_weather(customer_id: str):
     if status_code != 200:
         raise _proxy_error(status_code, data)
     return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/weather/log",
+    summary="Get customer weather event log",
+)
+async def get_customer_weather_log(
+    customer_id: str,
+    limit: int = 200,
+    hours: int = 0,
+):
+    """Get weather event log from a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    params = {"limit": str(limit)}
+    if hours > 0:
+        params["hours"] = str(hours)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/weather/log", params=params
+    )
+    if status_code != 200:
+        return {"events": []}
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/history/runs/csv",
+    summary="Export customer run history as CSV",
+)
+async def get_customer_history_csv(customer_id: str, hours: int = 24):
+    """Fetch customer run history JSON and convert to CSV for download."""
+    from fastapi.responses import Response
+
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/api/history/runs", params={"hours": str(hours)}
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+
+    events = data.get("events", [])
+    lines = ["timestamp,zone_name,entity_id,state,duration_minutes"]
+    for e in events:
+        dur = ""
+        if e.get("duration_seconds") is not None:
+            dur = str(round(e["duration_seconds"] / 60, 1))
+        line = ",".join([
+            e.get("timestamp", ""),
+            _csv_escape(e.get("zone_name", "")),
+            e.get("entity_id", ""),
+            e.get("state", ""),
+            dur,
+        ])
+        lines.append(line)
+
+    csv_content = "\n".join(lines) + "\n"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=irrigation_history_{hours}h.csv"},
+    )
+
+
+@router.get(
+    "/api/customers/{customer_id}/weather/log/csv",
+    summary="Export customer weather log as CSV",
+)
+async def get_customer_weather_log_csv(customer_id: str, hours: int = 0):
+    """Fetch customer weather log JSON and convert to CSV for download."""
+    from fastapi.responses import Response
+
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    params = {"limit": "10000"}
+    if hours > 0:
+        params["hours"] = str(hours)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/weather/log", params=params
+    )
+    if status_code != 200:
+        return Response(
+            content="timestamp,event,condition,temperature,humidity,wind_speed,watering_multiplier,rules_triggered,reason\n",
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=weather_log.csv"},
+        )
+
+    events = data.get("events", [])
+    lines = ["timestamp,event,condition,temperature,humidity,wind_speed,watering_multiplier,rules_triggered,reason"]
+    for e in events:
+        rules = ";".join(e.get("triggered_rules", []))
+        line = ",".join([
+            _csv_escape(e.get("timestamp", "")),
+            _csv_escape(e.get("event", "")),
+            _csv_escape(str(e.get("condition", ""))),
+            _csv_escape(str(e.get("temperature", ""))),
+            _csv_escape(str(e.get("humidity", ""))),
+            _csv_escape(str(e.get("wind_speed", ""))),
+            _csv_escape(str(e.get("watering_multiplier", ""))),
+            _csv_escape(rules),
+            _csv_escape(e.get("reason", "")),
+        ])
+        lines.append(line)
+
+    csv_content = "\n".join(lines) + "\n"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=weather_log.csv"},
+    )
+
+
+def _csv_escape(value: str) -> str:
+    """Escape a value for CSV output."""
+    if not value or value == "None":
+        return ""
+    if "," in value or '"' in value or "\n" in value:
+        return '"' + value.replace('"', '""') + '"'
+    return value

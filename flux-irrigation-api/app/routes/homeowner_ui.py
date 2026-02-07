@@ -181,7 +181,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="card">
         <div class="card-header">
             <h2>Recent Run History</h2>
-            <span style="font-size:12px;color:#999;">Last 24 hours</span>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <span style="font-size:12px;color:#999;">Last 24 hours</span>
+                <button class="btn btn-secondary btn-sm" onclick="exportHistoryCSV(24)">Export CSV</button>
+            </div>
         </div>
         <div class="card-body" id="detailHistory">
             <div class="loading">Loading history...</div>
@@ -1017,6 +1020,7 @@ async function loadWeather() {
         html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
         html += '<div style="display:flex;gap:6px;">';
         html += '<button class="btn btn-secondary btn-sm" onclick="evaluateWeatherNow()">Test Rules Now</button>';
+        html += '<button class="btn btn-secondary btn-sm" onclick="exportWeatherLogCSV()">Export Log</button>';
         html += '</div>';
         html += '</div>';
         html += '<div id="weatherRulesContainer"><div class="loading">Loading rules...</div></div>';
@@ -1236,6 +1240,17 @@ async function evaluateWeatherNow() {
     } catch (e) {
         showToast('Evaluation failed: ' + e.message, 'error');
     }
+}
+
+// --- CSV Export ---
+function exportHistoryCSV(hours) {
+    const url = HBASE + '/history/runs/csv?hours=' + hours;
+    window.open(url, '_blank');
+}
+
+function exportWeatherLogCSV() {
+    const url = HBASE + '/weather/log/csv';
+    window.open(url, '_blank');
 }
 
 // --- Init ---
