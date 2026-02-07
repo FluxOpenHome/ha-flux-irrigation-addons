@@ -650,6 +650,224 @@ async def clear_customer_history(customer_id: str):
     return data
 
 
+# --- Moisture Probe Proxy Endpoints ---
+
+@router.get(
+    "/api/customers/{customer_id}/moisture/probes",
+    summary="Get customer moisture probes",
+)
+async def get_customer_moisture_probes(customer_id: str):
+    """Get moisture probe configuration and live readings from a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/moisture/probes"
+    )
+    if status_code != 200:
+        return {"enabled": False, "probes": {}, "total": 0}
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/moisture/settings",
+    summary="Get customer moisture settings",
+)
+async def get_customer_moisture_settings(customer_id: str):
+    """Get moisture probe settings from a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/moisture/settings"
+    )
+    if status_code != 200:
+        return {"enabled": False}
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/moisture/settings",
+    summary="Update customer moisture settings",
+)
+async def update_customer_moisture_settings(customer_id: str, request: Request):
+    """Update moisture settings on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", "/admin/api/homeowner/moisture/settings", json_body=body
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to update moisture settings"}
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/moisture/probes/discover",
+    summary="Discover moisture probes on customer system",
+)
+async def discover_customer_moisture_probes(customer_id: str):
+    """Scan for moisture probe sensors on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/moisture/probes/discover"
+    )
+    if status_code != 200:
+        return {"candidates": [], "total": 0}
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/moisture/probes",
+    summary="Add moisture probe to customer system",
+)
+async def add_customer_moisture_probe(customer_id: str, request: Request):
+    """Add a moisture probe on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", "/admin/api/homeowner/moisture/probes", json_body=body
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to add probe"}
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/moisture/probes/{probe_id}",
+    summary="Update moisture probe on customer system",
+)
+async def update_customer_moisture_probe(customer_id: str, probe_id: str, request: Request):
+    """Update a moisture probe on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", f"/admin/api/homeowner/moisture/probes/{probe_id}", json_body=body
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to update probe"}
+    return data
+
+
+@router.delete(
+    "/api/customers/{customer_id}/moisture/probes/{probe_id}",
+    summary="Remove moisture probe from customer system",
+)
+async def delete_customer_moisture_probe(customer_id: str, probe_id: str):
+    """Remove a moisture probe on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "DELETE", f"/admin/api/homeowner/moisture/probes/{probe_id}"
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to remove probe"}
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/moisture/zones/{zone_id}/multiplier",
+    summary="Preview zone moisture multiplier",
+)
+async def get_customer_zone_multiplier(customer_id: str, zone_id: str):
+    """Get the moisture multiplier for a zone on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", f"/admin/api/homeowner/moisture/zones/{zone_id}/multiplier"
+    )
+    if status_code != 200:
+        return {"combined_multiplier": 1.0, "moisture_multiplier": 1.0, "weather_multiplier": 1.0}
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/moisture/durations",
+    summary="Get customer duration adjustment status",
+)
+async def get_customer_moisture_durations(customer_id: str):
+    """Get base vs. adjusted duration status from a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/moisture/durations"
+    )
+    if status_code != 200:
+        return {"duration_adjustment_active": False, "base_durations": {}, "adjusted_durations": {}}
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/moisture/durations/capture",
+    summary="Capture base durations on customer system",
+)
+async def capture_customer_moisture_durations(customer_id: str):
+    """Capture current run durations as base values on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", "/admin/api/homeowner/moisture/durations/capture"
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to capture durations"}
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/moisture/durations/apply",
+    summary="Apply adjusted durations on customer system",
+)
+async def apply_customer_moisture_durations(customer_id: str):
+    """Apply adjusted durations on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", "/admin/api/homeowner/moisture/durations/apply"
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to apply durations"}
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/moisture/durations/restore",
+    summary="Restore base durations on customer system",
+)
+async def restore_customer_moisture_durations(customer_id: str):
+    """Restore base durations on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", "/admin/api/homeowner/moisture/durations/restore"
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to restore durations"}
+    return data
+
+
 def _csv_escape(value: str) -> str:
     """Escape a value for CSV output."""
     if not value or value == "None":

@@ -540,6 +540,14 @@ async def run_weather_evaluation() -> dict:
     rules_data["watering_multiplier"] = round(multiplier, 2)
     _save_weather_rules(rules_data)
 
+    # Trigger moisture probe re-evaluation so the combined multiplier
+    # (weather × moisture) is recalculated with the updated weather multiplier
+    try:
+        from routes.moisture import run_moisture_evaluation
+        await run_moisture_evaluation()
+    except Exception as e:
+        print(f"[WEATHER] Moisture re-evaluation after weather eval failed: {e}")
+
     return {
         "evaluated": True,
         "triggered_rules": triggered,

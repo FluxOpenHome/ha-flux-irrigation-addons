@@ -22,7 +22,7 @@ import os
 
 from config import get_config, async_initialize
 from audit_log import cleanup_old_logs
-from routes import zones, sensors, entities, history, system, admin, management, homeowner, weather
+from routes import zones, sensors, entities, history, system, admin, management, homeowner, weather, moisture
 
 
 PROXY_SERVICE_NAMES = [
@@ -228,6 +228,24 @@ async def _periodic_weather_check():
         await asyncio.sleep(interval)
 
 
+async def _periodic_moisture_evaluation():
+    """Periodically evaluate moisture probes and adjust run durations."""
+    while True:
+        try:
+            config = get_config()
+            if config.mode == "homeowner":
+                from routes.moisture import run_moisture_evaluation
+                result = await run_moisture_evaluation()
+                if not result.get("skipped"):
+                    print(f"[MAIN] Moisture evaluation: {result.get('applied', 0)} zone(s) adjusted")
+        except Exception as e:
+            print(f"[MAIN] Moisture evaluation error: {e}")
+
+        config = get_config()
+        interval = max(config.weather_check_interval_minutes, 5) * 60
+        await asyncio.sleep(interval)
+
+
 async def _periodic_entity_refresh():
     """Periodically re-resolve device entities to pick up newly enabled/disabled entities.
 
@@ -340,10 +358,23 @@ async def lifespan(app: FastAPI):
         customers = load_customers()
         print(f"[MAIN] Management mode: {len(customers)} customer(s) configured")
 
+    # Moisture probe crash recovery: if durations were adjusted when the
+    # add-on last stopped, restore base values so zones don't run with
+    # stale adjusted durations
+    try:
+        from routes.moisture import _load_data as _load_moisture_data, restore_base_durations
+        moisture_data = _load_moisture_data()
+        if moisture_data.get("duration_adjustment_active"):
+            print("[MAIN] Moisture: adjusted durations were active at shutdown — restoring base values")
+            await restore_base_durations()
+    except Exception as e:
+        print(f"[MAIN] Moisture crash recovery error: {e}")
+
     # Start background tasks
     cleanup_task = asyncio.create_task(_periodic_log_cleanup())
     health_task = None
     weather_task = None
+    moisture_task = None
     zone_watcher_task = None
     entity_refresh_task = None
     if config.mode == "management":
@@ -356,6 +387,14 @@ async def lifespan(app: FastAPI):
         weather_task = asyncio.create_task(_periodic_weather_check())
         print(f"[MAIN] Weather control active: entity={config.weather_entity_id}, "
               f"interval={config.weather_check_interval_minutes}min")
+    if config.mode == "homeowner":
+        from routes.moisture import _load_data as _load_moisture_data
+        moisture_data = _load_moisture_data()
+        if moisture_data.get("enabled"):
+            moisture_task = asyncio.create_task(_periodic_moisture_evaluation())
+            probe_count = len(moisture_data.get("probes", {}))
+            print(f"[MAIN] Moisture probe evaluation active: {probe_count} probe(s), "
+                  f"interval={config.weather_check_interval_minutes}min")
     if config.irrigation_device_id:
         entity_refresh_task = asyncio.create_task(_periodic_entity_refresh())
         print(f"[MAIN] Entity auto-refresh active: checking every 5 minutes for newly enabled/disabled entities")
@@ -368,6 +407,8 @@ async def lifespan(app: FastAPI):
         health_task.cancel()
     if weather_task:
         weather_task.cancel()
+    if moisture_task:
+        moisture_task.cancel()
     if zone_watcher_task:
         zone_watcher_task.cancel()
     if entity_refresh_task:
@@ -423,6 +464,7 @@ app.include_router(admin.router)
 app.include_router(management.router)
 app.include_router(homeowner.router)
 app.include_router(weather.router)
+app.include_router(moisture.router)
 
 
 @app.get("/", include_in_schema=False)

@@ -69,6 +69,36 @@ def log_zone_event(
     except Exception:
         pass
 
+    # Capture moisture context at this moment
+    try:
+        from routes.moisture import _load_data as _load_moisture_data, calculate_zone_moisture_multiplier, _get_probe_sensor_states
+        moisture_data = _load_moisture_data()
+        if moisture_data.get("enabled") and moisture_data.get("probes") and entity_id != "system":
+            # Check if this zone has any mapped probes (sync-safe check)
+            has_probes = any(
+                entity_id in probe.get("zone_mappings", [])
+                for probe in moisture_data.get("probes", {}).values()
+            )
+            if has_probes:
+                entry["moisture"] = {
+                    "enabled": True,
+                    "has_probes": True,
+                    "last_evaluation": moisture_data.get("last_evaluation"),
+                    "duration_adjustment_active": moisture_data.get("duration_adjustment_active", False),
+                }
+                # Include adjusted duration info if active
+                adjusted = moisture_data.get("adjusted_durations", {})
+                for dur_eid, adj in adjusted.items():
+                    zone_suffix = entity_id.split(".", 1)[1] if "." in entity_id else entity_id
+                    if zone_suffix in dur_eid:
+                        entry["moisture"]["moisture_multiplier"] = adj.get("moisture_multiplier")
+                        entry["moisture"]["combined_multiplier"] = adj.get("combined_multiplier")
+                        entry["moisture"]["original_duration"] = adj.get("original")
+                        entry["moisture"]["adjusted_duration"] = adj.get("adjusted")
+                        break
+    except Exception:
+        pass
+
     # Track start times for duration calculation
     if state in ("on", "open"):
         _zone_start_times[entity_id] = now.isoformat()

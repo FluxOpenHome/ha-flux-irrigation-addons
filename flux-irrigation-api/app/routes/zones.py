@@ -232,22 +232,57 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
         zone_name=_zone_name(entity_id),
     )
 
-    # If duration specified, schedule automatic shutoff
+    # If duration specified, apply combined multiplier and schedule automatic shutoff
+    adjusted_duration = body.duration_minutes
+    moisture_skip = False
     if body.duration_minutes:
+        try:
+            from routes.moisture import get_combined_multiplier
+            mult_result = await get_combined_multiplier(entity_id)
+            if mult_result.get("moisture_skip"):
+                moisture_skip = True
+            elif mult_result["combined_multiplier"] != 1.0:
+                adjusted_duration = max(1, round(body.duration_minutes * mult_result["combined_multiplier"]))
+                if adjusted_duration != body.duration_minutes:
+                    print(f"[ZONES] Duration adjusted: {body.duration_minutes} → {adjusted_duration} min "
+                          f"(weather={mult_result['weather_multiplier']}, "
+                          f"moisture={mult_result['moisture_multiplier']})")
+        except Exception as e:
+            print(f"[ZONES] Multiplier lookup failed, using original duration: {e}")
+
+    # If moisture says skip, turn the zone back off and return a skip response
+    if moisture_skip:
+        svc_domain_off, svc_name_off = _get_zone_service(entity_id, "off")
+        await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": entity_id})
+        run_log.log_zone_event(
+            entity_id=entity_id, state="off", source="moisture_skip",
+            zone_name=_zone_name(entity_id),
+        )
+        return ZoneActionResponse(
+            success=True,
+            zone_id=zone_id,
+            action="skipped",
+            message=f"Zone '{zone_id}' skipped — soil moisture above threshold",
+        )
+
+    if adjusted_duration:
         # Cancel any existing timed run for this entity
         existing = _timed_run_tasks.pop(entity_id, None)
         if existing and not existing.done():
             existing.cancel()
         # Schedule the new timed shutoff
         task = asyncio.create_task(
-            _timed_shutoff(entity_id, body.duration_minutes)
+            _timed_shutoff(entity_id, adjusted_duration)
         )
         _timed_run_tasks[entity_id] = task
-        print(f"[ZONES] Timed run started: {entity_id} for {body.duration_minutes} min")
+        print(f"[ZONES] Timed run started: {entity_id} for {adjusted_duration} min")
 
     message = f"Zone '{zone_id}' started"
     if body.duration_minutes:
-        message += f" for {body.duration_minutes} minutes"
+        if adjusted_duration != body.duration_minutes:
+            message += f" for {adjusted_duration} minutes (adjusted from {body.duration_minutes})"
+        else:
+            message += f" for {adjusted_duration} minutes"
 
     audit_log.log_action(
         api_key_name=key_config.name,

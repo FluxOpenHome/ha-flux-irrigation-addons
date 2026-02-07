@@ -137,6 +137,17 @@ async def homeowner_status():
         attrs = az.get("attributes", {})
         active_zone_name = attrs.get("friendly_name") or active_zone_eid
 
+    # Moisture probe summary
+    moisture_enabled = False
+    moisture_probe_count = 0
+    try:
+        from routes.moisture import _load_data as _load_moisture_data
+        moisture_data = _load_moisture_data()
+        moisture_enabled = moisture_data.get("enabled", False)
+        moisture_probe_count = len(moisture_data.get("probes", {}))
+    except Exception:
+        pass
+
     return {
         "online": True,
         "ha_connected": ha_connected,
@@ -148,6 +159,8 @@ async def homeowner_status():
         "total_sensors": len(sensors),
         "rain_delay_active": rain_delay_active,
         "rain_delay_until": rain_delay_until if rain_delay_active else None,
+        "moisture_enabled": moisture_enabled,
+        "moisture_probe_count": moisture_probe_count,
         "uptime_check": datetime.now(timezone.utc).isoformat(),
         # Include homeowner contact/address info (synced live to management)
         "address": config.homeowner_address or "",
@@ -202,18 +215,49 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest):
         zone_name=_zone_name(entity_id),
     )
 
-    # If duration specified, schedule automatic shutoff using zones module
+    # If duration specified, apply combined multiplier and schedule automatic shutoff
+    adjusted_duration = body.duration_minutes
+    moisture_skip = False
     if body.duration_minutes:
+        try:
+            from routes.moisture import get_combined_multiplier
+            mult_result = await get_combined_multiplier(entity_id)
+            if mult_result.get("moisture_skip"):
+                moisture_skip = True
+            elif mult_result["combined_multiplier"] != 1.0:
+                adjusted_duration = max(1, round(body.duration_minutes * mult_result["combined_multiplier"]))
+                if adjusted_duration != body.duration_minutes:
+                    print(f"[HOMEOWNER] Duration adjusted: {body.duration_minutes} → {adjusted_duration} min "
+                          f"(weather={mult_result['weather_multiplier']}, "
+                          f"moisture={mult_result['moisture_multiplier']})")
+        except Exception as e:
+            print(f"[HOMEOWNER] Multiplier lookup failed, using original duration: {e}")
+
+    # If moisture says skip, turn the zone back off and return a skip response
+    if moisture_skip:
+        svc_domain_off, svc_name_off = _get_zone_service(entity_id, "off")
+        await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": entity_id})
+        run_log.log_zone_event(
+            entity_id=entity_id, state="off", source="moisture_skip",
+            zone_name=_zone_name(entity_id),
+        )
+        return {"success": True, "zone_id": zone_id, "action": "skipped",
+                "message": f"Zone '{zone_id}' skipped — soil moisture above threshold"}
+
+    if adjusted_duration:
         from routes.zones import _timed_run_tasks, _timed_shutoff
         existing = _timed_run_tasks.pop(entity_id, None)
         if existing and not existing.done():
             existing.cancel()
-        task = asyncio.create_task(_timed_shutoff(entity_id, body.duration_minutes))
+        task = asyncio.create_task(_timed_shutoff(entity_id, adjusted_duration))
         _timed_run_tasks[entity_id] = task
 
     message = f"Zone '{zone_id}' started"
     if body.duration_minutes:
-        message += f" for {body.duration_minutes} minutes"
+        if adjusted_duration != body.duration_minutes:
+            message += f" for {adjusted_duration} minutes (adjusted from {body.duration_minutes})"
+        else:
+            message += f" for {adjusted_duration} minutes"
 
     return {"success": True, "zone_id": zone_id, "action": "start", "message": message}
 

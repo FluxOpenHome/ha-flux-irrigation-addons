@@ -1733,6 +1733,16 @@ ADMIN_HTML = """<!DOCTYPE html>
         }
     }
 
+    let _deviceEntitiesExpanded = false;
+
+    function toggleDeviceEntities() {
+        _deviceEntitiesExpanded = !_deviceEntitiesExpanded;
+        const body = document.getElementById('deviceEntitiesBody');
+        const chevron = document.getElementById('deviceEntitiesChevron');
+        if (body) body.style.display = _deviceEntitiesExpanded ? 'block' : 'none';
+        if (chevron) chevron.textContent = _deviceEntitiesExpanded ? '▼' : '▶';
+    }
+
     function renderDeviceEntities(zones, sensors, other) {
         const container = document.getElementById('deviceEntities');
         const total = zones.length + sensors.length + (other ? other.length : 0);
@@ -1743,6 +1753,15 @@ ADMIN_HTML = """<!DOCTYPE html>
         }
 
         let html = '';
+
+        // Collapsible header
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-top:8px;border-top:1px solid var(--border-light);" onclick="toggleDeviceEntities()">';
+        html += '<span style="font-size:13px;font-weight:600;color:var(--text-secondary);">Device Entities (' + total + ')</span>';
+        html += '<span id="deviceEntitiesChevron" style="font-size:12px;color:var(--text-muted);">' + (_deviceEntitiesExpanded ? '▼' : '▶') + '</span>';
+        html += '</div>';
+
+        // Collapsible body (hidden by default)
+        html += '<div id="deviceEntitiesBody" style="display:' + (_deviceEntitiesExpanded ? 'block' : 'none') + ';">';
 
         if (zones.length > 0) {
             html += '<div class="entity-list"><h4>Zones (' + zones.length + ')</h4>';
@@ -1767,6 +1786,8 @@ ADMIN_HTML = """<!DOCTYPE html>
             }
             html += '</div>';
         }
+
+        html += '</div>';
 
         container.innerHTML = html;
     }
@@ -2437,6 +2458,15 @@ ADMIN_HTML = """<!DOCTYPE html>
 <li style="margin-bottom:4px;"><strong>Check Interval</strong> — How often to refresh weather data (5–60 minutes). Lower values give more responsive adjustments but use more API calls.</li>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Weather rules and thresholds (rain skip, wind delay, temperature adjustments, etc.) are configured from the Homeowner Dashboard's weather section.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Moisture Probes (Gophr)</h4>
+<p style="margin-bottom:10px;">Gophr moisture probes are automatically detected from Home Assistant sensors. Configuration and probe-to-zone mapping are managed from the <strong>Homeowner Dashboard</strong>.</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;">Probes are discovered by scanning HA sensors for keywords like "gophr", "moisture", or "soil"</li>
+<li style="margin-bottom:4px;">Each probe has up to 3 depth sensors (shallow, mid, deep) measuring 0–100% moisture</li>
+<li style="margin-bottom:4px;">Probes are mapped to irrigation zones for automatic watering adjustments</li>
+<li style="margin-bottom:4px;">The combined weather &times; moisture multiplier adjusts both timed runs and ESPHome scheduled durations</li>
+</ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Revoking Access</h4>
 <p style="margin-bottom:10px;">If you need to disconnect a management company, use the <strong>Revoke Access</strong> button. This immediately invalidates the current API key and connection key, preventing any further remote access.</p>

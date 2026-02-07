@@ -249,6 +249,19 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         </div>
     </div>
 
+    <!-- Moisture Probes Card -->
+    <div class="card" id="moistureCard" style="display:none;">
+        <div class="card-header">
+            <h2>Moisture Probes</h2>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span id="moistureStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-success-light);color:var(--text-success-dark);">—</span>
+            </div>
+        </div>
+        <div class="card-body" id="moistureCardBody">
+            <div class="loading">Loading moisture data...</div>
+        </div>
+    </div>
+
     <!-- Zones Card -->
     <div class="card">
         <div class="card-header"><h2>Zones</h2></div>
@@ -551,6 +564,7 @@ function showMap(lat, lon, label) {
 async function loadDashboard() {
     loadStatus();
     loadWeather();
+    loadMoisture();
     loadZones();
     loadSensors();
     loadControls();
@@ -1066,7 +1080,8 @@ async function setEntityValue(entityId, domain, bodyObj) {
 async function loadHistory() {
     const el = document.getElementById('detailHistory');
     try {
-        const hours = document.getElementById('historyRange') ? document.getElementById('historyRange').value : '24';
+        const hoursRaw = document.getElementById('historyRange') ? document.getElementById('historyRange').value : '24';
+        const hours = parseInt(hoursRaw, 10) || 24;
         const data = await api('/history/runs?hours=' + hours);
         const events = data.events || [];
         if (events.length === 0) { el.innerHTML = '<div class="empty-state"><p>No run events in the selected time range</p></div>'; return; }
@@ -1459,7 +1474,8 @@ async function evaluateWeatherNow() {
 
 // --- CSV Export ---
 function exportHistoryCSV() {
-    const hours = document.getElementById('historyRange') ? document.getElementById('historyRange').value : '24';
+    const hoursRaw = document.getElementById('historyRange') ? document.getElementById('historyRange').value : '24';
+    const hours = parseInt(hoursRaw, 10) || 24;
     const url = HBASE + '/history/runs/csv?hours=' + hours;
     window.open(url, '_blank');
 }
@@ -1493,6 +1509,342 @@ async function clearWeatherLog() {
         } else {
             showToast(result.error || 'Failed to clear weather log', 'error');
         }
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+// --- Moisture Probes ---
+let _moistureExpanded = { settings: false, management: false, durations: false };
+
+async function loadMoisture() {
+    const card = document.getElementById('moistureCard');
+    const body = document.getElementById('moistureCardBody');
+    const badge = document.getElementById('moistureStatusBadge');
+    try {
+        const data = await mapi('/probes');
+        const settings = await mapi('/settings');
+
+        if (!settings.enabled && Object.keys(data.probes || {}).length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+        card.style.display = 'block';
+
+        const probes = data.probes || {};
+        const probeCount = Object.keys(probes).length;
+        badge.textContent = settings.enabled ? probeCount + ' probe(s)' : 'Disabled';
+        badge.style.background = settings.enabled ? 'var(--bg-success-light)' : 'var(--bg-tile)';
+        badge.style.color = settings.enabled ? 'var(--text-success-dark)' : 'var(--text-muted)';
+
+        let html = '';
+
+        // Probe tiles
+        if (probeCount > 0) {
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">';
+            for (const [pid, probe] of Object.entries(probes)) {
+                const sensors = probe.sensors_live || {};
+                html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
+                html += '<div style="font-weight:600;font-size:14px;margin-bottom:8px;">' + esc(probe.display_name || pid) + '</div>';
+
+                // Depth readings as horizontal bars
+                for (const depth of ['shallow', 'mid', 'deep']) {
+                    const s = sensors[depth];
+                    if (!s) continue;
+                    const val = s.value != null ? s.value : null;
+                    const stale = s.stale;
+                    const pct = val != null ? Math.min(val, 100) : 0;
+                    const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
+                    html += '<div style="margin-bottom:6px;">';
+                    html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:2px;">';
+                    html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + '</span>';
+                    html += '<span>' + (val != null ? val.toFixed(0) + '%' : '—') + (stale ? ' ⏳' : '') + '</span>';
+                    html += '</div>';
+                    html += '<div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden;">';
+                    html += '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.3s;"></div>';
+                    html += '</div></div>';
+                }
+
+                // Mapped zones
+                const zones = probe.zone_mappings || [];
+                if (zones.length > 0) {
+                    html += '<div style="margin-top:6px;font-size:11px;color:var(--text-muted);">Zones: ';
+                    html += zones.map(z => '<span style="background:var(--bg-secondary-btn);padding:1px 6px;border-radius:4px;font-size:10px;">' + esc(z.split('.').pop()) + '</span>').join(' ');
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+        } else {
+            html += '<div style="text-align:center;padding:16px;color:var(--text-muted);">No moisture probes configured. Click <strong>Manage Probes</strong> below to discover and add probes.</div>';
+        }
+
+        // Zone multiplier summary
+        if (probeCount > 0 && settings.enabled) {
+            try {
+                const config = await api('/zones');
+                if (config && config.length > 0) {
+                    html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Zone Multipliers</div>';
+                    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+                    for (const zone of config) {
+                        try {
+                            const mult = await mapi('/zones/' + encodeURIComponent(zone.entity_id) + '/multiplier', 'POST');
+                            const m = mult.combined_multiplier != null ? mult.combined_multiplier : 1.0;
+                            const mColor = m === 0 ? 'var(--color-danger)' : m < 1 ? 'var(--text-warning)' : m > 1 ? 'var(--text-danger-dark)' : 'var(--text-success-dark)';
+                            const mBg = m === 0 ? 'var(--bg-danger-light)' : m < 1 ? 'var(--bg-warning)' : m > 1 ? 'var(--bg-danger-light)' : 'var(--bg-success-light)';
+                            const label = mult.moisture_skip ? 'SKIP' : m.toFixed(2) + 'x';
+                            const alias = (window._currentZoneAliases || {})[zone.entity_id] || zone.friendly_name || zone.name;
+                            html += '<div style="background:' + mBg + ';color:' + mColor + ';padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;">';
+                            html += esc(alias) + ': ' + label + '</div>';
+                        } catch (e) { /* skip zone */ }
+                    }
+                    html += '</div></div>';
+                }
+            } catch (e) { /* no zones */ }
+        }
+
+        // Duration status
+        try {
+            const dur = await mapi('/durations');
+            const base = dur.base_durations || {};
+            const adjusted = dur.adjusted_durations || {};
+            if (Object.keys(base).length > 0) {
+                html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Duration Status' + (dur.duration_adjustment_active ? ' <span style="color:var(--color-warning);">(Active)</span>' : '') + '</div>';
+                html += '<div style="overflow-x:auto;"><table style="width:100%;font-size:12px;border-collapse:collapse;">';
+                html += '<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Entity</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Base</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Adjusted</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Multiplier</th></tr>';
+                for (const [eid, b] of Object.entries(base)) {
+                    const adj = adjusted[eid];
+                    const adjVal = adj ? adj.adjusted : b.base_value;
+                    const mult = adj ? adj.combined_multiplier : 1.0;
+                    const name = b.friendly_name || eid.split('.').pop();
+                    html += '<tr style="border-bottom:1px solid var(--border-row);">';
+                    html += '<td style="padding:4px 8px;">' + esc(name) + '</td>';
+                    html += '<td style="text-align:right;padding:4px 8px;">' + b.base_value + ' min</td>';
+                    html += '<td style="text-align:right;padding:4px 8px;font-weight:600;color:' + (adjVal !== b.base_value ? 'var(--color-warning)' : 'var(--text-primary)') + ';">' + adjVal + ' min</td>';
+                    html += '<td style="text-align:right;padding:4px 8px;">' + (mult != null ? mult.toFixed(2) + 'x' : '—') + '</td>';
+                    html += '</tr>';
+                }
+                html += '</table></div></div>';
+            }
+        } catch (e) { /* no durations */ }
+
+        // Expandable sections
+        // Settings
+        html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:12px;">';
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\'settings\')">';
+        html += '<span style="font-size:13px;font-weight:600;">Settings</span>';
+        html += '<span id="moistureSettingsChevron" style="font-size:12px;color:var(--text-muted);">' + (_moistureExpanded.settings ? '▼' : '▶') + '</span>';
+        html += '</div>';
+        html += '<div id="moistureSettingsBody" style="display:' + (_moistureExpanded.settings ? 'block' : 'none') + ';margin-top:10px;">';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">';
+        html += '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="moistureEnabled" ' + (settings.enabled ? 'checked' : '') + ' onchange="saveMoistureSettings()"> Enable Moisture Control</label>';
+        html += '<div><label style="font-size:11px;color:var(--text-muted);">Stale Threshold (min)</label><input type="number" id="moistureStaleMin" value="' + (settings.stale_reading_threshold_minutes || 120) + '" min="5" max="1440" style="width:80px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
+        html += '</div>';
+        const dw = settings.depth_weights || {shallow: 0.2, mid: 0.5, deep: 0.3};
+        html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Depth Weights</div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px;">';
+        for (const d of ['shallow', 'mid', 'deep']) {
+            html += '<div><label style="font-size:11px;color:var(--text-muted);">' + d.charAt(0).toUpperCase() + d.slice(1) + '</label>';
+            html += '<input type="number" id="moistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:60px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
+        }
+        html += '</div>';
+        const dt = settings.default_thresholds || {};
+        html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Default Thresholds (%)</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:4px;">';
+        for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry'], ['max_increase_percent','Max Increase'], ['max_decrease_percent','Max Decrease']]) {
+            html += '<div><label style="font-size:11px;color:var(--text-muted);">' + label + '</label>';
+            html += '<input type="number" id="moistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:70px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
+        }
+        html += '</div>';
+        html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="saveMoistureSettings()">Save Settings</button>';
+        html += '</div></div>';
+
+        // Probe Management
+        html += '<div style="margin-top:12px;border-top:1px solid var(--border-light);padding-top:12px;">';
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\'management\')">';
+        html += '<span style="font-size:13px;font-weight:600;">Manage Probes</span>';
+        html += '<span id="moistureManagementChevron" style="font-size:12px;color:var(--text-muted);">' + (_moistureExpanded.management ? '▼' : '▶') + '</span>';
+        html += '</div>';
+        html += '<div id="moistureManagementBody" style="display:' + (_moistureExpanded.management ? 'block' : 'none') + ';margin-top:10px;">';
+        html += '<button class="btn btn-secondary btn-sm" onclick="discoverMoistureProbes()">Discover Probes</button>';
+        html += '<div id="moistureDiscoverResults" style="margin-top:8px;"></div>';
+        html += '<div id="moistureProbeList" style="margin-top:8px;">';
+        // Existing probes with edit/delete
+        for (const [pid, probe] of Object.entries(probes)) {
+            html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--border-light);">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            html += '<strong>' + esc(probe.display_name || pid) + '</strong>';
+            html += '<button class="btn btn-danger btn-sm" onclick="deleteMoistureProbe(\'' + esc(pid) + '\')">Remove</button>';
+            html += '</div>';
+            html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">ID: ' + esc(pid) + '</div>';
+            const ss = probe.sensors || {};
+            html += '<div style="font-size:11px;margin-top:4px;">Sensors: ' + Object.entries(ss).map(([d,e]) => d + '=' + e).join(', ') + '</div>';
+            html += '<div style="font-size:11px;">Zones: ' + (probe.zone_mappings || []).join(', ') + '</div>';
+            html += '</div>';
+        }
+        html += '</div></div></div>';
+
+        // Duration Controls
+        html += '<div style="margin-top:12px;border-top:1px solid var(--border-light);padding-top:12px;">';
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMoistureSection(\'durations\')">';
+        html += '<span style="font-size:13px;font-weight:600;">Duration Controls</span>';
+        html += '<span id="moistureDurationsChevron" style="font-size:12px;color:var(--text-muted);">' + (_moistureExpanded.durations ? '▼' : '▶') + '</span>';
+        html += '</div>';
+        html += '<div id="moistureDurationsBody" style="display:' + (_moistureExpanded.durations ? 'block' : 'none') + ';margin-top:10px;">';
+        html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+        html += '<button class="btn btn-secondary btn-sm" onclick="captureMoistureDurations()">Capture Base Durations</button>';
+        html += '<button class="btn btn-primary btn-sm" onclick="applyMoistureDurations()">Apply Adjusted</button>';
+        html += '<button class="btn btn-secondary btn-sm" onclick="restoreMoistureDurations()">Restore Originals</button>';
+        html += '</div>';
+        html += '<div style="margin-top:6px;font-size:11px;color:var(--text-muted);">Capture saves current run durations as your baseline. Apply writes adjusted values (base × weather × moisture). Restore returns to baseline.</div>';
+        html += '</div></div>';
+
+        body.innerHTML = html;
+    } catch (e) {
+        card.style.display = 'none';
+    }
+}
+
+// Moisture API helper (uses homeowner moisture prefix)
+async function mapi(path, method = 'GET', bodyData = null) {
+    const opts = { method, headers: {} };
+    if (bodyData) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(bodyData);
+    }
+    const res = await fetch(BASE + '/moisture' + path, opts);
+    return await res.json();
+}
+
+function toggleMoistureSection(section) {
+    _moistureExpanded[section] = !_moistureExpanded[section];
+    const body = document.getElementById('moisture' + section.charAt(0).toUpperCase() + section.slice(1) + 'Body');
+    const chevron = document.getElementById('moisture' + section.charAt(0).toUpperCase() + section.slice(1) + 'Chevron');
+    if (body) body.style.display = _moistureExpanded[section] ? 'block' : 'none';
+    if (chevron) chevron.textContent = _moistureExpanded[section] ? '▼' : '▶';
+}
+
+async function saveMoistureSettings() {
+    try {
+        const payload = {
+            enabled: document.getElementById('moistureEnabled').checked,
+            stale_reading_threshold_minutes: parseInt(document.getElementById('moistureStaleMin').value) || 120,
+            depth_weights: {
+                shallow: parseFloat(document.getElementById('moistureWeight_shallow').value) || 0.2,
+                mid: parseFloat(document.getElementById('moistureWeight_mid').value) || 0.5,
+                deep: parseFloat(document.getElementById('moistureWeight_deep').value) || 0.3,
+            },
+            default_thresholds: {
+                skip_threshold: parseInt(document.getElementById('moistureThresh_skip_threshold').value) || 80,
+                scale_wet: parseInt(document.getElementById('moistureThresh_scale_wet').value) || 70,
+                scale_dry: parseInt(document.getElementById('moistureThresh_scale_dry').value) || 30,
+                max_increase_percent: parseInt(document.getElementById('moistureThresh_max_increase_percent').value) || 50,
+                max_decrease_percent: parseInt(document.getElementById('moistureThresh_max_decrease_percent').value) || 50,
+            },
+        };
+        const result = await mapi('/settings', 'PUT', payload);
+        showToast(result.message || 'Settings saved');
+        loadMoisture();
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function discoverMoistureProbes() {
+    const container = document.getElementById('moistureDiscoverResults');
+    container.innerHTML = '<div class="loading">Scanning sensors...</div>';
+    try {
+        const data = await mapi('/probes/discover');
+        const candidates = data.candidates || [];
+        if (candidates.length === 0) {
+            container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px;">No moisture probe sensors found. Ensure your Gophr probe is connected and reporting to Home Assistant.</div>';
+            return;
+        }
+        let html = '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">' + candidates.length + ' sensor(s) found:</div>';
+        html += '<div style="max-height:200px;overflow-y:auto;">';
+        for (const c of candidates) {
+            html += '<div style="background:var(--bg-tile);border-radius:6px;padding:6px 10px;margin-bottom:4px;font-size:12px;border:1px solid var(--border-light);">';
+            html += '<strong>' + esc(c.friendly_name) + '</strong>';
+            html += '<div style="color:var(--text-muted);">' + esc(c.entity_id) + ' — ' + (c.state || '?') + (c.unit_of_measurement ? ' ' + c.unit_of_measurement : '') + '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+        html += '<div style="margin-top:8px;font-size:11px;color:var(--text-muted);">To add a probe, group 3 sensors (shallow/mid/deep) using the form below.</div>';
+        // Quick add form
+        html += '<div style="margin-top:10px;background:var(--bg-tile);border-radius:8px;padding:12px;border:1px solid var(--border-light);">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;">Add New Probe</div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+        html += '<div><label style="font-size:11px;">Probe ID</label><input type="text" id="newProbeId" placeholder="e.g. gophr_backyard" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;"></div>';
+        html += '<div><label style="font-size:11px;">Display Name</label><input type="text" id="newProbeName" placeholder="e.g. Backyard Probe" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;"></div>';
+        html += '</div>';
+        // Sensor dropdowns from discovered candidates
+        const sensorOpts = candidates.map(c => '<option value="' + esc(c.entity_id) + '">' + esc(c.friendly_name || c.entity_id) + '</option>').join('');
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">';
+        for (const depth of ['shallow', 'mid', 'deep']) {
+            html += '<div><label style="font-size:11px;">' + depth.charAt(0).toUpperCase() + depth.slice(1) + '</label>';
+            html += '<select id="newProbeSensor_' + depth + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;">';
+            html += '<option value="">— none —</option>' + sensorOpts;
+            html += '</select></div>';
+        }
+        html += '</div>';
+        // Zone multi-select
+        html += '<div style="margin-top:8px;"><label style="font-size:11px;">Map to Zones (comma-separated entity_ids)</label>';
+        html += '<input type="text" id="newProbeZones" placeholder="switch.zone_1, switch.zone_2" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;"></div>';
+        html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="addMoistureProbe()">Add Probe</button>';
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (e) { container.innerHTML = '<div style="color:var(--color-danger);font-size:12px;">' + esc(e.message) + '</div>'; }
+}
+
+async function addMoistureProbe() {
+    const probeId = document.getElementById('newProbeId').value.trim();
+    const name = document.getElementById('newProbeName').value.trim();
+    if (!probeId) { showToast('Probe ID is required', 'error'); return; }
+    const sensors = {};
+    for (const d of ['shallow', 'mid', 'deep']) {
+        const v = document.getElementById('newProbeSensor_' + d).value;
+        if (v) sensors[d] = v;
+    }
+    const zonesStr = document.getElementById('newProbeZones').value.trim();
+    const zones = zonesStr ? zonesStr.split(',').map(z => z.trim()).filter(z => z) : [];
+    try {
+        const result = await mapi('/probes', 'POST', {
+            probe_id: probeId,
+            display_name: name || probeId,
+            sensors: sensors,
+            zone_mappings: zones,
+        });
+        showToast('Probe added: ' + (result.probe?.display_name || probeId));
+        loadMoisture();
+    } catch (e) { showToast(e.message || 'Failed to add probe', 'error'); }
+}
+
+async function deleteMoistureProbe(probeId) {
+    if (!confirm('Remove probe "' + probeId + '"?')) return;
+    try {
+        await mapi('/probes/' + encodeURIComponent(probeId), 'DELETE');
+        showToast('Probe removed');
+        loadMoisture();
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function captureMoistureDurations() {
+    try {
+        const result = await mapi('/durations/capture', 'POST');
+        showToast('Captured base durations for ' + result.captured + ' entities');
+        loadMoisture();
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function applyMoistureDurations() {
+    try {
+        const result = await mapi('/durations/apply', 'POST');
+        showToast('Applied adjusted durations to ' + result.applied + ' zone(s)');
+        loadMoisture();
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function restoreMoistureDurations() {
+    try {
+        const result = await mapi('/durations/restore', 'POST');
+        showToast('Restored base durations for ' + result.restored + ' entities');
+        loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -1557,6 +1909,11 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">When weather is enabled (configured on the Configuration page), the dashboard shows current conditions and a <strong>watering multiplier</strong>:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>1.0x</strong> (green) — Normal watering, no adjustments active</li><li style="margin-bottom:4px;"><strong>Below 1.0x</strong> (yellow) — Reduced watering due to cool temps, humidity, etc.</li><li style="margin-bottom:4px;"><strong>Above 1.0x</strong> (red) — Increased watering due to hot temperatures</li><li style="margin-bottom:4px;"><strong>Skip/Pause</strong> — Watering paused entirely due to rain, freezing, or high wind</li></ul>
 <p style="margin-bottom:10px;">Configure weather rules by expanding the <strong>Weather Rules</strong> section. Each rule can be individually enabled/disabled. Click <strong>Test Rules Now</strong> to see which rules would trigger under current conditions.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Moisture Probes (Gophr)</h4>
+<p style="margin-bottom:10px;">When Gophr moisture probes are connected to Home Assistant, the moisture card shows live soil moisture readings at three depths (shallow, mid, deep). Probes are mapped to irrigation zones for intelligent watering adjustments:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Zone multipliers</strong> — Combined weather &times; moisture multiplier for each mapped zone</li><li style="margin-bottom:4px;"><strong>Duration status</strong> — Table showing base vs. adjusted run durations</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Enable/disable, stale threshold, depth weights, and moisture thresholds (skip, wet, dry, max increase/decrease)</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Discover probes from HA sensors, add/remove probes, assign to zones</li><li style="margin-bottom:4px;"><strong>Duration Controls</strong> — Capture base durations, apply adjusted durations (for ESPHome schedules), or restore originals</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. Base durations are temporarily modified on the controller and restored after runs complete.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
 <p style="margin-bottom:10px;">The run history table shows every zone on/off event with:</p>

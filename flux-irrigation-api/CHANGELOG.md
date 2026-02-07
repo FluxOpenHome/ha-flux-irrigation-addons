@@ -8,6 +8,20 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Added
 
+- **Gophr Moisture Probe Integration** — Auto-detect Gophr moisture probes from HA sensors and integrate soil moisture data into irrigation decisions
+  - Three-depth weighted moisture algorithm (shallow, mid, deep) with configurable weights
+  - Many-to-many probe-to-zone mapping (a probe can serve multiple zones; a zone can use multiple probes)
+  - Combined weather × moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled run durations
+  - Configurable thresholds: skip (too wet), wet/dry scaling, max increase/decrease percentages
+  - Duration adjustment mechanism: capture base durations → apply adjusted values → restore originals
+  - Stale data handling: readings older than the configurable threshold are excluded (defaults to 120 minutes)
+  - Background periodic evaluation runs on the weather check interval
+  - Crash recovery: restores base durations on add-on restart if adjustments were active at shutdown
+  - Moisture context captured in run history events
+  - Moisture card on both homeowner and management dashboards with probe tiles, depth bars, zone multiplier badges, and duration status
+  - Homeowner dashboard: full probe management (discover, add, remove, map to zones, configure thresholds, duration capture/apply/restore)
+  - Management dashboard: read-only moisture view with duration controls via proxy
+  - 12 homeowner API endpoints + corresponding management proxy endpoints
 - **Weather-Based Irrigation Control** — 9 configurable weather rules that automatically pause, reduce, or increase irrigation based on real-time conditions and forecasts from any Home Assistant weather entity (NWS, OpenWeatherMap, Met.no, Weather Underground, etc.)
   - Rain detection with configurable auto-resume delay
   - Rain forecast and precipitation threshold skip rules
@@ -40,6 +54,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Changed
 
+- **Collapsible Device Entities** — The device entity list on the Configuration page (zones, sensors, controls) is now collapsed by default; click to expand and see the full list
 - **Smart Device Filtering** — The device selection dropdown on the Configuration page now filters to show only irrigation-related devices by default (matching keywords like "Flux", "irrigation", "sprinkler", or "ESPHome"); click "Show all devices" to see the full list if needed
 - **ESPHome Schedule Control** — System pause/resume now disables/restores ESPHome schedule programs on the controller, preventing the controller from starting runs while paused
 - **Weather settings moved to control pages** — Weather configuration is now accessible from the homeowner and management control interfaces
@@ -48,6 +63,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Fixed
 
+- Run history "hours" parameter parsing error when the select dropdown value was empty — now uses `parseInt` with a fallback to 24 hours
 - Phone number not visible on management dashboard even when set in connection key
 - Zone 5 (and other disabled entities) not appearing — entities with `disabled_by` set are now properly filtered, and the auto-refresh task picks up newly enabled entities automatically
 - Connection key regeneration after revoke no longer silently fails — fixed schema validation, stale API key reuse, and HA token corruption issues that prevented the revoke → regenerate → reconnect flow from working
