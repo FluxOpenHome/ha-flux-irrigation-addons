@@ -590,7 +590,10 @@ function getCustomerStatus(c) {
 
 function getQuickStats(c) {
     if (getCustomerStatus(c) === 'revoked') return '<span class="customer-stat" style="color:#95a5a6;"><strong>Homeowner revoked access</strong></span>';
-    if (!c.last_status || !c.last_status.system_status) return '<span class="customer-stat">No data yet</span>';
+    if (!c.last_status || !c.last_status.system_status) {
+        if (c.last_status && c.last_status.error) return '<span class="customer-stat" style="color:#e67e22;">' + esc(c.last_status.error) + '</span>';
+        return '<span class="customer-stat">No data yet</span>';
+    }
     const s = c.last_status.system_status;
     let parts = [];
     if (s.system_paused) {

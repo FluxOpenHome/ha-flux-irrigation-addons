@@ -343,12 +343,12 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
                     "authenticated": False,
                     "error": "HA token rejected. The homeowner may need to generate a new Long-Lived Access Token.",
                 }
-            # API key rejected — treat as revoked
+            # Health endpoint already told us revoked=false, so this 401 means
+            # the API key is stale — not that access was revoked.
             return {
                 "reachable": True,
                 "authenticated": False,
-                "revoked": True,
-                "error": "Management access was revoked by homeowner",
+                "error": "API key rejected. The homeowner may have generated a new connection key — ask them for the updated key.",
             }
         if status == 404:
             return {
@@ -403,11 +403,14 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
         connection, "GET", "/api/system/status"
     )
     if status == 401:
+        # Health endpoint already told us revoked=false, so this 401 means
+        # the API key is stale (homeowner generated a new connection key).
+        # Do NOT set revoked=true — the homeowner hasn't revoked access,
+        # the management company just needs the updated connection key.
         return {
             "reachable": True,
             "authenticated": False,
-            "revoked": True,
-            "error": "Management access was revoked by homeowner",
+            "error": "API key rejected. The homeowner may have generated a new connection key — ask them for the updated key.",
         }
     if status == 403:
         return {
