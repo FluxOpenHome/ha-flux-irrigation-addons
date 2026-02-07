@@ -820,7 +820,7 @@ const SCHEDULE_PATTERNS = {
     run_durations: (eid, domain) =>
         domain === 'number' && /run_duration/.test(eid),
     repeat_cycles: (eid, domain) =>
-        domain === 'number' && /repeat/.test(eid),
+        domain === 'number' && /repeat_cycle/.test(eid),
     zone_enables: (eid, domain) =>
         domain === 'switch' && /enable_zone/.test(eid),
     zone_modes: (eid, domain) =>
@@ -870,9 +870,10 @@ async function loadDetailControls(id) {
             if (cat) {
                 scheduleByCategory[cat].push(e);
             } else {
-                // Filter out redundant valve_N entities (duplicates of zone entities)
+                // Filter out redundant entities (valve_N duplicates, generic repeat)
                 const eid = (e.entity_id || '').toLowerCase();
                 if (/valve_\\d+/.test(eid)) continue;
+                if (e.domain === 'number' && /repeat/.test(eid) && !/repeat_cycle/.test(eid)) continue;
                 controlEntities.push(e);
             }
         }
@@ -1044,7 +1045,7 @@ function renderScheduleCard(custId, sched) {
 
         html += '<table class="zone-settings-table"><thead><tr>' +
             '<th>Zone</th>' + (hasMode ? '<th>Mode</th>' : '') +
-            '<th>Enabled</th><th>Run Duration</th></tr></thead><tbody>';
+            '<th>Schedule Enable</th><th>Run Duration</th></tr></thead><tbody>';
         for (const zn of sortedZones) {
             const { enable, duration, mode } = zoneMap[zn];
             const zoneLabel = getZoneLabel(zn);
