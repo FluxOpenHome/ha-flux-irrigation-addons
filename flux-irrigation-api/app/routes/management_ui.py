@@ -680,6 +680,24 @@ function getZoneDisplayName(z) {
     return z.friendly_name || z.name || z.entity_id;
 }
 
+function resolveZoneName(entityId, fallbackName) {
+    // Resolve display name for any entity_id: check alias, then zone mode, then fallback
+    if (!entityId) return fallbackName || 'Unknown';
+    const aliases = window._currentZoneAliases || {};
+    if (aliases[entityId]) return aliases[entityId];
+    const zoneNum = extractZoneNumber(entityId, 'zone');
+    if (zoneNum) {
+        const modes = window._zoneModes || {};
+        if (modes[zoneNum] && modes[zoneNum].state) {
+            const modeVal = modes[zoneNum].state.toLowerCase();
+            if (modeVal !== 'normal' && modeVal !== 'standard' && modeVal !== '' && modeVal !== 'unknown') {
+                return modes[zoneNum].state;
+            }
+        }
+    }
+    return fallbackName || entityId;
+}
+
 async function loadDetailZones(id) {
     const el = document.getElementById('detailZones');
     try {
@@ -798,7 +816,7 @@ const SCHEDULE_PATTERNS = {
     run_durations: (eid, domain) =>
         domain === 'number' && /run_duration/.test(eid),
     repeat_cycles: (eid, domain) =>
-        domain === 'number' && /repeat_cycle/.test(eid),
+        domain === 'number' && /repeat/.test(eid),
     zone_enables: (eid, domain) =>
         domain === 'switch' && /enable_zone/.test(eid),
     zone_modes: (eid, domain) =>
@@ -848,6 +866,9 @@ async function loadDetailControls(id) {
             if (cat) {
                 scheduleByCategory[cat].push(e);
             } else {
+                // Filter out redundant valve_N entities (duplicates of zone entities)
+                const eid = (e.entity_id || '').toLowerCase();
+                if (/valve_\\d+/.test(eid)) continue;
                 controlEntities.push(e);
             }
         }
@@ -870,7 +891,7 @@ async function loadDetailControls(id) {
                 groups[d].push(e);
             });
             const domainLabels = {
-                'switch': 'Switches', 'number': 'Run Times', 'select': 'Selects',
+                'switch': 'Switches', 'number': 'Numeric Settings', 'select': 'Selects',
                 'button': 'Buttons', 'text': 'Text Inputs', 'light': 'Lights'
             };
             const domainOrder = ['switch', 'number', 'select', 'text', 'button', 'light'];
@@ -1183,7 +1204,7 @@ async function loadDetailHistory(id) {
         if (events.length === 0) { el.innerHTML = '<div class="empty-state"><p>No run events in the last 24 hours</p></div>'; return; }
         el.innerHTML = '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid #eee;"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th></tr></thead><tbody>' +
             events.slice(0, 50).map(e => `<tr style="border-bottom:1px solid #f0f0f0;">
-                <td style="padding:6px;">${esc(e.zone_name || e.entity_id)}</td>
+                <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}</td>
                 <td style="padding:6px;">${e.state === 'on' ? '<span style="color:#27ae60;">ON</span>' : '<span style="color:#95a5a6;">OFF</span>'}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
