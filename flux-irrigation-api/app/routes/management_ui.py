@@ -2027,8 +2027,8 @@ async function switchToHomeowner() {
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Fix docs link for ingress
-    const ingressBase = window.location.pathname.replace(/\\/management\\/?$/, '');
+    // Fix docs link for ingress — page is served at /admin, strip it to get ingress base
+    const ingressBase = window.location.pathname.replace(/\\/admin\\/?$/, '');
     document.getElementById('docsLink').href = ingressBase + '/api/docs';
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
