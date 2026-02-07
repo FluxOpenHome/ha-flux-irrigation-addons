@@ -536,13 +536,22 @@ async def get_customer_history_csv(customer_id: str, hours: int = 24):
         raise _proxy_error(status_code, data)
 
     events = data.get("events", [])
-    lines = ["timestamp,zone_name,entity_id,state,source,duration_minutes,weather_condition,temperature,humidity,wind_speed,watering_multiplier,weather_rules"]
+    lines = ["timestamp,zone_name,entity_id,state,source,duration_minutes,weather_condition,temperature,humidity,wind_speed,watering_multiplier,weather_rules,moisture_multiplier,combined_multiplier"]
     for e in events:
         dur = ""
         if e.get("duration_seconds") is not None:
             dur = str(round(e["duration_seconds"] / 60, 1))
         wx = e.get("weather") or {}
+        mo = e.get("moisture") or {}
         rules_str = ";".join(wx.get("active_adjustments", wx.get("rules_triggered", [])))
+        # Moisture/combined multiplier only for schedule events
+        moisture_mult = ""
+        combined_mult = ""
+        if e.get("source") == "schedule":
+            if mo.get("moisture_multiplier") is not None:
+                moisture_mult = str(mo["moisture_multiplier"])
+            if mo.get("combined_multiplier") is not None:
+                combined_mult = str(mo["combined_multiplier"])
         line = ",".join([
             e.get("timestamp", ""),
             _csv_escape(e.get("zone_name", "")),
@@ -556,6 +565,8 @@ async def get_customer_history_csv(customer_id: str, hours: int = 24):
             _csv_escape(str(wx.get("wind_speed", ""))),
             _csv_escape(str(wx.get("watering_multiplier", ""))),
             _csv_escape(rules_str),
+            moisture_mult,
+            combined_mult,
         ])
         lines.append(line)
 
@@ -704,6 +715,23 @@ async def update_customer_moisture_settings(customer_id: str, request: Request):
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to update moisture settings"}
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/moisture/multiplier",
+    summary="Get customer overall moisture multiplier",
+)
+async def get_customer_moisture_multiplier(customer_id: str):
+    """Get the overall moisture multiplier from a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/moisture/multiplier"
+    )
+    if status_code != 200:
+        return {"moisture_multiplier": 1.0, "weather_multiplier": 1.0, "combined_multiplier": 1.0}
     return data
 
 

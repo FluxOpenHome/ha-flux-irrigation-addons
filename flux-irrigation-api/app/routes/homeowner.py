@@ -137,14 +137,27 @@ async def homeowner_status():
         attrs = az.get("attributes", {})
         active_zone_name = attrs.get("friendly_name") or active_zone_eid
 
-    # Moisture probe summary
+    # Moisture probe summary + multiplier data
     moisture_enabled = False
     moisture_probe_count = 0
+    weather_multiplier = 1.0
+    moisture_multiplier = 1.0
+    combined_multiplier = 1.0
     try:
-        from routes.moisture import _load_data as _load_moisture_data
+        from routes.moisture import (
+            _load_data as _load_moisture_data,
+            get_weather_multiplier,
+            calculate_overall_moisture_multiplier,
+        )
         moisture_data = _load_moisture_data()
         moisture_enabled = moisture_data.get("enabled", False)
         moisture_probe_count = len(moisture_data.get("probes", {}))
+        weather_multiplier = get_weather_multiplier()
+        moisture_result = await calculate_overall_moisture_multiplier()
+        moisture_multiplier = moisture_result.get("moisture_multiplier", 1.0)
+        combined_multiplier = round(
+            weather_multiplier * moisture_multiplier, 3
+        ) if moisture_multiplier > 0 else 0.0
     except Exception:
         pass
 
@@ -161,6 +174,9 @@ async def homeowner_status():
         "rain_delay_until": rain_delay_until if rain_delay_active else None,
         "moisture_enabled": moisture_enabled,
         "moisture_probe_count": moisture_probe_count,
+        "weather_multiplier": weather_multiplier,
+        "moisture_multiplier": moisture_multiplier,
+        "combined_multiplier": combined_multiplier,
         "uptime_check": datetime.now(timezone.utc).isoformat(),
         # Include homeowner contact/address info (synced live to management)
         "address": config.homeowner_address or "",
@@ -571,13 +587,22 @@ async def homeowner_history_csv(
 
     events = run_log.get_run_history(hours=hours)
 
-    lines = ["timestamp,zone_name,entity_id,state,source,duration_minutes,weather_condition,temperature,humidity,wind_speed,watering_multiplier,weather_rules"]
+    lines = ["timestamp,zone_name,entity_id,state,source,duration_minutes,weather_condition,temperature,humidity,wind_speed,watering_multiplier,weather_rules,moisture_multiplier,combined_multiplier"]
     for e in events:
         dur = ""
         if e.get("duration_seconds") is not None:
             dur = str(round(e["duration_seconds"] / 60, 1))
         wx = e.get("weather") or {}
+        mo = e.get("moisture") or {}
         rules_str = ";".join(wx.get("active_adjustments", []))
+        # Moisture/combined multiplier only for schedule events
+        moisture_mult = ""
+        combined_mult = ""
+        if e.get("source") == "schedule":
+            if mo.get("moisture_multiplier") is not None:
+                moisture_mult = str(mo["moisture_multiplier"])
+            if mo.get("combined_multiplier") is not None:
+                combined_mult = str(mo["combined_multiplier"])
         line = ",".join([
             e.get("timestamp", ""),
             _csv_escape(e.get("zone_name", "")),
@@ -591,6 +616,8 @@ async def homeowner_history_csv(
             _csv_escape(str(wx.get("wind_speed", ""))),
             _csv_escape(str(wx.get("watering_multiplier", ""))),
             _csv_escape(rules_str),
+            moisture_mult,
+            combined_mult,
         ])
         lines.append(line)
 

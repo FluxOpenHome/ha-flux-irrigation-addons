@@ -40,16 +40,22 @@ PROBE_KEYWORDS = ["gophr", "moisture", "soil"]
 # --- Data Model ---
 
 DEFAULT_DATA = {
-    "version": 1,
+    "version": 2,
     "enabled": False,
     "stale_reading_threshold_minutes": 120,
+    # Legacy depth_weights kept for migration — no longer used in algorithm
     "depth_weights": {"shallow": 0.2, "mid": 0.5, "deep": 0.3},
     "default_thresholds": {
-        "skip_threshold": 80,
-        "scale_wet": 70,
-        "scale_dry": 30,
+        # Root zone (mid sensor) thresholds — the primary decision driver
+        "root_zone_skip": 80,       # Mid ≥ this → skip watering entirely (soil is saturated)
+        "root_zone_wet": 65,        # Mid ≥ this → reduce watering (soil is adequately moist)
+        "root_zone_optimal": 45,    # Mid around this → normal watering (1.0x multiplier)
+        "root_zone_dry": 30,        # Mid ≤ this → increase watering (soil needs water)
+        # Multiplier bounds
         "max_increase_percent": 50,
         "max_decrease_percent": 50,
+        # Rain detection — shallow sensor + weather integration
+        "rain_boost_threshold": 15,  # Shallow-minus-mid delta that indicates recent rain
     },
     "probes": {},
     "base_durations": {},
@@ -283,7 +289,280 @@ def _is_stale(last_updated: str, threshold_minutes: int) -> bool:
         return True
 
 
+# --- Weather Forecast Helper ---
+
+def _get_precipitation_probability() -> float:
+    """Get today's precipitation probability from the weather forecast.
+
+    Returns the highest precipitation_probability from the first 2 forecast
+    entries (roughly the next 24 hours), or 0 if unavailable.
+    """
+    try:
+        from routes.weather import get_weather_data
+        import asyncio
+
+        # We can't await here from a sync function, so read saved weather data
+        from routes.weather import _load_weather_rules
+        rules_data = _load_weather_rules()
+        last_data = rules_data.get("last_weather_data", {})
+
+        # The weather condition can tell us if it's currently raining
+        condition = last_data.get("condition", "")
+        rain_conditions = {"rainy", "pouring", "lightning-rainy"}
+        if condition in rain_conditions:
+            return 100.0
+
+        # For forecast probability, read from weather rules file
+        # (the forecast isn't stored in last_weather_data, but
+        #  the weather evaluation stores rain_forecast triggers)
+        active = rules_data.get("active_adjustments", [])
+        for adj in active:
+            if adj.get("rule") == "rain_forecast":
+                # Rain is forecasted — extract probability from reason string
+                reason = adj.get("reason", "")
+                # e.g. "Rain forecasted (75% probability)"
+                import re
+                match = re.search(r'(\d+)%', reason)
+                if match:
+                    return float(match.group(1))
+                return 75.0  # default high if rain_forecast triggered
+
+        return 0.0
+    except Exception:
+        return 0.0
+
+
+def _get_weather_condition() -> str:
+    """Get the current weather condition from saved weather data."""
+    try:
+        from routes.weather import _load_weather_rules
+        rules_data = _load_weather_rules()
+        return rules_data.get("last_weather_data", {}).get("condition", "")
+    except Exception:
+        return ""
+
+
 # --- Moisture Multiplier Calculation ---
+
+def _analyze_probe_gradient(
+    depth_readings: dict,
+    thresholds: dict,
+    precip_probability: float,
+    weather_condition: str,
+) -> dict:
+    """Analyze a single probe's depth readings using gradient-based logic.
+
+    The algorithm treats each sensor depth as a distinct signal:
+      - Mid (root zone): PRIMARY decision driver — where grass roots live
+      - Shallow (surface): Rain detection signal — wet surface + rain = recently rained
+      - Deep (reserve): Over-irrigation / reserve indicator
+
+    The gradient between sensors reveals the soil moisture profile:
+      - Shallow > Mid > Deep → wetting front moving down (recent rain/irrigation)
+      - Shallow < Mid → surface drying out, root zone still moist (normal)
+      - Mid very low, Deep still moist → root zone depleted, deep reserves remain
+      - All high → saturated, skip watering
+
+    Returns:
+        {
+            "multiplier": float,
+            "skip": bool,
+            "reason": str,
+            "profile": str (descriptive label),
+            "mid_value": float or None,
+        }
+    """
+    shallow_val = depth_readings.get("shallow", {}).get("value")
+    mid_val = depth_readings.get("mid", {}).get("value")
+    deep_val = depth_readings.get("deep", {}).get("value")
+
+    shallow_ok = shallow_val is not None and not depth_readings.get("shallow", {}).get("stale", True)
+    mid_ok = mid_val is not None and not depth_readings.get("mid", {}).get("stale", True)
+    deep_ok = deep_val is not None and not depth_readings.get("deep", {}).get("stale", True)
+
+    # Thresholds — root zone focused
+    root_skip = thresholds.get("root_zone_skip", 80)
+    root_wet = thresholds.get("root_zone_wet", 65)
+    root_optimal = thresholds.get("root_zone_optimal", 45)
+    root_dry = thresholds.get("root_zone_dry", 30)
+    max_increase = thresholds.get("max_increase_percent", 50) / 100
+    max_decrease = thresholds.get("max_decrease_percent", 50) / 100
+    rain_boost = thresholds.get("rain_boost_threshold", 15)
+
+    # Legacy threshold support — if old keys exist, map them to new ones
+    if "skip_threshold" in thresholds and "root_zone_skip" not in thresholds:
+        root_skip = thresholds.get("skip_threshold", 80)
+        root_wet = thresholds.get("scale_wet", 65)
+        root_dry = thresholds.get("scale_dry", 30)
+        root_optimal = root_dry + (root_wet - root_dry) * 0.4  # ~40% into the range
+
+    # --- Mid sensor is the PRIMARY driver ---
+    # If mid is unavailable, fall back to shallow, then deep
+    primary_val = None
+    primary_source = "none"
+    if mid_ok:
+        primary_val = mid_val
+        primary_source = "mid"
+    elif shallow_ok:
+        primary_val = shallow_val
+        primary_source = "shallow (fallback)"
+    elif deep_ok:
+        primary_val = deep_val
+        primary_source = "deep (fallback)"
+
+    if primary_val is None:
+        return {
+            "multiplier": 1.0,
+            "skip": False,
+            "reason": "All readings stale or unavailable",
+            "profile": "unknown",
+            "mid_value": None,
+        }
+
+    # --- Rain Detection from Shallow Sensor ---
+    # If shallow is significantly wetter than mid, it likely rained recently
+    rain_detected = False
+    rain_confidence = "none"
+    if shallow_ok and mid_ok:
+        shallow_mid_delta = shallow_val - mid_val
+        if shallow_mid_delta >= rain_boost:
+            # Surface is much wetter than root zone — wetting front
+            rain_detected = True
+            rain_confidence = "high" if precip_probability >= 50 else "moderate"
+        elif shallow_mid_delta > 5 and precip_probability >= 40:
+            # Modest surface excess + weather says rain likely
+            rain_detected = True
+            rain_confidence = "moderate"
+
+    # Also detect rain from weather condition alone
+    rain_conditions = {"rainy", "pouring", "lightning-rainy"}
+    if weather_condition in rain_conditions:
+        rain_detected = True
+        rain_confidence = "high"
+
+    # --- Profile Classification ---
+    profile = "unknown"
+    if mid_ok:
+        if shallow_ok and deep_ok:
+            if shallow_val > mid_val > deep_val:
+                profile = "wetting_front"  # Rain/irrigation moving down
+            elif shallow_val < mid_val and mid_val > deep_val:
+                profile = "subsurface_moist"  # Mid zone holding water well
+            elif shallow_val < mid_val < deep_val:
+                profile = "deep_reserve"  # Deeper soil holding more moisture
+            elif shallow_val > mid_val and mid_val < deep_val:
+                profile = "root_zone_depleted"  # Mid dried out, surface wet from dew/rain
+            else:
+                profile = "uniform"  # Relatively even distribution
+        elif shallow_ok:
+            if shallow_val > mid_val + 10:
+                profile = "surface_wet"
+            elif shallow_val < mid_val - 10:
+                profile = "surface_dry"
+            else:
+                profile = "surface_even"
+        else:
+            profile = "mid_only"
+
+    # --- Multiplier Calculation ---
+    # Base decision on the mid (root zone) sensor
+    multiplier = 1.0
+    skip = False
+    reasons = []
+
+    if primary_val >= root_skip:
+        # Soil is saturated at the root zone — skip entirely
+        multiplier = 0.0
+        skip = True
+        reasons.append(f"Root zone {primary_val:.0f}% ≥ skip threshold {root_skip}%")
+
+    elif primary_val >= root_wet:
+        # Root zone is adequately moist — reduce watering
+        range_span = root_skip - root_wet
+        if range_span > 0:
+            # Linear from (1-max_decrease) at root_wet to 0 at root_skip
+            fraction = (primary_val - root_wet) / range_span
+            multiplier = (1 - max_decrease) * (1 - fraction)
+        else:
+            multiplier = 1 - max_decrease
+        reasons.append(f"Root zone {primary_val:.0f}% ≥ wet threshold {root_wet}%")
+
+    elif primary_val >= root_optimal:
+        # Root zone is in the optimal-to-wet range — slight reduction
+        range_span = root_wet - root_optimal
+        if range_span > 0:
+            fraction = (primary_val - root_optimal) / range_span
+            multiplier = 1.0 - (max_decrease * fraction)
+        else:
+            multiplier = 1.0
+        if multiplier < 1.0:
+            reasons.append(f"Root zone {primary_val:.0f}% approaching wet threshold")
+        else:
+            reasons.append(f"Root zone {primary_val:.0f}% in optimal range")
+
+    elif primary_val >= root_dry:
+        # Root zone between dry and optimal — increase slightly
+        range_span = root_optimal - root_dry
+        if range_span > 0:
+            fraction = (root_optimal - primary_val) / range_span
+            multiplier = 1.0 + (max_increase * fraction * 0.5)  # Up to half max increase
+        else:
+            multiplier = 1.0
+        reasons.append(f"Root zone {primary_val:.0f}% below optimal, slightly increasing")
+
+    else:
+        # Root zone is critically dry — maximum increase
+        multiplier = 1 + max_increase
+        reasons.append(f"Root zone {primary_val:.0f}% < dry threshold {root_dry}%, max increase")
+
+    # --- Rain Detection Adjustment ---
+    # If we detected recent rain and the root zone is already being watered at root_wet,
+    # reduce further because the wetting front hasn't reached mid yet
+    if rain_detected and not skip and multiplier > 0:
+        if rain_confidence == "high":
+            # High confidence rain — reduce multiplier significantly
+            rain_reduction = 0.4
+            multiplier *= (1 - rain_reduction)
+            reasons.append(f"Rain detected (high confidence) — reducing {rain_reduction*100:.0f}%")
+        elif rain_confidence == "moderate":
+            rain_reduction = 0.2
+            multiplier *= (1 - rain_reduction)
+            reasons.append(f"Rain detected (moderate confidence) — reducing {rain_reduction*100:.0f}%")
+
+        # If mid is at or near the wet threshold with rain detected, consider skipping
+        if mid_ok and mid_val >= root_wet - 5 and rain_confidence == "high":
+            multiplier = 0.0
+            skip = True
+            reasons.append(f"Root zone {mid_val:.0f}% near wet threshold + rain → skipping")
+
+    # --- Deep Sensor Guard ---
+    # If deep sensor is very wet, the soil is saturated below the root zone
+    # This suggests we might be over-irrigating even if mid looks normal
+    if deep_ok and not skip:
+        if deep_val >= root_skip:
+            # Deep zone saturated — cap multiplier at reduced level
+            multiplier = min(multiplier, 1 - max_decrease)
+            reasons.append(f"Deep sensor {deep_val:.0f}% saturated — capping reduction")
+        elif deep_ok and mid_ok and deep_val > mid_val + 15:
+            # Deep significantly wetter than mid — water pooling below
+            overwater_reduction = 0.15
+            multiplier *= (1 - overwater_reduction)
+            reasons.append(f"Deep {deep_val:.0f}% > mid {mid_val:.0f}% — slight over-irrigation reduction")
+
+    # Clamp multiplier
+    multiplier = round(max(multiplier, 0.0), 3)
+    multiplier = min(multiplier, 1 + max_increase)
+
+    return {
+        "multiplier": multiplier,
+        "skip": skip,
+        "reason": "; ".join(reasons),
+        "profile": profile,
+        "mid_value": mid_val if mid_ok else None,
+        "rain_detected": rain_detected,
+        "rain_confidence": rain_confidence,
+    }
+
 
 def calculate_zone_moisture_multiplier(
     zone_entity_id: str,
@@ -292,11 +571,11 @@ def calculate_zone_moisture_multiplier(
 ) -> dict:
     """Calculate the moisture multiplier for a specific zone.
 
-    Algorithm:
-    1. Find all probes mapped to the zone
-    2. For each probe, compute weighted average of non-stale depth readings
-    3. Average effective moisture across all probes for the zone
-    4. Apply thresholds to derive multiplier
+    Uses a gradient-based algorithm that treats each sensor depth as a
+    distinct signal rather than computing a simple weighted average:
+      - Mid (root zone): PRIMARY decision driver
+      - Shallow (surface): Rain detection signal
+      - Deep (reserve): Over-irrigation / reserve guard
 
     Args:
         zone_entity_id: The zone's HA entity_id (e.g., switch.irrigator_zone_1)
@@ -314,7 +593,6 @@ def calculate_zone_moisture_multiplier(
         }
     """
     stale_threshold = data.get("stale_reading_threshold_minutes", 120)
-    depth_weights = data.get("depth_weights", {"shallow": 0.2, "mid": 0.5, "deep": 0.3})
     default_thresholds = data.get("default_thresholds", DEFAULT_DATA["default_thresholds"])
 
     # Find all probes mapped to this zone
@@ -333,18 +611,22 @@ def calculate_zone_moisture_multiplier(
             "reason": "No probes mapped to this zone",
         }
 
-    # Calculate weighted moisture for each probe
+    # Get weather context for rain detection
+    precip_probability = _get_precipitation_probability()
+    weather_condition = _get_weather_condition()
+
+    # Analyze each probe using gradient-based logic
     probe_details = []
-    effective_moistures = []
+    probe_multipliers = []
+    any_skip = False
+    all_reasons = []
 
     for probe_id, probe in mapped_probes:
         sensors = probe.get("sensors", {})
         thresholds = probe.get("thresholds") or default_thresholds
 
-        weighted_sum = 0.0
-        weight_sum = 0.0
+        # Build depth readings dict
         depth_readings = {}
-
         for depth in ("shallow", "mid", "deep"):
             sensor_eid = sensors.get(depth)
             if not sensor_eid:
@@ -356,9 +638,6 @@ def calculate_zone_moisture_multiplier(
             stale = _is_stale(last_updated, stale_threshold)
 
             if value is not None and not stale:
-                weight = depth_weights.get(depth, 0.33)
-                weighted_sum += value * weight
-                weight_sum += weight
                 depth_readings[depth] = {
                     "value": value,
                     "stale": False,
@@ -372,20 +651,44 @@ def calculate_zone_moisture_multiplier(
                     "reason": "stale" if stale else "unavailable",
                 }
 
-        effective = weighted_sum / weight_sum if weight_sum > 0 else None
-        if effective is not None:
-            effective_moistures.append(effective)
+        # Run gradient analysis
+        result = _analyze_probe_gradient(
+            depth_readings, thresholds, precip_probability, weather_condition,
+        )
+
+        if result["skip"]:
+            any_skip = True
+        if result["multiplier"] is not None:
+            probe_multipliers.append(result["multiplier"])
+
+        # Compute a representative moisture value for display (mid preferred)
+        mid_reading = depth_readings.get("mid", {})
+        shallow_reading = depth_readings.get("shallow", {})
+        deep_reading = depth_readings.get("deep", {})
+        display_moisture = None
+        if mid_reading.get("value") is not None and not mid_reading.get("stale"):
+            display_moisture = mid_reading["value"]
+        elif shallow_reading.get("value") is not None and not shallow_reading.get("stale"):
+            display_moisture = shallow_reading["value"]
+        elif deep_reading.get("value") is not None and not deep_reading.get("stale"):
+            display_moisture = deep_reading["value"]
 
         probe_details.append({
             "probe_id": probe_id,
             "display_name": probe.get("display_name", probe_id),
-            "effective_moisture": round(effective, 1) if effective is not None else None,
+            "effective_moisture": round(display_moisture, 1) if display_moisture is not None else None,
             "depth_readings": depth_readings,
-            "all_stale": weight_sum == 0,
+            "all_stale": all(
+                depth_readings.get(d, {}).get("stale", True)
+                for d in ("shallow", "mid", "deep")
+                if d in depth_readings
+            ),
+            "profile": result.get("profile", "unknown"),
+            "rain_detected": result.get("rain_detected", False),
         })
+        all_reasons.append(f"{probe.get('display_name', probe_id)}: {result['reason']}")
 
-    # Average across all probes for this zone
-    if not effective_moistures:
+    if not probe_multipliers:
         return {
             "multiplier": 1.0,
             "avg_moisture": None,
@@ -395,63 +698,30 @@ def calculate_zone_moisture_multiplier(
             "reason": "All probe readings are stale or unavailable",
         }
 
-    avg_moisture = sum(effective_moistures) / len(effective_moistures)
-
-    # Apply thresholds using the first probe's thresholds (or defaults)
-    # If different probes have different thresholds, we use defaults for the zone average
-    thresholds = default_thresholds
-    if len(mapped_probes) == 1:
-        thresholds = mapped_probes[0][1].get("thresholds") or default_thresholds
-
-    skip_threshold = thresholds.get("skip_threshold", 80)
-    scale_wet = thresholds.get("scale_wet", 70)
-    scale_dry = thresholds.get("scale_dry", 30)
-    max_increase = thresholds.get("max_increase_percent", 50) / 100
-    max_decrease = thresholds.get("max_decrease_percent", 50) / 100
-
-    # Calculate multiplier
-    if avg_moisture >= skip_threshold:
-        multiplier = 0.0
+    # For multiple probes: use the MINIMUM multiplier (most conservative)
+    # If any probe says skip, we skip
+    if any_skip:
+        final_multiplier = 0.0
         skip = True
-        reason = f"Moisture {avg_moisture:.0f}% ≥ skip threshold {skip_threshold}%"
-    elif avg_moisture >= scale_wet:
-        # Linear decrease: scale_wet → skip_threshold maps to (1-max_decrease) → 0
-        range_span = skip_threshold - scale_wet
-        if range_span > 0:
-            fraction = (avg_moisture - scale_wet) / range_span
-            multiplier = (1 - max_decrease) * (1 - fraction)
-        else:
-            multiplier = 1 - max_decrease
-        skip = False
-        reason = f"Moisture {avg_moisture:.0f}% ≥ wet threshold {scale_wet}%, reducing {(1 - multiplier) * 100:.0f}%"
-    elif avg_moisture >= scale_dry:
-        # Linear interpolation: scale_dry → scale_wet maps to (1+max_increase) → (1-max_decrease)
-        range_span = scale_wet - scale_dry
-        if range_span > 0:
-            fraction = (avg_moisture - scale_dry) / range_span
-            multiplier = (1 + max_increase) - fraction * (max_increase + max_decrease)
-        else:
-            multiplier = 1.0
-        skip = False
-        if multiplier > 1.0:
-            reason = f"Moisture {avg_moisture:.0f}% below wet threshold, increasing {(multiplier - 1) * 100:.0f}%"
-        elif multiplier < 1.0:
-            reason = f"Moisture {avg_moisture:.0f}% above dry threshold, reducing {(1 - multiplier) * 100:.0f}%"
-        else:
-            reason = f"Moisture {avg_moisture:.0f}% in normal range"
     else:
-        # Below scale_dry: capped at max increase
-        multiplier = 1 + max_increase
+        final_multiplier = min(probe_multipliers)
         skip = False
-        reason = f"Moisture {avg_moisture:.0f}% < dry threshold {scale_dry}%, increasing {max_increase * 100:.0f}%"
+
+    # Display moisture: use mid sensor average across probes
+    mid_values = [
+        pd["effective_moisture"]
+        for pd in probe_details
+        if pd["effective_moisture"] is not None
+    ]
+    avg_moisture = sum(mid_values) / len(mid_values) if mid_values else None
 
     return {
-        "multiplier": round(max(multiplier, 0.0), 3),
-        "avg_moisture": round(avg_moisture, 1),
+        "multiplier": round(max(final_multiplier, 0.0), 3),
+        "avg_moisture": round(avg_moisture, 1) if avg_moisture is not None else None,
         "skip": skip,
         "probe_count": len(mapped_probes),
         "probe_details": probe_details,
-        "reason": reason,
+        "reason": "; ".join(all_reasons),
     }
 
 
@@ -916,6 +1186,149 @@ async def api_update_settings(body: MoistureSettingsRequest):
 
     _save_data(data)
     return {"success": True, "message": "Moisture settings updated"}
+
+
+async def calculate_overall_moisture_multiplier() -> dict:
+    """Calculate an overall moisture multiplier across all configured probes.
+
+    Uses the same gradient-based algorithm as zone-level calculations:
+      - Mid (root zone): PRIMARY decision driver
+      - Shallow (surface): Rain detection signal
+      - Deep (reserve): Over-irrigation / reserve guard
+
+    Returns:
+        {
+            "moisture_multiplier": float,
+            "avg_moisture": float or None,
+            "probe_count": int,
+            "reason": str,
+            "profile": str,
+            "rain_detected": bool,
+        }
+    """
+    data = _load_data()
+
+    if not data.get("enabled"):
+        return {
+            "moisture_multiplier": 1.0,
+            "avg_moisture": None,
+            "probe_count": 0,
+            "reason": "Moisture probes not enabled",
+        }
+
+    probes = data.get("probes", {})
+    if not probes:
+        return {
+            "moisture_multiplier": 1.0,
+            "avg_moisture": None,
+            "probe_count": 0,
+            "reason": "No probes configured",
+        }
+
+    sensor_states = await _get_probe_sensor_states(probes)
+    stale_threshold = data.get("stale_reading_threshold_minutes", 120)
+    default_thresholds = data.get("default_thresholds", DEFAULT_DATA["default_thresholds"])
+
+    # Get weather context for rain detection
+    precip_probability = _get_precipitation_probability()
+    weather_condition = _get_weather_condition()
+
+    probe_multipliers = []
+    mid_values = []
+    any_skip = False
+    all_reasons = []
+    profiles = []
+    rain_detected = False
+
+    for probe_id, probe in probes.items():
+        sensors = probe.get("sensors", {})
+        thresholds = probe.get("thresholds") or default_thresholds
+
+        # Build depth readings dict
+        depth_readings = {}
+        for depth in ("shallow", "mid", "deep"):
+            sensor_eid = sensors.get(depth)
+            if not sensor_eid:
+                continue
+            sensor_data = sensor_states.get(sensor_eid, {})
+            value = sensor_data.get("state")
+            last_updated = sensor_data.get("last_updated", "")
+            stale = _is_stale(last_updated, stale_threshold)
+
+            if value is not None and not stale:
+                depth_readings[depth] = {
+                    "value": value,
+                    "stale": False,
+                    "entity_id": sensor_eid,
+                }
+            else:
+                depth_readings[depth] = {
+                    "value": value,
+                    "stale": stale,
+                    "entity_id": sensor_eid,
+                    "reason": "stale" if stale else "unavailable",
+                }
+
+        # Run gradient analysis
+        result = _analyze_probe_gradient(
+            depth_readings, thresholds, precip_probability, weather_condition,
+        )
+
+        if result["skip"]:
+            any_skip = True
+        if result["multiplier"] is not None:
+            probe_multipliers.append(result["multiplier"])
+        if result.get("mid_value") is not None:
+            mid_values.append(result["mid_value"])
+        if result.get("rain_detected"):
+            rain_detected = True
+
+        profiles.append(result.get("profile", "unknown"))
+        all_reasons.append(f"{probe.get('display_name', probe_id)}: {result['reason']}")
+
+    if not probe_multipliers:
+        return {
+            "moisture_multiplier": 1.0,
+            "avg_moisture": None,
+            "probe_count": len(probes),
+            "reason": "All probe readings are stale or unavailable",
+        }
+
+    # Use minimum multiplier across probes (most conservative)
+    if any_skip:
+        final_multiplier = 0.0
+    else:
+        final_multiplier = min(probe_multipliers)
+
+    # Display moisture: mid sensor average
+    avg_moisture = sum(mid_values) / len(mid_values) if mid_values else None
+
+    return {
+        "moisture_multiplier": round(max(final_multiplier, 0.0), 3),
+        "avg_moisture": round(avg_moisture, 1) if avg_moisture is not None else None,
+        "probe_count": len(probes),
+        "reason": "; ".join(all_reasons),
+        "profile": profiles[0] if len(profiles) == 1 else "multi-probe",
+        "rain_detected": rain_detected,
+    }
+
+
+@router.get("/multiplier", summary="Get overall moisture multiplier")
+async def api_overall_multiplier():
+    """Get the overall moisture multiplier across all probes.
+
+    Returns both the moisture-only multiplier and a combined (weather × moisture)
+    multiplier for the system-level watering factor display.
+    """
+    result = await calculate_overall_moisture_multiplier()
+    weather_mult = get_weather_multiplier()
+    moisture_mult = result["moisture_multiplier"]
+    combined = round(weather_mult * moisture_mult, 3) if moisture_mult > 0 else 0.0
+    return {
+        **result,
+        "weather_multiplier": weather_mult,
+        "combined_multiplier": combined,
+    }
 
 
 @router.post("/zones/{zone_id}/multiplier", summary="Preview zone moisture multiplier")

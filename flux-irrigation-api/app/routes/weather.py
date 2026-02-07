@@ -603,12 +603,22 @@ async def get_weather_rules():
 
 @router.put("/weather/rules", summary="Update weather rules")
 async def update_weather_rules(body: dict):
-    """Update weather rules configuration."""
+    """Update weather rules configuration and re-evaluate immediately."""
     data = _load_weather_rules()
     if "rules" in body:
         data["rules"] = body["rules"]
     _save_weather_rules(data)
-    return {"success": True, "message": "Weather rules updated"}
+    # Re-evaluate rules immediately so the multiplier updates right away
+    try:
+        result = await run_weather_evaluation()
+        return {
+            "success": True,
+            "message": "Weather rules updated",
+            "watering_multiplier": result.get("watering_multiplier", 1.0),
+        }
+    except Exception as e:
+        # Rules were saved even if evaluation fails
+        return {"success": True, "message": f"Weather rules saved (evaluation error: {e})"}
 
 
 @router.get("/weather/log", summary="Get weather event log")

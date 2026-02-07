@@ -2293,29 +2293,24 @@ ADMIN_HTML = """<!DOCTYPE html>
             html += '<span style="font-size:12px;color:var(--text-muted);">minutes — readings older than this are ignored</span>';
             html += '</div></div>';
 
-            // Depth weights
-            const dw = settings.depth_weights || {shallow: 0.2, mid: 0.5, deep: 0.3};
-            html += '<div style="margin-bottom:16px;">';
-            html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Depth Weights</label>';
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-            for (const d of ['shallow', 'mid', 'deep']) {
-                html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + d.charAt(0).toUpperCase() + d.slice(1) + '</label>';
-                html += '<input type="number" id="cfgMoistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
-            }
-            html += '</div></div>';
-
-            // Default thresholds
+            // Root Zone Thresholds (gradient-based algorithm)
             const dt = settings.default_thresholds || {};
             html += '<div style="margin-bottom:16px;">';
-            html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Default Thresholds (%)</label>';
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-            for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry']]) {
+            html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Root Zone Thresholds (%)</label>';
+            html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">The mid sensor (root zone) drives watering decisions. Shallow detects rain; deep guards against over-irrigation.</div>';
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+            for (const [key, label, hint] of [
+                ['root_zone_skip','Skip (saturated)','Skip watering entirely'],
+                ['root_zone_wet','Wet','Reduce watering'],
+                ['root_zone_optimal','Optimal','Normal watering (1.0x)'],
+                ['root_zone_dry','Dry','Increase watering']
+            ]) {
                 html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
-                html += '<input type="number" id="cfgMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
+                html += '<input type="number" id="cfgMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;" title="' + hint + '"></div>';
             }
             html += '</div>';
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">';
-            for (const [key, label] of [['max_increase_percent','Max Increase'], ['max_decrease_percent','Max Decrease']]) {
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:8px;">';
+            for (const [key, label] of [['max_increase_percent','Max Increase %'], ['max_decrease_percent','Max Decrease %'], ['rain_boost_threshold','Rain Delta']]) {
                 html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
                 html += '<input type="number" id="cfgMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
             }
@@ -2376,17 +2371,14 @@ ADMIN_HTML = """<!DOCTYPE html>
             const settings = {
                 enabled: document.getElementById('cfgMoistureEnabled').checked,
                 stale_reading_threshold_minutes: parseInt(document.getElementById('cfgMoistureStale').value) || 120,
-                depth_weights: {
-                    shallow: parseFloat(document.getElementById('cfgMoistureWeight_shallow').value) || 0.2,
-                    mid: parseFloat(document.getElementById('cfgMoistureWeight_mid').value) || 0.5,
-                    deep: parseFloat(document.getElementById('cfgMoistureWeight_deep').value) || 0.3,
-                },
                 default_thresholds: {
-                    skip_threshold: parseInt(document.getElementById('cfgMoistureThresh_skip_threshold').value) || 80,
-                    scale_wet: parseInt(document.getElementById('cfgMoistureThresh_scale_wet').value) || 70,
-                    scale_dry: parseInt(document.getElementById('cfgMoistureThresh_scale_dry').value) || 30,
+                    root_zone_skip: parseInt(document.getElementById('cfgMoistureThresh_root_zone_skip').value) || 80,
+                    root_zone_wet: parseInt(document.getElementById('cfgMoistureThresh_root_zone_wet').value) || 65,
+                    root_zone_optimal: parseInt(document.getElementById('cfgMoistureThresh_root_zone_optimal').value) || 45,
+                    root_zone_dry: parseInt(document.getElementById('cfgMoistureThresh_root_zone_dry').value) || 30,
                     max_increase_percent: parseInt(document.getElementById('cfgMoistureThresh_max_increase_percent').value) || 50,
                     max_decrease_percent: parseInt(document.getElementById('cfgMoistureThresh_max_decrease_percent').value) || 50,
+                    rain_boost_threshold: parseInt(document.getElementById('cfgMoistureThresh_rain_boost_threshold').value) || 15,
                 },
             };
             await mcfg('/settings', 'PUT', settings);
@@ -2601,7 +2593,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your Gophr device from the dropdown. The list is filtered to show devices matching "gophr", "moisture", "soil", or "probe". Click "Show all devices" if your device doesn't appear.</li>
 <li style="margin-bottom:4px;"><strong>Map Sensors</strong> — After selecting a device, map its sensor entities to shallow, mid, and deep depth readings. Sensors with matching depth names are auto-selected.</li>
 <li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. New probes are mapped to all irrigation zones by default.</li>
-<li style="margin-bottom:4px;"><strong>Settings</strong> — Configure stale data threshold, depth weights, and moisture scaling thresholds</li>
+<li style="margin-bottom:4px;"><strong>Settings</strong> — Configure stale data threshold, root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li>
 <li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings, zone multipliers, and duration controls</li>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The combined weather &times; moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled durations automatically.</div>

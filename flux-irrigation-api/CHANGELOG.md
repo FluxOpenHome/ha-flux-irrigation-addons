@@ -9,10 +9,10 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 ### Added
 
 - **Gophr Moisture Probe Integration** — Auto-detect Gophr moisture probes from HA sensors and integrate soil moisture data into irrigation decisions
-  - Three-depth weighted moisture algorithm (shallow, mid, deep) with configurable weights
+  - Gradient-based moisture algorithm: mid sensor (root zone) is the primary decision driver, shallow sensor detects rain via wetting front analysis, deep sensor guards against over-irrigation
   - Many-to-many probe-to-zone mapping (a probe can serve multiple zones; a zone can use multiple probes)
   - Combined weather × moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled run durations
-  - Configurable thresholds: skip (too wet), wet/dry scaling, max increase/decrease percentages
+  - Configurable root zone thresholds: skip (saturated), wet, optimal, dry — with max increase/decrease percentages and rain detection sensitivity
   - Duration adjustment mechanism: capture base durations → apply adjusted values → restore originals
   - Stale data handling: readings older than the configurable threshold are excluded (defaults to 120 minutes)
   - Background periodic evaluation runs on the weather check interval
@@ -52,8 +52,13 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
   - Configuration: 7 sections (overview, device selection, API keys, connection keys, weather settings, moisture probes, revoking access)
   - Management Dashboard: 11 sections (overview, adding properties, property cards, search/filtering, detail view, remote control, schedules, weather rules, run history, notes/aliases, updating keys)
 
+- **Moisture Multiplier Badge** — The Moisture Probes card header now shows a multiplier badge (same style as the weather badge) reflecting the current overall moisture factor
+- **Watering Factor Tile** — System Status card on both dashboards shows the combined watering factor (weather × moisture) with a breakdown of individual multipliers
+- **Run History Factor Column** — Run history table includes a "Factor" column showing the combined weather × moisture multiplier for schedule-triggered events; CSV export includes moisture_multiplier and combined_multiplier columns
+
 ### Changed
 
+- **Advanced Moisture Algorithm** — Replaced the simple weighted-average moisture algorithm with a gradient-based approach that uses each sensor depth as a distinct signal: the mid sensor (root zone) is the primary watering decision driver, the shallow sensor detects recent rain via wetting front analysis combined with weather forecast data, and the deep sensor guards against over-irrigation by detecting water pooling below the root zone
 - **Moisture Probe Configuration on Configuration Page** — Probes are now configured from the Configuration page using a device picker dropdown (instead of keyword-based sensor scanning); select your Gophr device from a filtered list, map its sensors to shallow/mid/deep depths, and add the probe; the Homeowner Dashboard shows the moisture card once probes are added and enabled
 - **Gophr Logo** — The Gophr logo is displayed next to the Moisture Probes card header on the Configuration page
 - **Collapsible Device Entities** — The device entity list on the Configuration page (zones, sensors, controls) is now collapsed by default; click to expand and see the full list
@@ -66,6 +71,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 ### Fixed
 
 - **Dashboard flickering** — Weather and moisture probe cards no longer flicker on periodic refresh; data is cached and the DOM is only updated when values actually change
+- **Weather rules not applied until next check** — Saving weather rules now immediately re-evaluates conditions and updates the watering multiplier badge; previously the multiplier only updated on the periodic check (up to 15 minutes later) or when clicking "Test Rules Now"
+- **Button entity names** — Device control tiles for button entities no longer show the device name suffix (e.g. "Irrigation System Restart irrigation_controller" → "Irrigation System Restart") and the action button reads "PRESS"
 - Run history "hours" parameter parsing error when the select dropdown value was empty — now uses `parseInt` with a fallback to 24 hours
 - Phone number not visible on management dashboard even when set in connection key
 - Zone 5 (and other disabled entities) not appearing — entities with `disabled_by` set are now properly filtered, and the auto-refresh task picks up newly enabled entities automatically

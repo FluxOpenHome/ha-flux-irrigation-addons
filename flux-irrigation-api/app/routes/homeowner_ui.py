@@ -254,6 +254,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header">
             <h2>Moisture Probes</h2>
             <div style="display:flex;align-items:center;gap:8px;">
+                <span id="moistureMultBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-success-light);color:var(--text-success-dark);">1.0x</span>
                 <span id="moistureStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-success-light);color:var(--text-success-dark);">—</span>
             </div>
         </div>
@@ -600,12 +601,18 @@ async function loadStatus() {
             addrEl.style.display = 'block';
         }
 
+        const wf = s.combined_multiplier != null ? s.combined_multiplier : 1.0;
+        const wfColor = wf === 1.0 ? 'var(--color-success)' : wf < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+        const wm = s.weather_multiplier != null ? s.weather_multiplier : 1.0;
+        const mmult = s.moisture_multiplier != null ? s.moisture_multiplier : 1.0;
+
         el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
             <div class="tile"><div class="tile-name">Connection</div><div class="tile-state ${s.ha_connected ? 'on' : ''}">${s.ha_connected ? 'Connected' : 'Disconnected'}</div></div>
             <div class="tile"><div class="tile-name">System</div><div class="tile-state ${s.system_paused ? '' : 'on'}">${s.system_paused ? 'Paused' : 'Active'}</div></div>
             <div class="tile"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
             <div class="tile"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
+            <div class="tile"><div class="tile-name">Watering Factor</div><div class="tile-state" style="color:${wfColor};font-weight:700;">${wf}x</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px;">W: ${wm}x · M: ${mmult}x</div></div>
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
         </div>`;
     } catch (e) {
@@ -993,8 +1000,20 @@ function renderScheduleCard(sched) {
     el.innerHTML = html;
 }
 
+function cleanEntityName(friendlyName, entityId) {
+    // HA often appends the device name to entity friendly names, e.g.
+    // "Irrigation System Restart irrigation_controller" — strip it
+    if (!friendlyName) return entityId || 'Unknown';
+    const parts = friendlyName.split(' ');
+    const last = parts[parts.length - 1];
+    if (parts.length > 1 && last.includes('_') && entityId && entityId.includes(last)) {
+        return parts.slice(0, -1).join(' ');
+    }
+    return friendlyName;
+}
+
 function renderControlTile(e) {
-    const name = esc(e.friendly_name || e.name || e.entity_id);
+    const name = esc(cleanEntityName(e.friendly_name || e.name, e.entity_id));
     const eid = e.entity_id;
     const domain = e.domain;
     const state = e.state || 'unknown';
@@ -1042,9 +1061,8 @@ function renderControlTile(e) {
     if (domain === 'button') {
         return '<div class="tile">' +
             '<div class="tile-name">' + name + '</div>' +
-            '<div class="tile-state">' + esc(state) + '</div>' +
             '<div class="tile-actions">' +
-                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid + '\\',\\'button\\',{})">Press</button>' +
+                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid + '\\',\\'button\\',{})">PRESS</button>' +
             '</div></div>';
     }
 
@@ -1105,7 +1123,7 @@ async function loadHistory() {
         }
 
         el.innerHTML = weatherSummary +
-            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
+            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Factor</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
             events.slice(0, 100).map(e => {
                 const wx = e.weather || {};
                 let wxCell = '-';
@@ -1121,12 +1139,28 @@ async function loadHistory() {
                         wxCell += '<div style="font-size:10px;color:var(--text-warning);margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
                     }
                 }
+                // Factor column — only for schedule-triggered events
+                let factorCell = '<span style="color:var(--text-disabled);">—</span>';
+                if (e.source === 'schedule') {
+                    const mo = e.moisture || {};
+                    const combined = mo.combined_multiplier != null ? mo.combined_multiplier : (wx.watering_multiplier != null ? wx.watering_multiplier : null);
+                    if (combined != null) {
+                        const fc = combined === 1.0 ? 'var(--color-success)' : combined < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+                        factorCell = '<span style="color:' + fc + ';font-weight:600;">' + combined + 'x</span>';
+                        const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : 1.0;
+                        const mMult = mo.moisture_multiplier != null ? mo.moisture_multiplier : null;
+                        if (mMult != null) {
+                            factorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">W:' + wMult + ' · M:' + mMult + '</div>';
+                        }
+                    }
+                }
                 const srcLabel = e.source ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
                 return `<tr style="border-bottom:1px solid var(--border-row);">
                 <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}${srcLabel}</td>
                 <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:var(--color-success);">ON</span>' : '<span style="color:var(--text-disabled);">OFF</span>'}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
+                <td style="padding:6px;font-size:12px;">${factorCell}</td>
                 <td style="padding:6px;font-size:12px;">${wxCell}</td>
             </tr>`;
             }).join('') + '</tbody></table>';
@@ -1453,11 +1487,16 @@ async function saveWeatherRules() {
         for (let i = 1; i <= 12; i++) {
             rules.seasonal_adjustment.monthly_multipliers[String(i)] = parseFloat(document.getElementById('seasonal_month_' + i).value) || 0;
         }
-        await wapi('/weather/rules', {
+        const result = await wapi('/weather/rules', {
             method: 'PUT',
             body: JSON.stringify({ rules }),
         });
-        showToast('Weather rules saved');
+        const mult = result.watering_multiplier;
+        showToast('Weather rules saved' + (mult != null ? ' — multiplier: ' + mult + 'x' : ''));
+        // Clear cache and refresh weather card to show updated multiplier
+        _weatherDataCache = null;
+        _weatherRulesCache = null;
+        setTimeout(() => loadWeather(), 500);
     } catch (e) {
         showToast('Failed to save weather rules: ' + e.message, 'error');
     }
@@ -1532,9 +1571,12 @@ async function loadMoisture() {
     const card = document.getElementById('moistureCard');
     const body = document.getElementById('moistureCardBody');
     const badge = document.getElementById('moistureStatusBadge');
+    const multBadge = document.getElementById('moistureMultBadge');
     try {
         const data = await mapi('/probes');
         const settings = await mapi('/settings');
+        let multData = {};
+        try { multData = await mapi('/multiplier'); } catch (_) {}
 
         const probes = data.probes || {};
         const probeCount = Object.keys(probes).length;
@@ -1547,7 +1589,7 @@ async function loadMoisture() {
             return;
         }
         // Skip DOM rebuild if data hasn't changed (prevents flickering on refresh)
-        const moistureKey = JSON.stringify(data) + '|' + JSON.stringify(settings);
+        const moistureKey = JSON.stringify(data) + '|' + JSON.stringify(settings) + '|' + JSON.stringify(multData);
         if (_moistureDataCache === moistureKey) return;
         _moistureDataCache = moistureKey;
         card.style.display = 'block';
@@ -1555,6 +1597,13 @@ async function loadMoisture() {
         badge.textContent = settings.enabled ? probeCount + ' probe(s)' : 'Disabled';
         badge.style.background = settings.enabled ? 'var(--bg-success-light)' : 'var(--bg-tile)';
         badge.style.color = settings.enabled ? 'var(--text-success-dark)' : 'var(--text-muted)';
+
+        // Update moisture multiplier badge
+        const mm = multData.moisture_multiplier != null ? multData.moisture_multiplier : 1.0;
+        multBadge.textContent = mm + 'x';
+        multBadge.style.background = mm === 1.0 ? 'var(--bg-success-light)' : mm < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+        multBadge.style.color = mm === 1.0 ? 'var(--text-success-dark)' : mm < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+        multBadge.style.display = settings.enabled ? '' : 'none';
 
         let html = '';
 
@@ -1668,29 +1717,24 @@ async function loadMoisture() {
         html += '<span style="font-size:12px;color:var(--text-muted);">minutes — readings older than this are ignored</span>';
         html += '</div></div>';
 
-        // Depth weights
-        const dw = settings.depth_weights || {shallow: 0.2, mid: 0.5, deep: 0.3};
-        html += '<div style="margin-bottom:12px;">';
-        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Depth Weights</label>';
-        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">';
-        for (const d of ['shallow', 'mid', 'deep']) {
-            html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + d.charAt(0).toUpperCase() + d.slice(1) + '</label>';
-            html += '<input type="number" id="moistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
-        }
-        html += '</div></div>';
-
-        // Default thresholds
+        // Root Zone Thresholds (gradient-based algorithm)
         const dt = settings.default_thresholds || {};
         html += '<div style="margin-bottom:12px;">';
-        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Default Thresholds (%)</label>';
-        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">';
-        for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry']]) {
+        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Root Zone Thresholds (%)</label>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">The mid sensor (root zone) drives watering decisions. Shallow detects rain; deep guards against over-irrigation.</div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+        for (const [key, label, hint] of [
+            ['root_zone_skip','Skip (saturated)','Skip watering entirely'],
+            ['root_zone_wet','Wet','Reduce watering'],
+            ['root_zone_optimal','Optimal','Normal watering (1.0x)'],
+            ['root_zone_dry','Dry','Increase watering']
+        ]) {
             html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
-            html += '<input type="number" id="moistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
+            html += '<input type="number" id="moistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;" title="' + hint + '"></div>';
         }
         html += '</div>';
-        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">';
-        for (const [key, label] of [['max_increase_percent','Max Increase'], ['max_decrease_percent','Max Decrease']]) {
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">';
+        for (const [key, label] of [['max_increase_percent','Max Increase %'], ['max_decrease_percent','Max Decrease %'], ['rain_boost_threshold','Rain Delta']]) {
             html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
             html += '<input type="number" id="moistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
         }
@@ -1774,21 +1818,19 @@ async function saveMoistureSettings() {
         const payload = {
             enabled: document.getElementById('moistureEnabled').checked,
             stale_reading_threshold_minutes: parseInt(document.getElementById('moistureStaleMin').value) || 120,
-            depth_weights: {
-                shallow: parseFloat(document.getElementById('moistureWeight_shallow').value) || 0.2,
-                mid: parseFloat(document.getElementById('moistureWeight_mid').value) || 0.5,
-                deep: parseFloat(document.getElementById('moistureWeight_deep').value) || 0.3,
-            },
             default_thresholds: {
-                skip_threshold: parseInt(document.getElementById('moistureThresh_skip_threshold').value) || 80,
-                scale_wet: parseInt(document.getElementById('moistureThresh_scale_wet').value) || 70,
-                scale_dry: parseInt(document.getElementById('moistureThresh_scale_dry').value) || 30,
+                root_zone_skip: parseInt(document.getElementById('moistureThresh_root_zone_skip').value) || 80,
+                root_zone_wet: parseInt(document.getElementById('moistureThresh_root_zone_wet').value) || 65,
+                root_zone_optimal: parseInt(document.getElementById('moistureThresh_root_zone_optimal').value) || 45,
+                root_zone_dry: parseInt(document.getElementById('moistureThresh_root_zone_dry').value) || 30,
                 max_increase_percent: parseInt(document.getElementById('moistureThresh_max_increase_percent').value) || 50,
                 max_decrease_percent: parseInt(document.getElementById('moistureThresh_max_decrease_percent').value) || 50,
+                rain_boost_threshold: parseInt(document.getElementById('moistureThresh_rain_boost_threshold').value) || 15,
             },
         };
         const result = await mapi('/settings', 'PUT', payload);
         showToast(result.message || 'Settings saved');
+        _moistureDataCache = null;
         loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
 }
@@ -1958,9 +2000,11 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">Configure weather rules by expanding the <strong>Weather Rules</strong> section. Each rule can be individually enabled/disabled. Click <strong>Test Rules Now</strong> to see which rules would trigger under current conditions.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Gophr Moisture Probes</h4>
-<p style="margin-bottom:10px;">When Gophr moisture probes are connected to Home Assistant, the moisture card shows live soil moisture readings at three depths (shallow, mid, deep). Probes are mapped to irrigation zones for intelligent watering adjustments:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Zone multipliers</strong> — Combined weather &times; moisture multiplier for each mapped zone</li><li style="margin-bottom:4px;"><strong>Duration status</strong> — Table showing base vs. adjusted run durations</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Enable/disable, stale threshold, depth weights, and moisture thresholds (skip, wet, dry, max increase/decrease)</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Discover probes from HA sensors, add/remove probes, assign to zones</li><li style="margin-bottom:4px;"><strong>Duration Controls</strong> — Capture base durations, apply adjusted durations (for ESPHome schedules), or restore originals</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. Base durations are temporarily modified on the controller and restored after runs complete.</div>
+<p style="margin-bottom:10px;">When Gophr moisture probes are connected to Home Assistant, the moisture card shows live soil moisture readings at three depths (shallow, mid, deep). The algorithm uses a <strong>gradient-based approach</strong> that treats each depth as a distinct signal:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Mid sensor (root zone)</strong> — The PRIMARY decision driver. This is where grass roots live and is the most important reading for determining watering needs.</li><li style="margin-bottom:4px;"><strong>Shallow sensor (surface)</strong> — Used for rain detection. If the surface is significantly wetter than the root zone and rain is forecasted, the system infers recent rainfall and reduces or skips watering.</li><li style="margin-bottom:4px;"><strong>Deep sensor (reserve)</strong> — Guards against over-irrigation. If deep soil is saturated while the root zone looks normal, it suggests water is pooling below and watering is reduced.</li></ul>
+<p style="margin-bottom:10px;">The moisture card also shows:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Zone multipliers</strong> — Combined weather &times; moisture multiplier for each mapped zone</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Discover probes from HA sensors, add/remove probes, assign to zones</li><li style="margin-bottom:4px;"><strong>Duration Controls</strong> — Capture base durations, apply adjusted durations (for ESPHome schedules), or restore originals</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. The algorithm integrates weather forecast data for rain detection — if the shallow sensor shows a wetting front and rain is forecasted, watering is automatically reduced or skipped.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
 <p style="margin-bottom:10px;">The run history table shows every zone on/off event with:</p>
