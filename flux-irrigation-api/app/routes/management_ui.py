@@ -131,7 +131,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     .customer-grid { grid-template-columns: 1fr; }
     .tile-grid { grid-template-columns: 1fr; }
     .container { padding: 12px; }
+    .header { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
     .header h1 { font-size: 16px; }
+    .header-left img { height: 32px; }
+    .header-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+    .mode-badge { font-size: 11px; padding: 3px 8px; }
+    .btn-sm { padding: 5px 8px; font-size: 11px; }
+    .search-bar { flex-direction: column; }
+    .search-bar input { min-width: auto; width: 100%; }
+    .days-row { gap: 4px; }
+    .day-toggle { padding: 6px 10px; font-size: 12px; min-width: 44px; }
+    .start-times-grid { grid-template-columns: 1fr; }
+    .system-controls-row { flex-direction: column; }
+    .detail-header { flex-direction: column; gap: 8px; align-items: flex-start; }
+    .customer-card-body { padding: 12px; }
+    .customer-actions { flex-wrap: wrap; }
 }
 </style>
 </head>

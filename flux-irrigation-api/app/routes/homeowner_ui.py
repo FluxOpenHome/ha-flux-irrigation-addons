@@ -81,8 +81,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 @media (max-width: 600px) {
     .tile-grid { grid-template-columns: 1fr; }
     .container { padding: 12px; }
+    .header { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
     .header h1 { font-size: 16px; }
     .header-logo { height: 32px; }
+    .header-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+    .nav-tabs { gap: 2px; }
+    .nav-tab { padding: 5px 10px; font-size: 12px; }
+    .btn-sm { padding: 5px 8px; font-size: 11px; }
+    .days-row { gap: 4px; }
+    .day-toggle { padding: 6px 10px; font-size: 12px; min-width: 44px; }
+    .start-times-grid { grid-template-columns: 1fr; }
+    .system-controls-row { flex-direction: column; }
 }
 </style>
 </head>
