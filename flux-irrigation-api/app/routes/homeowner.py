@@ -149,11 +149,14 @@ async def homeowner_status():
         "rain_delay_active": rain_delay_active,
         "rain_delay_until": rain_delay_until if rain_delay_active else None,
         "uptime_check": datetime.now(timezone.utc).isoformat(),
-        # Include homeowner address info for map display
+        # Include homeowner contact/address info (synced live to management)
         "address": config.homeowner_address or "",
         "city": config.homeowner_city or "",
         "state": config.homeowner_state or "",
         "zip": config.homeowner_zip or "",
+        "phone": config.homeowner_phone or "",
+        "first_name": config.homeowner_first_name or "",
+        "last_name": config.homeowner_last_name or "",
     }
 
 

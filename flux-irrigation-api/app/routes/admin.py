@@ -608,6 +608,51 @@ async def test_url(body: dict):
         }
 
 
+@router.post("/api/revoke-access", summary="Revoke management company access")
+async def revoke_management_access():
+    """Revoke management company access by deleting the management API key.
+
+    This immediately prevents the management company from accessing this
+    homeowner's irrigation system. The connection key becomes invalid.
+    The homeowner can re-generate a new connection key later if needed.
+    """
+    config = get_config()
+    if config.mode != "homeowner":
+        raise HTTPException(
+            status_code=400,
+            detail="This endpoint is only available in homeowner mode.",
+        )
+
+    options = _load_options()
+    existing_keys = options.get("api_keys", [])
+
+    mgmt_key_name = "Management Company (Connection Key)"
+    original_count = len(existing_keys)
+    options["api_keys"] = [k for k in existing_keys if k.get("name") != mgmt_key_name]
+    removed_count = original_count - len(options["api_keys"])
+
+    if removed_count == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="No management company access to revoke.",
+        )
+
+    # Clear the stored connection key URL so the old key is fully invalidated
+    # and the homeowner must generate a fresh one. Keep HA token and other
+    # settings (name, address, etc.) so they don't have to re-enter them.
+    options["homeowner_url"] = ""
+
+    await _save_options(options)
+
+    print(f"[ADMIN] Management company access REVOKED — removed {removed_count} API key(s), cleared connection key URL")
+
+    return {
+        "success": True,
+        "message": "Management company access has been revoked. They can no longer access your irrigation system. Generate a new connection key to re-enable access.",
+        "keys_removed": removed_count,
+    }
+
+
 @router.get("/api/geocode", summary="Geocode an address")
 async def admin_geocode(q: str = Query(..., min_length=3, description="Address to geocode")):
     """Proxy geocoding via Nominatim so the browser doesn't need cross-origin access."""
@@ -1187,6 +1232,42 @@ ADMIN_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
             </div>
+
+            <!-- Revoke Access Section -->
+            <div id="revokeSection" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid #eee;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:14px;font-weight:600;color:#2c3e50;">Management Access</div>
+                        <div id="revokeStatusText" style="font-size:13px;color:#27ae60;margin-top:2px;">Active — your management company can access this system</div>
+                    </div>
+                    <button class="btn btn-danger btn-sm" onclick="confirmRevokeAccess()">Revoke Access</button>
+                </div>
+            </div>
+
+            <!-- Revoke Confirmation Modal -->
+            <div id="revokeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center;">
+                <div style="background:white;border-radius:16px;padding:24px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                        <span style="font-size:28px;">&#9888;</span>
+                        <h3 style="font-size:16px;font-weight:600;margin:0;color:#e74c3c;">Revoke Management Access?</h3>
+                    </div>
+                    <p style="font-size:14px;color:#555;margin-bottom:12px;">
+                        This will <strong>immediately</strong> prevent your irrigation management company from accessing your system. They will:
+                    </p>
+                    <ul style="font-size:13px;color:#666;margin-bottom:16px;padding-left:20px;line-height:1.8;">
+                        <li>Lose access to view your zones, sensors, and schedules</li>
+                        <li>Be unable to start, stop, or pause your irrigation</li>
+                        <li>See your property as <strong style="color:#e74c3c;">Access Revoked</strong> on their dashboard</li>
+                    </ul>
+                    <p style="font-size:13px;color:#888;margin-bottom:20px;">
+                        You can re-generate a new connection key later if you want to restore access.
+                    </p>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-secondary" onclick="closeRevokeModal()">Cancel</button>
+                        <button class="btn btn-danger" onclick="executeRevokeAccess()">Yes, Revoke Access</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1618,6 +1699,10 @@ ADMIN_HTML = """<!DOCTYPE html>
             if (data.connection_key) {
                 document.getElementById('connectionKeyValue').textContent = data.connection_key;
                 document.getElementById('connectionKeyDisplay').style.display = 'block';
+                document.getElementById('revokeSection').style.display = 'block';
+            } else {
+                document.getElementById('connectionKeyDisplay').style.display = 'none';
+                document.getElementById('revokeSection').style.display = 'none';
             }
         } catch(e) { /* first time, no key yet */ }
     }
@@ -1831,6 +1916,46 @@ ADMIN_HTML = """<!DOCTYPE html>
     });
     document.getElementById('qrModal').addEventListener('click', function(e) {
         if (e.target === this) closeQRModal();
+    });
+
+    // --- Revoke Access ---
+    function confirmRevokeAccess() {
+        document.getElementById('revokeModal').style.display = 'flex';
+    }
+
+    function closeRevokeModal() {
+        document.getElementById('revokeModal').style.display = 'none';
+    }
+
+    async function executeRevokeAccess() {
+        closeRevokeModal();
+        try {
+            const res = await fetch(`${BASE}/revoke-access`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Management company access has been revoked. Generate a new key to re-enable.');
+                document.getElementById('connectionKeyDisplay').style.display = 'none';
+                document.getElementById('revokeSection').style.display = 'none';
+                // Clear URL fields since the old connection is invalidated
+                // Keep HA token and other settings so they don't have to re-enter them
+                document.getElementById('homeownerUrl').value = '';
+                document.getElementById('homeownerUrlDirect').value = '';
+                loadSettings();
+                loadConnectionKey();
+            } else {
+                showToast(data.detail || 'Failed to revoke access', 'error');
+            }
+        } catch (e) { showToast('Failed to revoke access: ' + e.message, 'error'); }
+    }
+
+    // Close revoke modal on Escape key or backdrop click
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('revokeModal').style.display === 'flex') {
+            closeRevokeModal();
+        }
+    });
+    document.getElementById('revokeModal').addEventListener('click', function(e) {
+        if (e.target === this) closeRevokeModal();
     });
 
     // --- Weather Settings ---

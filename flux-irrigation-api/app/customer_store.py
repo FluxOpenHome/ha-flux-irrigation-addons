@@ -166,12 +166,28 @@ def update_customer_zone_aliases(
 
 
 def update_customer_status(customer_id: str, status: dict):
-    """Update cached status after a health check."""
+    """Update cached status after a health check.
+
+    Also syncs live contact info (phone, name, address) from the
+    homeowner's system_status response, so the management dashboard
+    always shows the latest data even if the connection key was
+    generated before the homeowner filled in their details.
+    """
     customers = load_customers()
     for c in customers:
         if c.id == customer_id:
             c.last_status = status
             if status.get("reachable") and status.get("authenticated"):
                 c.last_seen_online = datetime.now(timezone.utc).isoformat()
+
+                # Sync live contact/address info from homeowner status
+                sys_status = status.get("system_status", {})
+                if sys_status:
+                    for field_name in ("phone", "first_name", "last_name",
+                                       "address", "city", "state", "zip"):
+                        live_val = sys_status.get(field_name, "")
+                        if live_val:  # Only overwrite if homeowner has a value
+                            setattr(c, field_name, live_val)
+
             save_customers(customers)
             return

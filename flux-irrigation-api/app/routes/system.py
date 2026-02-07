@@ -29,6 +29,14 @@ class SystemStatus(BaseModel):
     rain_delay_until: Optional[str] = None
     api_version: str = "1.0.0"
     uptime_check: str
+    # Contact/address info — synced live to management company
+    address: str = ""
+    city: str = ""
+    state: str = ""
+    zip: str = ""
+    phone: str = ""
+    first_name: str = ""
+    last_name: str = ""
 
 
 class PauseResponse(BaseModel):
@@ -113,6 +121,14 @@ async def get_system_status(request: Request):
         rain_delay_active=rain_delay_active,
         rain_delay_until=rain_delay_until if rain_delay_active else None,
         uptime_check=datetime.now(timezone.utc).isoformat(),
+        # Live contact/address info for management company sync
+        address=config.homeowner_address or "",
+        city=config.homeowner_city or "",
+        state=config.homeowner_state or "",
+        zip=config.homeowner_zip or "",
+        phone=config.homeowner_phone or "",
+        first_name=config.homeowner_first_name or "",
+        last_name=config.homeowner_last_name or "",
     )
 
 

@@ -41,6 +41,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .customer-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); transform: translateY(-1px); }
 .customer-card.online { border-left-color: #2ecc71; }
 .customer-card.offline { border-left-color: #e74c3c; }
+.customer-card.revoked { border-left-color: #95a5a6; background: #fafafa; }
 .customer-card.unknown { border-left-color: #f39c12; }
 .customer-card-body { padding: 16px; }
 .customer-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
@@ -49,6 +50,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .status-dot.online { background: #2ecc71; }
 .status-dot.offline { background: #e74c3c; }
+.status-dot.revoked { background: #95a5a6; }
 .status-dot.unknown { background: #f39c12; }
 .customer-stats { display: flex; gap: 16px; font-size: 13px; color: #7f8c8d; margin-top: 8px; }
 .customer-stat { display: flex; align-items: center; gap: 4px; }
@@ -202,6 +204,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                         <option value="">All Statuses</option>
                         <option value="online">Online</option>
                         <option value="offline">Offline</option>
+                        <option value="revoked">Revoked</option>
                         <option value="unknown">Unknown</option>
                     </select>
                     <select id="filterSystemStatus" onchange="filterCustomers()">
@@ -429,7 +432,7 @@ function renderCustomerGrid(customers) {
                     <span class="customer-name">${esc(c.name)}</span>
                     <span class="customer-status">
                         <span class="status-dot ${status}"></span>
-                        ${status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Unknown'}
+                        ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:#95a5a6;">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
                     </span>
                 </div>
                 ${contactName ? '<div style="font-size:13px;color:#555;margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
@@ -543,7 +546,7 @@ function filterCustomers() {
         }
         if (sortBy === 'zones') return (b.zone_count || 0) - (a.zone_count || 0);
         if (sortBy === 'status') {
-            const order = { online: 0, offline: 1, unknown: 2 };
+            const order = { online: 0, offline: 1, revoked: 2, unknown: 3 };
             return (order[getCustomerStatus(a)] || 2) - (order[getCustomerStatus(b)] || 2);
         }
         if (sortBy === 'recent') {
@@ -581,10 +584,16 @@ function clearAllFilters() {
 function getCustomerStatus(c) {
     if (!c.last_status) return 'unknown';
     if (c.last_status.reachable && c.last_status.authenticated) return 'online';
+    // Detect revoked access: reachable but auth failed with key rejection
+    if (c.last_status.reachable && !c.last_status.authenticated) {
+        const err = (c.last_status.error || '').toLowerCase();
+        if (err.includes('key rejected') || err.includes('key lacks permissions') || err.includes('authentication failed')) return 'revoked';
+    }
     return 'offline';
 }
 
 function getQuickStats(c) {
+    if (getCustomerStatus(c) === 'revoked') return '<span class="customer-stat" style="color:#95a5a6;"><strong>Homeowner revoked access</strong></span>';
     if (!c.last_status || !c.last_status.system_status) return '<span class="customer-stat">No data yet</span>';
     const s = c.last_status.system_status;
     let parts = [];
@@ -710,8 +719,13 @@ async function checkCustomer(id) {
         const data = await api('/customers/' + id + '/check', { method: 'POST' });
         if (data.reachable && data.authenticated) {
             showToast(data.customer_name + ': Connected successfully');
-        } else if (data.reachable) {
-            showToast(data.customer_name + ': Reachable but auth failed - ' + (data.error || ''), 'error');
+        } else if (data.reachable && !data.authenticated) {
+            const err = (data.error || '').toLowerCase();
+            if (err.includes('key rejected') || err.includes('key lacks permissions') || err.includes('authentication failed')) {
+                showToast(data.customer_name + ': Access Revoked — the homeowner has revoked management access', 'error');
+            } else {
+                showToast(data.customer_name + ': Reachable but auth failed - ' + (data.error || ''), 'error');
+            }
         } else {
             showToast(data.customer_name + ': Unreachable - ' + (data.error || ''), 'error');
         }
