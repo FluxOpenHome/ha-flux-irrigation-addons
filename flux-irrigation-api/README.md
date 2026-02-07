@@ -189,6 +189,8 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Zone aliases** — Give zones friendly display names on the dashboard
 - **Location map** — Leaflet map on the dashboard shows property location with re-center button
 - **System pause/resume** — Emergency pause that stops all active zones and suspends ESPHome schedule programs
+- **Dark mode** — Toggle between light and dark themes; preference is saved per-device and applied instantly
+- **In-app help** — ❓ button on every page opens a scrollable help modal explaining all features and controls for that screen
 
 ### Management
 
@@ -202,6 +204,8 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
 - **Run history and CSV export** — View and export zone run history and weather logs for each property
 - **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration
+- **Dark mode** — Toggle between light and dark themes; preference is saved per-device independently from the homeowner dashboard
+- **In-app help** — ❓ button opens a scrollable help modal covering all 11 management features (adding properties, remote control, schedules, weather, history, notes, and more)
 
 ### Platform
 
@@ -213,6 +217,8 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Rate limiting** — Configurable request limits to protect the homeowner's HA instance
 - **Entity auto-refresh** — Background task runs every 5 minutes to detect newly enabled or disabled entities in Home Assistant without requiring an add-on restart
 - **Weather event logging** — All weather rule evaluations and actions are logged with CSV export and clearing from both dashboards
+- **Dark mode** — All pages (homeowner dashboard, configuration, management dashboard) support dark mode with a 🌙/☀️ toggle; preferences are saved per-device in localStorage
+- **In-app help** — Every page has a ❓ help button that opens a scrollable modal with page-specific documentation covering all features and controls
 
 ---
 

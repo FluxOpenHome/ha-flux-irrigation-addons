@@ -32,6 +32,11 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Map Re-Center Button** — Re-center the Leaflet map on the homeowner dashboard
 - **CSV Export** — Export run history and weather logs as CSV from both homeowner and management dashboards
 - **Weather Log Clearing** — Clear weather event logs and run history from both dashboards
+- **Dark Mode** — All pages (Homeowner Dashboard, Configuration, Management Dashboard) support a 🌙/☀️ dark mode toggle; uses CSS custom properties for consistent theming; preference saved per-device in localStorage with separate keys for homeowner and management sides
+- **In-App Help** — Every page has a ❓ help button in the header that opens a scrollable modal with page-specific documentation:
+  - Homeowner Dashboard: 7 sections (dashboard overview, zone control, sensors, schedules, weather, run history, system pause)
+  - Configuration: 6 sections (overview, device selection, API keys, connection keys, weather settings, revoking access)
+  - Management Dashboard: 11 sections (overview, adding properties, property cards, search/filtering, detail view, remote control, schedules, weather rules, run history, notes/aliases, updating keys)
 
 ### Changed
 
