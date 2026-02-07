@@ -203,7 +203,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Live contact sync** — Homeowner name, phone, and address are synced automatically on every health check, even if added after the connection key was generated
 - **Remote zone control** — Start, stop, and emergency-stop zones on any connected property
 - **Remote weather management** — View and configure weather rules on customer systems
-- **Remote moisture monitoring** — View Gophr moisture probe data, duration adjustment status, and manage probe durations on customer systems
+- **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data, and manage duration adjustments on customer systems
 - **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
 - **Run history and CSV export** — View and export zone run history and weather logs for each property
 - **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration

@@ -1536,10 +1536,8 @@ async function loadDetailMoisture(id) {
         const data = await api('/customers/' + id + '/moisture/probes');
         const settings = await api('/customers/' + id + '/moisture/settings');
 
-        if (!settings.enabled && Object.keys(data.probes || {}).length === 0) {
-            card.style.display = 'none';
-            return;
-        }
+        // Always show the moisture card for management — they need access
+        // to settings even when probes aren't configured yet
         card.style.display = 'block';
 
         const probes = data.probes || {};
@@ -1619,10 +1617,74 @@ async function loadDetailMoisture(id) {
             html += '</div>';
         }
 
+        // Settings (expandable)
+        html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:12px;">';
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMgmtMoistureSettings()">';
+        html += '<span style="font-size:13px;font-weight:600;">Settings</span>';
+        html += '<span id="mgmtMoistureSettingsChevron" style="font-size:12px;color:var(--text-muted);">' + (_mgmtMoistureSettingsOpen ? '▼' : '▶') + '</span>';
+        html += '</div>';
+        html += '<div id="mgmtMoistureSettingsBody" style="display:' + (_mgmtMoistureSettingsOpen ? 'block' : 'none') + ';margin-top:10px;">';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">';
+        html += '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="mgmtMoistureEnabled" ' + (settings.enabled ? 'checked' : '') + ' onchange="mgmtSaveMoistureSettings()"> Enable Moisture Control</label>';
+        html += '<div><label style="font-size:11px;color:var(--text-muted);">Stale Threshold (min)</label><input type="number" id="mgmtMoistureStaleMin" value="' + (settings.stale_reading_threshold_minutes || 120) + '" min="5" max="1440" style="width:80px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
+        html += '</div>';
+        const dw = settings.depth_weights || {shallow: 0.2, mid: 0.5, deep: 0.3};
+        html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Depth Weights</div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px;">';
+        for (const d of ['shallow', 'mid', 'deep']) {
+            html += '<div><label style="font-size:11px;color:var(--text-muted);">' + d.charAt(0).toUpperCase() + d.slice(1) + '</label>';
+            html += '<input type="number" id="mgmtMoistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:60px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
+        }
+        html += '</div>';
+        const dt = settings.default_thresholds || {};
+        html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Default Thresholds (%)</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:4px;">';
+        for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry'], ['max_increase_percent','Max Increase'], ['max_decrease_percent','Max Decrease']]) {
+            html += '<div><label style="font-size:11px;color:var(--text-muted);">' + label + '</label>';
+            html += '<input type="number" id="mgmtMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:70px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
+        }
+        html += '</div>';
+        html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="mgmtSaveMoistureSettings()">Save Settings</button>';
+        html += '</div></div>';
+
         body.innerHTML = html;
     } catch (e) {
         card.style.display = 'none';
     }
+}
+
+let _mgmtMoistureSettingsOpen = false;
+
+function toggleMgmtMoistureSettings() {
+    _mgmtMoistureSettingsOpen = !_mgmtMoistureSettingsOpen;
+    const body = document.getElementById('mgmtMoistureSettingsBody');
+    const chevron = document.getElementById('mgmtMoistureSettingsChevron');
+    if (body) body.style.display = _mgmtMoistureSettingsOpen ? 'block' : 'none';
+    if (chevron) chevron.textContent = _mgmtMoistureSettingsOpen ? '▼' : '▶';
+}
+
+async function mgmtSaveMoistureSettings() {
+    try {
+        const payload = {
+            enabled: document.getElementById('mgmtMoistureEnabled').checked,
+            stale_reading_threshold_minutes: parseInt(document.getElementById('mgmtMoistureStaleMin').value) || 120,
+            depth_weights: {
+                shallow: parseFloat(document.getElementById('mgmtMoistureWeight_shallow').value) || 0.2,
+                mid: parseFloat(document.getElementById('mgmtMoistureWeight_mid').value) || 0.5,
+                deep: parseFloat(document.getElementById('mgmtMoistureWeight_deep').value) || 0.3,
+            },
+            default_thresholds: {
+                skip_threshold: parseInt(document.getElementById('mgmtMoistureThresh_skip_threshold').value) || 80,
+                scale_wet: parseInt(document.getElementById('mgmtMoistureThresh_scale_wet').value) || 70,
+                scale_dry: parseInt(document.getElementById('mgmtMoistureThresh_scale_dry').value) || 30,
+                max_increase_percent: parseInt(document.getElementById('mgmtMoistureThresh_max_increase_percent').value) || 50,
+                max_decrease_percent: parseInt(document.getElementById('mgmtMoistureThresh_max_decrease_percent').value) || 50,
+            },
+        };
+        const result = await api('/customers/' + currentCustomerId + '/moisture/settings', { method: 'PUT', body: JSON.stringify(payload) });
+        showToast(result.message || 'Moisture settings saved');
+        loadDetailMoisture(currentCustomerId);
+    } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function mgmtCaptureDurations() {
@@ -2393,14 +2455,15 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Watering Multiplier</strong> — See the current weather-adjusted multiplier applied to run times</li>
 </ul>
 
-<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Moisture Probes (Gophr)</h4>
-<p style="margin-bottom:10px;">If the homeowner has Gophr moisture probes connected, you can view live soil moisture data and manage probe-to-zone mappings:</p>
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Gophr Moisture Probes</h4>
+<p style="margin-bottom:10px;">View live soil moisture data, configure settings, and manage duration adjustments for properties with Gophr moisture probes:</p>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Probe Tiles</strong> — Color-coded bars showing moisture at shallow, mid, and deep depths</li>
 <li style="margin-bottom:4px;"><strong>Duration Status</strong> — Table showing base vs. adjusted run durations per zone</li>
 <li style="margin-bottom:4px;"><strong>Duration Controls</strong> — Capture base durations, apply weather &times; moisture adjusted durations, or restore originals</li>
+<li style="margin-bottom:4px;"><strong>Settings</strong> — Enable/disable moisture control, configure stale threshold, depth weights, and default thresholds (skip, wet, dry, max increase/decrease)</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture data is read-only from the management dashboard. The homeowner configures probe mappings and thresholds from their dashboard.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Probe device selection and sensor mapping are configured from the homeowner's Configuration page. The management dashboard controls settings, thresholds, and duration adjustments.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
 <p style="margin-bottom:10px;">View a detailed log of all irrigation activity for each property:</p>

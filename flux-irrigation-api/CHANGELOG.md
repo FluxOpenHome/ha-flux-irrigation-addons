@@ -20,7 +20,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
   - Moisture context captured in run history events
   - Moisture card on both homeowner and management dashboards with probe tiles, depth bars, zone multiplier badges, and duration status
   - Homeowner dashboard: full probe management (discover, add, remove, map to zones, configure thresholds, duration capture/apply/restore)
-  - Management dashboard: read-only moisture view with duration controls via proxy
+  - Management dashboard: full moisture settings control (enable/disable, thresholds, weights) and duration controls via proxy
   - 12 homeowner API endpoints + corresponding management proxy endpoints
 - **Weather-Based Irrigation Control** — 9 configurable weather rules that automatically pause, reduce, or increase irrigation based on real-time conditions and forecasts from any Home Assistant weather entity (NWS, OpenWeatherMap, Met.no, Weather Underground, etc.)
   - Rain detection with configurable auto-resume delay
