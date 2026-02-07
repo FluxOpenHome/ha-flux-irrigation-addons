@@ -587,7 +587,7 @@ function getCustomerStatus(c) {
     // Detect revoked access: reachable but auth failed with key rejection
     if (c.last_status.reachable && !c.last_status.authenticated) {
         const err = (c.last_status.error || '').toLowerCase();
-        if (err.includes('key rejected') || err.includes('key lacks permissions') || err.includes('authentication failed')) return 'revoked';
+        if (err.includes('key rejected') || err.includes('key lacks permissions') || err.includes('invalid api key') || err.includes('authentication failed')) return 'revoked';
     }
     return 'offline';
 }

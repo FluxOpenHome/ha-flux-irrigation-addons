@@ -325,11 +325,21 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
             connection, "GET", "/api/system/status"
         )
         if status == 401:
-            # Could be HA token OR API key issue — check which
+            # Distinguish HA token rejection from API key rejection.
+            # If the error came from the inner API (through rest_command),
+            # it means HA connectivity works but the API key was deleted/revoked.
+            error_str = _error_to_string(system_status)
+            if "HA token rejected" in error_str:
+                return {
+                    "reachable": False,
+                    "authenticated": False,
+                    "error": "HA token rejected. The homeowner may need to generate a new Long-Lived Access Token.",
+                }
+            # Inner API key rejection — system is reachable via Nabu Casa but key is invalid
             return {
-                "reachable": False,
+                "reachable": True,
                 "authenticated": False,
-                "error": "Authentication failed. Check that the HA Long-Lived Access Token is still valid and the API key is correct.",
+                "error": "API key rejected",
             }
         if status == 404:
             return {

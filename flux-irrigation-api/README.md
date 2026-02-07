@@ -18,6 +18,7 @@ A Home Assistant add-on that provides dual-mode irrigation management for the Fl
   - [Step 4: Create a Long-Lived Access Token (Nabu Casa Only)](#step-4-create-a-long-lived-access-token-nabu-casa-only)
   - [Step 5: Generate a Connection Key](#step-5-generate-a-connection-key)
   - [Step 6: Set Up Weather-Based Control (Optional)](#step-6-set-up-weather-based-control-optional)
+  - [Revoking Management Access](#revoking-management-access)
 - [Management Company Setup](#management-company-setup)
 - [Features](#features)
 - [Weather-Based Irrigation Control](#weather-based-irrigation-control)
@@ -120,7 +121,7 @@ On the Configuration page, in the **Connection Key for Management Company** sect
 
 4. **Copy the connection key** and send it to your management company. They will paste this into their Flux Irrigation add-on to connect to your system.
 
-> **Revoking access:** To disconnect a management company at any time, go to the **API Keys** section on the Configuration page and delete the "Management Company (Connection Key)" API key.
+> **Tip:** You can send the connection key via the **Email** button or display it as a **QR code** for easy scanning.
 
 ### Step 6: Set Up Weather-Based Control (Optional)
 
@@ -131,6 +132,31 @@ See [Weather-Based Irrigation Control](#weather-based-irrigation-control) below 
 3. Enable the toggle and select your `weather.*` entity from the dropdown
 4. Configure the weather rules to your preference
 5. Click **Save Weather Settings**
+
+### Revoking Management Access
+
+You can disconnect a management company at any time from the Configuration page:
+
+1. Scroll to the **Management Access** section (visible when a connection key has been generated)
+2. Click the **Revoke Access** button
+3. A confirmation dialog will appear warning you that your management company will immediately lose access to your irrigation system
+4. Click **Yes, Revoke Access** to confirm
+
+**What happens when you revoke:**
+- The management company's API key is immediately deleted — they can no longer control or monitor your system
+- The old connection key becomes invalid and cannot be reused
+- Your HA Long-Lived Access Token, name, address, phone, and other settings are preserved — you do not need to re-enter them
+- The URL field is cleared so you must generate a new connection key if you want to re-enable access
+
+**On the management side:**
+- The property card will show an **Access Revoked** status (gray dot) on the next health check
+- The management company cannot restore access on their own — the homeowner must generate and share a new connection key
+
+**Re-enabling access after revoke:**
+1. Enter your URL again on the Configuration page (all other fields are still filled in)
+2. Click **Generate Connection Key** — a new API key will be created automatically
+3. Send the new connection key to your management company
+4. On the management side, they should remove the old property and add the new connection key
 
 ---
 
@@ -152,7 +178,9 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Management Dashboard** — Multi-property grid view with click-to-expand detail cards for each property
 - **Weather-Based Control** — 9 configurable weather rules that automatically pause, reduce, or increase irrigation based on real-time conditions and forecasts
 - **Dual-mode operation** — Same add-on works for homeowners and management companies
-- **Connection keys** — Simple encoded key shares the API URL and credentials for easy setup
+- **Connection keys** — Simple encoded key shares the API URL and credentials for easy setup (send via copy, email, or QR code)
+- **Revoke access** — Homeowners can instantly revoke management company access with one click, with a confirmation dialog to prevent accidents
+- **Live contact sync** — Homeowner name, phone, and address are synced to the management dashboard automatically on every health check, even if added after the connection key was generated
 - **Scoped access** — Only irrigation zones and sensors are exposed — no access to lights, locks, cameras, or any other HA entities
 - **API key authentication** — Each management company gets their own API key with configurable permissions
 - **Granular permissions** — Control what each API key can do: read zones, control zones, modify schedules, read sensors, view history
@@ -328,9 +356,12 @@ All settings can be managed through the add-on's web UI. The underlying options 
 # Operating mode
 mode: "homeowner"                    # "homeowner" or "management"
 
-# Homeowner identity (for connection key)
+# Homeowner identity (for connection key and management contact)
 homeowner_url: ""                    # External URL (Nabu Casa or direct)
 homeowner_label: ""                  # Property display name
+homeowner_first_name: ""             # Homeowner first name
+homeowner_last_name: ""              # Homeowner last name
+homeowner_phone: ""                  # Homeowner phone number
 homeowner_address: ""                # Street address
 homeowner_city: ""                   # City
 homeowner_state: ""                  # State
