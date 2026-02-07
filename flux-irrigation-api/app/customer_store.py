@@ -31,6 +31,8 @@ class Customer:
     state: str = ""
     zip: str = ""
     phone: str = ""
+    first_name: str = ""
+    last_name: str = ""
     zone_count: Optional[int] = None
     last_seen_online: Optional[str] = None
     last_status: Optional[dict] = field(default=None)
@@ -53,6 +55,8 @@ def load_customers() -> list[Customer]:
             c.setdefault("connection_mode", "direct")
             c.setdefault("zone_aliases", {})
             c.setdefault("phone", "")
+            c.setdefault("first_name", "")
+            c.setdefault("last_name", "")
             customers.append(Customer(**c))
         return customers
     except (json.JSONDecodeError, IOError, TypeError):
@@ -98,6 +102,8 @@ def add_customer(
         state=key_data.state or "",
         zip=key_data.zip or "",
         phone=key_data.phone or "",
+        first_name=key_data.first_name or "",
+        last_name=key_data.last_name or "",
         zone_count=key_data.zone_count,
         ha_token=key_data.ha_token or "",
         connection_mode=key_data.mode or "direct",

@@ -30,6 +30,8 @@ options:
   homeowner_state: ""
   homeowner_zip: ""
   homeowner_phone: ""
+  homeowner_first_name: ""
+  homeowner_last_name: ""
   homeowner_ha_token: ""
   homeowner_connection_mode: "direct"
   api_keys: []
@@ -49,6 +51,8 @@ schema:
   homeowner_state: "str?"
   homeowner_zip: "str?"
   homeowner_phone: "str?"
+  homeowner_first_name: "str?"
+  homeowner_last_name: "str?"
   homeowner_ha_token: "str?"
   homeowner_connection_mode: "str?"
   api_keys:

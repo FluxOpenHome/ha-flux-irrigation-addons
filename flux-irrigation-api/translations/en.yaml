@@ -34,6 +34,16 @@ configuration:
     description: >-
       Homeowner phone number. Shared with your management company
       so they can contact you if needed.
+  homeowner_first_name:
+    name: First Name
+    description: >-
+      Homeowner first name. Shared with your management company
+      so they know who to contact.
+  homeowner_last_name:
+    name: Last Name
+    description: >-
+      Homeowner last name. Shared with your management company
+      so they know who to contact.
   api_keys:
     name: API Keys
     description: API keys for management companies. Each key has a name and list of permissions.

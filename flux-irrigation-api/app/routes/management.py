@@ -100,6 +100,8 @@ def _customer_response(customer: customer_store.Customer) -> dict:
         "state": customer.state,
         "zip": customer.zip,
         "phone": customer.phone,
+        "first_name": customer.first_name,
+        "last_name": customer.last_name,
         "zone_count": customer.zone_count,
         "last_seen_online": customer.last_seen_online,
         "last_status": customer.last_status,

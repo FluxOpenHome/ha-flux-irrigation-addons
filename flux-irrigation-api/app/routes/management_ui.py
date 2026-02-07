@@ -184,7 +184,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 </div>
 
                 <div class="search-bar" id="searchBar" style="display:none;">
-                    <input type="text" id="searchInput" placeholder="Search by name, address, phone, or notes..." oninput="filterCustomers()">
+                    <input type="text" id="searchInput" placeholder="Search by name, contact, address, phone, or notes..." oninput="filterCustomers()">
                     <select id="filterState" onchange="filterCustomers()">
                         <option value="">All States</option>
                     </select>
@@ -236,6 +236,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div>
                 <h2 id="detailName"></h2>
                 <div id="detailAddress" class="customer-address" style="font-size:14px;margin-top:4px;"></div>
+                <div id="detailContact" style="font-size:14px;color:#555;margin-top:2px;display:none;">&#128100; <span id="detailContactName"></span></div>
                 <div id="detailPhone" style="font-size:13px;color:#7f8c8d;margin-top:2px;display:none;">&#128222; <a id="detailPhoneLink" href="" style="color:#3498db;text-decoration:none;"></a></div>
             </div>
             <div style="display:flex;gap:8px;">
@@ -419,6 +420,7 @@ function renderCustomerGrid(customers) {
         const status = getCustomerStatus(c);
         const stats = getQuickStats(c);
         const addr = formatAddress(c);
+        const contactName = [c.first_name, c.last_name].filter(Boolean).join(' ');
         const zoneInfo = c.zone_count ? '<span class="customer-stat"><strong>' + c.zone_count + '</strong> zones</span>' : '';
         return `
         <div class="customer-card ${status}" onclick="viewCustomer('${c.id}')">
@@ -430,6 +432,7 @@ function renderCustomerGrid(customers) {
                         ${status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Unknown'}
                     </span>
                 </div>
+                ${contactName ? '<div style="font-size:13px;color:#555;margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
                 ${addr ? '<div class="customer-address">' + esc(addr) + '</div>' : ''}
                 ${c.phone ? '<div style="font-size:12px;color:#7f8c8d;margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:#3498db;text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
                 ${c.notes ? '<div style="font-size:13px;color:#7f8c8d;margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
@@ -503,7 +506,7 @@ function filterCustomers() {
     let filtered = allCustomers;
     if (search) {
         filtered = filtered.filter(c => {
-            const haystack = [c.name, c.address, c.city, c.state, c.zip, c.phone, c.notes].filter(Boolean).join(' ').toLowerCase();
+            const haystack = [c.name, c.first_name, c.last_name, c.address, c.city, c.state, c.zip, c.phone, c.notes].filter(Boolean).join(' ').toLowerCase();
             return haystack.includes(search);
         });
     }
@@ -806,6 +809,15 @@ async function viewCustomer(id) {
         } else {
             addrEl.style.display = 'none';
         }
+        // Show contact name
+        const contactEl = document.getElementById('detailContact');
+        const contactName = [customer.first_name, customer.last_name].filter(Boolean).join(' ');
+        if (contactName) {
+            document.getElementById('detailContactName').textContent = contactName;
+            contactEl.style.display = 'block';
+        } else {
+            contactEl.style.display = 'none';
+        }
         // Show phone
         const phoneEl = document.getElementById('detailPhone');
         if (customer.phone) {
@@ -826,6 +838,7 @@ async function viewCustomer(id) {
     } catch (e) {
         document.getElementById('detailName').textContent = 'Unknown Property';
         document.getElementById('detailAddress').style.display = 'none';
+        document.getElementById('detailContact').style.display = 'none';
         document.getElementById('detailPhone').style.display = 'none';
         document.getElementById('detailMap').style.display = 'none';
         document.getElementById('detailNotesSection').style.display = 'none';

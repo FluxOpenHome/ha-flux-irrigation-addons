@@ -11,6 +11,7 @@ A connection key is a base64url-encoded JSON object containing:
   - label: Optional friendly name (e.g., property address)
   - address, city, state, zip: Property location for management filtering
   - phone: Homeowner phone number (for management contact)
+  - first_name, last_name: Homeowner name (for management contact)
   - zone_count: Number of enabled irrigation zones (auto-detected)
   - ha_token: HA Long-Lived Access Token (for Nabu Casa proxy mode)
   - mode: "nabu_casa" or "direct" — how to reach the add-on
@@ -35,6 +36,8 @@ class ConnectionKeyData:
     state: Optional[str] = None
     zip: Optional[str] = None
     phone: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     zone_count: Optional[int] = None
     ha_token: Optional[str] = None
     mode: str = "direct"  # "direct" or "nabu_casa"
@@ -55,6 +58,10 @@ def encode_connection_key(data: ConnectionKeyData) -> str:
         payload["zip"] = data.zip
     if data.phone:
         payload["phone"] = data.phone
+    if data.first_name:
+        payload["first_name"] = data.first_name
+    if data.last_name:
+        payload["last_name"] = data.last_name
     if data.zone_count is not None:
         payload["zone_count"] = data.zone_count
     if data.ha_token:
@@ -90,6 +97,8 @@ def decode_connection_key(encoded: str) -> ConnectionKeyData:
         state=payload.get("state"),
         zip=payload.get("zip"),
         phone=payload.get("phone"),
+        first_name=payload.get("first_name"),
+        last_name=payload.get("last_name"),
         zone_count=payload.get("zone_count"),
         ha_token=payload.get("ha_token"),
         mode=payload.get("mode", "direct"),

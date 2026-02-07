@@ -130,6 +130,9 @@ async def get_settings():
         "homeowner_city": options.get("homeowner_city", ""),
         "homeowner_state": options.get("homeowner_state", ""),
         "homeowner_zip": options.get("homeowner_zip", ""),
+        "homeowner_phone": options.get("homeowner_phone", ""),
+        "homeowner_first_name": options.get("homeowner_first_name", ""),
+        "homeowner_last_name": options.get("homeowner_last_name", ""),
         "weather_entity_id": options.get("weather_entity_id", ""),
         "weather_enabled": options.get("weather_enabled", False),
         "weather_check_interval_minutes": options.get("weather_check_interval_minutes", 15),
@@ -424,6 +427,8 @@ class ConnectionKeyRequest(BaseModel):
     state: str = Field("", max_length=50, description="State")
     zip: str = Field("", max_length=20, description="ZIP code")
     phone: str = Field("", max_length=20, description="Homeowner phone number")
+    first_name: str = Field("", max_length=50, description="Homeowner first name")
+    last_name: str = Field("", max_length=50, description="Homeowner last name")
     ha_token: str = Field("", description="HA Long-Lived Access Token (for Nabu Casa mode)")
     connection_mode: str = Field("direct", description="Connection mode: 'nabu_casa' or 'direct'")
 
@@ -458,6 +463,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     options["homeowner_state"] = body.state
     options["homeowner_zip"] = body.zip
     options["homeowner_phone"] = body.phone
+    options["homeowner_first_name"] = body.first_name
+    options["homeowner_last_name"] = body.last_name
     options["homeowner_connection_mode"] = body.connection_mode
 
     # Preserve existing HA token if not provided (UI sends empty when unchanged)
@@ -521,6 +528,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         state=body.state or None,
         zip=body.zip or None,
         phone=body.phone or None,
+        first_name=body.first_name or None,
+        last_name=body.last_name or None,
         zone_count=zone_count,
         ha_token=effective_ha_token or None,
         mode=body.connection_mode or "direct",
@@ -537,6 +546,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         "state": body.state,
         "zip": body.zip,
         "phone": body.phone,
+        "first_name": body.first_name,
+        "last_name": body.last_name,
         "zone_count": zone_count,
         "api_key_name": mgmt_key_name,
     }
@@ -628,6 +639,8 @@ async def get_connection_key_info():
     state = options.get("homeowner_state", "")
     zip_code = options.get("homeowner_zip", "")
     phone = options.get("homeowner_phone", "")
+    first_name = options.get("homeowner_first_name", "")
+    last_name = options.get("homeowner_last_name", "")
     ha_token = options.get("homeowner_ha_token", "")
     connection_mode = options.get("homeowner_connection_mode", "direct")
 
@@ -649,6 +662,8 @@ async def get_connection_key_info():
             address=address or None, city=city or None,
             state=state or None, zip=zip_code or None,
             phone=phone or None,
+            first_name=first_name or None,
+            last_name=last_name or None,
             zone_count=zone_count,
             ha_token=ha_token or None,
             mode=connection_mode,
@@ -664,6 +679,8 @@ async def get_connection_key_info():
         "state": state,
         "zip": zip_code,
         "phone": phone,
+        "first_name": first_name,
+        "last_name": last_name,
         "zone_count": zone_count,
         "connection_key": connection_key,
         "ha_token_set": bool(ha_token),
@@ -1093,6 +1110,16 @@ ADMIN_HTML = """<!DOCTYPE html>
                         &bull; <strong>Tailscale / WireGuard</strong> VPN between both HA instances<br><br>
                         Make sure the port is enabled in the add-on Configuration tab under "Network".
                     </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>First Name</label>
+                    <input type="text" id="homeownerFirstName" placeholder="e.g., John">
+                </div>
+                <div class="form-group">
+                    <label>Last Name</label>
+                    <input type="text" id="homeownerLastName" placeholder="e.g., Smith">
                 </div>
             </div>
             <div class="form-group">
@@ -1582,6 +1609,8 @@ ADMIN_HTML = """<!DOCTYPE html>
             if (data.state) document.getElementById('homeownerState').value = data.state;
             if (data.zip) document.getElementById('homeownerZip').value = data.zip;
             if (data.phone) document.getElementById('homeownerPhone').value = data.phone;
+            if (data.first_name) document.getElementById('homeownerFirstName').value = data.first_name;
+            if (data.last_name) document.getElementById('homeownerLastName').value = data.last_name;
             if (data.zone_count !== null && data.zone_count !== undefined) {
                 document.getElementById('zoneCountValue').textContent = data.zone_count;
                 document.getElementById('zoneCountInfo').style.display = 'block';
@@ -1644,8 +1673,10 @@ ADMIN_HTML = """<!DOCTYPE html>
         const state = document.getElementById('homeownerState').value.trim();
         const zip = document.getElementById('homeownerZip').value.trim();
         const phone = document.getElementById('homeownerPhone').value.trim();
+        const first_name = document.getElementById('homeownerFirstName').value.trim();
+        const last_name = document.getElementById('homeownerLastName').value.trim();
 
-        const body = { url, label, address, city, state, zip, phone, connection_mode: mode };
+        const body = { url, label, address, city, state, zip, phone, first_name, last_name, connection_mode: mode };
         if (mode === 'nabu_casa' && ha_token && ha_token !== '********') {
             body.ha_token = ha_token;
         }

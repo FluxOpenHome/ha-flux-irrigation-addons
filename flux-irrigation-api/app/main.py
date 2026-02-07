@@ -228,6 +228,55 @@ async def _periodic_weather_check():
         await asyncio.sleep(interval)
 
 
+async def _periodic_entity_refresh():
+    """Periodically re-resolve device entities to pick up newly enabled/disabled entities.
+
+    This handles the case where a user enables/disables an entity in HA
+    (e.g., enabling a previously disabled Zone 5) without needing to restart
+    the add-on or re-select the device on the Configuration page.
+    """
+    while True:
+        await asyncio.sleep(300)  # Every 5 minutes
+        try:
+            config = get_config()
+            if not config.irrigation_device_id:
+                continue
+
+            old_zones = set(config.allowed_zone_entities)
+            old_sensors = set(config.allowed_sensor_entities)
+            old_controls = set(config.allowed_control_entities)
+
+            await config.resolve_device_entities()
+
+            new_zones = set(config.allowed_zone_entities)
+            new_sensors = set(config.allowed_sensor_entities)
+            new_controls = set(config.allowed_control_entities)
+
+            added_zones = new_zones - old_zones
+            removed_zones = old_zones - new_zones
+            added_sensors = new_sensors - old_sensors
+            removed_sensors = old_sensors - new_sensors
+            added_controls = new_controls - old_controls
+            removed_controls = old_controls - new_controls
+
+            if added_zones or removed_zones or added_sensors or removed_sensors or added_controls or removed_controls:
+                print(f"[MAIN] Entity refresh detected changes:")
+                if added_zones:
+                    print(f"[MAIN]   + Zones added: {added_zones}")
+                if removed_zones:
+                    print(f"[MAIN]   - Zones removed: {removed_zones}")
+                if added_sensors:
+                    print(f"[MAIN]   + Sensors added: {added_sensors}")
+                if removed_sensors:
+                    print(f"[MAIN]   - Sensors removed: {removed_sensors}")
+                if added_controls:
+                    print(f"[MAIN]   + Controls added: {added_controls}")
+                if removed_controls:
+                    print(f"[MAIN]   - Controls removed: {removed_controls}")
+        except Exception as e:
+            print(f"[MAIN] Entity refresh error: {e}")
+
+
 async def _periodic_customer_health_check():
     """Periodically check connectivity to all customers (management mode only)."""
     while True:
@@ -289,6 +338,7 @@ async def lifespan(app: FastAPI):
     health_task = None
     weather_task = None
     zone_watcher_task = None
+    entity_refresh_task = None
     if config.mode == "management":
         health_task = asyncio.create_task(_periodic_customer_health_check())
     if config.mode == "homeowner" and config.allowed_zone_entities:
@@ -299,6 +349,9 @@ async def lifespan(app: FastAPI):
         weather_task = asyncio.create_task(_periodic_weather_check())
         print(f"[MAIN] Weather control active: entity={config.weather_entity_id}, "
               f"interval={config.weather_check_interval_minutes}min")
+    if config.irrigation_device_id:
+        entity_refresh_task = asyncio.create_task(_periodic_entity_refresh())
+        print(f"[MAIN] Entity auto-refresh active: checking every 5 minutes for newly enabled/disabled entities")
 
     yield
 
@@ -310,6 +363,8 @@ async def lifespan(app: FastAPI):
         weather_task.cancel()
     if zone_watcher_task:
         zone_watcher_task.cancel()
+    if entity_refresh_task:
+        entity_refresh_task.cancel()
     print("[MAIN] Flux Irrigation API shutting down.")
 
 
