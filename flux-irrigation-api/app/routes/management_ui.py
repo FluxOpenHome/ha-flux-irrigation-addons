@@ -1532,6 +1532,25 @@ async function renameZone(entityId) {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+// --- WiFi Signal Quality ---
+function wifiSignalBadge(sensor) {
+    const eid = (sensor.entity_id || '').toLowerCase();
+    const name = (sensor.friendly_name || sensor.name || '').toLowerCase();
+    const unit = (sensor.unit_of_measurement || '').toLowerCase();
+    const isWifi = (eid.includes('wifi') || eid.includes('signal') || eid.includes('rssi')
+        || name.includes('wi-fi') || name.includes('wifi') || name.includes('signal strength'))
+        && (unit === 'dbm' || unit === 'db');
+    if (!isWifi) return '';
+    const val = parseFloat(sensor.state);
+    if (isNaN(val)) return '';
+    let label, color;
+    if (val >= -50)      { label = 'Great'; color = '#1a7a1a'; }
+    else if (val >= -60) { label = 'Good';  color = '#3a9a2a'; }
+    else if (val >= -70) { label = 'Poor';  color = '#d4930a'; }
+    else                 { label = 'Bad';   color = '#cc2222'; }
+    return ' <span style="font-weight:600;color:' + color + ';">(' + label + ')</span>';
+}
+
 // --- Detail: Sensors ---
 async function loadDetailSensors(id) {
     const el = document.getElementById('detailSensors');
@@ -1543,7 +1562,7 @@ async function loadDetailSensors(id) {
         el.innerHTML = '<div class="tile-grid">' + sensors.map(s => `
             <div class="tile">
                 <div class="tile-name">${esc(s.friendly_name || s.name || s.entity_id)}</div>
-                <div class="tile-state">${esc(s.state)}${s.unit_of_measurement ? ' ' + esc(s.unit_of_measurement) : ''}</div>
+                <div class="tile-state">${esc(s.state)}${s.unit_of_measurement ? ' ' + esc(s.unit_of_measurement) : ''}${wifiSignalBadge(s)}</div>
             </div>`).join('') + '</div>';
     } catch (e) {
         el.innerHTML = '<div style="color:#e74c3c;">Failed to load sensors: ' + esc(e.message) + '</div>';
