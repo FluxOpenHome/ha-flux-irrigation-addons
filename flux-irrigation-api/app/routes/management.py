@@ -36,6 +36,13 @@ class UpdateCustomerRequest(BaseModel):
     notes: Optional[str] = Field(None, max_length=500)
 
 
+class UpdateZoneAliasesRequest(BaseModel):
+    zone_aliases: dict = Field(
+        default_factory=dict,
+        description="Map of entity_id to display alias",
+    )
+
+
 # --- Helpers ---
 
 
@@ -95,6 +102,7 @@ def _customer_response(customer: customer_store.Customer) -> dict:
         "zone_count": customer.zone_count,
         "last_seen_online": customer.last_seen_online,
         "last_status": customer.last_status,
+        "zone_aliases": customer.zone_aliases,
     }
 
 
@@ -150,6 +158,20 @@ async def update_customer(customer_id: str, body: UpdateCustomerRequest):
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     return {"success": True, "customer": _customer_response(customer)}
+
+
+@router.put(
+    "/api/customers/{customer_id}/zone_aliases",
+    summary="Update zone display aliases",
+)
+async def update_zone_aliases(customer_id: str, body: UpdateZoneAliasesRequest):
+    _require_management_mode()
+    customer = customer_store.update_customer_zone_aliases(
+        customer_id, zone_aliases=body.zone_aliases
+    )
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return {"success": True, "zone_aliases": customer.zone_aliases}
 
 
 @router.delete("/api/customers/{customer_id}", summary="Remove a customer")

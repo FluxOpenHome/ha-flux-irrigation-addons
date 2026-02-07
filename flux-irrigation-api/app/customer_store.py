@@ -35,6 +35,7 @@ class Customer:
     last_status: Optional[dict] = field(default=None)
     ha_token: str = ""
     connection_mode: str = "direct"  # "direct" or "nabu_casa"
+    zone_aliases: dict = field(default_factory=dict)  # entity_id → alias name
 
 
 def load_customers() -> list[Customer]:
@@ -49,6 +50,7 @@ def load_customers() -> list[Customer]:
             # Handle missing fields from older versions
             c.setdefault("ha_token", "")
             c.setdefault("connection_mode", "direct")
+            c.setdefault("zone_aliases", {})
             customers.append(Customer(**c))
         return customers
     except (json.JSONDecodeError, IOError, TypeError):
@@ -135,6 +137,20 @@ def update_customer(
                 c.name = name
             if notes is not None:
                 c.notes = notes
+            save_customers(customers)
+            return c
+    return None
+
+
+def update_customer_zone_aliases(
+    customer_id: str,
+    zone_aliases: dict,
+) -> Optional[Customer]:
+    """Update a customer's zone aliases (entity_id → display name)."""
+    customers = load_customers()
+    for c in customers:
+        if c.id == customer_id:
+            c.zone_aliases = zone_aliases
             save_customers(customers)
             return c
     return None

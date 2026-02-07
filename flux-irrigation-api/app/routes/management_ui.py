@@ -11,6 +11,8 @@ MANAGEMENT_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flux Irrigation - Management Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f6fa; color: #2c3e50; }
@@ -209,6 +211,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             </div>
         </div>
 
+        <!-- Location Map -->
+        <div id="detailMap" style="height:200px;border-radius:12px;margin-bottom:20px;display:none;overflow:hidden;"></div>
+
         <!-- Status Card -->
         <div class="card">
             <div class="card-header">
@@ -277,6 +282,8 @@ let currentCustomerId = null;
 let detailRefreshTimer = null;
 let listRefreshTimer = null;
 let allCustomers = [];
+let geocodeCache = {};
+let leafletMap = null;
 
 // --- Toast ---
 function showToast(msg, type = 'success') {
@@ -526,6 +533,7 @@ async function viewCustomer(id) {
     try {
         const customer = await api('/customers/' + id);
         document.getElementById('detailName').textContent = customer.name;
+        window._currentZoneAliases = customer.zone_aliases || {};
         const addr = formatAddress(customer);
         const addrEl = document.getElementById('detailAddress');
         if (addr) {
@@ -534,9 +542,11 @@ async function viewCustomer(id) {
         } else {
             addrEl.style.display = 'none';
         }
+        initDetailMap(customer);
     } catch (e) {
         document.getElementById('detailName').textContent = 'Unknown Property';
         document.getElementById('detailAddress').style.display = 'none';
+        document.getElementById('detailMap').style.display = 'none';
     }
 
     loadDetailData(id);
@@ -548,12 +558,59 @@ function backToList() {
     document.getElementById('detailView').classList.remove('visible');
     document.getElementById('listView').style.display = 'block';
     if (detailRefreshTimer) { clearInterval(detailRefreshTimer); detailRefreshTimer = null; }
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    document.getElementById('detailMap').style.display = 'none';
+    window._currentZoneAliases = {};
+    window._zoneModes = {};
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
 }
 
 async function refreshDetail() {
     if (currentCustomerId) loadDetailData(currentCustomerId);
+}
+
+// --- Location Map ---
+async function initDetailMap(customer) {
+    const mapEl = document.getElementById('detailMap');
+    const addr = formatAddress(customer);
+    if (!addr) { mapEl.style.display = 'none'; return; }
+    if (geocodeCache[addr]) {
+        showMap(geocodeCache[addr].lat, geocodeCache[addr].lon, addr);
+        return;
+    }
+    try {
+        const res = await fetch(
+            'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+            encodeURIComponent(addr),
+            { headers: { 'User-Agent': 'FluxIrrigationDashboard/1.1.6' } }
+        );
+        const results = await res.json();
+        if (results && results.length > 0) {
+            const lat = parseFloat(results[0].lat);
+            const lon = parseFloat(results[0].lon);
+            geocodeCache[addr] = { lat, lon };
+            showMap(lat, lon, addr);
+        } else {
+            mapEl.style.display = 'none';
+        }
+    } catch (e) {
+        console.warn('Geocoding failed:', e);
+        mapEl.style.display = 'none';
+    }
+}
+
+function showMap(lat, lon, label) {
+    const mapEl = document.getElementById('detailMap');
+    mapEl.style.display = 'block';
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    leafletMap = L.map('detailMap').setView([lat, lon], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+    }).addTo(leafletMap);
+    L.marker([lat, lon]).addTo(leafletMap).bindPopup(esc(label)).openPopup();
+    setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 200);
 }
 
 async function loadDetailData(id) {
@@ -605,6 +662,24 @@ async function togglePauseResume() {
 }
 
 // --- Detail: Zones ---
+function getZoneDisplayName(z) {
+    // Check alias first, then zone mode, then friendly_name/name/entity_id
+    const aliases = window._currentZoneAliases || {};
+    if (aliases[z.entity_id]) return aliases[z.entity_id];
+    // Try to extract zone number and check mode
+    const zoneNum = extractZoneNumber(z.entity_id, 'zone');
+    if (zoneNum) {
+        const modes = window._zoneModes || {};
+        if (modes[zoneNum] && modes[zoneNum].state) {
+            const modeVal = modes[zoneNum].state.toLowerCase();
+            if (modeVal !== 'normal' && modeVal !== 'standard' && modeVal !== '' && modeVal !== 'unknown') {
+                return modes[zoneNum].state;
+            }
+        }
+    }
+    return z.friendly_name || z.name || z.entity_id;
+}
+
 async function loadDetailZones(id) {
     const el = document.getElementById('detailZones');
     try {
@@ -615,9 +690,14 @@ async function loadDetailZones(id) {
         el.innerHTML = '<div class="tile-grid">' + zones.map(z => {
             const zId = z.name || z.entity_id;
             const isOn = z.state === 'on';
+            const displayName = getZoneDisplayName(z);
             return `
             <div class="tile ${isOn ? 'active' : ''}">
-                <div class="tile-name">${esc(z.friendly_name || z.name || z.entity_id)}</div>
+                <div class="tile-name">
+                    ${esc(displayName)}
+                    <span style="cursor:pointer;font-size:11px;color:#1a7a4c;margin-left:6px;"
+                          onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
+                </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
                 <div class="tile-actions" style="flex-wrap:wrap;">
                     ${isOn
@@ -664,6 +744,28 @@ async function stopAllZones() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+async function renameZone(entityId) {
+    const aliases = window._currentZoneAliases || {};
+    const currentName = aliases[entityId] || entityId.split('.').pop().replace(/_/g, ' ');
+    const newName = prompt('Enter alias for this zone (leave empty to clear):', currentName);
+    if (newName === null) return;
+    if (newName.trim() === '') {
+        delete aliases[entityId];
+    } else {
+        aliases[entityId] = newName.trim();
+    }
+    window._currentZoneAliases = aliases;
+    try {
+        await api('/customers/' + currentCustomerId + '/zone_aliases', {
+            method: 'PUT',
+            body: JSON.stringify({ zone_aliases: aliases }),
+        });
+        showToast('Zone renamed');
+        loadDetailZones(currentCustomerId);
+        loadDetailControls(currentCustomerId);
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
 // --- Detail: Sensors ---
 async function loadDetailSensors(id) {
     const el = document.getElementById('detailSensors');
@@ -684,6 +786,10 @@ async function loadDetailSensors(id) {
 
 // --- Schedule entity classification ---
 const SCHEDULE_PATTERNS = {
+    schedule_enable: (eid, domain) =>
+        domain === 'switch' && /schedule/.test(eid) && /enable/.test(eid) &&
+        !/(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/.test(eid) &&
+        !/enable_zone/.test(eid),
     day_switches: (eid, domain) =>
         domain === 'switch' && /schedule/.test(eid) &&
         /(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/.test(eid),
@@ -691,8 +797,12 @@ const SCHEDULE_PATTERNS = {
         domain === 'text' && /start_time/.test(eid),
     run_durations: (eid, domain) =>
         domain === 'number' && /run_duration/.test(eid),
+    repeat_cycles: (eid, domain) =>
+        domain === 'number' && /repeat_cycle/.test(eid),
     zone_enables: (eid, domain) =>
         domain === 'switch' && /enable_zone/.test(eid),
+    zone_modes: (eid, domain) =>
+        domain === 'select' && /zone_\\d+_mode/.test(eid),
     system_controls: (eid, domain) =>
         domain === 'switch' && (/auto_advance/.test(eid) || /start_stop/.test(eid)),
 };
@@ -727,8 +837,9 @@ async function loadDetailControls(id) {
 
         // Split entities into schedule vs. controls
         const scheduleByCategory = {
-            day_switches: [], start_times: [], run_durations: [],
-            zone_enables: [], system_controls: []
+            schedule_enable: [], day_switches: [], start_times: [],
+            run_durations: [], repeat_cycles: [], zone_enables: [],
+            zone_modes: [], system_controls: []
         };
         const controlEntities = [];
 
@@ -739,6 +850,13 @@ async function loadDetailControls(id) {
             } else {
                 controlEntities.push(e);
             }
+        }
+
+        // Build zone mode map for dynamic labels (Pump Start Relay, Master Valve, etc.)
+        window._zoneModes = {};
+        for (const zm of scheduleByCategory.zone_modes) {
+            const num = extractZoneNumber(zm.entity_id, 'zone');
+            if (num) window._zoneModes[num] = { state: zm.state, entity: zm };
         }
 
         // Render Device Controls (non-schedule entities only)
@@ -752,7 +870,7 @@ async function loadDetailControls(id) {
                 groups[d].push(e);
             });
             const domainLabels = {
-                'switch': 'Switches', 'number': 'Numbers', 'select': 'Selects',
+                'switch': 'Switches', 'number': 'Run Times', 'select': 'Selects',
                 'button': 'Buttons', 'text': 'Text Inputs', 'light': 'Lights'
             };
             const domainOrder = ['switch', 'number', 'select', 'text', 'button', 'light'];
@@ -782,10 +900,30 @@ async function loadDetailControls(id) {
     }
 }
 
+function getZoneLabel(zoneNum) {
+    // Check zone aliases first, then zone modes, then default
+    const aliases = window._currentZoneAliases || {};
+    const modes = window._zoneModes || {};
+    // Try to find alias by matching zone number in any entity_id key
+    for (const [eid, alias] of Object.entries(aliases)) {
+        const m = eid.match(/zone[_\\s]*(\\d+)/i);
+        if (m && m[1] === String(zoneNum) && alias) return alias;
+    }
+    // Check if zone has a special mode (Pump Start Relay, Master Valve, etc.)
+    if (modes[zoneNum] && modes[zoneNum].state) {
+        const modeVal = modes[zoneNum].state.toLowerCase();
+        if (modeVal !== 'normal' && modeVal !== 'standard' && modeVal !== '' && modeVal !== 'unknown') {
+            return modes[zoneNum].state;
+        }
+    }
+    return 'Zone ' + zoneNum;
+}
+
 function renderScheduleCard(custId, sched) {
     const el = document.getElementById('detailSchedule');
-    const { day_switches, start_times, run_durations, zone_enables, system_controls } = sched;
-    const total = day_switches.length + start_times.length + run_durations.length + zone_enables.length + system_controls.length;
+    const { schedule_enable, day_switches, start_times, run_durations, repeat_cycles, zone_enables, zone_modes, system_controls } = sched;
+    const total = schedule_enable.length + day_switches.length + start_times.length + run_durations.length +
+        repeat_cycles.length + zone_enables.length + zone_modes.length + system_controls.length;
 
     if (total === 0) {
         el.innerHTML = '<div class="empty-state"><p>No schedule entities detected on this device.</p></div>';
@@ -793,6 +931,23 @@ function renderScheduleCard(custId, sched) {
     }
 
     let html = '';
+
+    // --- Schedule Master Enable ---
+    if (schedule_enable.length > 0) {
+        const se = schedule_enable[0];
+        const isOn = se.state === 'on';
+        html += '<div class="schedule-section" style="margin-bottom:16px;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;' +
+            'padding:12px 16px;border-radius:8px;background:' + (isOn ? '#e8f5e9' : '#fbe9e7') + ';">' +
+            '<div><div style="font-size:15px;font-weight:600;color:' + (isOn ? '#27ae60' : '#e74c3c') + ';">' +
+            'Schedule ' + (isOn ? 'Enabled' : 'Disabled') + '</div>' +
+            '<div style="font-size:12px;color:#7f8c8d;">Master schedule on/off</div></div>' +
+            '<button class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + '" ' +
+            'onclick="setEntityValue(\\'' + custId + '\\',\\'' + se.entity_id + '\\',\\'switch\\',' +
+            '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
+            (isOn ? 'Disable Schedule' : 'Enable Schedule') + '</button>' +
+            '</div></div>';
+    }
 
     // --- Days of Week ---
     if (day_switches.length > 0) {
@@ -820,7 +975,6 @@ function renderScheduleCard(custId, sched) {
             const num = extractStartTimeNumber(st.entity_id);
             const label = 'Start Time ' + (num < 99 ? num : '?');
             const eid = st.entity_id;
-            // Use a safe ID for the input (replace dots and special chars)
             const inputId = 'st_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
             html += '<div class="tile">' +
                 '<div class="tile-name">' + esc(label) + '</div>' +
@@ -834,7 +988,7 @@ function renderScheduleCard(custId, sched) {
         html += '</div></div>';
     }
 
-    // --- Zone Settings (Enable + Run Duration paired by zone number) ---
+    // --- Zone Settings (Enable + Run Duration + Mode paired by zone number) ---
     if (zone_enables.length > 0 || run_durations.length > 0) {
         html += '<div class="schedule-section"><div class="schedule-section-label">Zone Settings</div>';
         const zoneMap = {};
@@ -852,13 +1006,41 @@ function renderScheduleCard(custId, sched) {
                 zoneMap[num].duration = rd;
             }
         }
+        // Add zone modes to the map
+        for (const zm of zone_modes) {
+            const num = extractZoneNumber(zm.entity_id, 'zone');
+            if (num !== null) {
+                if (!zoneMap[num]) zoneMap[num] = {};
+                zoneMap[num].mode = zm;
+            }
+        }
         const sortedZones = Object.keys(zoneMap).sort((a, b) => parseInt(a) - parseInt(b));
+        const hasMode = sortedZones.some(zn => zoneMap[zn].mode);
 
         html += '<table class="zone-settings-table"><thead><tr>' +
-            '<th>Zone</th><th>Enabled</th><th>Run Duration</th></tr></thead><tbody>';
+            '<th>Zone</th>' + (hasMode ? '<th>Mode</th>' : '') +
+            '<th>Enabled</th><th>Run Duration</th></tr></thead><tbody>';
         for (const zn of sortedZones) {
-            const { enable, duration } = zoneMap[zn];
-            html += '<tr><td><strong>Zone ' + esc(zn) + '</strong></td>';
+            const { enable, duration, mode } = zoneMap[zn];
+            const zoneLabel = getZoneLabel(zn);
+            html += '<tr><td><strong>' + esc(zoneLabel) + '</strong></td>';
+            if (hasMode) {
+                if (mode) {
+                    const modeAttrs = mode.attributes || {};
+                    const modeOptions = modeAttrs.options || [];
+                    const modeEid = mode.entity_id;
+                    const selId = 'mode_' + modeEid.replace(/[^a-zA-Z0-9]/g, '_');
+                    const optionsHtml = modeOptions.map(o =>
+                        '<option value="' + esc(o) + '"' + (o === mode.state ? ' selected' : '') + '>' + esc(o) + '</option>'
+                    ).join('');
+                    html += '<td><select id="' + selId + '" style="padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;" ' +
+                        'onchange="setEntityValue(\\'' + custId + '\\',\\'' + modeEid +
+                        '\\',\\'select\\',{option:document.getElementById(\\'' + selId + '\\').value})">' +
+                        optionsHtml + '</select></td>';
+                } else {
+                    html += '<td style="color:#95a5a6;">-</td>';
+                }
+            }
             if (enable) {
                 const isOn = enable.state === 'on';
                 html += '<td><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
@@ -892,6 +1074,15 @@ function renderScheduleCard(custId, sched) {
         html += '<div class="schedule-section"><div class="schedule-section-label">System Controls</div><div class="system-controls-row">';
         for (const sc of system_controls) {
             html += renderControlTile(custId, sc);
+        }
+        html += '</div></div>';
+    }
+
+    // --- Repeat Cycles ---
+    if (repeat_cycles.length > 0) {
+        html += '<div class="schedule-section"><div class="schedule-section-label">Repeat Cycles</div><div class="tile-grid">';
+        for (const rc of repeat_cycles) {
+            html += renderControlTile(custId, rc);
         }
         html += '</div></div>';
     }
