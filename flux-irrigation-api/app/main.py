@@ -404,13 +404,11 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def mode_guard_middleware(request: Request, call_next):
-    """In management mode, the homeowner API routes still work so that:
-    1. Remote management companies can reach this homeowner's API
-    2. Same-instance management testing works (loopback)
-    The homeowner API routes are protected by API key auth, so they're safe.
-    Only the admin UI (GET /admin) switches between homeowner and management views.
-    """
+async def ingress_root_path_middleware(request: Request, call_next):
+    """Set root_path from HA ingress header so Swagger UI can find openapi.json."""
+    ingress_path = request.headers.get("X-Ingress-Path", "")
+    if ingress_path:
+        request.scope["root_path"] = ingress_path.rstrip("/")
     response = await call_next(request)
     return response
 
