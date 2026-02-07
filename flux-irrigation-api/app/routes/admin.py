@@ -787,15 +787,107 @@ ADMIN_HTML = """<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flux Open Home — Settings</title>
     <style>
+        :root {
+            --bg-body: #f5f6fa;
+            --bg-card: #ffffff;
+            --bg-tile: #f8f9fa;
+            --bg-input: #ffffff;
+            --bg-weather: #f0f8ff;
+            --bg-secondary-btn: #ecf0f1;
+            --bg-secondary-btn-hover: #ddd;
+            --bg-active-tile: #e8f5e9;
+            --bg-inactive-tile: #fbe9e7;
+            --bg-toast: #2c3e50;
+            --bg-modal-overlay: rgba(0,0,0,0.5);
+            --bg-warning: #fff3cd;
+            --bg-success-light: #d4edda;
+            --bg-danger-light: #f8d7da;
+            --bg-new-key: #fffde7;
+            --text-primary: #2c3e50;
+            --text-secondary: #666;
+            --text-muted: #7f8c8d;
+            --text-hint: #888;
+            --text-disabled: #95a5a6;
+            --text-placeholder: #999;
+            --text-warning: #856404;
+            --text-success-dark: #155724;
+            --text-danger-dark: #721c24;
+            --text-warning-dark: #e65100;
+            --border-light: #eee;
+            --border-input: #ddd;
+            --border-card: #bdc3c7;
+            --border-active: #a5d6a7;
+            --border-hover: #bbb;
+            --border-row: #f5f5f5;
+            --border-new-key: #f9a825;
+            --color-primary: #2ecc71;
+            --color-primary-hover: #27ae60;
+            --color-accent: #2ecc71;
+            --color-success: #2ecc71;
+            --color-danger: #e74c3c;
+            --color-danger-hover: #c0392b;
+            --color-warning: #f39c12;
+            --color-link: #3498db;
+            --header-gradient: linear-gradient(135deg, #1a7a4c, #2ecc71);
+            --shadow-card: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-header: 0 2px 8px rgba(0,0,0,0.15);
+            --toggle-bg: #ccc;
+        }
+        body.dark-mode {
+            --bg-body: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-tile: #1a1a2e;
+            --bg-input: #1a1a2e;
+            --bg-weather: #16213e;
+            --bg-secondary-btn: #253555;
+            --bg-secondary-btn-hover: #2d4068;
+            --bg-active-tile: #1b3a2a;
+            --bg-inactive-tile: #3a2020;
+            --bg-toast: #0f3460;
+            --bg-modal-overlay: rgba(0,0,0,0.7);
+            --bg-warning: #3a3020;
+            --bg-success-light: #1b3a2a;
+            --bg-danger-light: #3a2020;
+            --bg-new-key: #2a2820;
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --text-muted: #8a9bb0;
+            --text-hint: #7a8a9a;
+            --text-disabled: #607080;
+            --text-placeholder: #607080;
+            --text-warning: #d4a843;
+            --text-success-dark: #6fcf97;
+            --text-danger-dark: #e07a7a;
+            --text-warning-dark: #f0a050;
+            --border-light: #253555;
+            --border-input: #304060;
+            --border-card: #304060;
+            --border-active: #2d7a4a;
+            --border-hover: #405575;
+            --border-row: #253555;
+            --border-new-key: #8a7020;
+            --color-primary: #2ecc71;
+            --color-primary-hover: #27ae60;
+            --color-accent: #2ecc71;
+            --color-success: #2ecc71;
+            --color-danger: #e74c3c;
+            --color-danger-hover: #c0392b;
+            --color-warning: #f39c12;
+            --color-link: #5dade2;
+            --header-gradient: linear-gradient(135deg, #0f3460, #16213e);
+            --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-header: 0 2px 8px rgba(0,0,0,0.4);
+            --toggle-bg: #405575;
+        }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f6fa;
-            color: #2c3e50;
+            background: var(--bg-body);
+            color: var(--text-primary);
             line-height: 1.6;
         }
         .header {
-            background: linear-gradient(135deg, #1a7a4c, #2ecc71);
+            background: var(--header-gradient);
             color: white;
             padding: 24px 32px;
             display: flex;
@@ -807,15 +899,15 @@ ADMIN_HTML = """<!DOCTYPE html>
         .container { max-width: 900px; margin: 24px auto; padding: 0 16px; }
 
         .card {
-            background: white;
+            background: var(--bg-card);
             border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            box-shadow: var(--shadow-card);
             margin-bottom: 20px;
             overflow: hidden;
         }
         .card-header {
             padding: 16px 20px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border-light);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -828,7 +920,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             display: block;
             font-size: 13px;
             font-weight: 600;
-            color: #666;
+            color: var(--text-secondary);
             margin-bottom: 4px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -836,14 +928,16 @@ ADMIN_HTML = """<!DOCTYPE html>
         .form-group input, .form-group select {
             width: 100%;
             padding: 10px 12px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--border-input);
             border-radius: 8px;
             font-size: 14px;
             transition: border-color 0.2s;
+            background: var(--bg-input);
+            color: var(--text-primary);
         }
         .form-group input:focus, .form-group select:focus {
             outline: none;
-            border-color: #2ecc71;
+            border-color: var(--color-accent);
         }
         .form-row {
             display: grid;
@@ -860,16 +954,16 @@ ADMIN_HTML = """<!DOCTYPE html>
             cursor: pointer;
             transition: all 0.2s;
         }
-        .btn-primary { background: #2ecc71; color: white; }
-        .btn-primary:hover { background: #27ae60; }
-        .btn-danger { background: #e74c3c; color: white; }
-        .btn-danger:hover { background: #c0392b; }
-        .btn-secondary { background: #ecf0f1; color: #2c3e50; }
-        .btn-secondary:hover { background: #ddd; }
+        .btn-primary { background: var(--color-primary); color: white; }
+        .btn-primary:hover { background: var(--color-primary-hover); }
+        .btn-danger { background: var(--color-danger); color: white; }
+        .btn-danger:hover { background: var(--color-danger-hover); }
+        .btn-secondary { background: var(--bg-secondary-btn); color: var(--text-primary); }
+        .btn-secondary:hover { background: var(--bg-secondary-btn-hover); }
         .btn-sm { padding: 6px 12px; font-size: 12px; }
 
         .api-key-card {
-            border: 1px solid #eee;
+            border: 1px solid var(--border-light);
             border-radius: 8px;
             padding: 16px;
             margin-bottom: 12px;
@@ -881,7 +975,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             margin-bottom: 8px;
         }
         .api-key-name { font-weight: 600; font-size: 15px; }
-        .api-key-preview { font-family: monospace; color: #888; font-size: 13px; }
+        .api-key-preview { font-family: monospace; color: var(--text-hint); font-size: 13px; }
 
         .permissions-grid {
             display: grid;
@@ -909,13 +1003,13 @@ ADMIN_HTML = """<!DOCTYPE html>
             transition: opacity 0.3s;
             z-index: 1000;
         }
-        .toast.success { background: #2ecc71; }
-        .toast.error { background: #e74c3c; }
+        .toast.success { background: var(--color-success); }
+        .toast.error { background: var(--color-danger); }
         .toast.visible { opacity: 1; }
 
         .new-key-display {
-            background: #fffde7;
-            border: 2px solid #f9a825;
+            background: var(--bg-new-key);
+            border: 2px solid var(--border-new-key);
             border-radius: 8px;
             padding: 16px;
             margin: 12px 0;
@@ -927,13 +1021,13 @@ ADMIN_HTML = """<!DOCTYPE html>
             display: block;
             margin: 8px 0;
             padding: 8px;
-            background: #fff;
+            background: var(--bg-card);
             border-radius: 4px;
         }
-        .new-key-display .warning { color: #e65100; font-weight: 600; font-size: 13px; }
+        .new-key-display .warning { color: var(--text-warning-dark); font-weight: 600; font-size: 13px; }
 
         .entity-list {
-            border: 1px solid #eee;
+            border: 1px solid var(--border-light);
             border-radius: 8px;
             padding: 12px;
             margin-top: 12px;
@@ -941,20 +1035,20 @@ ADMIN_HTML = """<!DOCTYPE html>
         .entity-list h4 {
             font-size: 13px;
             font-weight: 600;
-            color: #666;
+            color: var(--text-secondary);
             text-transform: uppercase;
             margin-bottom: 8px;
         }
         .entity-item {
             padding: 6px 0;
-            border-bottom: 1px solid #f5f5f5;
+            border-bottom: 1px solid var(--border-row);
             font-size: 13px;
             display: flex;
             justify-content: space-between;
         }
         .entity-item:last-child { border-bottom: none; }
         .entity-id { font-family: monospace; }
-        .entity-name { color: #888; }
+        .entity-name { color: var(--text-hint); }
 
         .toggle-switch {
             position: relative;
@@ -967,7 +1061,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             position: absolute;
             cursor: pointer;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: #ccc;
+            background: var(--toggle-bg);
             border-radius: 24px;
             transition: 0.3s;
         }
@@ -980,15 +1074,15 @@ ADMIN_HTML = """<!DOCTYPE html>
             border-radius: 50%;
             transition: 0.3s;
         }
-        .toggle-switch input:checked + .toggle-slider { background: #2ecc71; }
+        .toggle-switch input:checked + .toggle-slider { background: var(--color-accent); }
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
 
         .status-bar {
             display: flex;
             gap: 12px;
             padding: 12px 20px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #eee;
+            background: var(--bg-tile);
+            border-bottom: 1px solid var(--border-light);
             font-size: 13px;
         }
         .status-dot {
@@ -1003,17 +1097,25 @@ ADMIN_HTML = """<!DOCTYPE html>
         .status-dot.yellow { background: #f39c12; }
 
         .device-info {
-            background: #f8f9fa;
+            background: var(--bg-tile);
             border-radius: 8px;
             padding: 12px 16px;
             margin-top: 12px;
             font-size: 13px;
-            color: #666;
+            color: var(--text-secondary);
         }
         .device-info.empty {
             text-align: center;
-            color: #999;
+            color: var(--text-placeholder);
             padding: 24px;
+        }
+
+        .dark-toggle { background: rgba(255,255,255,0.15); border: none; border-radius: 8px; cursor: pointer; font-size: 16px; padding: 4px 8px; transition: background 0.15s; line-height: 1; }
+        .dark-toggle:hover { background: rgba(255,255,255,0.25); }
+
+        /* Dark mode form inputs */
+        body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
+            background: var(--bg-input); color: var(--text-primary); border-color: var(--border-input);
         }
 
         /* Responsive */
@@ -1029,11 +1131,13 @@ ADMIN_HTML = """<!DOCTYPE html>
             .permissions-grid { grid-template-columns: 1fr 1fr; }
             .conn-mode-grid { grid-template-columns: 1fr !important; }
             .form-group input[type="text"], .form-group input[type="password"] { font-size: 13px; }
+            .dark-toggle { font-size: 14px; padding: 3px 6px; }
         }
     </style>
     <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
 </head>
 <body>
+<script>(function(){if(localStorage.getItem('flux_dark_mode_homeowner')==='true')document.body.classList.add('dark-mode');})()</script>
 
 <div class="header" style="display:flex;align-items:center;justify-content:space-between;">
     <div class="header-left" style="display:flex;align-items:center;gap:14px;">
@@ -1046,6 +1150,7 @@ ADMIN_HTML = """<!DOCTYPE html>
     <div class="header-nav" style="display:flex;gap:8px;align-items:center;">
         <a href="?" style="color:white;text-decoration:none;padding:6px 14px;background:rgba(255,255,255,0.15);border-radius:8px;font-size:13px;">&#8592; Homeowner</a>
         <span style="background:rgba(255,255,255,0.25);padding:4px 12px;border-radius:12px;font-size:12px;font-weight:500;">Configuration</span>
+        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -1090,7 +1195,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             <button class="btn btn-primary btn-sm" onclick="showCreateKey()">+ New API Key</button>
         </div>
         <div class="card-body">
-            <div id="newKeyForm" style="display:none; margin-bottom:16px; padding:16px; border:1px solid #eee; border-radius:8px;">
+            <div id="newKeyForm" style="display:none; margin-bottom:16px; padding:16px; border:1px solid var(--border-light); border-radius:8px;">
                 <div class="form-group">
                     <label>Company Name</label>
                     <input type="text" id="newKeyName" placeholder="e.g., ABC Irrigation Management">
@@ -1128,7 +1233,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             <h2>Connection Key for Management Company</h2>
         </div>
         <div class="card-body">
-            <p style="margin-bottom:16px; color:#666; font-size:14px;">
+            <p style="margin-bottom:16px; color:var(--text-secondary); font-size:14px;">
                 Generate a connection key to share with your irrigation management company.
                 They paste this key into their Flux Open Home Irrigation Control add-on to connect to your system.
             </p>
@@ -1137,16 +1242,16 @@ ADMIN_HTML = """<!DOCTYPE html>
             <div class="form-group">
                 <label>Connection Method</label>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;" class="conn-mode-grid">
-                    <label style="display:block;cursor:pointer;padding:12px;border:2px solid #ddd;border-radius:8px;" id="modeNabuLabel">
+                    <label style="display:block;cursor:pointer;padding:12px;border:2px solid var(--border-input);border-radius:8px;" id="modeNabuLabel">
                         <input type="radio" name="connMode" value="nabu_casa" checked onchange="toggleConnectionMode()">
                         <strong style="font-size:14px;">Nabu Casa</strong>
-                        <span style="color:#27ae60;font-size:11px;"> (Recommended)</span>
-                        <div style="font-size:12px;color:#888;margin-top:4px;">Works with your existing Nabu Casa subscription. No extra setup needed.</div>
+                        <span style="color:var(--color-success);font-size:11px;"> (Recommended)</span>
+                        <div style="font-size:12px;color:var(--text-hint);margin-top:4px;">Works with your existing Nabu Casa subscription. No extra setup needed.</div>
                     </label>
-                    <label style="display:block;cursor:pointer;padding:12px;border:2px solid #ddd;border-radius:8px;" id="modeDirectLabel">
+                    <label style="display:block;cursor:pointer;padding:12px;border:2px solid var(--border-input);border-radius:8px;" id="modeDirectLabel">
                         <input type="radio" name="connMode" value="direct" onchange="toggleConnectionMode()">
                         <strong style="font-size:14px;">Direct Connection</strong>
-                        <div style="font-size:12px;color:#888;margin-top:4px;">Requires port forwarding, Cloudflare Tunnel, or VPN.</div>
+                        <div style="font-size:12px;color:var(--text-hint);margin-top:4px;">Requires port forwarding, Cloudflare Tunnel, or VPN.</div>
                     </label>
                 </div>
             </div>
@@ -1156,26 +1261,26 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <div class="form-group">
                     <label>Your Nabu Casa URL</label>
                     <input type="text" id="homeownerUrl" placeholder="https://xxxxxxxx.ui.nabu.casa">
-                    <p style="font-size:12px; color:#999; margin-top:4px;">
+                    <p style="font-size:12px; color:var(--text-placeholder); margin-top:4px;">
                         Find this in HA: <strong>Settings &rarr; Home Assistant Cloud &rarr; Remote Control</strong>. Copy the URL shown there.
                     </p>
                 </div>
                 <div class="form-group">
                     <label>Home Assistant Long-Lived Access Token</label>
                     <input type="password" id="haToken" placeholder="Paste your HA token here">
-                    <p style="font-size:12px; color:#999; margin-top:4px;">
+                    <p style="font-size:12px; color:var(--text-placeholder); margin-top:4px;">
                         Create one in HA: Go to your <strong>Profile</strong> (click your name, bottom-left) &rarr; scroll to
                         <strong>Long-Lived Access Tokens</strong> &rarr; <strong>Create Token</strong>. Name it "Irrigation Management" and paste it above.
                     </p>
                 </div>
-                <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">
-                    <strong style="color:#1a7a4c;">&#9989; One-time setup required</strong><br>
-                    <span style="color:#555;">
+                <div style="background:var(--bg-active-tile);border:1px solid var(--border-active);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">
+                    <strong style="color:var(--color-primary);">&#9989; One-time setup required</strong><br>
+                    <span style="color:var(--text-secondary);">
                         After generating the connection key, add this to your HA <strong>configuration.yaml</strong>
                         (if not already present):<br>
-                        <code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;display:inline-block;margin-top:4px;">homeassistant:</code><br>
-                        <code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;display:inline-block;margin-left:16px;">packages: !include_dir_named packages</code><br>
-                        <span style="font-size:11px;color:#888;margin-top:4px;display:block;">Then restart Home Assistant once. The add-on automatically creates the needed proxy configuration.</span>
+                        <code style="background:var(--bg-tile);padding:2px 6px;border-radius:3px;display:inline-block;margin-top:4px;">homeassistant:</code><br>
+                        <code style="background:var(--bg-tile);padding:2px 6px;border-radius:3px;display:inline-block;margin-left:16px;">packages: !include_dir_named packages</code><br>
+                        <span style="font-size:11px;color:var(--text-hint);margin-top:4px;display:block;">Then restart Home Assistant once. The add-on automatically creates the needed proxy configuration.</span>
                     </span>
                 </div>
             </div>
@@ -1189,10 +1294,10 @@ ADMIN_HTML = """<!DOCTYPE html>
                         <button class="btn btn-secondary btn-sm" onclick="testExternalUrl()" style="white-space:nowrap;margin-top:2px;">Test URL</button>
                     </div>
                     <div id="urlTestResult" style="font-size:12px;margin-top:4px;display:none;"></div>
-                    <p style="font-size:12px; color:#999; margin-top:4px;">
+                    <p style="font-size:12px; color:var(--text-placeholder); margin-top:4px;">
                         Port 8099 must be accessible externally. Options:<br>
                         &bull; <strong>Port forwarding</strong> on your router + DuckDNS for dynamic DNS<br>
-                        &bull; <strong>Cloudflare Tunnel</strong> pointing to <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">localhost:8099</code><br>
+                        &bull; <strong>Cloudflare Tunnel</strong> pointing to <code style="background:var(--bg-tile);padding:1px 4px;border-radius:3px;">localhost:8099</code><br>
                         &bull; <strong>Tailscale / WireGuard</strong> VPN between both HA instances<br><br>
                         Make sure the port is enabled in the add-on Configuration tab under "Network".
                     </p>
@@ -1234,14 +1339,14 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <div class="form-group">
                     <label>Phone Number</label>
                     <input type="tel" id="homeownerPhone" placeholder="e.g., (555) 123-4567">
-                    <p style="font-size:12px; color:#999; margin-top:4px;">
+                    <p style="font-size:12px; color:var(--text-placeholder); margin-top:4px;">
                         Shared with your management company so they can contact you if needed.
                     </p>
                 </div>
             </div>
             <div id="zoneCountInfo" class="device-info" style="margin-bottom:16px;display:none;">
                 <strong>Enabled Zones:</strong> <span id="zoneCountValue">0</span>
-                <span style="font-size:12px;color:#999;margin-left:8px;">(auto-detected from selected device)</span>
+                <span style="font-size:12px;color:var(--text-placeholder);margin-left:8px;">(auto-detected from selected device)</span>
             </div>
             <div id="generateKeyArea">
                 <div id="generateKeyUnlocked" style="display:block;">
@@ -1256,17 +1361,17 @@ ADMIN_HTML = """<!DOCTYPE html>
                             &#128275; Unlock to Regenerate
                         </button>
                     </div>
-                    <p style="font-size:12px;color:#999;margin-top:6px;">
+                    <p style="font-size:12px;color:var(--text-placeholder);margin-top:6px;">
                         Regenerating will invalidate the current connection key. Your management company will need the new key.
                     </p>
                 </div>
                 <div id="generateKeyConfirm" style="display:none;">
-                    <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 16px;margin-bottom:12px;">
+                    <div style="background:var(--bg-warning);border:1px solid var(--border-new-key);border-radius:8px;padding:12px 16px;margin-bottom:12px;">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                             <span style="font-size:18px;">&#9888;</span>
-                            <strong style="color:#856404;font-size:13px;">This will replace your current connection key</strong>
+                            <strong style="color:var(--text-warning);font-size:13px;">This will replace your current connection key</strong>
                         </div>
-                        <p style="font-size:12px;color:#856404;margin:0;">
+                        <p style="font-size:12px;color:var(--text-warning);margin:0;">
                             The old key will stop working immediately. Your management company will need the new key to reconnect.
                         </p>
                     </div>
@@ -1290,13 +1395,13 @@ ADMIN_HTML = """<!DOCTYPE html>
 
             <!-- QR Code Modal -->
             <div id="qrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center;">
-                <div style="background:white;border-radius:16px;padding:24px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                        <h3 style="font-size:16px;font-weight:600;margin:0;">Connection Key QR Code</h3>
-                        <button onclick="closeQRModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;padding:0 4px;">&times;</button>
+                        <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);">Connection Key QR Code</h3>
+                        <button onclick="closeQRModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-placeholder);padding:0 4px;">&times;</button>
                     </div>
-                    <div id="qrCodeContainer" style="display:flex;justify-content:center;padding:16px;background:#fff;border-radius:8px;"></div>
-                    <p style="font-size:12px;color:#888;text-align:center;margin-top:12px;">
+                    <div id="qrCodeContainer" style="display:flex;justify-content:center;padding:16px;background:var(--bg-card);border-radius:8px;"></div>
+                    <p style="font-size:12px;color:var(--text-hint);text-align:center;margin-top:12px;">
                         Your management company can scan this QR code to import the connection key.
                     </p>
                     <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;">
@@ -1307,11 +1412,11 @@ ADMIN_HTML = """<!DOCTYPE html>
             </div>
 
             <!-- Revoke Access Section -->
-            <div id="revokeSection" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid #eee;">
+            <div id="revokeSection" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid var(--border-light);">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
-                        <div style="font-size:14px;font-weight:600;color:#2c3e50;">Management Access</div>
-                        <div id="revokeStatusText" style="font-size:13px;color:#27ae60;margin-top:2px;">Active — your management company can access this system</div>
+                        <div style="font-size:14px;font-weight:600;color:var(--text-primary);">Management Access</div>
+                        <div id="revokeStatusText" style="font-size:13px;color:var(--color-success);margin-top:2px;">Active — your management company can access this system</div>
                     </div>
                     <button class="btn btn-danger btn-sm" onclick="confirmRevokeAccess()">Revoke Access</button>
                 </div>
@@ -1319,20 +1424,20 @@ ADMIN_HTML = """<!DOCTYPE html>
 
             <!-- Revoke Confirmation Modal -->
             <div id="revokeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center;">
-                <div style="background:white;border-radius:16px;padding:24px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
                         <span style="font-size:28px;">&#9888;</span>
-                        <h3 style="font-size:16px;font-weight:600;margin:0;color:#e74c3c;">Revoke Management Access?</h3>
+                        <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--color-danger);">Revoke Management Access?</h3>
                     </div>
-                    <p style="font-size:14px;color:#555;margin-bottom:12px;">
+                    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:12px;">
                         This will <strong>immediately</strong> prevent your irrigation management company from accessing your system. They will:
                     </p>
-                    <ul style="font-size:13px;color:#666;margin-bottom:16px;padding-left:20px;line-height:1.8;">
+                    <ul style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;padding-left:20px;line-height:1.8;">
                         <li>Lose access to view your zones, sensors, and schedules</li>
                         <li>Be unable to start, stop, or pause your irrigation</li>
-                        <li>See your property as <strong style="color:#e74c3c;">Access Revoked</strong> on their dashboard</li>
+                        <li>See your property as <strong style="color:var(--color-danger);">Access Revoked</strong> on their dashboard</li>
                     </ul>
-                    <p style="font-size:13px;color:#888;margin-bottom:20px;">
+                    <p style="font-size:13px;color:var(--text-hint);margin-bottom:20px;">
                         You can re-generate a new connection key later if you want to restore access.
                     </p>
                     <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -1376,7 +1481,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         <div class="card-header">
             <h2>Weather-Based Control</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <span id="weatherStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:#eee;color:#666;">Not Configured</span>
+                <span id="weatherStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--border-light);color:var(--text-secondary);">Not Configured</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="weatherEnabled" onchange="saveWeatherSettings()">
                     <span class="toggle-slider"></span>
@@ -1386,13 +1491,13 @@ ADMIN_HTML = """<!DOCTYPE html>
         <div class="card-body">
             <div class="form-group">
                 <label>Weather Entity</label>
-                <select id="weatherEntitySelect" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <select id="weatherEntitySelect" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
                     <option value="">-- Select a weather entity --</option>
                 </select>
-                <p style="font-size:12px;color:#999;margin-top:4px;">Uses your existing HA weather integration (NWS, Weather Underground, etc.). No API key needed.</p>
+                <p style="font-size:12px;color:var(--text-placeholder);margin-top:4px;">Uses your existing HA weather integration (NWS, Weather Underground, etc.). No API key needed.</p>
             </div>
 
-            <div id="weatherPreview" style="display:none;background:#f0f8ff;border-radius:8px;padding:14px;margin-bottom:16px;">
+            <div id="weatherPreview" style="display:none;background:var(--bg-weather);border-radius:8px;padding:14px;margin-bottom:16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                     <strong>Current Conditions</strong>
                     <button class="btn btn-secondary btn-sm" onclick="testWeatherEntity()">Refresh</button>
@@ -1402,10 +1507,10 @@ ADMIN_HTML = """<!DOCTYPE html>
 
             <div class="form-group" style="max-width:200px;">
                 <label>Check Interval (minutes)</label>
-                <input type="number" id="weatherInterval" min="5" max="60" value="15" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <input type="number" id="weatherInterval" min="5" max="60" value="15" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
             </div>
 
-            <p style="font-size:13px;color:#666;margin-top:8px;">Weather rules and thresholds can be configured from the <a href="?" style="color:#1a7a4c;font-weight:500;">Homeowner Dashboard</a>.</p>
+            <p style="font-size:13px;color:var(--text-secondary);margin-top:8px;">Weather rules and thresholds can be configured from the <a href="?" style="color:var(--color-primary);font-weight:500;">Homeowner Dashboard</a>.</p>
 
             <div style="margin-top:16px;">
                 <button class="btn btn-primary" onclick="saveWeatherSettings()">Save Weather Settings</button>
@@ -1419,6 +1524,17 @@ ADMIN_HTML = """<!DOCTYPE html>
 
 <script>
     const BASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api';
+
+    // --- Dark Mode ---
+    function toggleDarkMode() {
+        const isDark = document.body.classList.toggle('dark-mode');
+        localStorage.setItem('flux_dark_mode_homeowner', isDark);
+        document.querySelector('.dark-toggle').textContent = isDark ? '☀️' : '🌙';
+    }
+    (function initDarkToggleIcon() {
+        const btn = document.querySelector('.dark-toggle');
+        if (btn && document.body.classList.contains('dark-mode')) btn.textContent = '☀️';
+    })();
 
     // --- Toast ---
     function showToast(msg, type = 'success') {
@@ -1545,7 +1661,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         const total = zones.length + sensors.length + (other ? other.length : 0);
 
         if (total === 0) {
-            container.innerHTML = '<div class="device-info empty">No entities found on this device. Make sure the device has switch, valve, or sensor entities.<br><a href="' + BASE + '/device/debug" target="_blank" style="color:#1a7a4c;font-size:12px;">View debug info</a></div>';
+            container.innerHTML = '<div class="device-info empty">No entities found on this device. Make sure the device has switch, valve, or sensor entities.<br><a href="' + BASE + '/device/debug" target="_blank" style="color:var(--color-primary);font-size:12px;">View debug info</a></div>';
             return;
         }
 
@@ -1582,7 +1698,7 @@ ADMIN_HTML = """<!DOCTYPE html>
     function renderApiKeys(keys) {
         const container = document.getElementById('apiKeysList');
         if (keys.length === 0) {
-            container.innerHTML = '<p style="color:#999; text-align:center; padding:20px;">No API keys configured. Create one to get started.</p>';
+            container.innerHTML = '<p style="color:var(--text-placeholder); text-align:center; padding:20px;">No API keys configured. Create one to get started.</p>';
             return;
         }
         container.innerHTML = keys.map((key, i) => `
@@ -1723,8 +1839,8 @@ ADMIN_HTML = """<!DOCTYPE html>
         document.getElementById('nabuCasaFields').style.display = mode === 'nabu_casa' ? 'block' : 'none';
         document.getElementById('directFields').style.display = mode === 'direct' ? 'block' : 'none';
         // Highlight selected radio card
-        document.getElementById('modeNabuLabel').style.borderColor = mode === 'nabu_casa' ? '#2ecc71' : '#ddd';
-        document.getElementById('modeDirectLabel').style.borderColor = mode === 'direct' ? '#2ecc71' : '#ddd';
+        document.getElementById('modeNabuLabel').style.borderColor = mode === 'nabu_casa' ? 'var(--color-accent)' : 'var(--border-input)';
+        document.getElementById('modeDirectLabel').style.borderColor = mode === 'direct' ? 'var(--color-accent)' : 'var(--border-input)';
     }
 
     function getEffectiveUrl() {
@@ -1782,7 +1898,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         if (!url) { showToast('Enter a URL first', 'error'); return; }
 
         resultEl.style.display = 'block';
-        resultEl.innerHTML = '<span style="color:#666;">Testing: ' + escHtml(url) + '/api/system/health ...</span>';
+        resultEl.innerHTML = '<span style="color:var(--text-secondary);">Testing: ' + escHtml(url) + '/api/system/health ...</span>';
         try {
             const res = await fetch(`${BASE}/test-url`, {
                 method: 'POST',
@@ -1791,13 +1907,13 @@ ADMIN_HTML = """<!DOCTYPE html>
             });
             const data = await res.json();
             if (data.success) {
-                resultEl.innerHTML = '<span style="color:#27ae60;">&#10004; ' + escHtml(data.message) + ' (HTTP ' + data.status_code + ')</span>';
+                resultEl.innerHTML = '<span style="color:var(--color-success);">&#10004; ' + escHtml(data.message) + ' (HTTP ' + data.status_code + ')</span>';
             } else {
-                resultEl.innerHTML = '<span style="color:#e74c3c;">&#10008; ' + escHtml(data.error) + '</span>' +
-                    (data.help ? '<br><span style="color:#999;font-size:11px;">' + escHtml(data.help) + '</span>' : '');
+                resultEl.innerHTML = '<span style="color:var(--color-danger);">&#10008; ' + escHtml(data.error) + '</span>' +
+                    (data.help ? '<br><span style="color:var(--text-placeholder);font-size:11px;">' + escHtml(data.help) + '</span>' : '');
             }
         } catch(e) {
-            resultEl.innerHTML = '<span style="color:#e74c3c;">&#10008; Test failed: ' + escHtml(e.message) + '</span>';
+            resultEl.innerHTML = '<span style="color:var(--color-danger);">&#10008; Test failed: ' + escHtml(e.message) + '</span>';
         }
     }
 
@@ -1904,7 +2020,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         container.innerHTML = '';
 
         if (typeof qrcode === 'undefined') {
-            container.innerHTML = '<p style="color:#e74c3c;font-size:13px;">QR code library failed to load. Please check your internet connection.</p>';
+            container.innerHTML = '<p style="color:var(--color-danger);font-size:13px;">QR code library failed to load. Please check your internet connection.</p>';
             document.getElementById('qrModal').style.display = 'flex';
             return;
         }
@@ -1945,7 +2061,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         const label = document.getElementById('homeownerLabel').value.trim();
         if (label) {
             const labelEl = document.createElement('div');
-            labelEl.style.cssText = 'text-align:center;font-size:13px;font-weight:600;color:#333;margin-top:8px;';
+            labelEl.style.cssText = 'text-align:center;font-size:13px;font-weight:600;color:var(--text-primary);margin-top:8px;';
             labelEl.textContent = label;
             container.appendChild(labelEl);
         }
@@ -2094,16 +2210,16 @@ ADMIN_HTML = """<!DOCTYPE html>
         const badge = document.getElementById('weatherStatusBadge');
         if (!entityId) {
             badge.textContent = 'Not Configured';
-            badge.style.background = '#eee';
-            badge.style.color = '#666';
+            badge.style.background = 'var(--border-light)';
+            badge.style.color = 'var(--text-secondary)';
         } else if (!enabled) {
             badge.textContent = 'Disabled';
-            badge.style.background = '#fff3cd';
-            badge.style.color = '#856404';
+            badge.style.background = 'var(--bg-warning)';
+            badge.style.color = 'var(--text-warning)';
         } else {
             badge.textContent = 'Active';
-            badge.style.background = '#d4edda';
-            badge.style.color = '#155724';
+            badge.style.background = 'var(--bg-success-light)';
+            badge.style.color = 'var(--text-success-dark)';
         }
     }
 
@@ -2137,14 +2253,14 @@ ADMIN_HTML = """<!DOCTYPE html>
         const preview = document.getElementById('weatherPreview');
         const content = document.getElementById('weatherPreviewContent');
         preview.style.display = 'block';
-        content.innerHTML = '<span style="color:#999;">Loading...</span>';
+        content.innerHTML = '<span style="color:var(--text-placeholder);">Loading...</span>';
 
         try {
             const res = await fetch(`${BASE}/weather/current`);
             const data = await res.json();
             const w = data.weather || {};
             if (w.error) {
-                content.innerHTML = '<span style="color:#e74c3c;">' + escHtml(w.error) + '</span>';
+                content.innerHTML = '<span style="color:var(--color-danger);">' + escHtml(w.error) + '</span>';
                 return;
             }
 
@@ -2157,25 +2273,25 @@ ADMIN_HTML = """<!DOCTYPE html>
             const icon = conditionIcons[w.condition] || '🌡️';
 
             content.innerHTML = `
-                <div style="padding:6px 10px;background:white;border-radius:6px;text-align:center;">
+                <div style="padding:6px 10px;background:var(--bg-card);border-radius:6px;text-align:center;">
                     <div style="font-size:20px;">${icon}</div>
-                    <div style="font-weight:600;text-transform:capitalize;">${escHtml(w.condition || 'unknown')}</div>
+                    <div style="font-weight:600;text-transform:capitalize;color:var(--text-primary);">${escHtml(w.condition || 'unknown')}</div>
                 </div>
-                <div style="padding:6px 10px;background:white;border-radius:6px;">
-                    <div style="color:#999;font-size:11px;">Temperature</div>
-                    <div style="font-weight:600;">${w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A'}</div>
+                <div style="padding:6px 10px;background:var(--bg-card);border-radius:6px;">
+                    <div style="color:var(--text-placeholder);font-size:11px;">Temperature</div>
+                    <div style="font-weight:600;color:var(--text-primary);">${w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A'}</div>
                 </div>
-                <div style="padding:6px 10px;background:white;border-radius:6px;">
-                    <div style="color:#999;font-size:11px;">Humidity</div>
-                    <div style="font-weight:600;">${w.humidity != null ? w.humidity + '%' : 'N/A'}</div>
+                <div style="padding:6px 10px;background:var(--bg-card);border-radius:6px;">
+                    <div style="color:var(--text-placeholder);font-size:11px;">Humidity</div>
+                    <div style="font-weight:600;color:var(--text-primary);">${w.humidity != null ? w.humidity + '%' : 'N/A'}</div>
                 </div>
-                <div style="padding:6px 10px;background:white;border-radius:6px;">
-                    <div style="color:#999;font-size:11px;">Wind</div>
-                    <div style="font-weight:600;">${w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A'}</div>
+                <div style="padding:6px 10px;background:var(--bg-card);border-radius:6px;">
+                    <div style="color:var(--text-placeholder);font-size:11px;">Wind</div>
+                    <div style="font-weight:600;color:var(--text-primary);">${w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A'}</div>
                 </div>
             `;
         } catch (e) {
-            content.innerHTML = '<span style="color:#e74c3c;">Failed to load weather data</span>';
+            content.innerHTML = '<span style="color:var(--color-danger);">Failed to load weather data</span>';
         }
     }
 

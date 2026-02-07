@@ -14,9 +14,95 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
+:root {
+    --bg-body: #f5f6fa;
+    --bg-card: #ffffff;
+    --bg-tile: #f8f9fa;
+    --bg-input: #ffffff;
+    --bg-weather: #f0f8ff;
+    --bg-secondary-btn: #ecf0f1;
+    --bg-secondary-btn-hover: #dfe6e9;
+    --bg-active-tile: #e8f5e9;
+    --bg-inactive-tile: #fbe9e7;
+    --bg-toast: #2c3e50;
+    --bg-modal-overlay: rgba(0,0,0,0.5);
+    --bg-warning: #fff3cd;
+    --bg-success-light: #d4edda;
+    --bg-danger-light: #f8d7da;
+    --text-primary: #2c3e50;
+    --text-secondary: #666;
+    --text-muted: #7f8c8d;
+    --text-hint: #888;
+    --text-disabled: #95a5a6;
+    --text-placeholder: #999;
+    --text-warning: #856404;
+    --text-success-dark: #155724;
+    --text-danger-dark: #721c24;
+    --border-light: #eee;
+    --border-input: #ddd;
+    --border-card: #bdc3c7;
+    --border-active: #a5d6a7;
+    --border-hover: #bbb;
+    --border-row: #f0f0f0;
+    --color-primary: #1a7a4c;
+    --color-primary-hover: #15603c;
+    --color-accent: #2ecc71;
+    --color-success: #27ae60;
+    --color-danger: #e74c3c;
+    --color-danger-hover: #c0392b;
+    --color-warning: #f39c12;
+    --color-link: #3498db;
+    --header-gradient: linear-gradient(135deg, #1a7a4c, #2ecc71);
+    --shadow-card: 0 1px 4px rgba(0,0,0,0.08);
+    --shadow-header: 0 2px 8px rgba(0,0,0,0.15);
+    --shadow-toast: 0 4px 12px rgba(0,0,0,0.2);
+}
+body.dark-mode {
+    --bg-body: #1a1a2e;
+    --bg-card: #16213e;
+    --bg-tile: #1a1a2e;
+    --bg-input: #1a1a2e;
+    --bg-weather: #16213e;
+    --bg-secondary-btn: #253555;
+    --bg-secondary-btn-hover: #2d4068;
+    --bg-active-tile: #1b3a2a;
+    --bg-inactive-tile: #3a2020;
+    --bg-toast: #0f3460;
+    --bg-modal-overlay: rgba(0,0,0,0.7);
+    --bg-warning: #3a3020;
+    --bg-success-light: #1b3a2a;
+    --bg-danger-light: #3a2020;
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --text-muted: #8a9bb0;
+    --text-hint: #7a8a9a;
+    --text-disabled: #607080;
+    --text-placeholder: #607080;
+    --text-warning: #d4a843;
+    --text-success-dark: #6fcf97;
+    --text-danger-dark: #e07a7a;
+    --border-light: #253555;
+    --border-input: #304060;
+    --border-card: #304060;
+    --border-active: #2d7a4a;
+    --border-hover: #405575;
+    --border-row: #253555;
+    --color-primary: #2ecc71;
+    --color-primary-hover: #27ae60;
+    --color-accent: #2ecc71;
+    --color-success: #2ecc71;
+    --color-danger: #e74c3c;
+    --color-danger-hover: #c0392b;
+    --color-warning: #f39c12;
+    --color-link: #5dade2;
+    --header-gradient: linear-gradient(135deg, #0f3460, #16213e);
+    --shadow-card: 0 1px 4px rgba(0,0,0,0.3);
+    --shadow-header: 0 2px 8px rgba(0,0,0,0.4);
+    --shadow-toast: 0 4px 12px rgba(0,0,0,0.4);
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f6fa; color: #2c3e50; }
-.header { background: linear-gradient(135deg, #1a7a4c, #2ecc71); color: white; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-body); color: var(--text-primary); }
+.header { background: var(--header-gradient); color: white; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-header); }
 .header-left { display: flex; align-items: center; gap: 14px; }
 .header-logo { height: 44px; filter: brightness(0) invert(1); }
 .header h1 { font-size: 20px; font-weight: 600; }
@@ -25,57 +111,64 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .nav-tab { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none; color: white; transition: background 0.15s ease; }
 .nav-tab:hover { background: rgba(255,255,255,0.15); }
 .nav-tab.active { background: rgba(255,255,255,0.25); }
+.dark-toggle { background: rgba(255,255,255,0.15); border: none; border-radius: 8px; cursor: pointer; font-size: 16px; padding: 4px 8px; transition: background 0.15s; line-height: 1; }
+.dark-toggle:hover { background: rgba(255,255,255,0.25); }
 .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-.card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; overflow: hidden; }
-.card-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+.card { background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-card); margin-bottom: 20px; overflow: hidden; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
 .card-header h2 { font-size: 16px; font-weight: 600; }
 .card-body { padding: 20px; }
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s ease; }
-.btn-primary { background: #1a7a4c; color: white; }
-.btn-primary:hover { background: #15603c; }
-.btn-danger { background: #e74c3c; color: white; }
-.btn-danger:hover { background: #c0392b; }
-.btn-secondary { background: #ecf0f1; color: #2c3e50; }
-.btn-secondary:hover { background: #dfe6e9; }
+.btn-primary { background: var(--color-primary); color: white; }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-danger { background: var(--color-danger); color: white; }
+.btn-danger:hover { background: var(--color-danger-hover); }
+.btn-secondary { background: var(--bg-secondary-btn); color: var(--text-primary); }
+.btn-secondary:hover { background: var(--bg-secondary-btn-hover); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-icon { padding: 6px 10px; }
 
 /* Zone/Sensor Tiles */
 .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.tile { background: #f8f9fa; border-radius: 8px; padding: 14px; border: 1px solid #eee; }
-.tile.active { background: #e8f5e9; border-color: #a5d6a7; }
+.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px; border: 1px solid var(--border-light); }
+.tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
 .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
-.tile-state { font-size: 13px; color: #7f8c8d; margin-bottom: 8px; }
-.tile-state.on { color: #27ae60; font-weight: 500; }
+.tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+.tile-state.on { color: var(--color-success); font-weight: 500; }
 .tile-actions { display: flex; gap: 6px; }
 
 /* Schedule (entity-based) */
 .schedule-section { margin-bottom: 20px; }
-.schedule-section-label { font-size: 13px; font-weight: 600; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+.schedule-section-label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
 .days-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-.day-toggle { padding: 8px 14px; border-radius: 8px; border: 2px solid #ddd; cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; min-width: 52px; transition: all 0.15s ease; background: #f8f9fa; color: #7f8c8d; user-select: none; }
-.day-toggle:hover { border-color: #bbb; }
-.day-toggle.active { background: #e8f5e9; border-color: #27ae60; color: #27ae60; }
+.day-toggle { padding: 8px 14px; border-radius: 8px; border: 2px solid var(--border-input); cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; min-width: 52px; transition: all 0.15s ease; background: var(--bg-tile); color: var(--text-muted); user-select: none; }
+.day-toggle:hover { border-color: var(--border-hover); }
+.day-toggle.active { background: var(--bg-active-tile); border-color: var(--color-success); color: var(--color-success); }
 .start-times-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .zone-settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.zone-settings-table th { text-align: left; padding: 8px; border-bottom: 2px solid #eee; font-size: 12px; color: #7f8c8d; text-transform: uppercase; }
-.zone-settings-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+.zone-settings-table th { text-align: left; padding: 8px; border-bottom: 2px solid var(--border-light); font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
+.zone-settings-table td { padding: 8px; border-bottom: 1px solid var(--border-row); }
 .system-controls-row { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Empty States */
-.empty-state { text-align: center; padding: 40px 20px; color: #95a5a6; }
-.empty-state h3 { font-size: 18px; margin-bottom: 8px; color: #7f8c8d; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-disabled); }
+.empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--text-muted); }
 .empty-state p { font-size: 14px; }
 
 /* Loading */
-.loading { text-align: center; padding: 20px; color: #7f8c8d; font-size: 14px; }
+.loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 14px; }
 
 /* Toast */
 .toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; }
-.toast { background: #2c3e50; color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 8px; font-size: 14px; animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-.toast.error { background: #e74c3c; }
-.toast.success { background: #27ae60; }
+.toast { background: var(--bg-toast); color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 8px; font-size: 14px; animation: slideIn 0.3s ease; box-shadow: var(--shadow-toast); }
+.toast.error { background: var(--color-danger); }
+.toast.success { background: var(--color-success); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Dark mode form inputs */
+body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
+    background: var(--bg-input); color: var(--text-primary); border-color: var(--border-input);
+}
 
 /* Responsive */
 @media (max-width: 600px) {
@@ -92,10 +185,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     .day-toggle { padding: 6px 10px; font-size: 12px; min-width: 44px; }
     .start-times-grid { grid-template-columns: 1fr; }
     .system-controls-row { flex-direction: column; }
+    .dark-toggle { font-size: 14px; padding: 3px 6px; }
 }
 </style>
 </head>
 <body>
+<script>(function(){if(localStorage.getItem('flux_dark_mode_homeowner')==='true')document.body.classList.add('dark-mode');})()</script>
 
 <div class="header">
     <div class="header-left">
@@ -107,6 +202,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <span class="nav-tab active">Homeowner</span>
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
+        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -115,7 +211,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="detail-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
         <div>
             <h2 id="dashTitle" style="font-size:22px;font-weight:600;">My Irrigation System</h2>
-            <div id="dashAddress" style="font-size:14px;color:#95a5a6;margin-top:4px;display:none;"></div>
+            <div id="dashAddress" style="font-size:14px;color:var(--text-disabled);margin-top:4px;display:none;"></div>
         </div>
         <div style="display:flex;gap:8px;">
             <button class="btn btn-secondary btn-sm" onclick="refreshDashboard()">Refresh</button>
@@ -144,7 +240,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div class="card-header">
             <h2>Weather-Based Control</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <span id="weatherMultBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:#d4edda;color:#155724;">1.0x</span>
+                <span id="weatherMultBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-success-light);color:var(--text-success-dark);">1.0x</span>
             </div>
         </div>
         <div class="card-body" id="weatherCardBody">
@@ -191,7 +287,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div class="card-header">
             <h2>Run History</h2>
             <div style="display:flex;gap:6px;align-items:center;">
-                <select id="historyRange" onchange="loadHistory()" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">
+                <select id="historyRange" onchange="loadHistory()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;">
                     <option value="24">Last 24 hours</option>
                     <option value="168">Last 7 days</option>
                     <option value="720">Last 30 days</option>
@@ -487,7 +583,7 @@ async function loadStatus() {
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
         </div>`;
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load status: ' + esc(e.message) + '</div>';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load status: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -516,7 +612,7 @@ async function loadZones() {
             <div class="tile ${isOn ? 'active' : ''}">
                 <div class="tile-name">
                     ${esc(displayName)}
-                    <span style="cursor:pointer;font-size:11px;color:#1a7a4c;margin-left:6px;"
+                    <span style="cursor:pointer;font-size:11px;color:var(--color-primary);margin-left:6px;"
                           onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
@@ -524,14 +620,14 @@ async function loadZones() {
                     ${isOn
                         ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + zId + '\\')">Stop</button>'
                         : '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', null)">Start</button>' +
-                          '<span style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="width:60px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                          '<span style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="width:60px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
                           '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', document.getElementById(\\'dur_' + zId + '\\').value)">Timed</button></span>'
                     }
                 </div>
             </div>`;
         }).join('') + '</div>';
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load zones: ' + esc(e.message) + '</div>';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load zones: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -598,10 +694,10 @@ function wifiSignalBadge(sensor) {
     const val = parseFloat(sensor.state);
     if (isNaN(val)) return '';
     let label, color;
-    if (val >= -50)      { label = 'Great'; color = '#1a7a1a'; }
-    else if (val >= -60) { label = 'Good';  color = '#3a9a2a'; }
-    else if (val >= -70) { label = 'Poor';  color = '#d4930a'; }
-    else                 { label = 'Bad';   color = '#cc2222'; }
+    if (val >= -50)      { label = 'Great'; color = 'var(--color-success)'; }
+    else if (val >= -60) { label = 'Good';  color = 'var(--color-success)'; }
+    else if (val >= -70) { label = 'Poor';  color = 'var(--color-warning)'; }
+    else                 { label = 'Bad';   color = 'var(--color-danger)'; }
     return ' <span style="font-weight:600;color:' + color + ';">(' + label + ')</span>';
 }
 
@@ -618,7 +714,7 @@ async function loadSensors() {
                 <div class="tile-state">${esc(s.state)}${s.unit_of_measurement ? ' ' + esc(s.unit_of_measurement) : ''}${wifiSignalBadge(s)}</div>
             </div>`).join('') + '</div>';
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load sensors: ' + esc(e.message) + '</div>';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load sensors: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -678,7 +774,7 @@ async function loadControls() {
             let html = '';
             for (const domain of sortedDomains) {
                 const label = domainLabels[domain] || domain.charAt(0).toUpperCase() + domain.slice(1);
-                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
+                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
                 html += '<div class="tile-grid">';
                 for (const e of groups[domain]) {
                     html += renderControlTile(e);
@@ -692,8 +788,8 @@ async function loadControls() {
         renderScheduleCard(scheduleByCategory);
 
     } catch (e) {
-        controlsEl.innerHTML = '<div style="color:#e74c3c;">Failed to load controls: ' + esc(e.message) + '</div>';
-        scheduleEl.innerHTML = '<div style="color:#e74c3c;">Failed to load schedule: ' + esc(e.message) + '</div>';
+        controlsEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load controls: ' + esc(e.message) + '</div>';
+        scheduleEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load schedule: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -716,10 +812,10 @@ function renderScheduleCard(sched) {
         const isOn = se.state === 'on';
         html += '<div class="schedule-section" style="margin-bottom:16px;">' +
             '<div style="display:flex;align-items:center;justify-content:space-between;' +
-            'padding:12px 16px;border-radius:8px;background:' + (isOn ? '#e8f5e9' : '#fbe9e7') + ';">' +
-            '<div><div style="font-size:15px;font-weight:600;color:' + (isOn ? '#27ae60' : '#e74c3c') + ';">' +
+            'padding:12px 16px;border-radius:8px;background:' + (isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
+            '<div><div style="font-size:15px;font-weight:600;color:' + (isOn ? 'var(--color-success)' : 'var(--color-danger)') + ';">' +
             'Schedule ' + (isOn ? 'Enabled' : 'Disabled') + '</div>' +
-            '<div style="font-size:12px;color:#7f8c8d;">Master schedule on/off</div></div>' +
+            '<div style="font-size:12px;color:var(--text-muted);">Master schedule on/off</div></div>' +
             '<button class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + '" ' +
             'onclick="setEntityValue(\\'' + se.entity_id + '\\',\\'switch\\',' +
             '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
@@ -758,7 +854,7 @@ function renderScheduleCard(sched) {
                 '<div class="tile-name">' + esc(label) + '</div>' +
                 '<div class="tile-state">' + esc(st.state) + '</div>' +
                 '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM" style="width:100px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM" style="width:100px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
                 '\\',\\'text\\',{value:document.getElementById(\\'' + inputId + '\\').value})">Set</button>' +
                 '</div></div>';
@@ -812,12 +908,12 @@ function renderScheduleCard(sched) {
                     const optionsHtml = modeOptions.map(o =>
                         '<option value="' + esc(o) + '"' + (o === mode.state ? ' selected' : '') + '>' + esc(o) + '</option>'
                     ).join('');
-                    html += '<td><select id="' + selId + '" style="padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;" ' +
+                    html += '<td><select id="' + selId + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;" ' +
                         'onchange="setEntityValue(\\'' + modeEid +
                         '\\',\\'select\\',{option:document.getElementById(\\'' + selId + '\\').value})">' +
                         optionsHtml + '</select></td>';
                 } else {
-                    html += '<td style="color:#95a5a6;">-</td>';
+                    html += '<td style="color:var(--text-disabled);">-</td>';
                 }
             }
             if (enable) {
@@ -827,10 +923,10 @@ function renderScheduleCard(sched) {
                     '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
                     (isOn ? 'Enabled' : 'Disabled') + '</button></td>';
             } else {
-                html += '<td style="color:#95a5a6;">-</td>';
+                html += '<td style="color:var(--text-disabled);">-</td>';
             }
             if (isPumpOrMaster) {
-                html += '<td style="color:#95a5a6;font-style:italic;">Firmware controlled</td>';
+                html += '<td style="color:var(--text-disabled);font-style:italic;">Firmware controlled</td>';
             } else if (duration) {
                 const attrs = duration.attributes || {};
                 const unit = attrs.unit_of_measurement || 'min';
@@ -838,12 +934,12 @@ function renderScheduleCard(sched) {
                 const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
                 html += '<td><input type="number" id="' + inputId + '" value="' + esc(duration.state) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
-                    'style="width:70px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> ' +
+                    'style="width:70px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;"> ' +
                     esc(unit) + ' ' +
                     '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
                     '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button></td>';
             } else {
-                html += '<td style="color:#95a5a6;">-</td>';
+                html += '<td style="color:var(--text-disabled);">-</td>';
             }
             html += '</tr>';
         }
@@ -900,7 +996,7 @@ function renderControlTile(e) {
             '<div class="tile-name">' + name + '</div>' +
             '<div class="tile-state">' + esc(state) + (unit ? ' ' + esc(unit) : '') + '</div>' +
             '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<input type="number" id="num_' + eid + '" value="' + esc(state) + '" min="' + min + '" max="' + max + '" step="' + step + '" style="width:80px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<input type="number" id="num_' + eid + '" value="' + esc(state) + '" min="' + min + '" max="' + max + '" step="' + step + '" style="width:80px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid + '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'num_' + eid + '\\').value)})">Set</button>' +
             '</div></div>';
     }
@@ -912,7 +1008,7 @@ function renderControlTile(e) {
             '<div class="tile-name">' + name + '</div>' +
             '<div class="tile-state">' + esc(state) + '</div>' +
             '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<select id="sel_' + eid + '" style="padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + optionsHtml + '</select>' +
+                '<select id="sel_' + eid + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' + optionsHtml + '</select>' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid + '\\',\\'select\\',{option:document.getElementById(\\'sel_' + eid + '\\').value})">Set</button>' +
             '</div></div>';
     }
@@ -931,7 +1027,7 @@ function renderControlTile(e) {
             '<div class="tile-name">' + name + '</div>' +
             '<div class="tile-state">' + esc(state) + '</div>' +
             '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<input type="text" id="txt_' + eid + '" value="' + esc(state) + '" style="width:120px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<input type="text" id="txt_' + eid + '" value="' + esc(state) + '" style="width:120px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid + '\\',\\'text\\',{value:document.getElementById(\\'txt_' + eid + '\\').value})">Set</button>' +
             '</div></div>';
     }
@@ -939,7 +1035,7 @@ function renderControlTile(e) {
     return '<div class="tile">' +
         '<div class="tile-name">' + name + '</div>' +
         '<div class="tile-state">' + esc(state) + '</div>' +
-        '<div style="font-size:11px;color:#95a5a6;margin-top:4px;">' + esc(domain) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-disabled);margin-top:4px;">' + esc(domain) + '</div>' +
         '</div>';
 }
 
@@ -970,9 +1066,9 @@ async function loadHistory() {
             const condIcons = {'sunny':'☀️','clear-night':'🌙','partlycloudy':'⛅','cloudy':'☁️','rainy':'🌧️','pouring':'🌧️','snowy':'❄️','windy':'💨','fog':'🌫️','lightning':'⚡','lightning-rainy':'⛈️','hail':'🧊'};
             const wIcon = condIcons[cw.condition] || '🌡️';
             const mult = cw.watering_multiplier != null ? cw.watering_multiplier : 1.0;
-            const multColor = mult === 1.0 ? '#155724' : mult < 1 ? '#856404' : '#721c24';
-            const multBg = mult === 1.0 ? '#d4edda' : mult < 1 ? '#fff3cd' : '#f8d7da';
-            weatherSummary = '<div style="margin-bottom:12px;padding:8px 12px;background:#f0f8ff;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+            const multColor = mult === 1.0 ? 'var(--text-success-dark)' : mult < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+            const multBg = mult === 1.0 ? 'var(--bg-success-light)' : mult < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+            weatherSummary = '<div style="margin-bottom:12px;padding:8px 12px;background:var(--bg-weather);border-radius:8px;font-size:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
                 '<span>' + wIcon + ' <strong>' + esc(cw.condition) + '</strong></span>' +
                 (cw.temperature != null ? '<span>🌡️ ' + cw.temperature + '°</span>' : '') +
                 (cw.humidity != null ? '<span>💧 ' + cw.humidity + '%</span>' : '') +
@@ -982,7 +1078,7 @@ async function loadHistory() {
         }
 
         el.innerHTML = weatherSummary +
-            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid #eee;"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
+            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
             events.slice(0, 100).map(e => {
                 const wx = e.weather || {};
                 let wxCell = '-';
@@ -990,25 +1086,25 @@ async function loadHistory() {
                     const ci = {'sunny':'☀️','clear-night':'🌙','partlycloudy':'⛅','cloudy':'☁️','rainy':'🌧️','pouring':'🌧️','snowy':'❄️','windy':'💨','fog':'🌫️','lightning':'⚡','lightning-rainy':'⛈️','hail':'🧊'};
                     const wi = ci[wx.condition] || '🌡️';
                     const wm = wx.watering_multiplier != null ? wx.watering_multiplier : '';
-                    const wmColor = wm === 1.0 ? '#27ae60' : wm < 1 ? '#f39c12' : wm > 1 ? '#e74c3c' : '#999';
+                    const wmColor = wm === 1.0 ? 'var(--color-success)' : wm < 1 ? 'var(--color-warning)' : wm > 1 ? 'var(--color-danger)' : 'var(--text-placeholder)';
                     wxCell = wi + ' ' + (wx.temperature != null ? wx.temperature + '° ' : '') +
                         (wm ? '<span style="color:' + wmColor + ';font-weight:600;">' + wm + 'x</span>' : '');
                     const rules = wx.active_adjustments || wx.rules_triggered || [];
                     if (rules.length > 0) {
-                        wxCell += '<div style="font-size:10px;color:#856404;margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
+                        wxCell += '<div style="font-size:10px;color:var(--text-warning);margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
                     }
                 }
-                const srcLabel = e.source ? '<div style="font-size:10px;color:#999;">' + esc(e.source) + '</div>' : '';
-                return `<tr style="border-bottom:1px solid #f0f0f0;">
+                const srcLabel = e.source ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
+                return `<tr style="border-bottom:1px solid var(--border-row);">
                 <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}${srcLabel}</td>
-                <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:#27ae60;">ON</span>' : '<span style="color:#95a5a6;">OFF</span>'}</td>
+                <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:var(--color-success);">ON</span>' : '<span style="color:var(--text-disabled);">OFF</span>'}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
                 <td style="padding:6px;font-size:12px;">${wxCell}</td>
             </tr>`;
             }).join('') + '</tbody></table>';
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load history: ' + esc(e.message) + '</div>';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load history: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -1049,7 +1145,7 @@ async function loadWeather() {
         card.style.display = 'block';
         const w = data.weather || {};
         if (w.error) {
-            body.innerHTML = '<div style="color:#999;text-align:center;padding:12px;">' + esc(w.error) + '</div>';
+            body.innerHTML = '<div style="color:var(--text-placeholder);text-align:center;padding:12px;">' + esc(w.error) + '</div>';
             return;
         }
 
@@ -1062,24 +1158,24 @@ async function loadWeather() {
         const icon = condIcons[w.condition] || '🌡️';
         const mult = data.watering_multiplier != null ? data.watering_multiplier : 1.0;
         badge.textContent = mult + 'x';
-        badge.style.background = mult === 1.0 ? '#d4edda' : mult < 1 ? '#fff3cd' : '#f8d7da';
-        badge.style.color = mult === 1.0 ? '#155724' : mult < 1 ? '#856404' : '#721c24';
+        badge.style.background = mult === 1.0 ? 'var(--bg-success-light)' : mult < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+        badge.style.color = mult === 1.0 ? 'var(--text-success-dark)' : mult < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
 
         let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">';
-        html += '<div style="background:#f0f8ff;border-radius:8px;padding:10px;text-align:center;">';
+        html += '<div style="background:var(--bg-weather);border-radius:8px;padding:10px;text-align:center;">';
         html += '<div style="font-size:24px;">' + icon + '</div>';
         html += '<div style="font-weight:600;text-transform:capitalize;font-size:13px;">' + esc(w.condition || 'unknown') + '</div>';
         html += '</div>';
-        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
-        html += '<div style="color:#999;font-size:11px;">Temperature</div>';
+        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+        html += '<div style="color:var(--text-placeholder);font-size:11px;">Temperature</div>';
         html += '<div style="font-weight:600;font-size:16px;">' + (w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A') + '</div>';
         html += '</div>';
-        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
-        html += '<div style="color:#999;font-size:11px;">Humidity</div>';
+        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+        html += '<div style="color:var(--text-placeholder);font-size:11px;">Humidity</div>';
         html += '<div style="font-weight:600;font-size:16px;">' + (w.humidity != null ? w.humidity + '%' : 'N/A') + '</div>';
         html += '</div>';
-        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
-        html += '<div style="color:#999;font-size:11px;">Wind</div>';
+        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+        html += '<div style="color:var(--text-placeholder);font-size:11px;">Wind</div>';
         html += '<div style="font-weight:600;font-size:16px;">' + (w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A') + '</div>';
         html += '</div>';
         html += '</div>';
@@ -1087,7 +1183,7 @@ async function loadWeather() {
         // 3-day forecast
         const forecast = w.forecast || [];
         if (forecast.length > 0) {
-            html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:#7f8c8d;text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
+            html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
             html += '<div style="display:flex;gap:8px;overflow-x:auto;">';
             for (let i = 0; i < Math.min(forecast.length, 5); i++) {
                 const f = forecast[i];
@@ -1095,12 +1191,12 @@ async function loadWeather() {
                 const dayLabel = dt ? dt.toLocaleDateString('en-US', { weekday: 'short' }) : '';
                 const fIcon = condIcons[f.condition] || '🌡️';
                 const precip = f.precipitation_probability || 0;
-                html += '<div style="flex:0 0 auto;background:#f8f9fa;border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;">';
-                html += '<div style="font-size:11px;color:#999;">' + esc(dayLabel) + '</div>';
+                html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;">';
+                html += '<div style="font-size:11px;color:var(--text-placeholder);">' + esc(dayLabel) + '</div>';
                 html += '<div style="font-size:18px;">' + fIcon + '</div>';
                 html += '<div style="font-size:12px;font-weight:600;">' + (f.temperature != null ? f.temperature + '°' : '') + '</div>';
                 if (precip > 0) {
-                    html += '<div style="font-size:10px;color:#3498db;">💧 ' + precip + '%</div>';
+                    html += '<div style="font-size:10px;color:var(--color-link);">💧 ' + precip + '%</div>';
                 }
                 html += '</div>';
             }
@@ -1110,9 +1206,9 @@ async function loadWeather() {
         // Active adjustments
         const adjustments = data.active_adjustments || [];
         if (adjustments.length > 0) {
-            html += '<div style="margin-top:12px;padding:10px;background:#fff3cd;border-radius:8px;font-size:12px;">';
-            html += '<strong style="color:#856404;">Active Weather Adjustments:</strong>';
-            html += '<ul style="margin:4px 0 0 16px;color:#856404;">';
+            html += '<div style="margin-top:12px;padding:10px;background:var(--bg-warning);border-radius:8px;font-size:12px;">';
+            html += '<strong style="color:var(--text-warning);">Active Weather Adjustments:</strong>';
+            html += '<ul style="margin:4px 0 0 16px;color:var(--text-warning);">';
             for (const adj of adjustments) {
                 html += '<li>' + esc(adj.reason || adj.rule) + '</li>';
             }
@@ -1120,7 +1216,7 @@ async function loadWeather() {
         }
 
         // --- Weather Rules Editor ---
-        html += '<div style="margin-top:16px;border-top:1px solid #eee;padding-top:16px;">';
+        html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:16px;">';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
         html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
         html += '<div style="display:flex;gap:6px;">';
@@ -1212,14 +1308,14 @@ async function loadWeatherRules() {
         for (let i = 1; i <= 12; i++) {
             const val = months[String(i)] != null ? months[String(i)] : (i >= 3 && i <= 11 ? 1.0 : 0.0);
             seasonInputs += '<div style="display:flex;align-items:center;gap:4px;">' +
-                '<span style="font-size:11px;color:#999;width:28px;">' + monthNames[i-1] + '</span>' +
+                '<span style="font-size:11px;color:var(--text-placeholder);width:28px;">' + monthNames[i-1] + '</span>' +
                 '<input type="number" id="seasonal_month_' + i + '" value="' + val + '" min="0" max="2" step="0.1" ' +
-                'style="width:55px;padding:2px 4px;border:1px solid #ddd;border-radius:4px;font-size:11px;"></div>';
+                'style="width:55px;padding:2px 4px;border:1px solid var(--border-input);border-radius:4px;font-size:11px;"></div>';
         }
-        html += '<div style="background:#f8f9fa;border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:4px;">';
+        html += '<div style="background:var(--bg-tile);border:1px solid var(--border-light);border-radius:8px;padding:10px;margin-bottom:4px;">';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
         html += '<div><div style="font-weight:600;font-size:13px;">Seasonal Adjustment</div>';
-        html += '<div style="font-size:11px;color:#999;">Monthly watering multiplier (0=off, 1=normal)</div></div>';
+        html += '<div style="font-size:11px;color:var(--text-placeholder);">Monthly watering multiplier (0=off, 1=normal)</div></div>';
         html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">';
         html += '<input type="checkbox" id="rule_seasonal_adjustment" ' + (r9.enabled ? 'checked' : '') + '> Enabled</label>';
         html += '</div>';
@@ -1236,15 +1332,15 @@ async function loadWeatherRules() {
         container.innerHTML = html;
         setupUnitConversions('');
     } catch (e) {
-        container.innerHTML = '<div style="color:#e74c3c;">Failed to load weather rules: ' + esc(e.message) + '</div>';
+        container.innerHTML = '<div style="color:var(--color-danger);">Failed to load weather rules: ' + esc(e.message) + '</div>';
     }
 }
 
 function buildRuleRow(ruleId, name, description, enabled, fields) {
-    let html = '<div style="background:#f8f9fa;border:1px solid #eee;border-radius:8px;padding:10px;">';
+    let html = '<div style="background:var(--bg-tile);border:1px solid var(--border-light);border-radius:8px;padding:10px;">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
     html += '<div><div style="font-weight:600;font-size:13px;">' + esc(name) + '</div>';
-    html += '<div style="font-size:11px;color:#999;">' + esc(description) + '</div></div>';
+    html += '<div style="font-size:11px;color:var(--text-placeholder);">' + esc(description) + '</div></div>';
     html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">';
     html += '<input type="checkbox" id="rule_' + ruleId + '" ' + (enabled ? 'checked' : '') + '> Enabled</label>';
     html += '</div>';
@@ -1252,12 +1348,12 @@ function buildRuleRow(ruleId, name, description, enabled, fields) {
         html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">';
         for (const f of fields) {
             html += '<div style="display:flex;align-items:center;gap:4px;">';
-            html += '<span style="font-size:11px;color:#999;">' + esc(f.label) + '</span>';
+            html += '<span style="font-size:11px;color:var(--text-placeholder);">' + esc(f.label) + '</span>';
             html += '<input type="' + f.type + '" id="' + f.id + '" value="' + f.value + '" ';
             if (f.min != null) html += 'min="' + f.min + '" ';
             if (f.max != null) html += 'max="' + f.max + '" ';
             if (f.step != null) html += 'step="' + f.step + '" ';
-            html += 'style="width:60px;padding:2px 4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">';
+            html += 'style="width:60px;padding:2px 4px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">';
             html += '</div>';
         }
         html += '</div>';
@@ -1387,6 +1483,17 @@ async function clearWeatherLog() {
         }
     } catch (e) { showToast(e.message, 'error'); }
 }
+
+// --- Dark Mode ---
+function toggleDarkMode() {
+    const isDark = document.body.classList.toggle('dark-mode');
+    localStorage.setItem('flux_dark_mode_homeowner', isDark);
+    document.querySelector('.dark-toggle').textContent = isDark ? '☀️' : '🌙';
+}
+(function initDarkToggleIcon() {
+    const btn = document.querySelector('.dark-toggle');
+    if (btn && document.body.classList.contains('dark-mode')) btn.textContent = '☀️';
+})();
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {

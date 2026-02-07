@@ -14,117 +14,214 @@ MANAGEMENT_HTML = """<!DOCTYPE html>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
+:root {
+    --bg-body: #f5f6fa;
+    --bg-card: #ffffff;
+    --bg-tile: #f8f9fa;
+    --bg-input: #ffffff;
+    --bg-form: #f8f9fa;
+    --bg-weather: #f0f8ff;
+    --bg-secondary-btn: #ecf0f1;
+    --bg-secondary-btn-hover: #dfe6e9;
+    --bg-active-tile: #e8f5e9;
+    --bg-inactive-tile: #fbe9e7;
+    --bg-toast: #2c3e50;
+    --bg-warning: #fff3cd;
+    --bg-success-light: #d4edda;
+    --bg-danger-light: #f8d7da;
+    --bg-revoked-card: #fafafa;
+    --bg-key-preview: #e8f5e9;
+    --border-key-preview: #c8e6c9;
+
+    --text-primary: #2c3e50;
+    --text-secondary: #666;
+    --text-secondary-alt: #555;
+    --text-muted: #7f8c8d;
+    --text-hint: #888;
+    --text-disabled: #95a5a6;
+    --text-placeholder: #999;
+    --text-warning: #856404;
+    --text-success-dark: #155724;
+    --text-danger-dark: #721c24;
+
+    --border-light: #eee;
+    --border-input: #ddd;
+    --border-card: #bdc3c7;
+    --border-active: #a5d6a7;
+    --border-hover: #bbb;
+    --border-row: #f0f0f0;
+
+    --color-primary: #1a7a4c;
+    --color-primary-hover: #15603c;
+    --color-accent: #2ecc71;
+    --color-success: #27ae60;
+    --color-danger: #e74c3c;
+    --color-danger-hover: #c0392b;
+    --color-warning: #f39c12;
+    --color-link: #3498db;
+
+    --header-gradient: linear-gradient(135deg, #1a7a4c, #2ecc71);
+    --shadow-card: 0 1px 4px rgba(0,0,0,0.08);
+    --shadow-header: 0 2px 8px rgba(0,0,0,0.15);
+}
+body.dark-mode {
+    --bg-body: #1a1a2e;
+    --bg-card: #16213e;
+    --bg-tile: #1a1a2e;
+    --bg-input: #1a1a2e;
+    --bg-form: #1a1a2e;
+    --bg-weather: #16213e;
+    --bg-secondary-btn: #253555;
+    --bg-secondary-btn-hover: #2d4068;
+    --bg-active-tile: #1b3a2a;
+    --bg-inactive-tile: #3a2020;
+    --bg-toast: #0f3460;
+    --bg-warning: #3a3020;
+    --bg-success-light: #1b3a2a;
+    --bg-danger-light: #3a2020;
+    --bg-revoked-card: #1a1a2e;
+    --bg-key-preview: #1b3a2a;
+    --border-key-preview: #2d7a4a;
+
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --text-secondary-alt: #b0b0b0;
+    --text-muted: #8a9bb0;
+    --text-hint: #7a8a9a;
+    --text-disabled: #607080;
+    --text-placeholder: #607080;
+    --text-warning: #d4a843;
+    --text-success-dark: #6fcf97;
+    --text-danger-dark: #e07a7a;
+
+    --border-light: #253555;
+    --border-input: #304060;
+    --border-card: #304060;
+    --border-active: #2d7a4a;
+    --border-hover: #405575;
+    --border-row: #253555;
+
+    --color-primary: #2ecc71;
+    --color-primary-hover: #27ae60;
+
+    --header-gradient: linear-gradient(135deg, #0f3460, #16213e);
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-header: 0 2px 8px rgba(0,0,0,0.4);
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f6fa; color: #2c3e50; }
-.header { background: linear-gradient(135deg, #1a7a4c, #2ecc71); color: white; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-body); color: var(--text-primary); }
+body.dark-mode input, body.dark-mode select, body.dark-mode textarea { background: var(--bg-input); color: var(--text-primary); border-color: var(--border-input); }
+.header { background: var(--header-gradient); color: white; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-header); }
 .header h1 { font-size: 20px; font-weight: 600; }
 .header-actions { display: flex; gap: 10px; align-items: center; }
 .mode-badge { background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
 .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-.card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; overflow: hidden; }
-.card-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+.card { background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-card); margin-bottom: 20px; overflow: hidden; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
 .card-header h2 { font-size: 16px; font-weight: 600; }
 .card-body { padding: 20px; }
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s ease; }
-.btn-primary { background: #1a7a4c; color: white; }
-.btn-primary:hover { background: #15603c; }
-.btn-danger { background: #e74c3c; color: white; }
-.btn-danger:hover { background: #c0392b; }
-.btn-secondary { background: #ecf0f1; color: #2c3e50; }
-.btn-secondary:hover { background: #dfe6e9; }
+.btn-primary { background: var(--color-primary); color: white; }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-danger { background: var(--color-danger); color: white; }
+.btn-danger:hover { background: var(--color-danger-hover); }
+.btn-secondary { background: var(--bg-secondary-btn); color: var(--text-primary); }
+.btn-secondary:hover { background: var(--bg-secondary-btn-hover); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-icon { padding: 6px 10px; }
+.dark-toggle { background: rgba(255,255,255,0.15); border: none; border-radius: 8px; cursor: pointer; font-size: 16px; padding: 4px 8px; transition: background 0.15s; line-height: 1; }
+.dark-toggle:hover { background: rgba(255,255,255,0.25); }
 
 /* Customer Grid */
 .customer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
-.customer-card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #bdc3c7; transition: all 0.2s ease; cursor: pointer; }
+.customer-card { background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-card); border-left: 4px solid var(--border-card); transition: all 0.2s ease; cursor: pointer; }
 .customer-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); transform: translateY(-1px); }
 .customer-card.online { border-left-color: #2ecc71; }
 .customer-card.offline { border-left-color: #e74c3c; }
-.customer-card.revoked { border-left-color: #95a5a6; background: #fafafa; }
-.customer-card.unknown { border-left-color: #f39c12; }
+.customer-card.revoked { border-left-color: var(--text-disabled); background: var(--bg-revoked-card); }
+.customer-card.unknown { border-left-color: var(--color-warning); }
 .customer-card-body { padding: 16px; }
 .customer-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.customer-name { font-size: 16px; font-weight: 600; color: #2c3e50; }
-.customer-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7f8c8d; }
+.customer-name { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.customer-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .status-dot.online { background: #2ecc71; }
 .status-dot.offline { background: #e74c3c; }
 .status-dot.revoked { background: #95a5a6; }
 .status-dot.unknown { background: #f39c12; }
-.customer-stats { display: flex; gap: 16px; font-size: 13px; color: #7f8c8d; margin-top: 8px; }
+.customer-stats { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); margin-top: 8px; }
 .customer-stat { display: flex; align-items: center; gap: 4px; }
-.customer-stat strong { color: #2c3e50; }
-.customer-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+.customer-stat strong { color: var(--text-primary); }
+.customer-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light); }
 
 /* Add Customer Form */
-.add-form { background: #f8f9fa; border-radius: 8px; padding: 16px; margin-bottom: 20px; display: none; }
+.add-form { background: var(--bg-form); border-radius: 8px; padding: 16px; margin-bottom: 20px; display: none; }
 .add-form.visible { display: block; }
 .form-group { margin-bottom: 12px; }
-.form-group label { display: block; font-size: 13px; font-weight: 500; color: #555; margin-bottom: 4px; }
-.form-group input, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: inherit; }
+.form-group label { display: block; font-size: 13px; font-weight: 500; color: var(--text-secondary-alt); margin-bottom: 4px; }
+.form-group input, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--bg-input); color: var(--text-primary); }
 .form-group textarea { min-height: 80px; resize: vertical; font-family: monospace; }
-.form-group .hint { font-size: 11px; color: #999; margin-top: 2px; }
+.form-group .hint { font-size: 11px; color: var(--text-placeholder); margin-top: 2px; }
 .form-actions { display: flex; gap: 8px; margin-top: 12px; }
-.key-preview { background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px; padding: 12px; margin-top: 12px; font-size: 13px; display: none; }
+.key-preview { background: var(--bg-key-preview); border: 1px solid var(--border-key-preview); border-radius: 6px; padding: 12px; margin-top: 12px; font-size: 13px; display: none; }
 .key-preview.visible { display: block; }
-.key-preview .label { font-weight: 600; color: #1a7a4c; margin-bottom: 4px; }
+.key-preview .label { font-weight: 600; color: var(--color-primary); margin-bottom: 4px; }
 
 /* Detail View */
 .detail-view { display: none; }
 .detail-view.visible { display: block; }
-.detail-back { display: flex; align-items: center; gap: 8px; color: #1a7a4c; font-size: 14px; font-weight: 500; cursor: pointer; margin-bottom: 16px; border: none; background: none; }
+.detail-back { display: flex; align-items: center; gap: 8px; color: var(--color-primary); font-size: 14px; font-weight: 500; cursor: pointer; margin-bottom: 16px; border: none; background: none; }
 .detail-back:hover { text-decoration: underline; }
 .detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .detail-header h2 { font-size: 22px; font-weight: 600; }
 
 /* Zone/Sensor Tiles */
 .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.tile { background: #f8f9fa; border-radius: 8px; padding: 14px; border: 1px solid #eee; }
-.tile.active { background: #e8f5e9; border-color: #a5d6a7; }
+.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px; border: 1px solid var(--border-light); }
+.tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
 .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
-.tile-state { font-size: 13px; color: #7f8c8d; margin-bottom: 8px; }
-.tile-state.on { color: #27ae60; font-weight: 500; }
+.tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+.tile-state.on { color: var(--color-success); font-weight: 500; }
 .tile-actions { display: flex; gap: 6px; }
 
 /* Schedule (entity-based) */
 .schedule-section { margin-bottom: 20px; }
-.schedule-section-label { font-size: 13px; font-weight: 600; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+.schedule-section-label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
 .days-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-.day-toggle { padding: 8px 14px; border-radius: 8px; border: 2px solid #ddd; cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; min-width: 52px; transition: all 0.15s ease; background: #f8f9fa; color: #7f8c8d; user-select: none; }
-.day-toggle:hover { border-color: #bbb; }
-.day-toggle.active { background: #e8f5e9; border-color: #27ae60; color: #27ae60; }
+.day-toggle { padding: 8px 14px; border-radius: 8px; border: 2px solid var(--border-input); cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; min-width: 52px; transition: all 0.15s ease; background: var(--bg-tile); color: var(--text-muted); user-select: none; }
+.day-toggle:hover { border-color: var(--border-hover); }
+.day-toggle.active { background: var(--bg-active-tile); border-color: var(--color-success); color: var(--color-success); }
 .start-times-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .zone-settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.zone-settings-table th { text-align: left; padding: 8px; border-bottom: 2px solid #eee; font-size: 12px; color: #7f8c8d; text-transform: uppercase; }
-.zone-settings-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+.zone-settings-table th { text-align: left; padding: 8px; border-bottom: 2px solid var(--border-light); font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
+.zone-settings-table td { padding: 8px; border-bottom: 1px solid var(--border-row); }
 .system-controls-row { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Search/Filter Bar */
 .search-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-.search-bar input { flex: 1; min-width: 180px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
-.search-bar input:focus { outline: none; border-color: #1a7a4c; }
-.search-bar select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; background: white; cursor: pointer; }
-.search-bar select:focus { outline: none; border-color: #1a7a4c; }
-.filter-count { font-size: 12px; color: #7f8c8d; white-space: nowrap; }
-.filter-count strong { color: #2c3e50; }
+.search-bar input { flex: 1; min-width: 180px; padding: 8px 12px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 14px; background: var(--bg-input); color: var(--text-primary); }
+.search-bar input:focus { outline: none; border-color: var(--color-primary); }
+.search-bar select { padding: 8px 10px; border: 1px solid var(--border-input); border-radius: 6px; font-size: 12px; background: var(--bg-card); color: var(--text-primary); cursor: pointer; }
+.search-bar select:focus { outline: none; border-color: var(--color-primary); }
+.filter-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.filter-count strong { color: var(--text-primary); }
 .search-bar .filter-row { display: contents; }
-.customer-address { font-size: 12px; color: #95a5a6; margin-bottom: 4px; }
-.customer-meta { display: flex; gap: 12px; font-size: 12px; color: #7f8c8d; flex-wrap: wrap; }
+.customer-address { font-size: 12px; color: var(--text-disabled); margin-bottom: 4px; }
+.customer-meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 
 /* Empty States */
-.empty-state { text-align: center; padding: 40px 20px; color: #95a5a6; }
-.empty-state h3 { font-size: 18px; margin-bottom: 8px; color: #7f8c8d; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-disabled); }
+.empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--text-muted); }
 .empty-state p { font-size: 14px; }
 
 /* Loading */
-.loading { text-align: center; padding: 20px; color: #7f8c8d; font-size: 14px; }
+.loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 14px; }
 
 /* Toast */
 .toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; }
-.toast { background: #2c3e50; color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 8px; font-size: 14px; animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-.toast.error { background: #e74c3c; }
-.toast.success { background: #27ae60; }
+.toast { background: var(--bg-toast); color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 8px; font-size: 14px; animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.toast.error { background: var(--color-danger); }
+.toast.success { background: var(--color-success); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
 /* Responsive */
@@ -138,6 +235,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     .header-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
     .mode-badge { font-size: 11px; padding: 3px 8px; }
     .btn-sm { padding: 5px 8px; font-size: 11px; }
+    .dark-toggle { font-size: 14px; padding: 3px 6px; }
     .search-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     .search-bar input { grid-column: 1 / -1; min-width: auto; font-size: 13px; padding: 7px 10px; }
     .search-bar select { font-size: 11px; padding: 6px 6px; }
@@ -155,6 +253,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 </style>
 </head>
 <body>
+<script>(function(){if(localStorage.getItem('flux_dark_mode_management')==='true')document.body.classList.add('dark-mode');})()</script>
 
 <div class="header">
     <div class="header-left" style="display:flex;align-items:center;gap:14px;">
@@ -164,6 +263,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="header-actions">
         <span class="mode-badge">Management Mode</span>
         <button class="btn btn-secondary btn-sm" onclick="switchToHomeowner()">Homeowner</button>
+        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
     </div>
 </div>
 
@@ -260,8 +360,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div>
                 <h2 id="detailName"></h2>
                 <div id="detailAddress" class="customer-address" style="font-size:14px;margin-top:4px;"></div>
-                <div id="detailContact" style="font-size:14px;color:#555;margin-top:2px;display:none;">&#128100; <span id="detailContactName"></span></div>
-                <div id="detailPhone" style="font-size:13px;color:#7f8c8d;margin-top:2px;display:none;">&#128222; <a id="detailPhoneLink" href="" style="color:#3498db;text-decoration:none;"></a></div>
+                <div id="detailContact" style="font-size:14px;color:var(--text-secondary-alt);margin-top:2px;display:none;">&#128100; <span id="detailContactName"></span></div>
+                <div id="detailPhone" style="font-size:13px;color:var(--text-muted);margin-top:2px;display:none;">&#128222; <a id="detailPhoneLink" href="" style="color:var(--color-link);text-decoration:none;"></a></div>
             </div>
             <div style="display:flex;gap:8px;">
                 <button class="btn btn-secondary btn-sm" onclick="refreshDetail()">Refresh</button>
@@ -273,8 +373,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div id="detailNotesSection" style="margin-bottom:16px;display:none;">
             <div id="detailNotesDisplay" style="display:flex;align-items:flex-start;gap:8px;">
                 <div style="flex:1;">
-                    <span style="font-size:12px;font-weight:600;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.5px;">Notes</span>
-                    <div id="detailNotesText" style="font-size:14px;color:#555;margin-top:2px;white-space:pre-wrap;"></div>
+                    <span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Notes</span>
+                    <div id="detailNotesText" style="font-size:14px;color:var(--text-secondary-alt);margin-top:2px;white-space:pre-wrap;"></div>
                 </div>
                 <button class="btn btn-secondary btn-sm" onclick="editDetailNotes()">Edit</button>
             </div>
@@ -301,7 +401,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div class="card-header">
                 <h2>Weather-Based Control</h2>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <span id="detailWeatherBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:#d4edda;color:#155724;">1.0x</span>
+                    <span id="detailWeatherBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-success-light);color:var(--text-success-dark);">1.0x</span>
                 </div>
             </div>
             <div class="card-body" id="detailWeatherBody">
@@ -348,7 +448,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div class="card-header">
                 <h2>Run History</h2>
                 <div style="display:flex;gap:6px;align-items:center;">
-                    <select id="mgmtHistoryRange" onchange="loadDetailHistory(currentCustomerId)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">
+                    <select id="mgmtHistoryRange" onchange="loadDetailHistory(currentCustomerId)" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">
                         <option value="24">Last 24 hours</option>
                         <option value="168">Last 7 days</option>
                         <option value="720">Last 30 days</option>
@@ -368,7 +468,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <!-- API Docs -->
     <div class="card" id="apiDocsCard" style="margin-top:24px;">
         <div class="card-body" style="text-align:center;padding:20px;">
-            <p style="margin-bottom:10px;font-size:13px;color:#7f8c8d;">Interactive API documentation for this add-on:</p>
+            <p style="margin-bottom:10px;font-size:13px;color:var(--text-muted);">Interactive API documentation for this add-on:</p>
             <a id="docsLink" href="/api/docs" target="_blank" class="btn btn-secondary btn-sm">Open API Docs</a>
         </div>
     </div>
@@ -376,12 +476,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 <!-- Notes Modal -->
 <div id="notesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
-    <div style="background:white;border-radius:12px;padding:24px;width:90%;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:90%;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-            <h3 style="font-size:16px;font-weight:600;margin:0;" id="notesModalTitle">Edit Notes</h3>
-            <button onclick="closeNotesModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#7f8c8d;padding:0 4px;">&times;</button>
+            <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);" id="notesModalTitle">Edit Notes</h3>
+            <button onclick="closeNotesModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
         </div>
-        <textarea id="notesModalInput" style="width:100%;min-height:120px;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;" placeholder="Add notes about this property..."></textarea>
+        <textarea id="notesModalInput" style="width:100%;min-height:120px;padding:10px 12px;border:1px solid var(--border-input);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;background:var(--bg-input);color:var(--text-primary);" placeholder="Add notes about this property..."></textarea>
         <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
             <button class="btn btn-secondary" onclick="closeNotesModal()">Cancel</button>
             <button class="btn btn-primary" onclick="saveModalNotes()">Save Notes</button>
@@ -391,14 +491,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 <!-- Update Connection Key Modal -->
 <div id="keyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
-    <div style="background:white;border-radius:12px;padding:24px;width:90%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:90%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-            <h3 style="font-size:16px;font-weight:600;margin:0;" id="keyModalTitle">&#128273; Update Connection Key</h3>
-            <button onclick="closeKeyModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#7f8c8d;padding:0 4px;">&times;</button>
+            <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);" id="keyModalTitle">&#128273; Update Connection Key</h3>
+            <button onclick="closeKeyModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
         </div>
-        <p style="font-size:13px;color:#7f8c8d;margin-bottom:12px;">Paste the new connection key from the homeowner. This will update the connection credentials while keeping your notes and zone aliases.</p>
-        <textarea id="keyModalInput" style="width:100%;min-height:80px;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;" placeholder="Paste the new connection key here..."></textarea>
-        <div id="keyModalPreview" style="margin-top:10px;font-size:12px;color:#555;display:none;"></div>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Paste the new connection key from the homeowner. This will update the connection credentials while keeping your notes and zone aliases.</p>
+        <textarea id="keyModalInput" style="width:100%;min-height:80px;padding:10px 12px;border:1px solid var(--border-input);border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;background:var(--bg-input);color:var(--text-primary);" placeholder="Paste the new connection key here..."></textarea>
+        <div id="keyModalPreview" style="margin-top:10px;font-size:12px;color:var(--text-secondary-alt);display:none;"></div>
         <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
             <button class="btn btn-secondary" onclick="closeKeyModal()">Cancel</button>
             <button class="btn btn-primary" onclick="saveModalKey()">&#128273; Update Key</button>
@@ -409,6 +509,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
+function toggleDarkMode() {
+    const isDark = document.body.classList.toggle('dark-mode');
+    localStorage.setItem('flux_dark_mode_management', isDark);
+    document.querySelector('.dark-toggle').textContent = isDark ? '☀️' : '🌙';
+}
+(function initDarkToggleIcon() {
+    const btn = document.querySelector('.dark-toggle');
+    if (btn && document.body.classList.contains('dark-mode')) btn.textContent = '☀️';
+})();
+
 const BASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api';
 let currentCustomerId = null;
 let detailRefreshTimer = null;
@@ -478,13 +588,13 @@ function renderCustomerGrid(customers) {
                     <span class="customer-name">${esc(c.name)}</span>
                     <span class="customer-status">
                         <span class="status-dot ${status}"></span>
-                        ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:#95a5a6;">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
+                        ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:var(--text-disabled);">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
                     </span>
                 </div>
-                ${contactName ? '<div style="font-size:13px;color:#555;margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
+                ${contactName ? '<div style="font-size:13px;color:var(--text-secondary-alt);margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
                 ${addr ? '<div class="customer-address">' + esc(addr) + '</div>' : ''}
-                ${c.phone ? '<div style="font-size:12px;color:#7f8c8d;margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:#3498db;text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
-                ${c.notes ? '<div style="font-size:13px;color:#7f8c8d;margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
+                ${c.phone ? '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:var(--color-link);text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
+                ${c.notes ? '<div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
                 <div class="customer-stats">
                     ${zoneInfo}${stats}
                 </div>
@@ -636,19 +746,19 @@ function getCustomerStatus(c) {
 }
 
 function getQuickStats(c) {
-    if (getCustomerStatus(c) === 'revoked') return '<span class="customer-stat" style="color:#95a5a6;"><strong>Homeowner revoked access</strong></span>';
+    if (getCustomerStatus(c) === 'revoked') return '<span class="customer-stat" style="color:var(--text-disabled);"><strong>Homeowner revoked access</strong></span>';
     if (!c.last_status || !c.last_status.system_status) {
-        if (c.last_status && c.last_status.error) return '<span class="customer-stat" style="color:#e67e22;">' + esc(c.last_status.error) + '</span>';
+        if (c.last_status && c.last_status.error) return '<span class="customer-stat" style="color:var(--color-warning);">' + esc(c.last_status.error) + '</span>';
         return '<span class="customer-stat">No data yet</span>';
     }
     const s = c.last_status.system_status;
     let parts = [];
     if (s.system_paused) {
-        parts.push('<span class="customer-stat" style="color:#e74c3c;"><strong>Paused</strong></span>');
+        parts.push('<span class="customer-stat" style="color:var(--color-danger);"><strong>Paused</strong></span>');
     } else if (s.active_zones > 0 && s.active_zone_name) {
         const custAliases = c.zone_aliases || {};
         const aName = custAliases[s.active_zone_entity_id] || s.active_zone_name;
-        parts.push(`<span class="customer-stat" style="color:#27ae60;"><strong>${esc(aName)}</strong> running</span>`);
+        parts.push(`<span class="customer-stat" style="color:var(--color-success);"><strong>${esc(aName)}</strong> running</span>`);
     } else {
         parts.push('<span class="customer-stat"><strong>Idle</strong></span>');
     }
@@ -727,7 +837,7 @@ function previewKey() {
         content.innerHTML = html;
         preview.classList.add('visible');
     } catch (e) {
-        content.innerHTML = '<span style="color:#e74c3c;">Invalid key format</span>';
+        content.innerHTML = '<span style="color:var(--color-danger);">Invalid key format</span>';
         preview.classList.add('visible');
     }
 }
@@ -832,7 +942,7 @@ async function saveModalNotes() {
             if (notesText) {
                 notesText.textContent = notes || 'No notes yet — click Edit to add.';
                 notesText.style.fontStyle = notes ? 'normal' : 'italic';
-                notesText.style.color = notes ? '#555' : '#aaa';
+                notesText.style.color = notes ? 'var(--text-secondary-alt)' : 'var(--text-disabled)';
             }
         }
         loadCustomers();
@@ -936,7 +1046,7 @@ async function viewCustomer(id) {
         notesSection.style.display = 'block';
         notesText.textContent = customer.notes || 'No notes yet — click Edit to add.';
         notesText.style.fontStyle = customer.notes ? 'normal' : 'italic';
-        notesText.style.color = customer.notes ? '#555' : '#aaa';
+        notesText.style.color = customer.notes ? 'var(--text-secondary-alt)' : 'var(--text-disabled)';
         initDetailMap(customer);
     } catch (e) {
         document.getElementById('detailName').textContent = 'Unknown Property';
@@ -1010,7 +1120,7 @@ function showMap(lat, lon, label) {
         options: { position: 'topleft' },
         onAdd: function() {
             const btn = L.DomUtil.create('div', 'leaflet-bar');
-            btn.innerHTML = '<a href="#" title="Recenter map" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:white;">⌖</a>';
+            btn.innerHTML = '<a href="#" title="Recenter map" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">⌖</a>';
             btn.style.cursor = 'pointer';
             L.DomEvent.on(btn, 'click', function(e) {
                 L.DomEvent.stop(e);
@@ -1046,7 +1156,7 @@ async function loadDetailWeather(id) {
         card.style.display = 'block';
         const w = data.weather || {};
         if (w.error) {
-            body.innerHTML = '<div style="color:#999;text-align:center;padding:12px;">' + esc(w.error) + '</div>';
+            body.innerHTML = '<div style="color:var(--text-placeholder);text-align:center;padding:12px;">' + esc(w.error) + '</div>';
             return;
         }
 
@@ -1059,32 +1169,32 @@ async function loadDetailWeather(id) {
         const icon = condIcons[w.condition] || '🌡️';
         const mult = data.watering_multiplier != null ? data.watering_multiplier : 1.0;
         badge.textContent = mult + 'x';
-        badge.style.background = mult === 1.0 ? '#d4edda' : mult < 1 ? '#fff3cd' : '#f8d7da';
-        badge.style.color = mult === 1.0 ? '#155724' : mult < 1 ? '#856404' : '#721c24';
+        badge.style.background = mult === 1.0 ? 'var(--bg-success-light)' : mult < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+        badge.style.color = mult === 1.0 ? 'var(--text-success-dark)' : mult < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
 
         let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">';
-        html += '<div style="background:#f0f8ff;border-radius:8px;padding:10px;text-align:center;">';
+        html += '<div style="background:var(--bg-weather);border-radius:8px;padding:10px;text-align:center;">';
         html += '<div style="font-size:24px;">' + icon + '</div>';
-        html += '<div style="font-weight:600;text-transform:capitalize;font-size:13px;">' + esc(w.condition || 'unknown') + '</div>';
+        html += '<div style="font-weight:600;text-transform:capitalize;font-size:13px;color:var(--text-primary);">' + esc(w.condition || 'unknown') + '</div>';
         html += '</div>';
-        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
-        html += '<div style="color:#999;font-size:11px;">Temperature</div>';
-        html += '<div style="font-weight:600;font-size:16px;">' + (w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A') + '</div>';
+        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+        html += '<div style="color:var(--text-placeholder);font-size:11px;">Temperature</div>';
+        html += '<div style="font-weight:600;font-size:16px;color:var(--text-primary);">' + (w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A') + '</div>';
         html += '</div>';
-        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
-        html += '<div style="color:#999;font-size:11px;">Humidity</div>';
-        html += '<div style="font-weight:600;font-size:16px;">' + (w.humidity != null ? w.humidity + '%' : 'N/A') + '</div>';
+        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+        html += '<div style="color:var(--text-placeholder);font-size:11px;">Humidity</div>';
+        html += '<div style="font-weight:600;font-size:16px;color:var(--text-primary);">' + (w.humidity != null ? w.humidity + '%' : 'N/A') + '</div>';
         html += '</div>';
-        html += '<div style="background:#f8f9fa;border-radius:8px;padding:10px;">';
-        html += '<div style="color:#999;font-size:11px;">Wind</div>';
-        html += '<div style="font-weight:600;font-size:16px;">' + (w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A') + '</div>';
+        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+        html += '<div style="color:var(--text-placeholder);font-size:11px;">Wind</div>';
+        html += '<div style="font-weight:600;font-size:16px;color:var(--text-primary);">' + (w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A') + '</div>';
         html += '</div>';
         html += '</div>';
 
         // 3-day forecast
         const forecast = w.forecast || [];
         if (forecast.length > 0) {
-            html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:#7f8c8d;text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
+            html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
             html += '<div style="display:flex;gap:8px;overflow-x:auto;">';
             for (let i = 0; i < Math.min(forecast.length, 5); i++) {
                 const f = forecast[i];
@@ -1092,12 +1202,12 @@ async function loadDetailWeather(id) {
                 const dayLabel = dt ? dt.toLocaleDateString('en-US', { weekday: 'short' }) : '';
                 const fIcon = condIcons[f.condition] || '🌡️';
                 const precip = f.precipitation_probability || 0;
-                html += '<div style="flex:0 0 auto;background:#f8f9fa;border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;">';
-                html += '<div style="font-size:11px;color:#999;">' + esc(dayLabel) + '</div>';
+                html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;">';
+                html += '<div style="font-size:11px;color:var(--text-placeholder);">' + esc(dayLabel) + '</div>';
                 html += '<div style="font-size:18px;">' + fIcon + '</div>';
                 html += '<div style="font-size:12px;font-weight:600;">' + (f.temperature != null ? f.temperature + '°' : '') + '</div>';
                 if (precip > 0) {
-                    html += '<div style="font-size:10px;color:#3498db;">💧 ' + precip + '%</div>';
+                    html += '<div style="font-size:10px;color:var(--color-link);">💧 ' + precip + '%</div>';
                 }
                 html += '</div>';
             }
@@ -1107,9 +1217,9 @@ async function loadDetailWeather(id) {
         // Active adjustments
         const adjustments = data.active_adjustments || [];
         if (adjustments.length > 0) {
-            html += '<div style="margin-top:12px;padding:10px;background:#fff3cd;border-radius:8px;font-size:12px;">';
-            html += '<strong style="color:#856404;">Active Weather Adjustments:</strong>';
-            html += '<ul style="margin:4px 0 0 16px;color:#856404;">';
+            html += '<div style="margin-top:12px;padding:10px;background:var(--bg-warning);border-radius:8px;font-size:12px;">';
+            html += '<strong style="color:var(--text-warning);">Active Weather Adjustments:</strong>';
+            html += '<ul style="margin:4px 0 0 16px;color:var(--text-warning);">';
             for (const adj of adjustments) {
                 html += '<li>' + esc(adj.reason || adj.rule) + '</li>';
             }
@@ -1117,7 +1227,7 @@ async function loadDetailWeather(id) {
         }
 
         // --- Weather Rules Editor ---
-        html += '<div style="margin-top:16px;border-top:1px solid #eee;padding-top:16px;">';
+        html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:16px;">';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
         html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
         html += '<div style="display:flex;gap:6px;">';
@@ -1209,14 +1319,14 @@ async function loadMgmtWeatherRules(custId) {
         for (let i = 1; i <= 12; i++) {
             const val = months[String(i)] != null ? months[String(i)] : (i >= 3 && i <= 11 ? 1.0 : 0.0);
             seasonInputs += '<div style="display:flex;align-items:center;gap:4px;">' +
-                '<span style="font-size:11px;color:#999;width:28px;">' + monthNames[i-1] + '</span>' +
+                '<span style="font-size:11px;color:var(--text-placeholder);width:28px;">' + monthNames[i-1] + '</span>' +
                 '<input type="number" id="mgmt_seasonal_month_' + i + '" value="' + val + '" min="0" max="2" step="0.1" ' +
-                'style="width:55px;padding:2px 4px;border:1px solid #ddd;border-radius:4px;font-size:11px;"></div>';
+                'style="width:55px;padding:2px 4px;border:1px solid var(--border-input);border-radius:4px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></div>';
         }
-        html += '<div style="background:#f8f9fa;border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:4px;">';
+        html += '<div style="background:var(--bg-tile);border:1px solid var(--border-light);border-radius:8px;padding:10px;margin-bottom:4px;">';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-        html += '<div><div style="font-weight:600;font-size:13px;">Seasonal Adjustment</div>';
-        html += '<div style="font-size:11px;color:#999;">Monthly watering multiplier (0=off, 1=normal)</div></div>';
+        html += '<div><div style="font-weight:600;font-size:13px;color:var(--text-primary);">Seasonal Adjustment</div>';
+        html += '<div style="font-size:11px;color:var(--text-placeholder);">Monthly watering multiplier (0=off, 1=normal)</div></div>';
         html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">';
         html += '<input type="checkbox" id="mgmt_rule_seasonal_adjustment" ' + (r9.enabled ? 'checked' : '') + '> Enabled</label>';
         html += '</div>';
@@ -1233,15 +1343,15 @@ async function loadMgmtWeatherRules(custId) {
         container.innerHTML = html;
         setupUnitConversions('mgmt_');
     } catch (e) {
-        container.innerHTML = '<div style="color:#e74c3c;">Failed to load weather rules: ' + esc(e.message) + '</div>';
+        container.innerHTML = '<div style="color:var(--color-danger);">Failed to load weather rules: ' + esc(e.message) + '</div>';
     }
 }
 
 function mgmtBuildRuleRow(ruleId, name, description, enabled, fields) {
-    let html = '<div style="background:#f8f9fa;border:1px solid #eee;border-radius:8px;padding:10px;">';
+    let html = '<div style="background:var(--bg-tile);border:1px solid var(--border-light);border-radius:8px;padding:10px;">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-    html += '<div><div style="font-weight:600;font-size:13px;">' + esc(name) + '</div>';
-    html += '<div style="font-size:11px;color:#999;">' + esc(description) + '</div></div>';
+    html += '<div><div style="font-weight:600;font-size:13px;color:var(--text-primary);">' + esc(name) + '</div>';
+    html += '<div style="font-size:11px;color:var(--text-placeholder);">' + esc(description) + '</div></div>';
     html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">';
     html += '<input type="checkbox" id="mgmt_rule_' + ruleId + '" ' + (enabled ? 'checked' : '') + '> Enabled</label>';
     html += '</div>';
@@ -1249,12 +1359,12 @@ function mgmtBuildRuleRow(ruleId, name, description, enabled, fields) {
         html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">';
         for (const f of fields) {
             html += '<div style="display:flex;align-items:center;gap:4px;">';
-            html += '<span style="font-size:11px;color:#999;">' + esc(f.label) + '</span>';
+            html += '<span style="font-size:11px;color:var(--text-placeholder);">' + esc(f.label) + '</span>';
             html += '<input type="' + f.type + '" id="' + f.id + '" value="' + f.value + '" ';
             if (f.min != null) html += 'min="' + f.min + '" ';
             if (f.max != null) html += 'max="' + f.max + '" ';
             if (f.step != null) html += 'step="' + f.step + '" ';
-            html += 'style="width:60px;padding:2px 4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">';
+            html += 'style="width:60px;padding:2px 4px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">';
             html += '</div>';
         }
         html += '</div>';
@@ -1415,7 +1525,7 @@ async function loadDetailStatus(id) {
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
         </div>`;
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load status: ' + esc(e.message) + '</div>';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load status: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -1482,7 +1592,7 @@ async function loadDetailZones(id) {
             <div class="tile ${isOn ? 'active' : ''}">
                 <div class="tile-name">
                     ${esc(displayName)}
-                    <span style="cursor:pointer;font-size:11px;color:#1a7a4c;margin-left:6px;"
+                    <span style="cursor:pointer;font-size:11px;color:var(--color-primary);margin-left:6px;"
                           onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
@@ -1490,14 +1600,14 @@ async function loadDetailZones(id) {
                     ${isOn
                         ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + id + '\\',\\'' + zId + '\\')">Stop</button>'
                         : '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + id + '\\',\\'' + zId + '\\', null)">Start</button>' +
-                          '<span style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="width:60px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                          '<span style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="width:60px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">' +
                           '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + id + '\\',\\'' + zId + '\\', document.getElementById(\\'dur_' + zId + '\\').value)">Timed</button></span>'
                     }
                 </div>
             </div>`;
         }).join('') + '</div>';
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load zones: ' + esc(e.message) + '</div>';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load zones: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -1586,7 +1696,7 @@ async function loadDetailSensors(id) {
                 <div class="tile-state">${esc(s.state)}${s.unit_of_measurement ? ' ' + esc(s.unit_of_measurement) : ''}${wifiSignalBadge(s)}</div>
             </div>`).join('') + '</div>';
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load sensors: ' + esc(e.message) + '</div>';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load sensors: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -1691,7 +1801,7 @@ async function loadDetailControls(id) {
             let html = '';
             for (const domain of sortedDomains) {
                 const label = domainLabels[domain] || domain.charAt(0).toUpperCase() + domain.slice(1);
-                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
+                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
                 html += '<div class="tile-grid">';
                 for (const e of groups[domain]) {
                     html += renderControlTile(id, e);
@@ -1705,8 +1815,8 @@ async function loadDetailControls(id) {
         renderScheduleCard(id, scheduleByCategory);
 
     } catch (e) {
-        controlsEl.innerHTML = '<div style="color:#e74c3c;">Failed to load controls: ' + esc(e.message) + '</div>';
-        scheduleEl.innerHTML = '<div style="color:#e74c3c;">Failed to load schedule: ' + esc(e.message) + '</div>';
+        controlsEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load controls: ' + esc(e.message) + '</div>';
+        scheduleEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load schedule: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -1748,10 +1858,10 @@ function renderScheduleCard(custId, sched) {
         const isOn = se.state === 'on';
         html += '<div class="schedule-section" style="margin-bottom:16px;">' +
             '<div style="display:flex;align-items:center;justify-content:space-between;' +
-            'padding:12px 16px;border-radius:8px;background:' + (isOn ? '#e8f5e9' : '#fbe9e7') + ';">' +
-            '<div><div style="font-size:15px;font-weight:600;color:' + (isOn ? '#27ae60' : '#e74c3c') + ';">' +
+            'padding:12px 16px;border-radius:8px;background:' + (isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
+            '<div><div style="font-size:15px;font-weight:600;color:' + (isOn ? 'var(--color-success)' : 'var(--color-danger)') + ';">' +
             'Schedule ' + (isOn ? 'Enabled' : 'Disabled') + '</div>' +
-            '<div style="font-size:12px;color:#7f8c8d;">Master schedule on/off</div></div>' +
+            '<div style="font-size:12px;color:var(--text-muted);">Master schedule on/off</div></div>' +
             '<button class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + '" ' +
             'onclick="setEntityValue(\\'' + custId + '\\',\\'' + se.entity_id + '\\',\\'switch\\',' +
             '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
@@ -1790,7 +1900,7 @@ function renderScheduleCard(custId, sched) {
                 '<div class="tile-name">' + esc(label) + '</div>' +
                 '<div class="tile-state">' + esc(st.state) + '</div>' +
                 '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM" style="width:100px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM" style="width:100px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid +
                 '\\',\\'text\\',{value:document.getElementById(\\'' + inputId + '\\').value})">Set</button>' +
                 '</div></div>';
@@ -1846,12 +1956,12 @@ function renderScheduleCard(custId, sched) {
                     const optionsHtml = modeOptions.map(o =>
                         '<option value="' + esc(o) + '"' + (o === mode.state ? ' selected' : '') + '>' + esc(o) + '</option>'
                     ).join('');
-                    html += '<td><select id="' + selId + '" style="padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;" ' +
+                    html += '<td><select id="' + selId + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);" ' +
                         'onchange="setEntityValue(\\'' + custId + '\\',\\'' + modeEid +
                         '\\',\\'select\\',{option:document.getElementById(\\'' + selId + '\\').value})">' +
                         optionsHtml + '</select></td>';
                 } else {
-                    html += '<td style="color:#95a5a6;">-</td>';
+                    html += '<td style="color:var(--text-disabled);">-</td>';
                 }
             }
             if (enable) {
@@ -1861,10 +1971,10 @@ function renderScheduleCard(custId, sched) {
                     '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
                     (isOn ? 'Enabled' : 'Disabled') + '</button></td>';
             } else {
-                html += '<td style="color:#95a5a6;">-</td>';
+                html += '<td style="color:var(--text-disabled);">-</td>';
             }
             if (isPumpOrMaster) {
-                html += '<td style="color:#95a5a6;font-style:italic;">Firmware controlled</td>';
+                html += '<td style="color:var(--text-disabled);font-style:italic;">Firmware controlled</td>';
             } else if (duration) {
                 const attrs = duration.attributes || {};
                 const unit = attrs.unit_of_measurement || 'min';
@@ -1872,12 +1982,12 @@ function renderScheduleCard(custId, sched) {
                 const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
                 html += '<td><input type="number" id="' + inputId + '" value="' + esc(duration.state) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
-                    'style="width:70px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> ' +
+                    'style="width:70px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);"> ' +
                     esc(unit) + ' ' +
                     '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid +
                     '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button></td>';
             } else {
-                html += '<td style="color:#95a5a6;">-</td>';
+                html += '<td style="color:var(--text-disabled);">-</td>';
             }
             html += '</tr>';
         }
@@ -1934,7 +2044,7 @@ function renderControlTile(custId, e) {
             '<div class="tile-name">' + name + '</div>' +
             '<div class="tile-state">' + esc(state) + (unit ? ' ' + esc(unit) : '') + '</div>' +
             '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<input type="number" id="num_' + eid + '" value="' + esc(state) + '" min="' + min + '" max="' + max + '" step="' + step + '" style="width:80px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<input type="number" id="num_' + eid + '" value="' + esc(state) + '" min="' + min + '" max="' + max + '" step="' + step + '" style="width:80px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'num_' + eid + '\\').value)})">Set</button>' +
             '</div></div>';
     }
@@ -1946,7 +2056,7 @@ function renderControlTile(custId, e) {
             '<div class="tile-name">' + name + '</div>' +
             '<div class="tile-state">' + esc(state) + '</div>' +
             '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<select id="sel_' + eid + '" style="padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + optionsHtml + '</select>' +
+                '<select id="sel_' + eid + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">' + optionsHtml + '</select>' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'select\\',{option:document.getElementById(\\'sel_' + eid + '\\').value})">Set</button>' +
             '</div></div>';
     }
@@ -1965,7 +2075,7 @@ function renderControlTile(custId, e) {
             '<div class="tile-name">' + name + '</div>' +
             '<div class="tile-state">' + esc(state) + '</div>' +
             '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<input type="text" id="txt_' + eid + '" value="' + esc(state) + '" style="width:120px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<input type="text" id="txt_' + eid + '" value="' + esc(state) + '" style="width:120px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'text\\',{value:document.getElementById(\\'txt_' + eid + '\\').value})">Set</button>' +
             '</div></div>';
     }
@@ -1974,7 +2084,7 @@ function renderControlTile(custId, e) {
     return '<div class="tile">' +
         '<div class="tile-name">' + name + '</div>' +
         '<div class="tile-state">' + esc(state) + '</div>' +
-        '<div style="font-size:11px;color:#95a5a6;margin-top:4px;">' + esc(domain) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-disabled);margin-top:4px;">' + esc(domain) + '</div>' +
         '</div>';
 }
 
@@ -2005,9 +2115,9 @@ async function loadDetailHistory(id) {
             const condIcons = {'sunny':'☀️','clear-night':'🌙','partlycloudy':'⛅','cloudy':'☁️','rainy':'🌧️','pouring':'🌧️','snowy':'❄️','windy':'💨','fog':'🌫️','lightning':'⚡','lightning-rainy':'⛈️','hail':'🧊'};
             const wIcon = condIcons[cw.condition] || '🌡️';
             const mult = cw.watering_multiplier != null ? cw.watering_multiplier : 1.0;
-            const multColor = mult === 1.0 ? '#155724' : mult < 1 ? '#856404' : '#721c24';
-            const multBg = mult === 1.0 ? '#d4edda' : mult < 1 ? '#fff3cd' : '#f8d7da';
-            weatherSummary = '<div style="margin-bottom:12px;padding:8px 12px;background:#f0f8ff;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+            const multColor = mult === 1.0 ? 'var(--text-success-dark)' : mult < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+            const multBg = mult === 1.0 ? 'var(--bg-success-light)' : mult < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+            weatherSummary = '<div style="margin-bottom:12px;padding:8px 12px;background:var(--bg-weather);border-radius:8px;font-size:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
                 '<span>' + wIcon + ' <strong>' + esc(cw.condition) + '</strong></span>' +
                 (cw.temperature != null ? '<span>🌡️ ' + cw.temperature + '°</span>' : '') +
                 (cw.humidity != null ? '<span>💧 ' + cw.humidity + '%</span>' : '') +
@@ -2017,7 +2127,7 @@ async function loadDetailHistory(id) {
         }
 
         el.innerHTML = weatherSummary +
-            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid #eee;"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
+            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);color:var(--text-muted);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
             events.slice(0, 100).map(e => {
                 const wx = e.weather || {};
                 let wxCell = '-';
@@ -2025,25 +2135,25 @@ async function loadDetailHistory(id) {
                     const ci = {'sunny':'☀️','clear-night':'🌙','partlycloudy':'⛅','cloudy':'☁️','rainy':'🌧️','pouring':'🌧️','snowy':'❄️','windy':'💨','fog':'🌫️','lightning':'⚡','lightning-rainy':'⛈️','hail':'🧊'};
                     const wi = ci[wx.condition] || '🌡️';
                     const wm = wx.watering_multiplier != null ? wx.watering_multiplier : '';
-                    const wmColor = wm === 1.0 ? '#27ae60' : wm < 1 ? '#f39c12' : wm > 1 ? '#e74c3c' : '#999';
+                    const wmColor = wm === 1.0 ? 'var(--color-success)' : wm < 1 ? 'var(--color-warning)' : wm > 1 ? 'var(--color-danger)' : 'var(--text-placeholder)';
                     wxCell = wi + ' ' + (wx.temperature != null ? wx.temperature + '° ' : '') +
                         (wm ? '<span style="color:' + wmColor + ';font-weight:600;">' + wm + 'x</span>' : '');
                     const rules = wx.active_adjustments || wx.rules_triggered || [];
                     if (rules.length > 0) {
-                        wxCell += '<div style="font-size:10px;color:#856404;margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
+                        wxCell += '<div style="font-size:10px;color:var(--text-warning);margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
                     }
                 }
-                const srcLabel = e.source ? '<div style="font-size:10px;color:#999;">' + esc(e.source) + '</div>' : '';
-                return `<tr style="border-bottom:1px solid #f0f0f0;">
+                const srcLabel = e.source ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
+                return `<tr style="border-bottom:1px solid var(--border-row);">
                 <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}${srcLabel}</td>
-                <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:#27ae60;">ON</span>' : '<span style="color:#95a5a6;">OFF</span>'}</td>
+                <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:var(--color-success);">ON</span>' : '<span style="color:var(--text-disabled);">OFF</span>'}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
                 <td style="padding:6px;font-size:12px;">${wxCell}</td>
             </tr>`;
             }).join('') + '</tbody></table>';
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load history: ' + esc(e.message) + '</div>';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load history: ' + esc(e.message) + '</div>';
     }
 }
 
