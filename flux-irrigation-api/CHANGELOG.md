@@ -33,7 +33,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
   - Weather event log with CSV export
   - Weather card on both homeowner and management dashboards
 - **JSONL-Based Run History** — Replaced HA logbook with local JSONL storage for zone run events; includes weather conditions captured at the time of each event; CSV export for both homeowner and management
-- **Revoke Management Access** — One-click button on the Configuration page to instantly revoke a management company's access, with a confirmation dialog; preserves HA token and all other settings so re-enabling is easy; management dashboard shows "Access Revoked" status with gray styling
+- **Management Access Control** — Consolidated management access into a single card on the Configuration page. Generate a connection key that grants full access to all devices (irrigation zones, moisture probes, weather, schedules, sensors); revoke access instantly with one click; management dashboard shows "Access Revoked" status with gray styling
 - **Live Contact Sync** — Homeowner name, phone, and address are synced to the management dashboard automatically on every health check, even if added after the connection key was generated
 - **First Name / Last Name Fields** — Added homeowner contact name fields that flow through the connection key to the management dashboard; displayed on property cards and detail views
 - **Phone Number Field** — Homeowner phone number included in connection key and displayed on the management dashboard with click-to-call

@@ -995,35 +995,6 @@ ADMIN_HTML = """<!DOCTYPE html>
         .btn-secondary:hover { background: var(--bg-secondary-btn-hover); }
         .btn-sm { padding: 6px 12px; font-size: 12px; }
 
-        .api-key-card {
-            border: 1px solid var(--border-light);
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 12px;
-        }
-        .api-key-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .api-key-name { font-weight: 600; font-size: 15px; }
-        .api-key-preview { font-family: monospace; color: var(--text-hint); font-size: 13px; }
-
-        .permissions-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .perm-checkbox {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 13px;
-        }
-        .perm-checkbox input[type="checkbox"] { width: auto; }
-
         .toast {
             position: fixed;
             bottom: 24px;
@@ -1161,7 +1132,6 @@ ADMIN_HTML = """<!DOCTYPE html>
             .header-nav { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px !important; }
             .header-nav a, .header-nav span, .header-nav button { font-size: 11px !important; padding: 4px 8px !important; }
             .container { padding: 12px; }
-            .permissions-grid { grid-template-columns: 1fr 1fr; }
             .conn-mode-grid { grid-template-columns: 1fr !important; }
             .form-group input[type="text"], .form-group input[type="password"] { font-size: 13px; }
             .dark-toggle { font-size: 14px; padding: 3px 6px; }
@@ -1177,7 +1147,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         <img src="data:image/png;base64,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" alt="Flux Open Home" style="height:44px;filter:brightness(0) invert(1);">
         <div>
             <h1>Irrigation</h1>
-            <div class="subtitle">Configure API access for irrigation management companies</div>
+            <div class="subtitle">Device setup, management access, and system settings</div>
         </div>
     </div>
     <div class="header-nav" style="display:flex;gap:8px;align-items:center;">
@@ -1239,54 +1209,15 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- API Keys -->
+    <!-- Management Access Control -->
     <div class="card">
         <div class="card-header">
-            <h2>API Keys</h2>
-            <button class="btn btn-primary btn-sm" onclick="showCreateKey()">+ New API Key</button>
-        </div>
-        <div class="card-body">
-            <div id="newKeyForm" style="display:none; margin-bottom:16px; padding:16px; border:1px solid var(--border-light); border-radius:8px;">
-                <div class="form-group">
-                    <label>Company Name</label>
-                    <input type="text" id="newKeyName" placeholder="e.g., ABC Irrigation Management">
-                </div>
-                <div class="form-group">
-                    <label>Permissions</label>
-                    <div class="permissions-grid" id="newKeyPermissions">
-                        <label class="perm-checkbox"><input type="checkbox" value="zones.read" checked> Zones: Read</label>
-                        <label class="perm-checkbox"><input type="checkbox" value="zones.control" checked> Zones: Control</label>
-                        <label class="perm-checkbox"><input type="checkbox" value="schedule.read" checked> Schedule: Read</label>
-                        <label class="perm-checkbox"><input type="checkbox" value="schedule.write" checked> Schedule: Write</label>
-                        <label class="perm-checkbox"><input type="checkbox" value="sensors.read" checked> Sensors: Read</label>
-                        <label class="perm-checkbox"><input type="checkbox" value="history.read" checked> History: Read</label>
-                        <label class="perm-checkbox"><input type="checkbox" value="system.control"> System: Control</label>
-                    </div>
-                </div>
-                <button class="btn btn-primary" onclick="createKey()">Generate API Key</button>
-                <button class="btn btn-secondary" onclick="hideCreateKey()">Cancel</button>
-            </div>
-
-            <div id="newKeyDisplay" class="new-key-display">
-                <strong>New API Key Created</strong>
-                <code id="newKeyValue"></code>
-                <p class="warning">Copy this key now — it will not be shown again!</p>
-                <button class="btn btn-secondary btn-sm" onclick="copyKey()">Copy to Clipboard</button>
-            </div>
-
-            <div id="apiKeysList"></div>
-        </div>
-    </div>
-
-    <!-- Connection Key -->
-    <div class="card">
-        <div class="card-header">
-            <h2>Connection Key for Management Company</h2>
+            <h2>Management Access Control</h2>
         </div>
         <div class="card-body">
             <p style="margin-bottom:16px; color:var(--text-secondary); font-size:14px;">
-                Generate a connection key to share with your irrigation management company.
-                They paste this key into their Flux Open Home Irrigation Control add-on to connect to your system.
+                Generate a connection key to grant your management company access to all your devices — irrigation zones, moisture probes, weather settings, schedules, and sensors.
+                They paste this key into their Flux Open Home Irrigation Control add-on to connect.
             </p>
 
             <!-- Connection Mode Selection -->
@@ -1617,8 +1548,6 @@ ADMIN_HTML = """<!DOCTYPE html>
             document.getElementById('logRetention').value = data.log_retention_days || 365;
             document.getElementById('auditLogEnabled').checked = data.enable_audit_log !== false;
 
-            renderApiKeys(data.api_keys || []);
-
             // Load devices and set current selection
             await loadDevices(data.irrigation_device_id || '');
 
@@ -1807,119 +1736,6 @@ ADMIN_HTML = """<!DOCTYPE html>
         html += '</div>';
 
         container.innerHTML = html;
-    }
-
-    // --- API Keys ---
-    function renderApiKeys(keys) {
-        const container = document.getElementById('apiKeysList');
-        if (keys.length === 0) {
-            container.innerHTML = '<p style="color:var(--text-placeholder); text-align:center; padding:20px;">No API keys configured. Create one to get started.</p>';
-            return;
-        }
-        container.innerHTML = keys.map((key, i) => `
-            <div class="api-key-card">
-                <div class="api-key-header">
-                    <div>
-                        <span class="api-key-name">${escHtml(key.name)}</span>
-                        <span class="api-key-preview">${escHtml(key.key_preview)}</span>
-                    </div>
-                    <div style="display:flex; gap:8px;">
-                        <button class="btn btn-secondary btn-sm" onclick="regenerateKey(${i})">Regenerate</button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteKey(${i}, '${escHtml(key.name)}')">Delete</button>
-                    </div>
-                </div>
-                <div class="permissions-grid">
-                    ${['zones.read','zones.control','schedule.read','schedule.write','sensors.read','history.read','system.control'].map(p => `
-                        <label class="perm-checkbox">
-                            <input type="checkbox" ${(key.permissions||[]).includes(p) ? 'checked' : ''} onchange="updateKeyPermissions(${i})">
-                            ${p.replace('.', ': ').replace(/\\b\\w/g, c => c.toUpperCase())}
-                        </label>
-                    `).join('')}
-                </div>
-            </div>
-        `).join('');
-    }
-
-    function showCreateKey() { document.getElementById('newKeyForm').style.display = 'block'; }
-    function hideCreateKey() { document.getElementById('newKeyForm').style.display = 'none'; }
-
-    async function createKey() {
-        const name = document.getElementById('newKeyName').value.trim();
-        if (!name) { showToast('Enter a company name', 'error'); return; }
-
-        const perms = [...document.querySelectorAll('#newKeyPermissions input:checked')].map(c => c.value);
-
-        try {
-            const res = await fetch(`${BASE}/keys`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name, permissions: perms }),
-            });
-            const data = await res.json();
-            if (data.success) {
-                document.getElementById('newKeyValue').textContent = data.key;
-                document.getElementById('newKeyDisplay').style.display = 'block';
-                document.getElementById('newKeyName').value = '';
-                hideCreateKey();
-                loadSettings();
-                showToast(`API key created for ${name}`);
-            }
-        } catch (e) {
-            showToast('Failed to create key', 'error');
-        }
-    }
-
-    function copyKey() {
-        const key = document.getElementById('newKeyValue').textContent;
-        navigator.clipboard.writeText(key).then(() => showToast('Key copied!'));
-    }
-
-    async function deleteKey(index, name) {
-        if (!confirm(`Delete API key for "${name}"? This will immediately revoke their access.`)) return;
-        try {
-            await fetch(`${BASE}/keys/${index}`, { method: 'DELETE' });
-            loadSettings();
-            showToast(`API key for ${name} deleted`);
-        } catch (e) {
-            showToast('Failed to delete key', 'error');
-        }
-    }
-
-    async function regenerateKey(index) {
-        if (!confirm('Regenerate this API key? The old key will stop working immediately.')) return;
-        try {
-            const res = await fetch(`${BASE}/keys/${index}`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ regenerate_key: true }),
-            });
-            const data = await res.json();
-            if (data.key) {
-                document.getElementById('newKeyValue').textContent = data.key;
-                document.getElementById('newKeyDisplay').style.display = 'block';
-                showToast('Key regenerated');
-            }
-        } catch (e) {
-            showToast('Failed to regenerate key', 'error');
-        }
-    }
-
-    async function updateKeyPermissions(index) {
-        const card = document.querySelectorAll('.api-key-card')[index];
-        const checked = [...card.querySelectorAll('input[type=checkbox]')];
-        const allPerms = ['zones.read','zones.control','schedule.read','schedule.write','sensors.read','history.read','system.control'];
-        const selectedPerms = allPerms.filter((_, i) => checked[i]?.checked);
-
-        try {
-            await fetch(`${BASE}/keys/${index}`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ permissions: selectedPerms }),
-            });
-            showToast('Permissions updated');
-        } catch (e) {
-            showToast('Failed to update permissions', 'error');
-        }
     }
 
     // --- General ---
@@ -2738,34 +2554,23 @@ ADMIN_HTML = """<!DOCTYPE html>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 If you change your irrigation controller hardware, re-select the new device here to update the exposed entities.</div>
 
-<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">API Keys</h4>
-<p style="margin-bottom:10px;">API keys authenticate requests from management companies. Each key can have specific permissions to control what the management company can access.</p>
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Management Access Control</h4>
+<p style="margin-bottom:10px;">Control your management company's access to your irrigation system. Generate a connection key to grant access, or revoke it instantly. The connection key gives your management company access to all devices — irrigation controller zones, schedules, sensors, moisture probes, weather settings, and run history.</p>
 <ul style="margin:4px 0 12px 20px;">
-<li style="margin-bottom:4px;"><strong>Zones: Read</strong> — View zone states and information</li>
-<li style="margin-bottom:4px;"><strong>Zones: Control</strong> — Start and stop irrigation zones remotely</li>
-<li style="margin-bottom:4px;"><strong>Schedule: Read</strong> — View watering schedules</li>
-<li style="margin-bottom:4px;"><strong>Schedule: Write</strong> — Create and modify watering schedules</li>
-<li style="margin-bottom:4px;"><strong>Sensors: Read</strong> — View sensor data (soil moisture, flow, etc.)</li>
-<li style="margin-bottom:4px;"><strong>History: Read</strong> — View run history and logs</li>
-<li style="margin-bottom:4px;"><strong>System: Control</strong> — Pause/resume the entire system and emergency stop</li>
+<li style="margin-bottom:4px;"><strong>Connection Method</strong> — Choose how your management company connects:</li>
+<li style="margin-bottom:4px;margin-left:16px;"><strong>Nabu Casa (Cloud)</strong> — Uses your Home Assistant Cloud URL. Works from anywhere without port forwarding. Recommended for most users.</li>
+<li style="margin-bottom:4px;margin-left:16px;"><strong>Direct (Local/VPN)</strong> — Uses a direct URL you provide. Best for local network or VPN setups.</li>
+<li style="margin-bottom:4px;"><strong>Generate Key</strong> — Creates a connection key that contains your URL, credentials, and property details in one encoded string. Share this with your management company.</li>
+<li style="margin-bottom:4px;"><strong>🔒 Lock / Unlock</strong> — The generate button locks after a key is created to prevent accidentally overwriting it. Click 🔓 to unlock if you need to regenerate.</li>
+<li style="margin-bottom:4px;"><strong>Revoke Access</strong> — Instantly cuts off management company access. They see "Access Revoked" on their dashboard. You can re-generate a new key later to restore access.</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 API keys are shown only once when created. Copy and store them securely. You don't need to manually share API keys — they are embedded in the connection key.</div>
-
-<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Connection Key</h4>
-<p style="margin-bottom:10px;">The connection key is a single encoded string that contains everything your management company needs to connect: your URL, API key, and property details. Share this key with your management company so they can add your property to their dashboard.</p>
-<ul style="margin:4px 0 12px 20px;">
-<li style="margin-bottom:4px;"><strong>Nabu Casa (Cloud)</strong> — Uses your Home Assistant Cloud URL. Works from anywhere without port forwarding. Recommended for most users.</li>
-<li style="margin-bottom:4px;"><strong>Direct (Local/VPN)</strong> — Uses a direct URL you provide. Best for local network or VPN setups.</li>
-<li style="margin-bottom:4px;"><strong>Generate Key</strong> — Creates a new connection key with the selected mode and an API key with standard permissions.</li>
-<li style="margin-bottom:4px;"><strong>🔒 Lock / Unlock</strong> — The generate button is locked after a key is created to prevent accidentally overwriting it. Click 🔓 to unlock if you need to regenerate.</li>
-</ul>
-<p style="margin-bottom:10px;">You can share the connection key by:</p>
+<p style="margin-bottom:10px;">Share the connection key by:</p>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Copy</strong> — Copy to clipboard and paste into an email or message</li>
 <li style="margin-bottom:4px;"><strong>Email</strong> — Opens your email client with the key pre-filled</li>
 <li style="margin-bottom:4px;"><strong>QR Code</strong> — Generate a scannable QR code (useful for in-person sharing)</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 If you regenerate a connection key, the old one will stop working. Your management company will need to update their connection with the new key.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The connection key grants access to all your devices — irrigation zones, Gophr moisture probes, weather settings, schedules, and sensors. If you regenerate a key, the old one stops working immediately.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Settings</h4>
 <p style="margin-bottom:10px;">Enable weather-aware irrigation by connecting a Home Assistant weather entity. When enabled, weather data is used for smart watering adjustments on the Homeowner Dashboard.</p>

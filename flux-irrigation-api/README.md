@@ -214,8 +214,7 @@ The management dashboard automatically checks connectivity to all properties eve
 
 - **Dual-mode operation** — Same add-on works for homeowners and management companies
 - **Scoped access** — Only irrigation zones and sensors are exposed — no access to lights, locks, cameras, or any other HA entities
-- **API key authentication** — Each management company gets their own API key with configurable permissions
-- **Granular permissions** — Control what each API key can do: read zones, control zones, modify schedules, read sensors, view history
+- **Management access control** — Generate a connection key that grants your management company full access to all devices (irrigation zones, moisture probes, weather, schedules, sensors); revoke access instantly with one click
 - **Audit logging** — Every API action is logged with timestamp, API key, action, and details
 - **Rate limiting** — Configurable request limits to protect the homeowner's HA instance
 - **Entity auto-refresh** — Background task runs every 5 minutes to detect newly enabled or disabled entities in Home Assistant without requiring an add-on restart
