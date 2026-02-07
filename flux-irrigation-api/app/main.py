@@ -22,7 +22,7 @@ import os
 
 from config import get_config, async_initialize
 from audit_log import cleanup_old_logs
-from routes import zones, sensors, entities, history, system, admin, management
+from routes import zones, sensors, entities, history, system, admin, management, homeowner
 
 
 PROXY_SERVICE_NAMES = [
@@ -316,6 +316,7 @@ app.include_router(history.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(admin.router)
 app.include_router(management.router)
+app.include_router(homeowner.router)
 
 
 @app.get("/", include_in_schema=False)
