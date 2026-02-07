@@ -68,8 +68,9 @@ Click **Configuration** in the top navigation to access the settings page.
 On the Configuration page:
 
 1. Find the **Irrigation Controller Device** section
-2. Select your **Flux Open Home Irrigation Controller** from the dropdown
-3. The add-on will automatically discover all zones (switches/valves) and sensors belonging to that device
+2. Select your **Flux Open Home Irrigation Controller** from the dropdown — the list is automatically filtered to show only irrigation-related devices (matching keywords like "Flux", "irrigation", "sprinkler", or "ESPHome")
+3. If your controller doesn't appear, click **Show all devices** below the dropdown to see every device in Home Assistant
+4. The add-on will automatically discover all zones (switches/valves) and sensors belonging to that device
 
 > **Important:** Only entities belonging to the selected device are exposed through the API. No other Home Assistant devices, entities, or data are accessible.
 

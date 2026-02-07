@@ -40,6 +40,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Changed
 
+- **Smart Device Filtering** — The device selection dropdown on the Configuration page now filters to show only irrigation-related devices by default (matching keywords like "Flux", "irrigation", "sprinkler", or "ESPHome"); click "Show all devices" to see the full list if needed
 - **ESPHome Schedule Control** — System pause/resume now disables/restores ESPHome schedule programs on the controller, preventing the controller from starting runs while paused
 - **Weather settings moved to control pages** — Weather configuration is now accessible from the homeowner and management control interfaces
 - **Unit conversion improvements** — Better handling of temperature and wind speed units across weather integrations

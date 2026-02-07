@@ -224,8 +224,13 @@ async def delete_api_key(key_index: int):
 
 
 @router.get("/api/devices", summary="List available HA devices")
-async def list_devices():
-    """List all Home Assistant devices for selection."""
+async def list_devices(show_all: bool = False):
+    """List Home Assistant devices for selection.
+
+    By default, filters to likely irrigation controllers (matching keywords
+    like 'flux', 'open home', 'irrigation', 'sprinkler', or 'esphome').
+    Pass ?show_all=true to return every device.
+    """
     config = get_config()
     if config.mode != "homeowner":
         raise HTTPException(
@@ -242,8 +247,19 @@ async def list_devices():
             detail=f"Failed to fetch device registry: {type(e).__name__}: {e}",
         )
 
-    # Return devices with useful display info
-    result = []
+    # Keywords that indicate an irrigation controller
+    IRRIGATION_KEYWORDS = [
+        "flux", "open home", "irrigation", "sprinkler", "esphome",
+        "rain", "valve", "watering", "lawn", "garden",
+    ]
+
+    def _is_irrigation_device(name: str, manufacturer: str, model: str) -> bool:
+        """Check if any device field contains an irrigation-related keyword."""
+        searchable = f"{name} {manufacturer} {model}".lower()
+        return any(kw in searchable for kw in IRRIGATION_KEYWORDS)
+
+    # Build full device list
+    all_devices = []
     for device in devices:
         name = device.get("name_by_user") or device.get("name") or ""
         manufacturer = device.get("manufacturer") or ""
@@ -252,7 +268,7 @@ async def list_devices():
         if not name:
             continue
 
-        result.append({
+        all_devices.append({
             "id": device.get("id", ""),
             "name": name,
             "manufacturer": manufacturer,
@@ -260,9 +276,26 @@ async def list_devices():
             "area_id": device.get("area_id", ""),
         })
 
+    if show_all:
+        result = all_devices
+    else:
+        # Filter to irrigation-related devices
+        result = [d for d in all_devices if _is_irrigation_device(
+            d["name"], d["manufacturer"], d["model"]
+        )]
+        # If the currently selected device isn't in the filtered list, include it
+        # so the dropdown doesn't lose its selection
+        if config.irrigation_device_id:
+            selected_ids = {d["id"] for d in result}
+            if config.irrigation_device_id not in selected_ids:
+                for d in all_devices:
+                    if d["id"] == config.irrigation_device_id:
+                        result.append(d)
+                        break
+
     # Sort by name for display
     result.sort(key=lambda d: d["name"].lower())
-    return result
+    return {"devices": result, "total_count": len(all_devices), "filtered": not show_all}
 
 
 @router.put("/api/device", summary="Select irrigation device")
@@ -1179,6 +1212,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <select id="deviceSelect" onchange="onDeviceChange()">
                     <option value="">-- Select your irrigation controller --</option>
                 </select>
+                <p id="deviceFilterToggle" style="display:none;font-size:12px;color:var(--text-muted);margin-top:6px;"></p>
             </div>
 
             <div id="deviceEntities">
@@ -1604,10 +1638,16 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     // --- Device Selection ---
-    async function loadDevices(selectedId) {
+    let showingAllDevices = false;
+
+    async function loadDevices(selectedId, showAll) {
         try {
-            const res = await fetch(`${BASE}/devices`);
-            const devices = await res.json();
+            const all = showAll !== undefined ? showAll : showingAllDevices;
+            const res = await fetch(`${BASE}/devices${all ? '?show_all=true' : ''}`);
+            const data = await res.json();
+            const devices = data.devices || data;
+            const totalCount = data.total_count || devices.length;
+            const filtered = data.filtered !== false;
             const select = document.getElementById('deviceSelect');
 
             // Preserve current selection if not passed
@@ -1626,9 +1666,34 @@ ADMIN_HTML = """<!DOCTYPE html>
                 if (device.id === selectedId) opt.selected = true;
                 select.appendChild(opt);
             }
+
+            // Show/hide the "show all" link
+            const toggleEl = document.getElementById('deviceFilterToggle');
+            if (filtered && devices.length < totalCount) {
+                toggleEl.innerHTML = 'Showing ' + devices.length + ' irrigation device' + (devices.length !== 1 ? 's' : '') +
+                    ' of ' + totalCount + ' total. <a href="#" onclick="loadAllDevices(event)">Show all devices</a>';
+                toggleEl.style.display = '';
+            } else if (!filtered && totalCount > 0) {
+                toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="loadFilteredDevices(event)">Show only irrigation devices</a>';
+                toggleEl.style.display = '';
+            } else {
+                toggleEl.style.display = 'none';
+            }
         } catch (e) {
             showToast('Failed to load devices', 'error');
         }
+    }
+
+    function loadAllDevices(e) {
+        e.preventDefault();
+        showingAllDevices = true;
+        loadDevices(undefined, true);
+    }
+
+    function loadFilteredDevices(e) {
+        e.preventDefault();
+        showingAllDevices = false;
+        loadDevices(undefined, false);
     }
 
     async function onDeviceChange() {
@@ -2329,7 +2394,8 @@ ADMIN_HTML = """<!DOCTYPE html>
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Irrigation Controller Device</h4>
 <p style="margin-bottom:10px;">Select the ESPHome or other irrigation controller device connected to Home Assistant. This tells the add-on which switches, valves, and sensors to expose through the API.</p>
 <ul style="margin:4px 0 12px 20px;">
-<li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your controller from the dropdown. Only devices with switches or valves are shown.</li>
+<li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your controller from the dropdown. The list is filtered to show only irrigation-related devices (matching names like "Flux", "irrigation", "sprinkler", or "ESPHome").</li>
+<li style="margin-bottom:4px;"><strong>Show all devices</strong> — If your controller doesn't appear in the filtered list, click "Show all devices" below the dropdown to see every device in Home Assistant.</li>
 <li style="margin-bottom:4px;"><strong>Refresh Devices</strong> — Re-scan Home Assistant if your device isn't listed (e.g., after adding a new ESPHome device).</li>
 <li style="margin-bottom:4px;"><strong>Entity List</strong> — After selecting a device, you'll see all zones, sensors, and other entities that will be accessible through the API.</li>
 </ul>
