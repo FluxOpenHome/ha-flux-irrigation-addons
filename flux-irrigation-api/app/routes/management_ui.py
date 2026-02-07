@@ -465,6 +465,37 @@ function esc(str) {
     return d.innerHTML;
 }
 
+// --- Unit Conversion Helpers ---
+function fToC(f) { return Math.round((f - 32) * 5 / 9); }
+function cToF(c) { return Math.round(c * 9 / 5 + 32); }
+function mphToKmh(mph) { return Math.round(mph * 1.609); }
+function kmhToMph(kmh) { return Math.round(kmh / 1.609); }
+
+function syncUnitConversion(sourceId, targetId, convertFn) {
+    const el = document.getElementById(sourceId);
+    if (!el) return;
+    el.addEventListener('input', function() {
+        const target = document.getElementById(targetId);
+        if (target) target.value = convertFn(parseFloat(this.value) || 0);
+    });
+}
+
+function setupUnitConversions(prefix) {
+    const p = prefix || '';
+    // Freeze: F <-> C
+    syncUnitConversion(p + 'temperature_freeze_f', p + 'temperature_freeze_c', fToC);
+    syncUnitConversion(p + 'temperature_freeze_c', p + 'temperature_freeze_f', cToF);
+    // Cool: F <-> C
+    syncUnitConversion(p + 'temperature_cool_f', p + 'temperature_cool_c', fToC);
+    syncUnitConversion(p + 'temperature_cool_c', p + 'temperature_cool_f', cToF);
+    // Hot: F <-> C
+    syncUnitConversion(p + 'temperature_hot_f', p + 'temperature_hot_c', fToC);
+    syncUnitConversion(p + 'temperature_hot_c', p + 'temperature_hot_f', cToF);
+    // Wind: mph <-> km/h
+    syncUnitConversion(p + 'wind_speed_mph', p + 'wind_speed_kmh', mphToKmh);
+    syncUnitConversion(p + 'wind_speed_kmh', p + 'wind_speed_mph', kmhToMph);
+}
+
 // --- Add Customer ---
 function toggleAddForm() {
     const form = document.getElementById('addForm');
@@ -846,6 +877,7 @@ async function loadMgmtWeatherRules(custId) {
         html += '</div>';
 
         container.innerHTML = html;
+        setupUnitConversions('mgmt_');
     } catch (e) {
         container.innerHTML = '<div style="color:#e74c3c;">Failed to load weather rules: ' + esc(e.message) + '</div>';
     }

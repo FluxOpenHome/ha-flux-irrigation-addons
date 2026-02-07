@@ -97,11 +97,12 @@ The add-on automatically creates a proxy configuration file in `/config/packages
 If using Nabu Casa, you need a Home Assistant Long-Lived Access Token:
 
 1. In Home Assistant, click your **user profile** (bottom-left of the sidebar — your name/avatar)
-2. Scroll down to **Long-Lived Access Tokens**
-3. Click **Create Token**
-4. Name it `Irrigation Management` (or any name you prefer)
-5. **Copy the token immediately** — it is only shown once
-6. Paste it into the **HA Long-Lived Access Token** field on the Configuration page
+2. Click the **Security** tab at the top of the profile page
+3. Scroll down to **Long-Lived Access Tokens**
+4. Click **Create Token**
+5. Name it `Irrigation Management` (or any name you prefer)
+6. **Copy the token immediately** — it is only shown once
+7. Paste it into the **HA Long-Lived Access Token** field on the Configuration page
 
 > **Note:** This token is only used for the Nabu Casa proxy connection. It is never shared with the management company. If using Direct Connection mode, you can skip this step.
 
