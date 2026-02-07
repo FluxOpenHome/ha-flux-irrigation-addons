@@ -243,6 +243,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             </div>
         </div>
 
+        <!-- Notes -->
+        <div id="detailNotesSection" style="margin-bottom:16px;display:none;">
+            <div id="detailNotesDisplay" style="display:flex;align-items:flex-start;gap:8px;">
+                <div style="flex:1;">
+                    <span style="font-size:12px;font-weight:600;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.5px;">Notes</span>
+                    <div id="detailNotesText" style="font-size:14px;color:#555;margin-top:2px;white-space:pre-wrap;"></div>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="editDetailNotes()">Edit</button>
+            </div>
+        </div>
+
         <!-- Location Map -->
         <div id="detailMap" style="height:200px;border-radius:12px;margin-bottom:20px;display:none;overflow:hidden;"></div>
 
@@ -329,6 +340,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </div>
 </div>
 
+<!-- Notes Modal -->
+<div id="notesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:12px;padding:24px;width:90%;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="font-size:16px;font-weight:600;margin:0;" id="notesModalTitle">Edit Notes</h3>
+            <button onclick="closeNotesModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#7f8c8d;padding:0 4px;">&times;</button>
+        </div>
+        <textarea id="notesModalInput" style="width:100%;min-height:120px;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;" placeholder="Add notes about this property..."></textarea>
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="closeNotesModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveModalNotes()">Save Notes</button>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
@@ -409,6 +435,7 @@ function renderCustomerGrid(customers) {
                     ${zoneInfo}${stats}
                 </div>
                 <div class="customer-actions" onclick="event.stopPropagation()">
+                    <button class="btn btn-secondary btn-sm" onclick="editCardNotes('${c.id}', event)">Notes</button>
                     <button class="btn btn-secondary btn-sm" onclick="checkCustomer('${c.id}')">Test Connection</button>
                     <button class="btn btn-danger btn-sm" onclick="removeCustomer('${c.id}', '${esc(c.name)}')">Remove</button>
                 </div>
@@ -697,6 +724,66 @@ async function refreshAll() {
     setTimeout(loadCustomers, 3000);
 }
 
+// --- Notes Editing ---
+let notesModalCustomerId = null;
+let notesModalSource = null; // 'card' or 'detail'
+
+function editCardNotes(id, event) {
+    event.stopPropagation();
+    const c = allCustomers.find(c => c.id === id);
+    openNotesModal(id, c ? c.name : 'Property', c ? (c.notes || '') : '', 'card');
+}
+
+function openNotesModal(id, name, notes, source) {
+    notesModalCustomerId = id;
+    notesModalSource = source;
+    document.getElementById('notesModalTitle').textContent = 'Notes — ' + name;
+    document.getElementById('notesModalInput').value = notes;
+    const modal = document.getElementById('notesModal');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('notesModalInput').focus(), 50);
+}
+
+function closeNotesModal() {
+    document.getElementById('notesModal').style.display = 'none';
+    notesModalCustomerId = null;
+    notesModalSource = null;
+}
+
+
+async function saveModalNotes() {
+    if (!notesModalCustomerId) return;
+    const id = notesModalCustomerId;
+    const source = notesModalSource;
+    const notes = document.getElementById('notesModalInput').value.trim();
+    try {
+        await api('/customers/' + id, {
+            method: 'PUT',
+            body: JSON.stringify({ notes }),
+        });
+        showToast('Notes saved');
+        closeNotesModal();
+        // Update detail view if viewing this customer
+        if (source === 'detail' || currentCustomerId === id) {
+            window._currentCustomerNotes = notes;
+            const notesText = document.getElementById('detailNotesText');
+            if (notesText) {
+                notesText.textContent = notes || 'No notes yet — click Edit to add.';
+                notesText.style.fontStyle = notes ? 'normal' : 'italic';
+                notesText.style.color = notes ? '#555' : '#aaa';
+            }
+        }
+        loadCustomers();
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+function editDetailNotes() {
+    if (!currentCustomerId) return;
+    const c = allCustomers.find(c => c.id === currentCustomerId);
+    const name = c ? c.name : (document.getElementById('detailName').textContent || 'Property');
+    openNotesModal(currentCustomerId, name, window._currentCustomerNotes || '', 'detail');
+}
+
 // --- Detail View ---
 async function viewCustomer(id) {
     currentCustomerId = id;
@@ -708,6 +795,7 @@ async function viewCustomer(id) {
         const customer = await api('/customers/' + id);
         document.getElementById('detailName').textContent = customer.name;
         window._currentZoneAliases = customer.zone_aliases || {};
+        window._currentCustomerNotes = customer.notes || '';
         const addr = formatAddress(customer);
         const addrEl = document.getElementById('detailAddress');
         if (addr) {
@@ -716,11 +804,19 @@ async function viewCustomer(id) {
         } else {
             addrEl.style.display = 'none';
         }
+        // Show notes section
+        const notesSection = document.getElementById('detailNotesSection');
+        const notesText = document.getElementById('detailNotesText');
+        notesSection.style.display = 'block';
+        notesText.textContent = customer.notes || 'No notes yet — click Edit to add.';
+        notesText.style.fontStyle = customer.notes ? 'normal' : 'italic';
+        notesText.style.color = customer.notes ? '#555' : '#aaa';
         initDetailMap(customer);
     } catch (e) {
         document.getElementById('detailName').textContent = 'Unknown Property';
         document.getElementById('detailAddress').style.display = 'none';
         document.getElementById('detailMap').style.display = 'none';
+        document.getElementById('detailNotesSection').style.display = 'none';
     }
 
     loadDetailData(id);
@@ -1807,6 +1903,13 @@ async function switchToHomeowner() {
 document.addEventListener('DOMContentLoaded', () => {
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
+    // Close notes modal on backdrop click or Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('notesModal').style.display === 'flex') closeNotesModal();
+    });
+    document.getElementById('notesModal').addEventListener('click', function(e) {
+        if (e.target === this) closeNotesModal();
+    });
 });
 </script>
 </body>

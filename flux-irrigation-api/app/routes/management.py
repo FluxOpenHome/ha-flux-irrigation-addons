@@ -371,7 +371,7 @@ async def get_customer_history(
     if zone_id:
         params["zone_id"] = zone_id
     status_code, data = await management_client.proxy_request(
-        conn, "GET", "/api/history/runs", params=params
+        conn, "GET", "/admin/api/homeowner/history/runs", params=params
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -490,7 +490,7 @@ async def get_customer_history_csv(customer_id: str, hours: int = 24):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "GET", "/api/history/runs", params={"hours": str(hours)}
+        conn, "GET", "/admin/api/homeowner/history/runs", params={"hours": str(hours)}
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
