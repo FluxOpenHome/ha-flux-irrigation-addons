@@ -891,7 +891,7 @@ async function loadDetailControls(id) {
                 groups[d].push(e);
             });
             const domainLabels = {
-                'switch': 'Switches', 'number': 'Numeric Settings', 'select': 'Selects',
+                'switch': 'Switches', 'number': 'Run Times', 'select': 'Selects',
                 'button': 'Buttons', 'text': 'Text Inputs', 'light': 'Lights'
             };
             const domainOrder = ['switch', 'number', 'select', 'text', 'button', 'light'];

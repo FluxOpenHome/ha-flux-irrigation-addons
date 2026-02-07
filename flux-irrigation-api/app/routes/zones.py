@@ -3,6 +3,7 @@ Zone management endpoints.
 List zones, start/stop individual zones, get zone status.
 """
 
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -10,6 +11,23 @@ from auth import require_permission, ApiKeyConfig
 from config import get_config
 import ha_client
 import audit_log
+
+# Track active timed-run tasks so they can be cancelled on manual stop
+_timed_run_tasks: dict[str, asyncio.Task] = {}
+
+
+async def _timed_shutoff(entity_id: str, duration_minutes: int):
+    """Background task: wait for duration then turn off the zone."""
+    try:
+        await asyncio.sleep(duration_minutes * 60)
+        # Turn off the zone after the timer expires
+        svc_domain, svc_name = _get_zone_service(entity_id, "off")
+        await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
+        print(f"[ZONES] Timed run complete: {entity_id} turned off after {duration_minutes} min")
+    except asyncio.CancelledError:
+        print(f"[ZONES] Timed run cancelled for {entity_id}")
+    finally:
+        _timed_run_tasks.pop(entity_id, None)
 
 
 router = APIRouter(prefix="/zones", tags=["Zones"])
@@ -187,17 +205,18 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     if not success:
         raise HTTPException(status_code=502, detail="Failed to communicate with Home Assistant.")
 
-    # If duration specified, fire an event that the user's automation can handle
+    # If duration specified, schedule automatic shutoff
     if body.duration_minutes:
-        await ha_client.fire_event(
-            "flux_irrigation_timed_run",
-            {
-                "entity_id": entity_id,
-                "zone_id": zone_id,
-                "duration_minutes": body.duration_minutes,
-                "source": f"api:{key_config.name}",
-            },
+        # Cancel any existing timed run for this entity
+        existing = _timed_run_tasks.pop(entity_id, None)
+        if existing and not existing.done():
+            existing.cancel()
+        # Schedule the new timed shutoff
+        task = asyncio.create_task(
+            _timed_shutoff(entity_id, body.duration_minutes)
         )
+        _timed_run_tasks[entity_id] = task
+        print(f"[ZONES] Timed run started: {entity_id} for {body.duration_minutes} min")
 
     message = f"Zone '{zone_id}' started"
     if body.duration_minutes:
@@ -241,6 +260,11 @@ async def stop_zone(zone_id: str, request: Request):
     if entity is None:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
 
+    # Cancel any active timed run for this zone
+    existing = _timed_run_tasks.pop(entity_id, None)
+    if existing and not existing.done():
+        existing.cancel()
+
     svc_domain, svc_name = _get_zone_service(entity_id, "off")
     service_data = {"entity_id": entity_id}
     success = await ha_client.call_service(svc_domain, svc_name, service_data)
@@ -275,6 +299,12 @@ async def stop_all_zones(request: Request):
     """Emergency stop - turn off all irrigation zones."""
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
+
+    # Cancel all active timed runs
+    for eid, task in list(_timed_run_tasks.items()):
+        if not task.done():
+            task.cancel()
+    _timed_run_tasks.clear()
 
     entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
     stopped = []
