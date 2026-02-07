@@ -350,17 +350,10 @@ async function initDetailMap(addrData) {
         return;
     }
     try {
-        const res = await fetch(
-            'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
-            encodeURIComponent(addr),
-            { headers: { 'User-Agent': 'FluxIrrigationDashboard/1.1.7' } }
-        );
-        const results = await res.json();
-        if (results && results.length > 0) {
-            const lat = parseFloat(results[0].lat);
-            const lon = parseFloat(results[0].lon);
-            geocodeCache[addr] = { lat, lon };
-            showMap(lat, lon, addr);
+        const geo = await api('/geocode?q=' + encodeURIComponent(addr));
+        if (geo.lat !== null && geo.lon !== null) {
+            geocodeCache[addr] = { lat: geo.lat, lon: geo.lon };
+            showMap(geo.lat, geo.lon, addr);
         } else {
             mapEl.style.display = 'none';
         }

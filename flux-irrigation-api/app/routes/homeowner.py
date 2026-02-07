@@ -464,6 +464,26 @@ async def homeowner_history(
     }
 
 
+@router.get("/geocode", summary="Geocode an address")
+async def homeowner_geocode(q: str = Query(..., min_length=3, description="Address to geocode")):
+    """Proxy geocoding via Nominatim so the browser doesn't need cross-origin access."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"format": "json", "limit": "1", "q": q},
+                headers={"User-Agent": "FluxIrrigationAPI/1.1.7"},
+            )
+            resp.raise_for_status()
+            results = resp.json()
+            if results and len(results) > 0:
+                return {"lat": float(results[0]["lat"]), "lon": float(results[0]["lon"])}
+            return {"lat": None, "lon": None}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Geocoding failed: {e}")
+
+
 @router.get("/zone_aliases", summary="Get zone aliases")
 async def homeowner_get_aliases():
     """Get the homeowner's zone display name aliases."""

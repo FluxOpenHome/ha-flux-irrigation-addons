@@ -422,14 +422,16 @@ function getQuickStats(c) {
     if (!c.last_status || !c.last_status.system_status) return '<span class="customer-stat">No data yet</span>';
     const s = c.last_status.system_status;
     let parts = [];
-    if (s.total_zones !== undefined) parts.push(`<span class="customer-stat"><strong>${s.total_zones}</strong> zones</span>`);
-    if (s.active_zones > 0 && s.active_zone_name) {
+    if (s.system_paused) {
+        parts.push('<span class="customer-stat" style="color:#e74c3c;"><strong>Paused</strong></span>');
+    } else if (s.active_zones > 0 && s.active_zone_name) {
         const custAliases = c.zone_aliases || {};
         const aName = custAliases[s.active_zone_entity_id] || s.active_zone_name;
         parts.push(`<span class="customer-stat" style="color:#27ae60;"><strong>${esc(aName)}</strong> running</span>`);
+    } else {
+        parts.push('<span class="customer-stat"><strong>Idle</strong></span>');
     }
     if (s.total_sensors !== undefined) parts.push(`<span class="customer-stat"><strong>${s.total_sensors}</strong> sensors</span>`);
-    if (s.system_paused) parts.push('<span class="customer-stat" style="color:#e74c3c;">Paused</span>');
     return parts.join('') || '<span class="customer-stat">Connected</span>';
 }
 
@@ -587,17 +589,10 @@ async function initDetailMap(customer) {
         return;
     }
     try {
-        const res = await fetch(
-            'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
-            encodeURIComponent(addr),
-            { headers: { 'User-Agent': 'FluxIrrigationDashboard/1.1.6' } }
-        );
-        const results = await res.json();
-        if (results && results.length > 0) {
-            const lat = parseFloat(results[0].lat);
-            const lon = parseFloat(results[0].lon);
-            geocodeCache[addr] = { lat, lon };
-            showMap(lat, lon, addr);
+        const geo = await api('/geocode?q=' + encodeURIComponent(addr));
+        if (geo.lat !== null && geo.lon !== null) {
+            geocodeCache[addr] = { lat: geo.lat, lon: geo.lon };
+            showMap(geo.lat, geo.lon, addr);
         } else {
             mapEl.style.display = 'none';
         }

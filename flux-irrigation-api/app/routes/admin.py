@@ -8,7 +8,7 @@ import json
 import os
 import secrets
 import httpx
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -579,6 +579,26 @@ async def test_url(body: dict):
             "url_tested": test_url,
             "error": f"{type(e).__name__}: {e}",
         }
+
+
+@router.get("/api/geocode", summary="Geocode an address")
+async def admin_geocode(q: str = Query(..., min_length=3, description="Address to geocode")):
+    """Proxy geocoding via Nominatim so the browser doesn't need cross-origin access."""
+    import httpx as _httpx
+    try:
+        async with _httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"format": "json", "limit": "1", "q": q},
+                headers={"User-Agent": "FluxIrrigationAPI/1.1.7"},
+            )
+            resp.raise_for_status()
+            results = resp.json()
+            if results and len(results) > 0:
+                return {"lat": float(results[0]["lat"]), "lon": float(results[0]["lon"])}
+            return {"lat": None, "lon": None}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Geocoding failed: {e}")
 
 
 @router.get("/api/connection-key", summary="Get current connection key info")
