@@ -1185,85 +1185,10 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <input type="number" id="weatherInterval" min="5" max="60" value="15" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
             </div>
 
+            <p style="font-size:13px;color:#666;margin-top:8px;">Weather rules and thresholds can be configured from the <a href="?" style="color:#1a7a4c;font-weight:500;">Homeowner Dashboard</a>.</p>
+
             <div style="margin-top:16px;">
-                <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Weather Rules</h3>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
-                    <div><strong style="font-size:14px;">Rain Detection</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Pause irrigation when it is currently raining</p></div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <label style="font-size:12px;white-space:nowrap;">Resume delay: <input type="number" id="rainResumeDelay" min="1" max="24" value="2" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> hrs</label>
-                        <label class="toggle-switch"><input type="checkbox" id="ruleRainDetection" checked><span class="toggle-slider"></span></label>
-                    </div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
-                    <div><strong style="font-size:14px;">Rain Forecast</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Skip watering if rain is forecasted</p></div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <label style="font-size:12px;white-space:nowrap;">Probability: <input type="number" id="rainForecastProb" min="10" max="100" value="60" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> %</label>
-                        <label class="toggle-switch"><input type="checkbox" id="ruleRainForecast" checked><span class="toggle-slider"></span></label>
-                    </div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
-                    <div><strong style="font-size:14px;">Precipitation Threshold</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Skip if expected rainfall exceeds threshold</p></div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <label style="font-size:12px;white-space:nowrap;">Threshold: <input type="number" id="precipThreshold" min="1" max="50" value="6" step="0.5" style="width:50px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> mm</label>
-                        <label class="toggle-switch"><input type="checkbox" id="rulePrecipThreshold" checked><span class="toggle-slider"></span></label>
-                    </div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
-                    <div><strong style="font-size:14px;">Freeze Protection</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Skip watering below freezing temperature</p></div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <label style="font-size:12px;white-space:nowrap;">Below: <input type="number" id="freezeThreshold" min="20" max="45" value="35" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> °F</label>
-                        <label class="toggle-switch"><input type="checkbox" id="ruleFreezeProtection" checked><span class="toggle-slider"></span></label>
-                    </div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
-                    <div><strong style="font-size:14px;">Cool Temperature Reduction</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Reduce watering when temperature is cool</p></div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <label style="font-size:12px;white-space:nowrap;">Below: <input type="number" id="coolThreshold" min="40" max="75" value="60" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> °F</label>
-                        <label style="font-size:12px;white-space:nowrap;">Reduce: <input type="number" id="coolReduction" min="5" max="75" value="25" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> %</label>
-                        <label class="toggle-switch"><input type="checkbox" id="ruleCoolTemp" checked><span class="toggle-slider"></span></label>
-                    </div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
-                    <div><strong style="font-size:14px;">Hot Temperature Boost</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Increase watering during extreme heat</p></div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <label style="font-size:12px;white-space:nowrap;">Above: <input type="number" id="hotThreshold" min="80" max="120" value="95" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> °F</label>
-                        <label style="font-size:12px;white-space:nowrap;">Increase: <input type="number" id="hotIncrease" min="5" max="75" value="25" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> %</label>
-                        <label class="toggle-switch"><input type="checkbox" id="ruleHotTemp" checked><span class="toggle-slider"></span></label>
-                    </div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
-                    <div><strong style="font-size:14px;">Wind Speed</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Skip watering when wind is too high (inefficient)</p></div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <label style="font-size:12px;white-space:nowrap;">Max: <input type="number" id="windThreshold" min="5" max="50" value="20" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> mph</label>
-                        <label class="toggle-switch"><input type="checkbox" id="ruleWindSpeed" checked><span class="toggle-slider"></span></label>
-                    </div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
-                    <div><strong style="font-size:14px;">High Humidity Reduction</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Reduce watering when humidity is high</p></div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <label style="font-size:12px;white-space:nowrap;">Above: <input type="number" id="humidityThreshold" min="50" max="100" value="80" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> %</label>
-                        <label style="font-size:12px;white-space:nowrap;">Reduce: <input type="number" id="humidityReduction" min="5" max="50" value="20" style="width:45px;padding:3px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> %</label>
-                        <label class="toggle-switch"><input type="checkbox" id="ruleHumidity" checked><span class="toggle-slider"></span></label>
-                    </div>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
-                    <div><strong style="font-size:14px;">Seasonal Adjustment</strong><p style="font-size:12px;color:#999;margin:2px 0 0;">Monthly watering multiplier (0=off, 1=normal, 1.2=+20%)</p></div>
-                    <label class="toggle-switch"><input type="checkbox" id="ruleSeasonalAdj"><span class="toggle-slider"></span></label>
-                </div>
-            </div>
-
-            <div style="margin-top:16px;display:flex;gap:8px;">
                 <button class="btn btn-primary" onclick="saveWeatherSettings()">Save Weather Settings</button>
-                <button class="btn btn-secondary" onclick="evaluateWeatherNow()">Test Weather Rules Now</button>
             </div>
         </div>
     </div>
@@ -1731,65 +1656,18 @@ ADMIN_HTML = """<!DOCTYPE html>
 
     async function loadWeatherSettings() {
         try {
-            // Load config values from settings
             const settingsRes = await fetch(`${BASE}/settings`);
             const settings = await settingsRes.json();
             document.getElementById('weatherEnabled').checked = settings.weather_enabled || false;
             document.getElementById('weatherInterval').value = settings.weather_check_interval_minutes || 15;
 
-            // Load entities and set selected
             await loadWeatherEntities();
             if (settings.weather_entity_id) {
                 document.getElementById('weatherEntitySelect').value = settings.weather_entity_id;
             }
 
-            // Load rules
-            const rulesRes = await fetch(`${BASE}/weather/rules`);
-            const rulesData = await rulesRes.json();
-            const rules = rulesData.rules || {};
+            updateWeatherBadge(settings.weather_enabled, settings.weather_entity_id);
 
-            // Apply rule toggles and values
-            const r1 = rules.rain_detection || {};
-            document.getElementById('ruleRainDetection').checked = r1.enabled !== false;
-            document.getElementById('rainResumeDelay').value = r1.resume_delay_hours || 2;
-
-            const r2 = rules.rain_forecast || {};
-            document.getElementById('ruleRainForecast').checked = r2.enabled !== false;
-            document.getElementById('rainForecastProb').value = r2.probability_threshold || 60;
-
-            const r3 = rules.precipitation_threshold || {};
-            document.getElementById('rulePrecipThreshold').checked = r3.enabled !== false;
-            document.getElementById('precipThreshold').value = r3.skip_if_rain_above_mm || 6;
-
-            const r4 = rules.temperature_freeze || {};
-            document.getElementById('ruleFreezeProtection').checked = r4.enabled !== false;
-            document.getElementById('freezeThreshold').value = r4.freeze_threshold_f || 35;
-
-            const r5 = rules.temperature_cool || {};
-            document.getElementById('ruleCoolTemp').checked = r5.enabled !== false;
-            document.getElementById('coolThreshold').value = r5.cool_threshold_f || 60;
-            document.getElementById('coolReduction').value = r5.reduction_percent || 25;
-
-            const r6 = rules.temperature_hot || {};
-            document.getElementById('ruleHotTemp').checked = r6.enabled !== false;
-            document.getElementById('hotThreshold').value = r6.hot_threshold_f || 95;
-            document.getElementById('hotIncrease').value = r6.increase_percent || 25;
-
-            const r7 = rules.wind_speed || {};
-            document.getElementById('ruleWindSpeed').checked = r7.enabled !== false;
-            document.getElementById('windThreshold').value = r7.max_wind_speed_mph || 20;
-
-            const r8 = rules.humidity || {};
-            document.getElementById('ruleHumidity').checked = r8.enabled !== false;
-            document.getElementById('humidityThreshold').value = r8.high_humidity_threshold || 80;
-            document.getElementById('humidityReduction').value = r8.reduction_percent || 20;
-
-            const r9 = rules.seasonal_adjustment || {};
-            document.getElementById('ruleSeasonalAdj').checked = r9.enabled === true;
-
-            updateWeatherBadge(settings.weather_enabled, settings.weather_entity_id, rulesData.watering_multiplier);
-
-            // If weather is configured, show the preview
             if (settings.weather_enabled && settings.weather_entity_id) {
                 testWeatherEntity();
             }
@@ -1798,7 +1676,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         }
     }
 
-    function updateWeatherBadge(enabled, entityId, multiplier) {
+    function updateWeatherBadge(enabled, entityId) {
         const badge = document.getElementById('weatherStatusBadge');
         if (!entityId) {
             badge.textContent = 'Not Configured';
@@ -1809,8 +1687,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             badge.style.background = '#fff3cd';
             badge.style.color = '#856404';
         } else {
-            const mult = multiplier != null ? multiplier : 1.0;
-            badge.textContent = 'Active (' + mult + 'x)';
+            badge.textContent = 'Active';
             badge.style.background = '#d4edda';
             badge.style.color = '#155724';
         }
@@ -1822,7 +1699,6 @@ ADMIN_HTML = """<!DOCTYPE html>
             const enabled = document.getElementById('weatherEnabled').checked;
             const interval = parseInt(document.getElementById('weatherInterval').value) || 15;
 
-            // Save config settings
             await fetch(`${BASE}/general`, {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
@@ -1833,65 +1709,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 }),
             });
 
-            // Save rules
-            const rules = {
-                rain_detection: {
-                    enabled: document.getElementById('ruleRainDetection').checked,
-                    resume_delay_hours: parseInt(document.getElementById('rainResumeDelay').value) || 2,
-                },
-                rain_forecast: {
-                    enabled: document.getElementById('ruleRainForecast').checked,
-                    lookahead_hours: 24,
-                    probability_threshold: parseInt(document.getElementById('rainForecastProb').value) || 60,
-                },
-                precipitation_threshold: {
-                    enabled: document.getElementById('rulePrecipThreshold').checked,
-                    skip_if_rain_above_mm: parseFloat(document.getElementById('precipThreshold').value) || 6.0,
-                },
-                temperature_freeze: {
-                    enabled: document.getElementById('ruleFreezeProtection').checked,
-                    freeze_threshold_f: parseInt(document.getElementById('freezeThreshold').value) || 35,
-                    freeze_threshold_c: 2,
-                },
-                temperature_cool: {
-                    enabled: document.getElementById('ruleCoolTemp').checked,
-                    cool_threshold_f: parseInt(document.getElementById('coolThreshold').value) || 60,
-                    cool_threshold_c: 15,
-                    reduction_percent: parseInt(document.getElementById('coolReduction').value) || 25,
-                },
-                temperature_hot: {
-                    enabled: document.getElementById('ruleHotTemp').checked,
-                    hot_threshold_f: parseInt(document.getElementById('hotThreshold').value) || 95,
-                    hot_threshold_c: 35,
-                    increase_percent: parseInt(document.getElementById('hotIncrease').value) || 25,
-                },
-                wind_speed: {
-                    enabled: document.getElementById('ruleWindSpeed').checked,
-                    max_wind_speed_mph: parseInt(document.getElementById('windThreshold').value) || 20,
-                    max_wind_speed_kmh: 32,
-                },
-                humidity: {
-                    enabled: document.getElementById('ruleHumidity').checked,
-                    high_humidity_threshold: parseInt(document.getElementById('humidityThreshold').value) || 80,
-                    reduction_percent: parseInt(document.getElementById('humidityReduction').value) || 20,
-                },
-                seasonal_adjustment: {
-                    enabled: document.getElementById('ruleSeasonalAdj').checked,
-                    monthly_multipliers: {
-                        "1": 0.0, "2": 0.0, "3": 0.5, "4": 0.7,
-                        "5": 0.9, "6": 1.0, "7": 1.2, "8": 1.2,
-                        "9": 1.0, "10": 0.7, "11": 0.4, "12": 0.0,
-                    },
-                },
-            };
-
-            await fetch(`${BASE}/weather/rules`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ rules }),
-            });
-
-            updateWeatherBadge(enabled, entityId, null);
+            updateWeatherBadge(enabled, entityId);
             showToast('Weather settings saved');
         } catch (e) {
             showToast('Failed to save weather settings', 'error');
@@ -1900,7 +1718,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 
     async function testWeatherEntity() {
         const entityId = document.getElementById('weatherEntitySelect').value;
-        if (!entityId) { showToast('Select a weather entity first', 'error'); return; }
+        if (!entityId) return;
 
         const preview = document.getElementById('weatherPreview');
         const content = document.getElementById('weatherPreviewContent');
@@ -1923,11 +1741,6 @@ ADMIN_HTML = """<!DOCTYPE html>
                 'lightning': '⚡', 'lightning-rainy': '⛈️', 'hail': '🧊',
             };
             const icon = conditionIcons[w.condition] || '🌡️';
-            const mult = data.watering_multiplier != null ? data.watering_multiplier : 1.0;
-            let multColor = '#27ae60';
-            if (mult < 1) multColor = '#f39c12';
-            if (mult > 1) multColor = '#e74c3c';
-            if (mult === 0) multColor = '#999';
 
             content.innerHTML = `
                 <div style="padding:6px 10px;background:white;border-radius:6px;text-align:center;">
@@ -1946,55 +1759,9 @@ ADMIN_HTML = """<!DOCTYPE html>
                     <div style="color:#999;font-size:11px;">Wind</div>
                     <div style="font-weight:600;">${w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A'}</div>
                 </div>
-                <div style="padding:6px 10px;background:white;border-radius:6px;">
-                    <div style="color:#999;font-size:11px;">Multiplier</div>
-                    <div style="font-weight:600;color:${multColor};">${mult}x</div>
-                </div>
             `;
-
-            // Show active adjustments if any
-            const adjustments = data.active_adjustments || [];
-            if (adjustments.length > 0) {
-                let adjHtml = '<div style="grid-column:1/-1;margin-top:4px;padding:8px 10px;background:#fff3cd;border-radius:6px;font-size:12px;"><strong>Active Adjustments:</strong><ul style="margin:4px 0 0 16px;">';
-                for (const adj of adjustments) {
-                    adjHtml += '<li>' + escHtml(adj.reason || adj.rule) + '</li>';
-                }
-                adjHtml += '</ul></div>';
-                content.innerHTML += adjHtml;
-            }
         } catch (e) {
             content.innerHTML = '<span style="color:#e74c3c;">Failed to load weather data</span>';
-        }
-    }
-
-    async function evaluateWeatherNow() {
-        try {
-            const res = await fetch(`${BASE}/weather/evaluate`, { method: 'POST' });
-            const data = await res.json();
-
-            if (data.skipped) {
-                showToast('Weather evaluation skipped: ' + (data.reason || 'unknown'), 'error');
-                return;
-            }
-
-            const triggered = data.triggered_rules || [];
-            if (triggered.length === 0) {
-                showToast('Weather check: all clear, no rules triggered');
-            } else {
-                const ruleNames = triggered.map(r => r.rule.replace(/_/g, ' ')).join(', ');
-                showToast(triggered.length + ' rule(s) triggered: ' + ruleNames, data.should_pause ? 'error' : 'success');
-            }
-
-            // Refresh the preview
-            testWeatherEntity();
-            // Update badge
-            updateWeatherBadge(
-                document.getElementById('weatherEnabled').checked,
-                document.getElementById('weatherEntitySelect').value,
-                data.watering_multiplier,
-            );
-        } catch (e) {
-            showToast('Failed to evaluate weather', 'error');
         }
     }
 

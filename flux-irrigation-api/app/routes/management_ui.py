@@ -233,8 +233,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <!-- Weather Card -->
         <div class="card" id="detailWeatherCard" style="display:none;">
             <div class="card-header">
-                <h2>Weather Conditions</h2>
-                <span id="detailWeatherBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:#d4edda;color:#155724;">1.0x</span>
+                <h2>Weather-Based Control</h2>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span id="detailWeatherBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:#d4edda;color:#155724;">1.0x</span>
+                </div>
             </div>
             <div class="card-body" id="detailWeatherBody">
                 <div class="loading">Loading weather...</div>
@@ -719,9 +721,232 @@ async function loadDetailWeather(id) {
             html += '</ul></div>';
         }
 
+        // --- Weather Rules Editor ---
+        html += '<div style="margin-top:16px;border-top:1px solid #eee;padding-top:16px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+        html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
+        html += '<div style="display:flex;gap:6px;">';
+        html += '<button class="btn btn-secondary btn-sm" onclick="mgmtEvaluateWeather()">Test Rules Now</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div id="mgmtWeatherRulesContainer"><div class="loading">Loading rules...</div></div>';
+        html += '</div>';
+
         body.innerHTML = html;
+
+        // Load rules into the container
+        loadMgmtWeatherRules(id);
     } catch (e) {
         card.style.display = 'none';
+    }
+}
+
+async function loadMgmtWeatherRules(custId) {
+    const container = document.getElementById('mgmtWeatherRulesContainer');
+    if (!container) return;
+    try {
+        const data = await api('/customers/' + custId + '/weather/rules');
+        const rules = data.rules || {};
+        let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+
+        // Rule 1: Rain Detection
+        const r1 = rules.rain_detection || {};
+        html += mgmtBuildRuleRow('rain_detection', 'Rain Detection', 'Pause when currently raining', r1.enabled, [
+            { id: 'mgmt_rain_detection_resume_delay_hours', label: 'Resume delay (hours)', value: r1.resume_delay_hours || 2, type: 'number', min: 0, max: 24, step: 1 }
+        ]);
+
+        // Rule 2: Rain Forecast
+        const r2 = rules.rain_forecast || {};
+        html += mgmtBuildRuleRow('rain_forecast', 'Rain Forecast', 'Skip when rain probability exceeds threshold', r2.enabled, [
+            { id: 'mgmt_rain_forecast_probability_threshold', label: 'Probability %', value: r2.probability_threshold || 60, type: 'number', min: 10, max: 100, step: 5 }
+        ]);
+
+        // Rule 3: Precipitation Threshold
+        const r3 = rules.precipitation_threshold || {};
+        html += mgmtBuildRuleRow('precipitation_threshold', 'Precipitation Amount', 'Skip when expected rainfall exceeds threshold', r3.enabled, [
+            { id: 'mgmt_precipitation_threshold_mm', label: 'Threshold (mm)', value: r3.skip_if_rain_above_mm || 6, type: 'number', min: 1, max: 50, step: 1 }
+        ]);
+
+        // Rule 4: Freeze Protection
+        const r4 = rules.temperature_freeze || {};
+        html += mgmtBuildRuleRow('temperature_freeze', 'Freeze Protection', 'Skip when temperature is at or below freezing', r4.enabled, [
+            { id: 'mgmt_temperature_freeze_f', label: 'Threshold (°F)', value: r4.freeze_threshold_f || 35, type: 'number', min: 20, max: 45, step: 1 },
+            { id: 'mgmt_temperature_freeze_c', label: 'Threshold (°C)', value: r4.freeze_threshold_c || 2, type: 'number', min: -5, max: 7, step: 1 }
+        ]);
+
+        // Rule 5: Cool Temperature
+        const r5 = rules.temperature_cool || {};
+        html += mgmtBuildRuleRow('temperature_cool', 'Cool Temperature', 'Reduce watering in cool weather', r5.enabled, [
+            { id: 'mgmt_temperature_cool_f', label: 'Below (°F)', value: r5.cool_threshold_f || 60, type: 'number', min: 40, max: 75, step: 1 },
+            { id: 'mgmt_temperature_cool_c', label: 'Below (°C)', value: r5.cool_threshold_c || 15, type: 'number', min: 5, max: 25, step: 1 },
+            { id: 'mgmt_temperature_cool_reduction', label: 'Reduce %', value: r5.reduction_percent || 25, type: 'number', min: 5, max: 75, step: 5 }
+        ]);
+
+        // Rule 6: Hot Temperature
+        const r6 = rules.temperature_hot || {};
+        html += mgmtBuildRuleRow('temperature_hot', 'Hot Temperature', 'Increase watering in hot weather', r6.enabled, [
+            { id: 'mgmt_temperature_hot_f', label: 'Above (°F)', value: r6.hot_threshold_f || 95, type: 'number', min: 80, max: 120, step: 1 },
+            { id: 'mgmt_temperature_hot_c', label: 'Above (°C)', value: r6.hot_threshold_c || 35, type: 'number', min: 25, max: 50, step: 1 },
+            { id: 'mgmt_temperature_hot_increase', label: 'Increase %', value: r6.increase_percent || 25, type: 'number', min: 5, max: 75, step: 5 }
+        ]);
+
+        // Rule 7: Wind Speed
+        const r7 = rules.wind_speed || {};
+        html += mgmtBuildRuleRow('wind_speed', 'High Wind', 'Skip when wind exceeds threshold', r7.enabled, [
+            { id: 'mgmt_wind_speed_mph', label: 'Max (mph)', value: r7.max_wind_speed_mph || 20, type: 'number', min: 5, max: 60, step: 1 },
+            { id: 'mgmt_wind_speed_kmh', label: 'Max (km/h)', value: r7.max_wind_speed_kmh || 32, type: 'number', min: 8, max: 100, step: 1 }
+        ]);
+
+        // Rule 8: Humidity
+        const r8 = rules.humidity || {};
+        html += mgmtBuildRuleRow('humidity', 'High Humidity', 'Reduce watering when humidity is high', r8.enabled, [
+            { id: 'mgmt_humidity_threshold', label: 'Above %', value: r8.high_humidity_threshold || 80, type: 'number', min: 50, max: 100, step: 5 },
+            { id: 'mgmt_humidity_reduction', label: 'Reduce %', value: r8.reduction_percent || 20, type: 'number', min: 5, max: 75, step: 5 }
+        ]);
+
+        // Rule 9: Seasonal Adjustment
+        const r9 = rules.seasonal_adjustment || {};
+        const months = r9.monthly_multipliers || {};
+        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        let seasonInputs = '';
+        for (let i = 1; i <= 12; i++) {
+            const val = months[String(i)] != null ? months[String(i)] : (i >= 3 && i <= 11 ? 1.0 : 0.0);
+            seasonInputs += '<div style="display:flex;align-items:center;gap:4px;">' +
+                '<span style="font-size:11px;color:#999;width:28px;">' + monthNames[i-1] + '</span>' +
+                '<input type="number" id="mgmt_seasonal_month_' + i + '" value="' + val + '" min="0" max="2" step="0.1" ' +
+                'style="width:55px;padding:2px 4px;border:1px solid #ddd;border-radius:4px;font-size:11px;"></div>';
+        }
+        html += '<div style="background:#f8f9fa;border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:4px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+        html += '<div><div style="font-weight:600;font-size:13px;">Seasonal Adjustment</div>';
+        html += '<div style="font-size:11px;color:#999;">Monthly watering multiplier (0=off, 1=normal)</div></div>';
+        html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">';
+        html += '<input type="checkbox" id="mgmt_rule_seasonal_adjustment" ' + (r9.enabled ? 'checked' : '') + '> Enabled</label>';
+        html += '</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(95px,1fr));gap:4px;">' + seasonInputs + '</div>';
+        html += '</div>';
+
+        html += '</div>';
+
+        // Save button
+        html += '<div style="margin-top:12px;display:flex;gap:8px;">';
+        html += '<button class="btn btn-primary" onclick="mgmtSaveWeatherRules()">Save Weather Rules</button>';
+        html += '</div>';
+
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<div style="color:#e74c3c;">Failed to load weather rules: ' + esc(e.message) + '</div>';
+    }
+}
+
+function mgmtBuildRuleRow(ruleId, name, description, enabled, fields) {
+    let html = '<div style="background:#f8f9fa;border:1px solid #eee;border-radius:8px;padding:10px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    html += '<div><div style="font-weight:600;font-size:13px;">' + esc(name) + '</div>';
+    html += '<div style="font-size:11px;color:#999;">' + esc(description) + '</div></div>';
+    html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">';
+    html += '<input type="checkbox" id="mgmt_rule_' + ruleId + '" ' + (enabled ? 'checked' : '') + '> Enabled</label>';
+    html += '</div>';
+    if (fields && fields.length > 0) {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">';
+        for (const f of fields) {
+            html += '<div style="display:flex;align-items:center;gap:4px;">';
+            html += '<span style="font-size:11px;color:#999;">' + esc(f.label) + '</span>';
+            html += '<input type="' + f.type + '" id="' + f.id + '" value="' + f.value + '" ';
+            if (f.min != null) html += 'min="' + f.min + '" ';
+            if (f.max != null) html += 'max="' + f.max + '" ';
+            if (f.step != null) html += 'step="' + f.step + '" ';
+            html += 'style="width:60px;padding:2px 4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">';
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+async function mgmtSaveWeatherRules() {
+    if (!currentCustomerId) return;
+    try {
+        const rules = {
+            rain_detection: {
+                enabled: document.getElementById('mgmt_rule_rain_detection').checked,
+                resume_delay_hours: parseFloat(document.getElementById('mgmt_rain_detection_resume_delay_hours').value) || 2,
+            },
+            rain_forecast: {
+                enabled: document.getElementById('mgmt_rule_rain_forecast').checked,
+                probability_threshold: parseInt(document.getElementById('mgmt_rain_forecast_probability_threshold').value) || 60,
+                lookahead_hours: 24,
+            },
+            precipitation_threshold: {
+                enabled: document.getElementById('mgmt_rule_precipitation_threshold').checked,
+                skip_if_rain_above_mm: parseFloat(document.getElementById('mgmt_precipitation_threshold_mm').value) || 6,
+            },
+            temperature_freeze: {
+                enabled: document.getElementById('mgmt_rule_temperature_freeze').checked,
+                freeze_threshold_f: parseInt(document.getElementById('mgmt_temperature_freeze_f').value) || 35,
+                freeze_threshold_c: parseInt(document.getElementById('mgmt_temperature_freeze_c').value) || 2,
+            },
+            temperature_cool: {
+                enabled: document.getElementById('mgmt_rule_temperature_cool').checked,
+                cool_threshold_f: parseInt(document.getElementById('mgmt_temperature_cool_f').value) || 60,
+                cool_threshold_c: parseInt(document.getElementById('mgmt_temperature_cool_c').value) || 15,
+                reduction_percent: parseInt(document.getElementById('mgmt_temperature_cool_reduction').value) || 25,
+            },
+            temperature_hot: {
+                enabled: document.getElementById('mgmt_rule_temperature_hot').checked,
+                hot_threshold_f: parseInt(document.getElementById('mgmt_temperature_hot_f').value) || 95,
+                hot_threshold_c: parseInt(document.getElementById('mgmt_temperature_hot_c').value) || 35,
+                increase_percent: parseInt(document.getElementById('mgmt_temperature_hot_increase').value) || 25,
+            },
+            wind_speed: {
+                enabled: document.getElementById('mgmt_rule_wind_speed').checked,
+                max_wind_speed_mph: parseInt(document.getElementById('mgmt_wind_speed_mph').value) || 20,
+                max_wind_speed_kmh: parseInt(document.getElementById('mgmt_wind_speed_kmh').value) || 32,
+            },
+            humidity: {
+                enabled: document.getElementById('mgmt_rule_humidity').checked,
+                high_humidity_threshold: parseInt(document.getElementById('mgmt_humidity_threshold').value) || 80,
+                reduction_percent: parseInt(document.getElementById('mgmt_humidity_reduction').value) || 20,
+            },
+            seasonal_adjustment: {
+                enabled: document.getElementById('mgmt_rule_seasonal_adjustment').checked,
+                monthly_multipliers: {},
+            },
+        };
+        for (let i = 1; i <= 12; i++) {
+            rules.seasonal_adjustment.monthly_multipliers[String(i)] = parseFloat(document.getElementById('mgmt_seasonal_month_' + i).value) || 0;
+        }
+        await api('/customers/' + currentCustomerId + '/weather/rules', {
+            method: 'PUT',
+            body: JSON.stringify({ rules }),
+        });
+        showToast('Weather rules saved');
+    } catch (e) {
+        showToast('Failed to save weather rules: ' + e.message, 'error');
+    }
+}
+
+async function mgmtEvaluateWeather() {
+    if (!currentCustomerId) return;
+    try {
+        showToast('Evaluating weather rules...');
+        const result = await api('/customers/' + currentCustomerId + '/weather/evaluate', { method: 'POST' });
+        if (result.skipped) {
+            showToast(result.reason || 'Evaluation skipped', 'error');
+            return;
+        }
+        const triggered = result.triggered_rules || [];
+        if (triggered.length === 0) {
+            showToast('No rules triggered — conditions are normal');
+        } else {
+            const names = triggered.map(t => t.rule.replace(/_/g, ' ')).join(', ');
+            showToast('Triggered: ' + names + ' | Multiplier: ' + result.watering_multiplier + 'x');
+        }
+        // Refresh the weather card to show updated state
+        setTimeout(() => loadDetailWeather(currentCustomerId), 1000);
+    } catch (e) {
+        showToast('Evaluation failed: ' + e.message, 'error');
     }
 }
 

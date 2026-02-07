@@ -397,3 +397,58 @@ async def get_customer_weather(customer_id: str):
             "weather": {"error": "Not available"},
         }
     return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/weather/rules",
+    summary="Get customer weather rules",
+)
+async def get_customer_weather_rules(customer_id: str):
+    """Get weather rules configuration from a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/weather/rules"
+    )
+    if status_code != 200:
+        return {"rules": {}, "error": "Weather rules not available"}
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/weather/rules",
+    summary="Update customer weather rules",
+)
+async def update_customer_weather_rules(customer_id: str, request: Request):
+    """Update weather rules configuration on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", "/admin/api/weather/rules", json_body=body
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/weather/evaluate",
+    summary="Trigger customer weather evaluation",
+)
+async def evaluate_customer_weather(customer_id: str):
+    """Manually trigger weather rules evaluation on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", "/admin/api/weather/evaluate"
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
