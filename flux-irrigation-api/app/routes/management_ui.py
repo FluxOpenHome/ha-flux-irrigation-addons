@@ -343,6 +343,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             </div>
         </div>
     </div>
+
+    <!-- API Docs -->
+    <div class="card" id="apiDocsCard" style="margin-top:24px;">
+        <div class="card-body" style="text-align:center;padding:20px;">
+            <p style="margin-bottom:10px;font-size:13px;color:#7f8c8d;">Interactive API documentation for this add-on:</p>
+            <a id="docsLink" href="/api/docs" target="_blank" class="btn btn-secondary btn-sm">Open API Docs</a>
+        </div>
+    </div>
 </div>
 
 <!-- Notes Modal -->
@@ -866,6 +874,7 @@ async function saveModalKey() {
 async function viewCustomer(id) {
     currentCustomerId = id;
     document.getElementById('listView').style.display = 'none';
+    document.getElementById('apiDocsCard').style.display = 'none';
     document.getElementById('detailView').classList.add('visible');
     if (listRefreshTimer) { clearInterval(listRefreshTimer); listRefreshTimer = null; }
 
@@ -925,6 +934,7 @@ function backToList() {
     currentCustomerId = null;
     document.getElementById('detailView').classList.remove('visible');
     document.getElementById('listView').style.display = 'block';
+    document.getElementById('apiDocsCard').style.display = 'block';
     if (detailRefreshTimer) { clearInterval(detailRefreshTimer); detailRefreshTimer = null; }
     if (leafletMap) { leafletMap.remove(); leafletMap = null; }
     document.getElementById('detailMap').style.display = 'none';
@@ -2017,6 +2027,9 @@ async function switchToHomeowner() {
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
+    // Fix docs link for ingress
+    const ingressBase = window.location.pathname.replace(/\\/management\\/?$/, '');
+    document.getElementById('docsLink').href = ingressBase + '/api/docs';
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
     // Close modals on backdrop click or Escape

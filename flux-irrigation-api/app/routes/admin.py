@@ -1401,14 +1401,6 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- API Docs Link -->
-    <div class="card">
-        <div class="card-body" style="text-align:center; padding: 24px;">
-            <p style="margin-bottom:12px;">Interactive API documentation for management companies:</p>
-            <a id="docsLink" href="/api/docs" target="_blank" class="btn btn-primary">Open API Docs (Swagger UI)</a>
-        </div>
-    </div>
-
 </div>
 
 <div class="toast" id="toast"></div>
@@ -2190,8 +2182,6 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     // --- Init ---
-    // Fix docs link for ingress
-    document.getElementById('docsLink').href = INGRESS_BASE + '/api/docs';
     loadSettings();
     loadConnectionKey();
     loadWeatherSettings();
