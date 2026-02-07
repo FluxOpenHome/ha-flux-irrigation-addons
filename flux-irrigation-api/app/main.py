@@ -22,7 +22,7 @@ import os
 
 from config import get_config, async_initialize
 from audit_log import cleanup_old_logs
-from routes import zones, sensors, entities, schedule, history, system, admin, management
+from routes import zones, sensors, entities, history, system, admin, management
 
 
 PROXY_SERVICE_NAMES = [
@@ -236,12 +236,14 @@ async def lifespan(app: FastAPI):
     _setup_rest_command_proxy()
     await _check_rest_command_service(config)
 
+    # Always log entity counts (device entities are resolved regardless of mode)
+    print(f"[MAIN] Configured API keys: {len(config.api_keys)}")
+    print(f"[MAIN] Irrigation device: {config.irrigation_device_id or '(not configured)'}")
+    print(f"[MAIN] Resolved zones: {len(config.allowed_zone_entities)}")
+    print(f"[MAIN] Resolved sensors: {len(config.allowed_sensor_entities)}")
+    print(f"[MAIN] Resolved controls: {len(config.allowed_control_entities)}")
+
     if config.mode == "homeowner":
-        print(f"[MAIN] Configured API keys: {len(config.api_keys)}")
-        print(f"[MAIN] Irrigation device: {config.irrigation_device_id or '(not configured)'}")
-        print(f"[MAIN] Resolved zones: {len(config.allowed_zone_entities)}")
-        print(f"[MAIN] Resolved sensors: {len(config.allowed_sensor_entities)}")
-        print(f"[MAIN] Resolved controls: {len(config.allowed_control_entities)}")
         print(f"[MAIN] Rate limit: {config.rate_limit_per_minute}/min")
         print(f"[MAIN] Audit logging: {'enabled' if config.enable_audit_log else 'disabled'}")
         if config.homeowner_url:
@@ -310,7 +312,6 @@ async def mode_guard_middleware(request: Request, call_next):
 app.include_router(zones.router, prefix="/api")
 app.include_router(sensors.router, prefix="/api")
 app.include_router(entities.router, prefix="/api")
-app.include_router(schedule.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(admin.router)
@@ -331,7 +332,6 @@ async def api_root():
             "zones": "/api/zones",
             "sensors": "/api/sensors",
             "entities": "/api/entities",
-            "schedule": "/api/schedule",
             "history": "/api/history/runs",
             "audit_log": "/api/history/audit",
             "system_status": "/api/system/status",

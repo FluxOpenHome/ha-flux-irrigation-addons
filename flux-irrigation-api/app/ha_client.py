@@ -291,6 +291,9 @@ async def get_device_entities(device_id: str) -> dict:
     if matched_count > 0:
         zone_ids = [z["entity_id"] for z in zones]
         print(f"[HA_CLIENT]   Zones: {zone_ids}")
+        if other:
+            other_ids = [o["entity_id"] for o in other]
+            print(f"[HA_CLIENT]   Controls: {other_ids}")
     if matched_count > 0 and len(zones) == 0:
         # Log what we found for debugging
         all_switch_ids = [

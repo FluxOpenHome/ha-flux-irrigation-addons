@@ -83,14 +83,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tile-state.on { color: #27ae60; font-weight: 500; }
 .tile-actions { display: flex; gap: 6px; }
 
-/* Schedule */
-.schedule-program { background: #f8f9fa; border-radius: 8px; padding: 14px; border: 1px solid #eee; margin-bottom: 10px; }
-.schedule-program-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.schedule-program-name { font-weight: 600; font-size: 14px; }
-.schedule-program-enabled { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
-.schedule-program-enabled.yes { background: #e8f5e9; color: #27ae60; }
-.schedule-program-enabled.no { background: #fde8e8; color: #e74c3c; }
-.schedule-details { font-size: 13px; color: #555; }
+/* Schedule (entity-based) */
+.schedule-section { margin-bottom: 20px; }
+.schedule-section-label { font-size: 13px; font-weight: 600; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+.days-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.day-toggle { padding: 8px 14px; border-radius: 8px; border: 2px solid #ddd; cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; min-width: 52px; transition: all 0.15s ease; background: #f8f9fa; color: #7f8c8d; user-select: none; }
+.day-toggle:hover { border-color: #bbb; }
+.day-toggle.active { background: #e8f5e9; border-color: #27ae60; color: #27ae60; }
+.start-times-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.zone-settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.zone-settings-table th { text-align: left; padding: 8px; border-bottom: 2px solid #eee; font-size: 12px; color: #7f8c8d; text-transform: uppercase; }
+.zone-settings-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+.system-controls-row { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Search/Filter Bar */
 .search-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
@@ -242,28 +246,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             </div>
         </div>
 
-        <!-- Schedule & Rain Delay Card -->
+        <!-- Schedule Card (entity-based) -->
         <div class="card">
             <div class="card-header">
                 <h2>Schedule</h2>
             </div>
             <div class="card-body" id="detailSchedule">
                 <div class="loading">Loading schedule...</div>
-            </div>
-        </div>
-
-        <!-- Rain Delay Card -->
-        <div class="card">
-            <div class="card-header"><h2>Rain Delay</h2></div>
-            <div class="card-body" id="detailRainDelay">
-                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                    <label style="font-size:13px;font-weight:500;color:#555;">Set rain delay:</label>
-                    <input type="number" id="rainDelayHours" min="1" max="168" value="24" style="width:80px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
-                    <span style="font-size:13px;color:#666;">hours</span>
-                    <button class="btn btn-primary btn-sm" onclick="setRainDelay()">Set Delay</button>
-                    <button class="btn btn-danger btn-sm" onclick="cancelRainDelay()">Cancel Delay</button>
-                </div>
-                <div id="rainDelayStatus" style="margin-top:10px;font-size:13px;color:#666;"></div>
             </div>
         </div>
 
@@ -568,11 +557,10 @@ async function refreshDetail() {
 }
 
 async function loadDetailData(id) {
-    loadDetailStatus(id);  // also updates rain delay status and pause/resume button
+    loadDetailStatus(id);
     loadDetailZones(id);
     loadDetailSensors(id);
-    loadDetailControls(id);
-    loadDetailSchedule(id);
+    loadDetailControls(id);  // Also renders the Schedule card from entities
     loadDetailHistory(id);
 }
 
@@ -591,13 +579,6 @@ async function loadDetailStatus(id) {
         } else {
             btn.textContent = 'Pause System';
             btn.className = 'btn btn-secondary btn-sm';
-        }
-        // Update rain delay status
-        const rdEl = document.getElementById('rainDelayStatus');
-        if (s.rain_delay_active) {
-            rdEl.innerHTML = '<span style="color:#f39c12;font-weight:500;">Rain delay active until ' + esc(s.rain_delay_until || 'unknown') + '</span>';
-        } else {
-            rdEl.innerHTML = '<span style="color:#95a5a6;">No rain delay active</span>';
         }
         el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
@@ -701,47 +682,221 @@ async function loadDetailSensors(id) {
     }
 }
 
-// --- Detail: Device Controls ---
+// --- Schedule entity classification ---
+const SCHEDULE_PATTERNS = {
+    day_switches: (eid, domain) =>
+        domain === 'switch' && /schedule/.test(eid) &&
+        /(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/.test(eid),
+    start_times: (eid, domain) =>
+        domain === 'text' && /start_time/.test(eid),
+    run_durations: (eid, domain) =>
+        domain === 'number' && /run_duration/.test(eid),
+    zone_enables: (eid, domain) =>
+        domain === 'switch' && /enable_zone/.test(eid),
+    system_controls: (eid, domain) =>
+        domain === 'switch' && (/auto_advance/.test(eid) || /start_stop/.test(eid)),
+};
+
+function classifyScheduleEntity(entity) {
+    const eid = (entity.entity_id || '').toLowerCase();
+    const domain = entity.domain || '';
+    for (const [category, matcher] of Object.entries(SCHEDULE_PATTERNS)) {
+        if (matcher(eid, domain)) return category;
+    }
+    return null;
+}
+
+function extractStartTimeNumber(eid) {
+    const match = eid.match(/start_time[_\\s]*(\\d+)/i);
+    return match ? parseInt(match[1]) : 99;
+}
+
+function extractZoneNumber(eid, prefix) {
+    const pattern = new RegExp(prefix + '[_\\\\s]*(\\\\d+)', 'i');
+    const match = eid.match(pattern);
+    return match ? match[1] : null;
+}
+
+// --- Detail: Device Controls (also populates Schedule card) ---
 async function loadDetailControls(id) {
-    const el = document.getElementById('detailControls');
+    const controlsEl = document.getElementById('detailControls');
+    const scheduleEl = document.getElementById('detailSchedule');
     try {
         const data = await api('/customers/' + id + '/entities');
-        const entities = Array.isArray(data) ? data : (data.entities || []);
-        if (entities.length === 0) { el.innerHTML = '<div class="empty-state"><p>No device controls found</p></div>'; return; }
+        const allEntities = Array.isArray(data) ? data : (data.entities || []);
 
-        // Group entities by domain
-        const groups = {};
-        entities.forEach(e => {
-            const d = e.domain || 'unknown';
-            if (!groups[d]) groups[d] = [];
-            groups[d].push(e);
-        });
-
-        // Domain display names and sort order
-        const domainLabels = {
-            'switch': 'Switches', 'number': 'Numbers', 'select': 'Selects',
-            'button': 'Buttons', 'text': 'Text Inputs', 'light': 'Lights'
+        // Split entities into schedule vs. controls
+        const scheduleByCategory = {
+            day_switches: [], start_times: [], run_durations: [],
+            zone_enables: [], system_controls: []
         };
-        const domainOrder = ['switch', 'number', 'select', 'text', 'button', 'light'];
-        const sortedDomains = Object.keys(groups).sort((a, b) => {
-            const ai = domainOrder.indexOf(a); const bi = domainOrder.indexOf(b);
-            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-        });
+        const controlEntities = [];
 
-        let html = '';
-        for (const domain of sortedDomains) {
-            const label = domainLabels[domain] || domain.charAt(0).toUpperCase() + domain.slice(1);
-            html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
-            html += '<div class="tile-grid">';
-            for (const e of groups[domain]) {
-                html += renderControlTile(id, e);
+        for (const e of allEntities) {
+            const cat = classifyScheduleEntity(e);
+            if (cat) {
+                scheduleByCategory[cat].push(e);
+            } else {
+                controlEntities.push(e);
             }
-            html += '</div></div>';
         }
-        el.innerHTML = html;
+
+        // Render Device Controls (non-schedule entities only)
+        if (controlEntities.length === 0) {
+            controlsEl.innerHTML = '<div class="empty-state"><p>No device controls found</p></div>';
+        } else {
+            const groups = {};
+            controlEntities.forEach(e => {
+                const d = e.domain || 'unknown';
+                if (!groups[d]) groups[d] = [];
+                groups[d].push(e);
+            });
+            const domainLabels = {
+                'switch': 'Switches', 'number': 'Numbers', 'select': 'Selects',
+                'button': 'Buttons', 'text': 'Text Inputs', 'light': 'Lights'
+            };
+            const domainOrder = ['switch', 'number', 'select', 'text', 'button', 'light'];
+            const sortedDomains = Object.keys(groups).sort((a, b) => {
+                const ai = domainOrder.indexOf(a); const bi = domainOrder.indexOf(b);
+                return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            });
+            let html = '';
+            for (const domain of sortedDomains) {
+                const label = domainLabels[domain] || domain.charAt(0).toUpperCase() + domain.slice(1);
+                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
+                html += '<div class="tile-grid">';
+                for (const e of groups[domain]) {
+                    html += renderControlTile(id, e);
+                }
+                html += '</div></div>';
+            }
+            controlsEl.innerHTML = html;
+        }
+
+        // Render Schedule card from classified entities
+        renderScheduleCard(id, scheduleByCategory);
+
     } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load controls: ' + esc(e.message) + '</div>';
+        controlsEl.innerHTML = '<div style="color:#e74c3c;">Failed to load controls: ' + esc(e.message) + '</div>';
+        scheduleEl.innerHTML = '<div style="color:#e74c3c;">Failed to load schedule: ' + esc(e.message) + '</div>';
     }
+}
+
+function renderScheduleCard(custId, sched) {
+    const el = document.getElementById('detailSchedule');
+    const { day_switches, start_times, run_durations, zone_enables, system_controls } = sched;
+    const total = day_switches.length + start_times.length + run_durations.length + zone_enables.length + system_controls.length;
+
+    if (total === 0) {
+        el.innerHTML = '<div class="empty-state"><p>No schedule entities detected on this device.</p></div>';
+        return;
+    }
+
+    let html = '';
+
+    // --- Days of Week ---
+    if (day_switches.length > 0) {
+        html += '<div class="schedule-section"><div class="schedule-section-label">Days of Week</div><div class="days-row">';
+        const dayOrder = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+        const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        for (let i = 0; i < dayOrder.length; i++) {
+            const dayEntity = day_switches.find(e => e.entity_id.toLowerCase().includes(dayOrder[i]));
+            if (dayEntity) {
+                const isOn = dayEntity.state === 'on';
+                html += '<div class="day-toggle ' + (isOn ? 'active' : '') + '" ' +
+                    'onclick="setEntityValue(\\'' + custId + '\\',\\'' + dayEntity.entity_id + '\\',\\'switch\\',' +
+                    '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
+                    dayLabels[i] + '</div>';
+            }
+        }
+        html += '</div></div>';
+    }
+
+    // --- Start Times ---
+    if (start_times.length > 0) {
+        const sorted = [...start_times].sort((a, b) => extractStartTimeNumber(a.entity_id) - extractStartTimeNumber(b.entity_id));
+        html += '<div class="schedule-section"><div class="schedule-section-label">Start Times</div><div class="start-times-grid">';
+        for (const st of sorted) {
+            const num = extractStartTimeNumber(st.entity_id);
+            const label = 'Start Time ' + (num < 99 ? num : '?');
+            const eid = st.entity_id;
+            // Use a safe ID for the input (replace dots and special chars)
+            const inputId = 'st_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
+            html += '<div class="tile">' +
+                '<div class="tile-name">' + esc(label) + '</div>' +
+                '<div class="tile-state">' + esc(st.state) + '</div>' +
+                '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
+                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM" style="width:100px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid +
+                '\\',\\'text\\',{value:document.getElementById(\\'' + inputId + '\\').value})">Set</button>' +
+                '</div></div>';
+        }
+        html += '</div></div>';
+    }
+
+    // --- Zone Settings (Enable + Run Duration paired by zone number) ---
+    if (zone_enables.length > 0 || run_durations.length > 0) {
+        html += '<div class="schedule-section"><div class="schedule-section-label">Zone Settings</div>';
+        const zoneMap = {};
+        for (const ze of zone_enables) {
+            const num = extractZoneNumber(ze.entity_id, 'enable_zone');
+            if (num !== null) {
+                if (!zoneMap[num]) zoneMap[num] = {};
+                zoneMap[num].enable = ze;
+            }
+        }
+        for (const rd of run_durations) {
+            const num = extractZoneNumber(rd.entity_id, 'zone');
+            if (num !== null) {
+                if (!zoneMap[num]) zoneMap[num] = {};
+                zoneMap[num].duration = rd;
+            }
+        }
+        const sortedZones = Object.keys(zoneMap).sort((a, b) => parseInt(a) - parseInt(b));
+
+        html += '<table class="zone-settings-table"><thead><tr>' +
+            '<th>Zone</th><th>Enabled</th><th>Run Duration</th></tr></thead><tbody>';
+        for (const zn of sortedZones) {
+            const { enable, duration } = zoneMap[zn];
+            html += '<tr><td><strong>Zone ' + esc(zn) + '</strong></td>';
+            if (enable) {
+                const isOn = enable.state === 'on';
+                html += '<td><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
+                    'onclick="setEntityValue(\\'' + custId + '\\',\\'' + enable.entity_id + '\\',\\'switch\\',' +
+                    '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
+                    (isOn ? 'Enabled' : 'Disabled') + '</button></td>';
+            } else {
+                html += '<td style="color:#95a5a6;">-</td>';
+            }
+            if (duration) {
+                const attrs = duration.attributes || {};
+                const unit = attrs.unit_of_measurement || 'min';
+                const eid = duration.entity_id;
+                const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
+                html += '<td><input type="number" id="' + inputId + '" value="' + esc(duration.state) + '" ' +
+                    'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
+                    'style="width:70px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;"> ' +
+                    esc(unit) + ' ' +
+                    '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid +
+                    '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button></td>';
+            } else {
+                html += '<td style="color:#95a5a6;">-</td>';
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+    }
+
+    // --- System Controls ---
+    if (system_controls.length > 0) {
+        html += '<div class="schedule-section"><div class="schedule-section-label">System Controls</div><div class="system-controls-row">';
+        for (const sc of system_controls) {
+            html += renderControlTile(custId, sc);
+        }
+        html += '</div></div>';
+    }
+
+    el.innerHTML = html;
 }
 
 function renderControlTile(custId, e) {
@@ -825,66 +980,6 @@ async function setEntityValue(custId, entityId, domain, bodyObj) {
         });
         showToast('Updated ' + entityId.split('.').pop());
         setTimeout(() => loadDetailControls(custId), 1000);
-    } catch (e) { showToast(e.message, 'error'); }
-}
-
-// --- Detail: Schedule ---
-async function loadDetailSchedule(id) {
-    const el = document.getElementById('detailSchedule');
-    try {
-        const data = await api('/customers/' + id + '/schedule');
-        const programs = data.programs || [];
-        if (programs.length === 0) { el.innerHTML = '<div class="empty-state"><p>No schedules configured</p></div>'; return; }
-        el.innerHTML = programs.map(p => `
-            <div class="schedule-program">
-                <div class="schedule-program-header">
-                    <span class="schedule-program-name">${esc(p.name || p.program_id)}</span>
-                    <div style="display:flex;gap:6px;align-items:center;">
-                        <span class="schedule-program-enabled ${p.enabled ? 'yes' : 'no'}">${p.enabled ? 'Enabled' : 'Disabled'}</span>
-                        <button class="btn btn-danger btn-sm" onclick="deleteProgram('${id}','${esc(p.program_id)}','${esc(p.name || p.program_id)}')">Delete</button>
-                    </div>
-                </div>
-                <div class="schedule-details">
-                    ${p.days ? 'Days: ' + esc(p.days.join(', ')) : ''}
-                    ${p.start_time ? ' &middot; Start: ' + esc(p.start_time) : ''}
-                    ${p.zones ? ' &middot; ' + p.zones.length + ' zone(s): ' + p.zones.map(z => esc(z.zone_id) + ' (' + z.duration_minutes + 'min)').join(', ') : ''}
-                </div>
-            </div>`).join('');
-    } catch (e) {
-        el.innerHTML = '<div style="color:#e74c3c;">Failed to load schedule: ' + esc(e.message) + '</div>';
-    }
-}
-
-async function deleteProgram(custId, programId, programName) {
-    if (!confirm('Delete schedule program "' + programName + '"?')) return;
-    try {
-        await api('/customers/' + custId + '/schedule/program/' + programId, { method: 'DELETE' });
-        showToast('Program deleted');
-        setTimeout(() => loadDetailSchedule(custId), 500);
-    } catch (e) { showToast(e.message, 'error'); }
-}
-
-// --- Detail: Rain Delay ---
-async function setRainDelay() {
-    if (!currentCustomerId) return;
-    const hours = parseInt(document.getElementById('rainDelayHours').value);
-    if (!hours || hours < 1 || hours > 168) { showToast('Enter hours between 1 and 168', 'error'); return; }
-    try {
-        await api('/customers/' + currentCustomerId + '/schedule/rain_delay', {
-            method: 'POST',
-            body: JSON.stringify({ hours }),
-        });
-        showToast('Rain delay set for ' + hours + ' hours');
-        setTimeout(() => loadDetailStatus(currentCustomerId), 1000);
-    } catch (e) { showToast(e.message, 'error'); }
-}
-
-async function cancelRainDelay() {
-    if (!currentCustomerId) return;
-    try {
-        await api('/customers/' + currentCustomerId + '/schedule/rain_delay', { method: 'DELETE' });
-        showToast('Rain delay cancelled');
-        setTimeout(() => loadDetailStatus(currentCustomerId), 1000);
     } catch (e) { showToast(e.message, 'error'); }
 }
 

@@ -147,6 +147,10 @@ async def list_entities(request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
+    print(f"[ENTITIES] list_entities called: device={config.irrigation_device_id or '(none)'}, "
+          f"allowed_control_entities={len(config.allowed_control_entities)} "
+          f"({config.allowed_control_entities[:5]}{'...' if len(config.allowed_control_entities) > 5 else ''})")
+
     states = await ha_client.get_entities_by_ids(config.allowed_control_entities)
 
     entities = []

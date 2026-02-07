@@ -82,6 +82,20 @@ class Config:
                 )
             )
 
+        # Auto-upgrade management company keys with any new permissions
+        _MGMT_KEY_NAME = "Management Company (Connection Key)"
+        _FULL_MGMT_PERMS = {
+            "zones.read", "zones.control", "schedule.read",
+            "schedule.write", "sensors.read", "entities.read",
+            "entities.control", "history.read", "system.control",
+        }
+        for api_key in config.api_keys:
+            if api_key.name == _MGMT_KEY_NAME:
+                missing = _FULL_MGMT_PERMS - set(api_key.permissions)
+                if missing:
+                    api_key.permissions = list(_FULL_MGMT_PERMS)
+                    print(f"[CONFIG] Auto-upgraded management key permissions: added {missing}")
+
         config.mode = options.get("mode", config.mode)
         config.homeowner_url = options.get("homeowner_url", config.homeowner_url)
         config.homeowner_label = options.get("homeowner_label", config.homeowner_label)
@@ -104,32 +118,71 @@ class Config:
 
         return config
 
-    async def resolve_device_entities(self):
-        """Resolve the allowed entity lists from the selected device."""
+    async def resolve_device_entities(self, retry_on_empty: bool = False):
+        """Resolve the allowed entity lists from the selected device.
+
+        Args:
+            retry_on_empty: If True and the initial resolution returns 0 total
+                entities, retry up to 3 times with a delay. This handles the
+                case where the add-on starts before HA has fully loaded entities
+                (e.g., ESPHome devices still connecting).
+        """
         if not self.irrigation_device_id:
             self.allowed_zone_entities = []
             self.allowed_sensor_entities = []
             self.allowed_control_entities = []
             return
 
+        import asyncio
         import ha_client
 
-        try:
-            result = await ha_client.get_device_entities(self.irrigation_device_id)
-            self.allowed_zone_entities = [
-                e["entity_id"] for e in result.get("zones", [])
-            ]
-            self.allowed_sensor_entities = [
-                e["entity_id"] for e in result.get("sensors", [])
-            ]
-            self.allowed_control_entities = [
-                e["entity_id"] for e in result.get("other", [])
-            ]
-        except Exception as e:
-            print(f"[CONFIG] Failed to resolve device entities: {e}")
-            self.allowed_zone_entities = []
-            self.allowed_sensor_entities = []
-            self.allowed_control_entities = []
+        max_attempts = 4 if retry_on_empty else 1
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                result = await ha_client.get_device_entities(self.irrigation_device_id)
+                self.allowed_zone_entities = [
+                    e["entity_id"] for e in result.get("zones", [])
+                ]
+                self.allowed_sensor_entities = [
+                    e["entity_id"] for e in result.get("sensors", [])
+                ]
+                self.allowed_control_entities = [
+                    e["entity_id"] for e in result.get("other", [])
+                ]
+
+                total = (len(self.allowed_zone_entities)
+                         + len(self.allowed_sensor_entities)
+                         + len(self.allowed_control_entities))
+
+                print(f"[CONFIG] resolve_device_entities (attempt {attempt}/{max_attempts}): "
+                      f"zones={len(self.allowed_zone_entities)}, "
+                      f"sensors={len(self.allowed_sensor_entities)}, "
+                      f"controls={len(self.allowed_control_entities)}")
+                if self.allowed_control_entities:
+                    print(f"[CONFIG]   Control entities: {self.allowed_control_entities}")
+
+                # If we got entities, we're done
+                if total > 0:
+                    return
+
+                # If no entities found and retrying is enabled, wait and try again
+                if retry_on_empty and attempt < max_attempts:
+                    delay = attempt * 10  # 10s, 20s, 30s
+                    print(f"[CONFIG]   No entities found — HA may still be loading. "
+                          f"Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+
+            except Exception as e:
+                print(f"[CONFIG] Failed to resolve device entities (attempt {attempt}): {e}")
+                if retry_on_empty and attempt < max_attempts:
+                    delay = attempt * 10
+                    print(f"[CONFIG]   Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    self.allowed_zone_entities = []
+                    self.allowed_sensor_entities = []
+                    self.allowed_control_entities = []
 
 
 # Global config instance
@@ -143,10 +196,13 @@ async def async_initialize() -> Config:
     of mode. The homeowner API endpoints (/api/zones, /api/sensors, etc.)
     are always active and may be called via the Nabu Casa proxy even when
     the UI is in management mode.
+
+    Uses retry_on_empty=True at startup because the add-on may start before
+    HA has fully loaded all entities (e.g., ESPHome devices still connecting).
     """
     global _config
     _config = Config.load()
-    await _config.resolve_device_entities()
+    await _config.resolve_device_entities(retry_on_empty=True)
     return _config
 
 

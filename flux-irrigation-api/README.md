@@ -58,8 +58,8 @@ api_keys:
     permissions:
       - zones.read
       - zones.control
-      - schedule.read
-      - schedule.write
+      - entities.read
+      - entities.write
       - sensors.read
       - history.read
       - system.control
@@ -100,15 +100,15 @@ The connection key encodes your external API URL and an auto-generated API key. 
 | GET | `/api/sensors` | sensors.read | All sensor readings + system health |
 | GET | `/api/sensors/{sensor_id}` | sensors.read | Single sensor reading |
 
-### Schedule
+### Device Control Entities
 | Method | Endpoint | Permission | Description |
 |--------|----------|------------|-------------|
-| GET | `/api/schedule` | schedule.read | Get current schedule programs |
-| PUT | `/api/schedule` | schedule.write | Replace all schedule programs |
-| POST | `/api/schedule/program` | schedule.write | Add a new program |
-| DELETE | `/api/schedule/program/{id}` | schedule.write | Delete a program |
-| POST | `/api/schedule/rain_delay` | system.control | Set rain delay (hours) |
-| DELETE | `/api/schedule/rain_delay` | system.control | Cancel rain delay |
+| GET | `/api/entities` | entities.read | All device control entities (schedule, switches, numbers, etc.) |
+| POST | `/api/entities/{entity_id}/set` | entities.write | Set an entity value |
+
+> **Note:** Schedule configuration (day toggles, start times, zone enables, run durations) is managed
+> through the device's ESPHome entities via the `/api/entities` endpoint. The management dashboard
+> provides a dedicated Schedule UI that classifies and displays these entities with purpose-built controls.
 
 ### History
 | Method | Endpoint | Permission | Description |

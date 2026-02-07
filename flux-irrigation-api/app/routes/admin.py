@@ -117,6 +117,7 @@ async def get_settings():
         "irrigation_device_id": options.get("irrigation_device_id", ""),
         "allowed_zone_entities": config.allowed_zone_entities,
         "allowed_sensor_entities": config.allowed_sensor_entities,
+        "allowed_control_entities": config.allowed_control_entities,
         "rate_limit_per_minute": options.get("rate_limit_per_minute", 60),
         "log_retention_days": options.get("log_retention_days", 30),
         "enable_audit_log": options.get("enable_audit_log", True),
@@ -275,6 +276,7 @@ async def select_device(body: DeviceSelect):
         "other": entities.get("other", []),
         "allowed_zone_entities": config.allowed_zone_entities,
         "allowed_sensor_entities": config.allowed_sensor_entities,
+        "allowed_control_entities": config.allowed_control_entities,
     }
 
 
@@ -319,6 +321,7 @@ async def debug_device_entities():
         "mode": config.mode,
         "allowed_zone_entities": config.allowed_zone_entities,
         "allowed_sensor_entities": config.allowed_sensor_entities,
+        "allowed_control_entities": config.allowed_control_entities,
     }
 
     if not config.irrigation_device_id:
@@ -460,10 +463,19 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     existing_keys = options.get("api_keys", [])
     mgmt_key_name = "Management Company (Connection Key)"
     mgmt_key = None
+    mgmt_key_entry = None
+
+    # Full permission set for management company keys
+    full_mgmt_permissions = [
+        "zones.read", "zones.control", "schedule.read",
+        "schedule.write", "sensors.read", "entities.read",
+        "entities.control", "history.read", "system.control",
+    ]
 
     for key_entry in existing_keys:
         if key_entry.get("name") == mgmt_key_name:
             mgmt_key = key_entry["key"]
+            mgmt_key_entry = key_entry
             break
 
     if not mgmt_key:
@@ -471,13 +483,18 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         existing_keys.append({
             "key": mgmt_key,
             "name": mgmt_key_name,
-            "permissions": [
-                "zones.read", "zones.control", "schedule.read",
-                "schedule.write", "sensors.read", "entities.read",
-                "entities.control", "history.read", "system.control",
-            ],
+            "permissions": full_mgmt_permissions,
         })
         options["api_keys"] = existing_keys
+    else:
+        # Upgrade existing key permissions if any are missing
+        current_perms = set(mgmt_key_entry.get("permissions", []))
+        needed_perms = set(full_mgmt_permissions)
+        missing = needed_perms - current_perms
+        if missing:
+            mgmt_key_entry["permissions"] = full_mgmt_permissions
+            options["api_keys"] = existing_keys
+            print(f"[ADMIN] Upgraded management key permissions: added {missing}")
 
     await _save_options(options)
 
