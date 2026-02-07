@@ -1027,9 +1027,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             .header-nav a, .header-nav span, .header-nav button { font-size: 11px !important; padding: 4px 8px !important; }
             .container { padding: 12px; }
             .permissions-grid { grid-template-columns: 1fr 1fr; }
-            .conn-mode-row { flex-direction: column !important; gap: 8px !important; }
-            .conn-mode-card { padding: 10px 12px !important; flex: none !important; width: 100% !important; box-sizing: border-box; }
-            .conn-mode-card > div { min-width: 0; }
+            .conn-mode-grid { grid-template-columns: 1fr !important; }
             .form-group input[type="text"], .form-group input[type="password"] { font-size: 13px; }
         }
     </style>
@@ -1138,20 +1136,17 @@ ADMIN_HTML = """<!DOCTYPE html>
             <!-- Connection Mode Selection -->
             <div class="form-group">
                 <label>Connection Method</label>
-                <div class="conn-mode-row" style="display:flex;gap:12px;margin-bottom:8px;">
-                    <label class="conn-mode-card" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:14px;padding:10px 16px;border:2px solid #ddd;border-radius:8px;flex:1;min-width:0;overflow:hidden;" id="modeNabuLabel">
-                        <input type="radio" name="connMode" value="nabu_casa" checked onchange="toggleConnectionMode()" style="margin-top:3px;flex-shrink:0;">
-                        <div style="min-width:0;">
-                            <strong>Nabu Casa</strong> <span style="color:#27ae60;font-size:12px;">(Recommended)</span><br>
-                            <span style="font-size:12px;color:#888;">Works with your existing Nabu Casa subscription. No extra setup needed.</span>
-                        </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;" class="conn-mode-grid">
+                    <label style="display:block;cursor:pointer;padding:12px;border:2px solid #ddd;border-radius:8px;" id="modeNabuLabel">
+                        <input type="radio" name="connMode" value="nabu_casa" checked onchange="toggleConnectionMode()">
+                        <strong style="font-size:14px;">Nabu Casa</strong>
+                        <span style="color:#27ae60;font-size:11px;"> (Recommended)</span>
+                        <div style="font-size:12px;color:#888;margin-top:4px;">Works with your existing Nabu Casa subscription. No extra setup needed.</div>
                     </label>
-                    <label class="conn-mode-card" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:14px;padding:10px 16px;border:2px solid #ddd;border-radius:8px;flex:1;min-width:0;overflow:hidden;" id="modeDirectLabel">
-                        <input type="radio" name="connMode" value="direct" onchange="toggleConnectionMode()" style="margin-top:3px;flex-shrink:0;">
-                        <div style="min-width:0;">
-                            <strong>Direct Connection</strong><br>
-                            <span style="font-size:12px;color:#888;">Requires port forwarding, Cloudflare Tunnel, or VPN.</span>
-                        </div>
+                    <label style="display:block;cursor:pointer;padding:12px;border:2px solid #ddd;border-radius:8px;" id="modeDirectLabel">
+                        <input type="radio" name="connMode" value="direct" onchange="toggleConnectionMode()">
+                        <strong style="font-size:14px;">Direct Connection</strong>
+                        <div style="font-size:12px;color:#888;margin-top:4px;">Requires port forwarding, Cloudflare Tunnel, or VPN.</div>
                     </label>
                 </div>
             </div>
