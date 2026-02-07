@@ -23,6 +23,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Live Contact Sync** — Homeowner name, phone, and address are synced to the management dashboard automatically on every health check, even if added after the connection key was generated
 - **First Name / Last Name Fields** — Added homeowner contact name fields that flow through the connection key to the management dashboard; displayed on property cards and detail views
 - **Phone Number Field** — Homeowner phone number included in connection key and displayed on the management dashboard with click-to-call
+- **Update Connection Key** — Management companies can update a customer's connection key without losing notes, aliases, or other metadata via a dedicated button on property cards
+- **Connection Key Regeneration Lock** — The Generate Connection Key button is locked when an active key exists, requiring an explicit unlock + confirmation before regenerating (prevents accidental invalidation of the current key)
 - **Connection Key Sharing** — Email button and QR code generation for easy connection key delivery
 - **Entity Auto-Refresh** — Background task runs every 5 minutes to detect newly enabled/disabled entities in Home Assistant without requiring an add-on restart
 - **Customer Search & Filtering** — Search properties by name, contact, address, phone, or notes; filter by status (online, offline, revoked)
@@ -42,6 +44,9 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 - Phone number not visible on management dashboard even when set in connection key
 - Zone 5 (and other disabled entities) not appearing — entities with `disabled_by` set are now properly filtered, and the auto-refresh task picks up newly enabled entities automatically
+- Connection key regeneration after revoke no longer silently fails — fixed schema validation, stale API key reuse, and HA token corruption issues that prevented the revoke → regenerate → reconnect flow from working
+- Management dashboard no longer incorrectly shows "Access Revoked" when the API key is simply stale — only the explicit revoked flag from the homeowner triggers revoked status
+- HA Long-Lived Access Token validation prevents generating broken Nabu Casa connection keys when the token is missing or corrupted
 
 ---
 

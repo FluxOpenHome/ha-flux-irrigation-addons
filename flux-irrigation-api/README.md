@@ -123,6 +123,8 @@ On the Configuration page, in the **Connection Key for Management Company** sect
 
 > **Tip:** You can send the connection key via the **Email** button or display it as a **QR code** for easy scanning.
 
+> **Note:** Once a connection key has been generated, the Generate button is locked to prevent accidental regeneration. To generate a new key (which invalidates the old one), click **Unlock to Regenerate** and confirm.
+
 ### Step 6: Set Up Weather-Based Control (Optional)
 
 See [Weather-Based Irrigation Control](#weather-based-irrigation-control) below for full details. Quick setup:
@@ -156,7 +158,7 @@ You can disconnect a management company at any time from the Configuration page:
 1. Enter your URL again on the Configuration page (all other fields are still filled in)
 2. Click **Generate Connection Key** — a new API key will be created automatically
 3. Send the new connection key to your management company
-4. On the management side, they should remove the old property and add the new connection key
+4. On the management side, they can click the **Update Key** button on the existing property card and paste the new key — all notes, aliases, and metadata are preserved
 
 ---
 
@@ -170,6 +172,8 @@ You can disconnect a management company at any time from the Configuration page:
 
 The management dashboard automatically checks connectivity to all properties every 5 minutes and shows online/offline status.
 
+**Updating a connection key:** If a homeowner regenerates their connection key, you don't need to delete and re-add the property. Click the **Update Key** button on the property card, paste the new key, and all your notes, aliases, and metadata are preserved.
+
 ---
 
 ## Features
@@ -179,6 +183,8 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Weather-Based Control** — 9 configurable weather rules that automatically pause, reduce, or increase irrigation based on real-time conditions and forecasts
 - **Dual-mode operation** — Same add-on works for homeowners and management companies
 - **Connection keys** — Simple encoded key shares the API URL and credentials for easy setup (send via copy, email, or QR code)
+- **Connection key regeneration lock** — The Generate button is locked when an active key exists, requiring an explicit unlock to prevent accidental invalidation
+- **Update connection key** — Management companies can swap a customer's connection key without losing notes, aliases, or metadata
 - **Revoke access** — Homeowners can instantly revoke management company access with one click, with a confirmation dialog to prevent accidents
 - **Live contact sync** — Homeowner name, phone, and address are synced to the management dashboard automatically on every health check, even if added after the connection key was generated
 - **Scoped access** — Only irrigation zones and sensors are exposed — no access to lights, locks, cameras, or any other HA entities

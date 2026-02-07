@@ -1846,9 +1846,28 @@ ADMIN_HTML = """<!DOCTYPE html>
                     document.getElementById('zoneCountInfo').style.display = 'block';
                 }
                 showToast('Connection key generated' + (mode === 'nabu_casa' ? ' (Nabu Casa mode)' : ''));
+                // Re-lock the generate button now that a key exists
+                lockGenerateKey();
+                document.getElementById('revokeSection').style.display = 'block';
                 loadSettings();
             }
         } catch(e) { showToast('Failed to generate key', 'error'); }
+    }
+
+    function lockGenerateKey() {
+        document.getElementById('generateKeyUnlocked').style.display = 'none';
+        document.getElementById('generateKeyLocked').style.display = 'block';
+        document.getElementById('generateKeyConfirm').style.display = 'none';
+    }
+    function unlockGenerateKey() {
+        document.getElementById('generateKeyUnlocked').style.display = 'none';
+        document.getElementById('generateKeyLocked').style.display = 'none';
+        document.getElementById('generateKeyConfirm').style.display = 'block';
+    }
+    function showUnlockedGenerate() {
+        document.getElementById('generateKeyUnlocked').style.display = 'block';
+        document.getElementById('generateKeyLocked').style.display = 'none';
+        document.getElementById('generateKeyConfirm').style.display = 'none';
     }
 
     function copyConnectionKey() {
@@ -2005,6 +2024,8 @@ ADMIN_HTML = """<!DOCTYPE html>
                 // Keep HA token and other settings so they don't have to re-enter them
                 document.getElementById('homeownerUrl').value = '';
                 document.getElementById('homeownerUrlDirect').value = '';
+                // Unlock generate button — no active key to protect
+                showUnlockedGenerate();
                 loadSettings();
                 loadConnectionKey();
             } else {
