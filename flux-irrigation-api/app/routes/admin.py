@@ -473,8 +473,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
             "name": mgmt_key_name,
             "permissions": [
                 "zones.read", "zones.control", "schedule.read",
-                "schedule.write", "sensors.read", "history.read",
-                "system.control",
+                "schedule.write", "sensors.read", "entities.read",
+                "entities.control", "history.read", "system.control",
             ],
         })
         options["api_keys"] = existing_keys

@@ -267,6 +267,42 @@ async def get_customer_sensors(customer_id: str):
     return data
 
 
+@router.get(
+    "/api/customers/{customer_id}/entities",
+    summary="Get customer device control entities",
+)
+async def get_customer_entities(customer_id: str):
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/api/entities"
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/entities/{entity_id:path}/set",
+    summary="Set a customer entity value",
+)
+async def set_customer_entity(customer_id: str, entity_id: str, request: Request):
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", f"/api/entities/{entity_id}/set", json_body=body
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
 @router.get("/api/customers/{customer_id}/schedule", summary="Get customer schedule")
 async def get_customer_schedule(customer_id: str):
     _require_management_mode()

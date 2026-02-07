@@ -234,6 +234,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             </div>
         </div>
 
+        <!-- Device Controls Card -->
+        <div class="card">
+            <div class="card-header"><h2>Device Controls</h2></div>
+            <div class="card-body" id="detailControls">
+                <div class="loading">Loading controls...</div>
+            </div>
+        </div>
+
         <!-- Schedule & Rain Delay Card -->
         <div class="card">
             <div class="card-header">
@@ -563,6 +571,7 @@ async function loadDetailData(id) {
     loadDetailStatus(id);  // also updates rain delay status and pause/resume button
     loadDetailZones(id);
     loadDetailSensors(id);
+    loadDetailControls(id);
     loadDetailSchedule(id);
     loadDetailHistory(id);
 }
@@ -619,7 +628,8 @@ async function loadDetailZones(id) {
     const el = document.getElementById('detailZones');
     try {
         const data = await api('/customers/' + id + '/zones');
-        const zones = data.zones || [];
+        // /api/zones returns a bare list [...], not {zones: [...]}
+        const zones = Array.isArray(data) ? data : (data.zones || []);
         if (zones.length === 0) { el.innerHTML = '<div class="empty-state"><p>No zones found</p></div>'; return; }
         el.innerHTML = '<div class="tile-grid">' + zones.map(z => {
             const zId = z.name || z.entity_id;
@@ -678,7 +688,8 @@ async function loadDetailSensors(id) {
     const el = document.getElementById('detailSensors');
     try {
         const data = await api('/customers/' + id + '/sensors');
-        const sensors = data.sensors || [];
+        // /api/sensors returns {sensors: [...], ...} but handle bare list too
+        const sensors = Array.isArray(data) ? data : (data.sensors || []);
         if (sensors.length === 0) { el.innerHTML = '<div class="empty-state"><p>No sensors found</p></div>'; return; }
         el.innerHTML = '<div class="tile-grid">' + sensors.map(s => `
             <div class="tile">
@@ -688,6 +699,133 @@ async function loadDetailSensors(id) {
     } catch (e) {
         el.innerHTML = '<div style="color:#e74c3c;">Failed to load sensors: ' + esc(e.message) + '</div>';
     }
+}
+
+// --- Detail: Device Controls ---
+async function loadDetailControls(id) {
+    const el = document.getElementById('detailControls');
+    try {
+        const data = await api('/customers/' + id + '/entities');
+        const entities = Array.isArray(data) ? data : (data.entities || []);
+        if (entities.length === 0) { el.innerHTML = '<div class="empty-state"><p>No device controls found</p></div>'; return; }
+
+        // Group entities by domain
+        const groups = {};
+        entities.forEach(e => {
+            const d = e.domain || 'unknown';
+            if (!groups[d]) groups[d] = [];
+            groups[d].push(e);
+        });
+
+        // Domain display names and sort order
+        const domainLabels = {
+            'switch': 'Switches', 'number': 'Numbers', 'select': 'Selects',
+            'button': 'Buttons', 'text': 'Text Inputs', 'light': 'Lights'
+        };
+        const domainOrder = ['switch', 'number', 'select', 'text', 'button', 'light'];
+        const sortedDomains = Object.keys(groups).sort((a, b) => {
+            const ai = domainOrder.indexOf(a); const bi = domainOrder.indexOf(b);
+            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        });
+
+        let html = '';
+        for (const domain of sortedDomains) {
+            const label = domainLabels[domain] || domain.charAt(0).toUpperCase() + domain.slice(1);
+            html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
+            html += '<div class="tile-grid">';
+            for (const e of groups[domain]) {
+                html += renderControlTile(id, e);
+            }
+            html += '</div></div>';
+        }
+        el.innerHTML = html;
+    } catch (e) {
+        el.innerHTML = '<div style="color:#e74c3c;">Failed to load controls: ' + esc(e.message) + '</div>';
+    }
+}
+
+function renderControlTile(custId, e) {
+    const name = esc(e.friendly_name || e.name || e.entity_id);
+    const eid = e.entity_id;
+    const domain = e.domain;
+    const state = e.state || 'unknown';
+    const attrs = e.attributes || {};
+
+    if (domain === 'switch' || domain === 'light') {
+        const isOn = state === 'on';
+        return '<div class="tile ' + (isOn ? 'active' : '') + '">' +
+            '<div class="tile-name">' + name + '</div>' +
+            '<div class="tile-state ' + (isOn ? 'on' : '') + '">' + (isOn ? 'On' : 'Off') + '</div>' +
+            '<div class="tile-actions">' +
+                (isOn
+                    ? '<button class="btn btn-secondary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'' + domain + '\\',{state:\\'off\\'})">Turn Off</button>'
+                    : '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'' + domain + '\\',{state:\\'on\\'})">Turn On</button>'
+                ) +
+            '</div></div>';
+    }
+
+    if (domain === 'number') {
+        const min = attrs.min !== undefined ? attrs.min : '';
+        const max = attrs.max !== undefined ? attrs.max : '';
+        const step = attrs.step || 1;
+        const unit = attrs.unit_of_measurement || '';
+        return '<div class="tile">' +
+            '<div class="tile-name">' + name + '</div>' +
+            '<div class="tile-state">' + esc(state) + (unit ? ' ' + esc(unit) : '') + '</div>' +
+            '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
+                '<input type="number" id="num_' + eid + '" value="' + esc(state) + '" min="' + min + '" max="' + max + '" step="' + step + '" style="width:80px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'num_' + eid + '\\').value)})">Set</button>' +
+            '</div></div>';
+    }
+
+    if (domain === 'select') {
+        const options = attrs.options || [];
+        const optionsHtml = options.map(o => '<option value="' + esc(o) + '"' + (o === state ? ' selected' : '') + '>' + esc(o) + '</option>').join('');
+        return '<div class="tile">' +
+            '<div class="tile-name">' + name + '</div>' +
+            '<div class="tile-state">' + esc(state) + '</div>' +
+            '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
+                '<select id="sel_' + eid + '" style="padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' + optionsHtml + '</select>' +
+                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'select\\',{option:document.getElementById(\\'sel_' + eid + '\\').value})">Set</button>' +
+            '</div></div>';
+    }
+
+    if (domain === 'button') {
+        return '<div class="tile">' +
+            '<div class="tile-name">' + name + '</div>' +
+            '<div class="tile-state">' + esc(state) + '</div>' +
+            '<div class="tile-actions">' +
+                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'button\\',{})">Press</button>' +
+            '</div></div>';
+    }
+
+    if (domain === 'text') {
+        return '<div class="tile">' +
+            '<div class="tile-name">' + name + '</div>' +
+            '<div class="tile-state">' + esc(state) + '</div>' +
+            '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
+                '<input type="text" id="txt_' + eid + '" value="' + esc(state) + '" style="width:120px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;">' +
+                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid + '\\',\\'text\\',{value:document.getElementById(\\'txt_' + eid + '\\').value})">Set</button>' +
+            '</div></div>';
+    }
+
+    // Fallback for unknown domains — read-only display
+    return '<div class="tile">' +
+        '<div class="tile-name">' + name + '</div>' +
+        '<div class="tile-state">' + esc(state) + '</div>' +
+        '<div style="font-size:11px;color:#95a5a6;margin-top:4px;">' + esc(domain) + '</div>' +
+        '</div>';
+}
+
+async function setEntityValue(custId, entityId, domain, bodyObj) {
+    try {
+        await api('/customers/' + custId + '/entities/' + entityId + '/set', {
+            method: 'POST',
+            body: JSON.stringify(bodyObj),
+        });
+        showToast('Updated ' + entityId.split('.').pop());
+        setTimeout(() => loadDetailControls(custId), 1000);
+    } catch (e) { showToast(e.message, 'error'); }
 }
 
 // --- Detail: Schedule ---

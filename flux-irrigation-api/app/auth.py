@@ -20,6 +20,8 @@ VALID_PERMISSIONS = {
     "schedule.read",    # View schedules
     "schedule.write",   # Modify schedules
     "sensors.read",     # Read sensor data
+    "entities.read",    # View device control entities (numbers, selects, switches, etc.)
+    "entities.control", # Set values on device control entities
     "history.read",     # View run history
     "system.control",   # Pause/resume system, rain delay
 }

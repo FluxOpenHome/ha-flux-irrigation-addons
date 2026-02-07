@@ -29,6 +29,7 @@ class Config:
     irrigation_device_id: str = ""
     allowed_zone_entities: list[str] = field(default_factory=list)
     allowed_sensor_entities: list[str] = field(default_factory=list)
+    allowed_control_entities: list[str] = field(default_factory=list)
     rate_limit_per_minute: int = 60
     log_retention_days: int = 30
     enable_audit_log: bool = True
@@ -108,6 +109,7 @@ class Config:
         if not self.irrigation_device_id:
             self.allowed_zone_entities = []
             self.allowed_sensor_entities = []
+            self.allowed_control_entities = []
             return
 
         import ha_client
@@ -120,10 +122,14 @@ class Config:
             self.allowed_sensor_entities = [
                 e["entity_id"] for e in result.get("sensors", [])
             ]
+            self.allowed_control_entities = [
+                e["entity_id"] for e in result.get("other", [])
+            ]
         except Exception as e:
             print(f"[CONFIG] Failed to resolve device entities: {e}")
             self.allowed_zone_entities = []
             self.allowed_sensor_entities = []
+            self.allowed_control_entities = []
 
 
 # Global config instance
@@ -163,5 +169,6 @@ async def reload_config() -> Config:
     _config = Config.load(prefer_file=True)
     await _config.resolve_device_entities()
     print(f"[CONFIG] Reloaded: mode={_config.mode}, device={_config.irrigation_device_id or '(none)'}, "
-          f"zones={len(_config.allowed_zone_entities)}, sensors={len(_config.allowed_sensor_entities)}")
+          f"zones={len(_config.allowed_zone_entities)}, sensors={len(_config.allowed_sensor_entities)}, "
+          f"controls={len(_config.allowed_control_entities)}")
     return _config
