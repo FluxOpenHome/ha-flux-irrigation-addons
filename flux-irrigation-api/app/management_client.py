@@ -184,7 +184,7 @@ async def _proxy_via_nabu_casa(
                 "error": "rest_command not found",
                 "detail": (
                     f"The rest_command.{service_name} service is not configured on the homeowner's HA. "
-                    "The homeowner needs to rebuild the Flux Irrigation add-on and then restart HA."
+                    "The homeowner needs to rebuild the Flux Open Home Irrigation Control add-on and then restart HA."
                 ),
             }
 
@@ -196,7 +196,7 @@ async def _proxy_via_nabu_casa(
                     "This usually means the service is not registered. "
                     "The homeowner needs to: (1) Ensure configuration.yaml has "
                     "'homeassistant: packages: !include_dir_named packages', "
-                    "(2) Rebuild the Flux Irrigation add-on (to regenerate the packages file), "
+                    "(2) Rebuild the Flux Open Home Irrigation Control add-on (to regenerate the packages file), "
                     "(3) Fully restart Home Assistant (not just reload)."
                 ),
             }
@@ -293,13 +293,13 @@ def _diagnose_error(status: int, response_data: dict, url: str) -> str:
         if port is None or port in (80, 443, 8123):
             return (
                 f"Got a plain 404 from {parsed.hostname} — this looks like Home Assistant's "
-                f"web server, not the Flux Irrigation API. The connection key URL must "
+                f"web server, not the Flux Open Home Irrigation Control API. The connection key URL must "
                 f"include port 8099 (e.g., http://{parsed.hostname}:8099). "
                 f"Port 8099 must also be forwarded on the homeowner's router."
             )
         return (
             f"Got a plain 404 from {url}. The server responded but doesn't have the "
-            f"Flux Irrigation API. Check that the add-on is running on the homeowner's HA instance."
+            f"Flux Open Home Irrigation Control API. Check that the add-on is running on the homeowner's HA instance."
         )
 
     # Detect JSON 404 from our own API (mode guard or wrong path)
@@ -384,7 +384,7 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
             "authenticated": False,
             "error": (
                 f"The server at {connection.url} responded, but it doesn't appear to be "
-                f"a Flux Irrigation API. Make sure the URL points to port 8099."
+                f"a Flux Open Home Irrigation Control API. Make sure the URL points to port 8099."
             ),
         }
 

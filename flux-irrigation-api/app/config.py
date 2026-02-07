@@ -1,5 +1,5 @@
 """
-Configuration management for the Flux Irrigation Management API.
+Configuration management for Flux Open Home Irrigation Control.
 Loads settings from the HA add-on options.
 """
 

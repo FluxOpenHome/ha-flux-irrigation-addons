@@ -10,7 +10,7 @@ MANAGEMENT_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Flux Irrigation - Management Dashboard</title>
+<title>Flux Open Home - Management Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
@@ -165,7 +165,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                     <div class="form-group">
                         <label>Connection Key</label>
                         <textarea id="addKey" placeholder="Paste the connection key from the homeowner..." oninput="previewKey()"></textarea>
-                        <p class="hint">The homeowner generates this key from their Flux Irrigation add-on.</p>
+                        <p class="hint">The homeowner generates this key from their Flux Open Home Irrigation Control add-on.</p>
                     </div>
                     <div id="keyPreview" class="key-preview">
                         <div class="label">Key decoded:</div>

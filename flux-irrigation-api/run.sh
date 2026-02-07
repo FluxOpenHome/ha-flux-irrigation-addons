@@ -1,10 +1,10 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Flux Open Home - Irrigation Management API
+# Flux Open Home Irrigation Control
 # Starts the FastAPI server for irrigation management access
 # ==============================================================================
 
-echo "[INFO] Starting Flux Irrigation Management API..."
+echo "[INFO] Starting Flux Open Home Irrigation Control..."
 echo "[INFO] SUPERVISOR_TOKEN is available (${#SUPERVISOR_TOKEN} chars)"
 
 # Load add-on options from the standard HA path

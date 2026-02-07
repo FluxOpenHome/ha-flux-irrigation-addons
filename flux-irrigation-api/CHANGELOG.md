@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Flux Irrigation Management API add-on are documented here.
+All notable changes to the Flux Open Home Irrigation Control add-on are documented here.
 
 ---
 

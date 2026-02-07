@@ -1,4 +1,4 @@
-# Flux Irrigation Management API
+# Flux Open Home Irrigation Control
 
 > **This add-on requires the Flux Open Home Irrigation Controller.**
 > Purchase yours at [www.fluxopenhome.com](https://www.fluxopenhome.com).
@@ -49,7 +49,7 @@ A Home Assistant add-on that provides dual-mode irrigation management for the Fl
 3. Click the **⋮** (three dots) menu → **Repositories**
 4. Paste: `https://github.com/FluxOpenHome/ha-flux-irrigation-addons`
 5. Click **Add → Close**
-6. Find **Flux Irrigation Management API** in the store and click **Install**
+6. Find **Flux Open Home Irrigation Control** in the store and click **Install**
 7. After installation, go to the add-on's **Configuration** tab
 8. Enable **Show in sidebar** if desired, then click **Start**
 
@@ -119,7 +119,7 @@ On the Configuration page, in the **Connection Key for Management Company** sect
 
 3. Click **Generate Connection Key**
 
-4. **Copy the connection key** and send it to your management company. They will paste this into their Flux Irrigation add-on to connect to your system.
+4. **Copy the connection key** and send it to your management company. They will paste this into their Flux Open Home Irrigation Control add-on to connect to your system.
 
 > **Tip:** You can send the connection key via the **Email** button or display it as a **QR code** for easy scanning.
 
@@ -274,7 +274,7 @@ After installing any weather integration:
 
 1. Go to **Settings → Devices & Services** and confirm your weather integration is loaded
 2. Go to **Developer Tools → States** and search for `weather.` — you should see your entity with attributes like `temperature`, `humidity`, `wind_speed`, and `forecast`
-3. In the Flux Irrigation **Configuration** page, your entity will appear in the **Weather Entity** dropdown
+3. In the Flux Open Home **Configuration** page, your entity will appear in the **Weather Entity** dropdown
 
 ### Weather Rules
 

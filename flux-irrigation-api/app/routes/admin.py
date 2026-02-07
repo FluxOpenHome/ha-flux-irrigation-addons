@@ -763,7 +763,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flux Irrigation API — Settings</title>
+    <title>Flux Open Home — Settings</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -1093,7 +1093,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         <div class="card-body">
             <p style="margin-bottom:16px; color:#666; font-size:14px;">
                 Generate a connection key to share with your irrigation management company.
-                They paste this key into their Flux Irrigation add-on to connect to your system.
+                They paste this key into their Flux Open Home Irrigation Control add-on to connect to your system.
             </p>
 
             <!-- Connection Mode Selection -->
@@ -1214,7 +1214,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             <div id="connectionKeyDisplay" class="new-key-display" style="display:none;">
                 <strong>Connection Key</strong>
                 <code id="connectionKeyValue" style="font-size:13px;"></code>
-                <p class="warning">Share this key with your management company. They paste it into their Flux Irrigation add-on.</p>
+                <p class="warning">Share this key with your management company. They paste it into their Flux Open Home Irrigation Control add-on.</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button class="btn btn-secondary btn-sm" onclick="copyConnectionKey()">&#128203; Copy to Clipboard</button>
                     <button class="btn btn-secondary btn-sm" onclick="emailConnectionKey()">&#9993; Email Key</button>
@@ -1802,13 +1802,13 @@ ADMIN_HTML = """<!DOCTYPE html>
         const key = document.getElementById('connectionKeyValue').textContent;
         if (!key) { showToast('No connection key to email', 'error'); return; }
         const label = document.getElementById('homeownerLabel').value.trim() || 'My Property';
-        const subject = encodeURIComponent(label + ' — Flux Irrigation Connection Key');
+        const subject = encodeURIComponent(label + ' — Flux Open Home Connection Key');
         const body = encodeURIComponent(
             'Hello,\\n\\n' +
             'Here is the connection key for "' + label + '":\\n\\n' +
             key + '\\n\\n' +
             'To connect:\\n' +
-            '1. Open your Flux Irrigation Management add-on\\n' +
+            '1. Open your Flux Open Home Irrigation Control add-on\\n' +
             '2. Click "+ Add Property"\\n' +
             '3. Paste this connection key\\n\\n' +
             'Thanks!'
