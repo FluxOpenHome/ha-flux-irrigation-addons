@@ -131,11 +131,16 @@ _config: Optional[Config] = None
 
 
 async def async_initialize() -> Config:
-    """Load config and resolve device entities. Call once at startup."""
+    """Load config and resolve device entities. Call once at startup.
+
+    Device entities are always resolved when a device ID is set, regardless
+    of mode. The homeowner API endpoints (/api/zones, /api/sensors, etc.)
+    are always active and may be called via the Nabu Casa proxy even when
+    the UI is in management mode.
+    """
     global _config
     _config = Config.load()
-    if _config.mode == "homeowner":
-        await _config.resolve_device_entities()
+    await _config.resolve_device_entities()
     return _config
 
 
@@ -151,10 +156,12 @@ async def reload_config() -> Config:
 
     Uses prefer_file=True so runtime changes (mode switch, device selection)
     are picked up from /data/options.json rather than the stale env var.
+    Device entities are always resolved when a device ID is set, regardless
+    of mode.
     """
     global _config
     _config = Config.load(prefer_file=True)
-    if _config.mode == "homeowner":
-        await _config.resolve_device_entities()
-    print(f"[CONFIG] Reloaded: mode={_config.mode}, device={_config.irrigation_device_id or '(none)'}")
+    await _config.resolve_device_entities()
+    print(f"[CONFIG] Reloaded: mode={_config.mode}, device={_config.irrigation_device_id or '(none)'}, "
+          f"zones={len(_config.allowed_zone_entities)}, sensors={len(_config.allowed_sensor_entities)}")
     return _config
