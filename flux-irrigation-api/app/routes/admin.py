@@ -1240,7 +1240,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         let html = '';
 
         if (zones.length > 0) {
-            html += '<div class="entity-list"><h4>Zones — switches & valves (' + zones.length + ')</h4>';
+            html += '<div class="entity-list"><h4>Zones (' + zones.length + ')</h4>';
             for (const z of zones) {
                 html += `<div class="entity-item"><span class="entity-id">${escHtml(z.entity_id)}</span><span class="entity-name">${escHtml(z.name || z.original_name || '')}</span></div>`;
             }

@@ -174,29 +174,86 @@ async def _get_entities_via_template() -> list[dict]:
             return []
 
 
-async def get_device_entities(device_id: str) -> dict:
-    """Get all entities belonging to a specific device, categorized by domain.
+import re
 
-    Zones can be switch.* or valve.* entities (irrigation controllers vary).
-    Sensors include sensor.* and binary_sensor.* entities.
-    All other entity types are included in the "other" list for full visibility.
+# Pattern to identify zone valve switches from ESPHome sprinkler component.
+# Matches: switch.{prefix}_zone_{number}  (e.g., switch.irrigation_system_zone_1)
+# Does NOT match: switch.{prefix}_enable_zone_{number} or other non-zone switches.
+_ZONE_VALVE_PATTERN = re.compile(r"^switch\..+_zone_\d+$")
+
+# Valve domain entities are always zones (non-ESPHome controllers)
+_VALVE_DOMAIN = "valve"
+
+# Sensor domains
+_SENSOR_DOMAINS = {"sensor", "binary_sensor", "text_sensor"}
+
+# Non-zone switch keywords — switches containing these are controls, not zones
+_NON_ZONE_SWITCH_KEYWORDS = {
+    "enable", "auto_advance", "start_stop", "resume",
+    "schedule", "monday", "tuesday", "wednesday", "thursday",
+    "friday", "saturday", "sunday", "restart", "rain_sensor",
+    "rain_delay", "12_hour", "time_format",
+}
+
+
+def _is_zone_entity(entity_id: str, name: str) -> bool:
+    """Determine if a switch/valve entity is an actual irrigation zone.
+
+    ESPHome sprinkler component creates:
+      - switch.*_zone_N  → actual zone valve controls (ZONE)
+      - switch.*_enable_zone_N  → zone enable toggles (NOT a zone)
+      - switch.*_start_stop_resume  → main switch (NOT a zone)
+      - switch.*_auto_advance  → auto advance (NOT a zone)
+      - switch.*_schedule_*  → schedule controls (NOT a zone)
+      - valve.*  → always a zone (non-ESPHome controllers)
+    """
+    domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+    # valve.* entities are always zones
+    if domain == _VALVE_DOMAIN:
+        return True
+
+    if domain != "switch":
+        return False
+
+    # Get the part after "switch."
+    suffix = entity_id.split(".", 1)[1] if "." in entity_id else entity_id
+
+    # Check for non-zone keywords in the entity_id
+    suffix_lower = suffix.lower()
+    for keyword in _NON_ZONE_SWITCH_KEYWORDS:
+        if keyword in suffix_lower:
+            return False
+
+    # Match the zone valve pattern: *_zone_N
+    if _ZONE_VALVE_PATTERN.match(entity_id):
+        return True
+
+    # Fallback: check the name for "Zone" without "Enable"
+    name_lower = (name or "").lower()
+    if "zone" in name_lower and "enable" not in name_lower:
+        return True
+
+    return False
+
+
+async def get_device_entities(device_id: str) -> dict:
+    """Get all entities belonging to a specific device, categorized intelligently.
+
+    Categories:
+      - zones: Actual irrigation zone valve switches (switch.*_zone_N or valve.*)
+      - sensors: Sensor readings (sensor.*, binary_sensor.*, text_sensor.*)
+      - other: Everything else (number.*, select.*, button.*, light.*, enable switches,
+               schedule switches, control switches, etc.)
 
     Returns:
         {
-            "zones": [{"entity_id": "switch.xxx", "domain": "switch", ...}, ...],
+            "zones": [{"entity_id": "switch.xxx_zone_1", "domain": "switch", ...}, ...],
             "sensors": [{"entity_id": "sensor.xxx", "domain": "sensor", ...}, ...],
             "other": [{"entity_id": "number.xxx", "domain": "number", ...}, ...],
         }
     """
     entities = await get_entity_registry()
-
-    # Domains that represent controllable irrigation zones
-    # ESPHome sprinkler component creates switch.* for valve controls and enable toggles
-    # valve.* is included for non-ESPHome controllers that use the valve domain
-    ZONE_DOMAINS = {"switch", "valve"}
-    # Domains that represent sensor readings
-    # text_sensor covers ESPHome text_sensor entities (Status, Time Remaining, Progress, etc.)
-    SENSOR_DOMAINS = {"sensor", "binary_sensor", "text_sensor"}
 
     zones = []
     sensors = []
@@ -211,34 +268,38 @@ async def get_device_entities(device_id: str) -> dict:
 
         eid = entity.get("entity_id", "")
         domain = eid.split(".")[0] if "." in eid else ""
+        name = entity.get("name") or entity.get("original_name", "")
         matched_count += 1
 
         entry = {
             "entity_id": eid,
             "original_name": entity.get("original_name", ""),
-            "name": entity.get("name") or entity.get("original_name", ""),
+            "name": name,
             "platform": entity.get("platform", ""),
             "domain": domain,
         }
 
-        if domain in ZONE_DOMAINS:
+        if _is_zone_entity(eid, name):
             zones.append(entry)
-        elif domain in SENSOR_DOMAINS:
+        elif domain in _SENSOR_DOMAINS:
             sensors.append(entry)
         else:
             other.append(entry)
 
     print(f"[HA_CLIENT] Device {device_id}: {matched_count} total entities, "
           f"{len(zones)} zones, {len(sensors)} sensors, {len(other)} other")
-    if matched_count > 0 and len(zones) == 0 and len(sensors) == 0:
-        # Log what domains we did find for debugging
-        all_domains = set()
-        for entity in entities:
-            if entity.get("device_id") == device_id and not entity.get("disabled_by"):
-                eid = entity.get("entity_id", "")
-                if "." in eid:
-                    all_domains.add(eid.split(".")[0])
-        print(f"[HA_CLIENT] Entity domains found on device: {all_domains}")
+    if matched_count > 0:
+        zone_ids = [z["entity_id"] for z in zones]
+        print(f"[HA_CLIENT]   Zones: {zone_ids}")
+    if matched_count > 0 and len(zones) == 0:
+        # Log what we found for debugging
+        all_switch_ids = [
+            e.get("entity_id", "") for e in entities
+            if e.get("device_id") == device_id
+            and not e.get("disabled_by")
+            and e.get("entity_id", "").startswith("switch.")
+        ]
+        print(f"[HA_CLIENT]   All switches on device: {all_switch_ids}")
 
     return {"zones": zones, "sensors": sensors, "other": other}
 
