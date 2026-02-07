@@ -169,9 +169,16 @@ async def get_device_sensors(device_id: str) -> list[dict]:
 
     Returns sensor entities with their current state, for the user
     to map as probe depth sensors (shallow/mid/deep).
+
+    Works even when the device is offline — entity registry entries persist
+    regardless of device connectivity. State may show as 'unavailable' or
+    'unknown' for offline devices.
     """
     entity_registry = await ha_client.get_entity_registry()
     all_states = await ha_client.get_all_states()
+
+    print(f"[MOISTURE] get_device_sensors: looking for device_id={device_id}, "
+          f"registry has {len(entity_registry)} entities, states has {len(all_states)} entries")
 
     # Build a lookup of entity_id → state data
     state_lookup = {}
@@ -179,9 +186,11 @@ async def get_device_sensors(device_id: str) -> list[dict]:
         state_lookup[s.get("entity_id", "")] = s
 
     sensors = []
+    matched_any = 0
     for entity in entity_registry:
         if entity.get("device_id") != device_id:
             continue
+        matched_any += 1
         if entity.get("disabled_by"):
             continue
 
@@ -194,17 +203,31 @@ async def get_device_sensors(device_id: str) -> list[dict]:
 
         state_data = state_lookup.get(eid, {})
         attrs = state_data.get("attributes", {})
-        friendly_name = attrs.get("friendly_name", entity.get("original_name", eid))
+        friendly_name = attrs.get(
+            "friendly_name",
+            entity.get("name") or entity.get("original_name", eid)
+        )
 
         sensors.append({
             "entity_id": eid,
             "friendly_name": friendly_name,
-            "state": state_data.get("state", "unknown"),
+            "state": state_data.get("state", "unavailable"),
             "unit_of_measurement": attrs.get("unit_of_measurement", ""),
             "device_class": attrs.get("device_class", ""),
             "last_updated": state_data.get("last_updated", ""),
             "original_name": entity.get("original_name", ""),
         })
+
+    print(f"[MOISTURE] get_device_sensors: {matched_any} total entities matched device, "
+          f"{len(sensors)} are sensors")
+    if matched_any == 0:
+        # Log some device IDs from the registry to help debug mismatches
+        sample_device_ids = set()
+        for e in entity_registry[:50]:
+            did = e.get("device_id", "")
+            if did:
+                sample_device_ids.add(did)
+        print(f"[MOISTURE] Sample device_ids in registry: {list(sample_device_ids)[:10]}")
 
     sensors.sort(key=lambda s: s["entity_id"])
     return sensors
