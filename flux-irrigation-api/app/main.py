@@ -246,6 +246,9 @@ async def _periodic_entity_refresh():
             old_sensors = set(config.allowed_sensor_entities)
             old_controls = set(config.allowed_control_entities)
 
+            print(f"[MAIN] Entity refresh running (current: {len(old_zones)} zones, "
+                  f"{len(old_sensors)} sensors, {len(old_controls)} controls)")
+
             await config.resolve_device_entities()
 
             new_zones = set(config.allowed_zone_entities)
@@ -273,6 +276,10 @@ async def _periodic_entity_refresh():
                     print(f"[MAIN]   + Controls added: {added_controls}")
                 if removed_controls:
                     print(f"[MAIN]   - Controls removed: {removed_controls}")
+                print(f"[MAIN] Entity refresh complete: {len(new_zones)} zones, "
+                      f"{len(new_sensors)} sensors, {len(new_controls)} controls")
+            else:
+                print(f"[MAIN] Entity refresh complete: no changes detected")
         except Exception as e:
             print(f"[MAIN] Entity refresh error: {e}")
 

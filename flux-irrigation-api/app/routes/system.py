@@ -50,11 +50,30 @@ class PauseResponse(BaseModel):
     summary="Health check (no auth required)",
 )
 async def health_check():
-    """Basic health check endpoint. No authentication required."""
+    """Basic health check endpoint. No authentication required.
+
+    Includes a 'revoked' flag so the management company can detect
+    that the homeowner explicitly revoked access — no auth needed
+    to read this, so it works even after the API key is deleted.
+    """
+    import json, os
     ha_connected = await ha_client.check_connection()
+
+    # Check if the homeowner has revoked management access
+    revoked = False
+    try:
+        options_path = "/data/options.json"
+        if os.path.exists(options_path):
+            with open(options_path, "r") as f:
+                options = json.load(f)
+            revoked = options.get("connection_revoked", False)
+    except Exception:
+        pass
+
     return {
         "status": "healthy" if ha_connected else "degraded",
         "ha_connected": ha_connected,
+        "revoked": revoked,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

@@ -312,22 +312,30 @@ def _diagnose_error(status: int, response_data: dict, url: str) -> str:
 async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
     """
     Test connectivity to a homeowner's system.
-    Phase 1: /api/system/health (no auth) to check reachability.
-    Phase 2: /api/system/status (with auth) to verify API key.
+    Phase 1: /api/system/health (no auth) — reachability + explicit revoked flag.
+    Phase 2: /api/system/status (with auth) — full system status.
     """
     print(f"[MGMT_CLIENT] Testing connection to {connection.url} (mode={connection.mode})")
 
-    # Phase 1: health check (no auth required for direct, but
-    # nabu_casa always needs HA token — so for nabu_casa we go straight to status)
     if connection.mode == "nabu_casa":
-        # For Nabu Casa, test with an authenticated call directly
+        # Nabu Casa: call health first (via proxy) to check explicit revoked flag
+        health_status, health_data = await proxy_request(
+            connection, "GET", "/api/system/health"
+        )
+        if health_status == 200 and isinstance(health_data, dict) and health_data.get("revoked"):
+            print(f"[MGMT_CLIENT] Homeowner explicitly revoked access (Nabu Casa)")
+            return {
+                "reachable": True,
+                "authenticated": False,
+                "revoked": True,
+                "error": "Management access was revoked by homeowner",
+            }
+
+        # Now try the authenticated status call for full data
         status, system_status = await proxy_request(
             connection, "GET", "/api/system/status"
         )
         if status == 401:
-            # Distinguish HA token rejection from API key rejection.
-            # If the error came from the inner API (through rest_command),
-            # it means HA connectivity works but the API key was deleted/revoked.
             error_str = _error_to_string(system_status)
             if "HA token rejected" in error_str:
                 return {
@@ -335,11 +343,12 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
                     "authenticated": False,
                     "error": "HA token rejected. The homeowner may need to generate a new Long-Lived Access Token.",
                 }
-            # Inner API key rejection — system is reachable via Nabu Casa but key is invalid
+            # API key rejected — treat as revoked
             return {
                 "reachable": True,
                 "authenticated": False,
-                "error": "API key rejected",
+                "revoked": True,
+                "error": "Management access was revoked by homeowner",
             }
         if status == 404:
             return {
@@ -360,7 +369,8 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
             "system_status": system_status,
         }
 
-    # Direct mode — original two-phase check
+    # Direct mode — two-phase check
+    # Phase 1: health check (no auth) — also carries the explicit revoked flag
     status, health = await proxy_request(connection, "GET", "/api/system/health")
     if status != 200:
         error_msg = _diagnose_error(status, health, connection.url)
@@ -378,6 +388,16 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
             ),
         }
 
+    # Check the explicit revoked flag from health response
+    if health.get("revoked"):
+        print(f"[MGMT_CLIENT] Homeowner explicitly revoked access (direct mode)")
+        return {
+            "reachable": True,
+            "authenticated": False,
+            "revoked": True,
+            "error": "Management access was revoked by homeowner",
+        }
+
     # Phase 2: authenticated status check
     status, system_status = await proxy_request(
         connection, "GET", "/api/system/status"
@@ -386,7 +406,8 @@ async def check_homeowner_connection(connection: ConnectionKeyData) -> dict:
         return {
             "reachable": True,
             "authenticated": False,
-            "error": "API key rejected",
+            "revoked": True,
+            "error": "Management access was revoked by homeowner",
         }
     if status == 403:
         return {

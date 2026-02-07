@@ -467,6 +467,9 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     options["homeowner_last_name"] = body.last_name
     options["homeowner_connection_mode"] = body.connection_mode
 
+    # Clear revoked flag — generating a new key means access is being restored
+    options["connection_revoked"] = False
+
     # Preserve existing HA token if not provided (UI sends empty when unchanged)
     effective_ha_token = body.ha_token.strip() if body.ha_token else ""
     if effective_ha_token:
@@ -641,6 +644,10 @@ async def revoke_management_access():
     # and the homeowner must generate a fresh one. Keep HA token and other
     # settings (name, address, etc.) so they don't have to re-enter them.
     options["homeowner_url"] = ""
+
+    # Set explicit revoked flag so the /api/system/health endpoint signals
+    # the management company immediately (no auth required to read this)
+    options["connection_revoked"] = True
 
     await _save_options(options)
 
