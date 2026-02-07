@@ -199,6 +199,12 @@ async def watch_zone_states():
 
             entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
 
+            # Build a set of entity IDs we received from HA for gap detection
+            received_ids = {e["entity_id"] for e in entities}
+            for expected_id in config.allowed_zone_entities:
+                if expected_id not in received_ids:
+                    print(f"[RUN_LOG] Warning: expected entity {expected_id} not returned by HA")
+
             for entity in entities:
                 entity_id = entity["entity_id"]
                 current_state = entity.get("state", "unknown")
@@ -227,8 +233,8 @@ async def watch_zone_states():
                         _zone_states[entity_id] = "off"
                         continue
 
-                # Detect transitions
-                if prev_state is not None and current_state != prev_state:
+                # Detect transitions — also log initial "on" state on first poll
+                if current_state != prev_state:
                     is_on = current_state in ("on", "open")
                     is_off = current_state in ("off", "closed")
 
@@ -236,28 +242,41 @@ async def watch_zone_states():
                         attrs = entity.get("attributes", {})
                         zone_name = attrs.get("friendly_name", entity_id)
 
-                        # Only log as "schedule" source if we don't already have
-                        # a recent entry (to avoid duplicating API-triggered events)
-                        recent = get_run_history(hours=1, zone_id=entity_id, limit=1)
-                        already_logged = False
-                        if recent:
-                            last_ts = recent[0].get("timestamp", "")
-                            last_state = recent[0].get("state", "")
-                            try:
-                                last_dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
-                                age = (datetime.now(timezone.utc) - last_dt).total_seconds()
-                                if age < 15 and last_state == current_state:
-                                    already_logged = True
-                            except (ValueError, TypeError):
-                                pass
-
-                        if not already_logged:
+                        if prev_state is None and is_on:
+                            # First poll and zone is already on — log it so we
+                            # don't silently miss runs that started before the
+                            # watcher (e.g., pump relay, firmware-triggered zones)
                             log_zone_event(
                                 entity_id=entity_id,
                                 state=current_state,
                                 source="schedule",
                                 zone_name=zone_name,
                             )
+                            print(f"[RUN_LOG] Initial on state detected: {entity_id} ({zone_name})")
+                        elif prev_state is not None:
+                            # Normal transition — only log as "schedule" source
+                            # if we don't already have a recent entry (to avoid
+                            # duplicating API-triggered events)
+                            recent = get_run_history(hours=1, zone_id=entity_id, limit=1)
+                            already_logged = False
+                            if recent:
+                                last_ts = recent[0].get("timestamp", "")
+                                last_state = recent[0].get("state", "")
+                                try:
+                                    last_dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+                                    age = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                                    if age < 15 and last_state == current_state:
+                                        already_logged = True
+                                except (ValueError, TypeError):
+                                    pass
+
+                            if not already_logged:
+                                log_zone_event(
+                                    entity_id=entity_id,
+                                    state=current_state,
+                                    source="schedule",
+                                    zone_name=zone_name,
+                                )
 
                 _zone_states[entity_id] = current_state
 
