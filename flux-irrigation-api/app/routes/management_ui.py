@@ -99,10 +99,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .system-controls-row { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Search/Filter Bar */
-.search-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-.search-bar input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+.search-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.search-bar input { flex: 1; min-width: 180px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
 .search-bar input:focus { outline: none; border-color: #1a7a4c; }
-.search-bar select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: white; }
+.search-bar select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; background: white; cursor: pointer; }
+.search-bar select:focus { outline: none; border-color: #1a7a4c; }
+.filter-count { font-size: 12px; color: #7f8c8d; white-space: nowrap; }
+.filter-count strong { color: #2c3e50; }
 .customer-address { font-size: 12px; color: #95a5a6; margin-bottom: 4px; }
 .customer-meta { display: flex; gap: 12px; font-size: 12px; color: #7f8c8d; flex-wrap: wrap; }
 
@@ -181,9 +184,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 </div>
 
                 <div class="search-bar" id="searchBar" style="display:none;">
-                    <input type="text" id="searchInput" placeholder="Search by name, address, city, state, or ZIP..." oninput="filterCustomers()">
+                    <input type="text" id="searchInput" placeholder="Search by name, address, or notes..." oninput="filterCustomers()">
                     <select id="filterState" onchange="filterCustomers()">
                         <option value="">All States</option>
+                    </select>
+                    <select id="filterCity" onchange="filterCustomers()">
+                        <option value="">All Cities</option>
+                    </select>
+                    <select id="filterZones" onchange="filterCustomers()">
+                        <option value="">All Zone Counts</option>
+                        <option value="1-4">1–4 zones</option>
+                        <option value="5-8">5–8 zones</option>
+                        <option value="9-12">9–12 zones</option>
+                        <option value="13+">13+ zones</option>
                     </select>
                     <select id="filterStatus" onchange="filterCustomers()">
                         <option value="">All Statuses</option>
@@ -191,6 +204,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                         <option value="offline">Offline</option>
                         <option value="unknown">Unknown</option>
                     </select>
+                    <select id="filterSystemStatus" onchange="filterCustomers()">
+                        <option value="">All System States</option>
+                        <option value="running">Running</option>
+                        <option value="idle">Idle</option>
+                        <option value="paused">Paused</option>
+                    </select>
+                    <select id="sortBy" onchange="filterCustomers()">
+                        <option value="name">Sort: Name</option>
+                        <option value="city">Sort: City</option>
+                        <option value="state">Sort: State</option>
+                        <option value="zones">Sort: Zones</option>
+                        <option value="status">Sort: Status</option>
+                        <option value="recent">Sort: Last Seen</option>
+                    </select>
+                    <span id="filterCount" class="filter-count"></span>
+                    <button id="clearFiltersBtn" class="btn btn-secondary btn-sm" onclick="clearAllFilters()" style="display:none;">Clear Filters</button>
                 </div>
 
                 <div id="customerGrid" class="customer-grid">
@@ -341,11 +370,8 @@ async function loadCustomers() {
         const data = await api('/customers');
         allCustomers = data.customers || [];
         populateStateFilter(allCustomers);
-        if (allCustomers.length > 2) {
-            document.getElementById('searchBar').style.display = 'flex';
-        } else {
-            document.getElementById('searchBar').style.display = 'none';
-        }
+        populateCityFilter(allCustomers);
+        document.getElementById('searchBar').style.display = allCustomers.length > 0 ? 'flex' : 'none';
         filterCustomers();
     } catch (e) {
         document.getElementById('customerGrid').innerHTML =
@@ -356,7 +382,7 @@ async function loadCustomers() {
 function renderCustomerGrid(customers) {
     const grid = document.getElementById('customerGrid');
     if (customers.length === 0) {
-        const isFiltered = document.getElementById('searchInput').value || document.getElementById('filterState').value || document.getElementById('filterStatus').value;
+        const isFiltered = document.getElementById('searchInput').value || document.getElementById('filterState').value || document.getElementById('filterCity').value || document.getElementById('filterZones').value || document.getElementById('filterStatus').value || document.getElementById('filterSystemStatus').value;
         grid.innerHTML = isFiltered
             ? '<div class="empty-state"><h3>No matching properties</h3><p>Try adjusting your search or filters.</p></div>'
             : '<div class="empty-state"><h3>No properties connected</h3><p>Click "+ Add Property" to connect a homeowner\\'s irrigation system.</p></div>';
@@ -415,10 +441,36 @@ function populateStateFilter(customers) {
     select.value = currentVal;
 }
 
+function populateCityFilter(customers, stateFilter) {
+    const select = document.getElementById('filterCity');
+    const currentVal = select.value;
+    let pool = customers;
+    if (stateFilter) pool = customers.filter(c => c.state === stateFilter);
+    const cities = [...new Set(pool.map(c => c.city).filter(Boolean))].sort();
+    select.innerHTML = '<option value="">All Cities</option>' + cities.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
+    // Keep selection if still valid, otherwise reset
+    if (cities.includes(currentVal)) { select.value = currentVal; } else { select.value = ''; }
+}
+
+function getSystemStatus(c) {
+    if (!c.last_status || !c.last_status.system_status) return '';
+    const s = c.last_status.system_status;
+    if (s.system_paused) return 'paused';
+    if (s.active_zones > 0) return 'running';
+    return 'idle';
+}
+
 function filterCustomers() {
     const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
     const stateFilter = document.getElementById('filterState').value;
+    // Re-populate cities based on selected state
+    populateCityFilter(allCustomers, stateFilter);
+    const cityFilter = document.getElementById('filterCity').value;
+    const zonesFilter = document.getElementById('filterZones').value;
     const statusFilter = document.getElementById('filterStatus').value;
+    const systemStatusFilter = document.getElementById('filterSystemStatus').value;
+    const sortBy = document.getElementById('sortBy').value;
+
     let filtered = allCustomers;
     if (search) {
         filtered = filtered.filter(c => {
@@ -429,10 +481,69 @@ function filterCustomers() {
     if (stateFilter) {
         filtered = filtered.filter(c => c.state === stateFilter);
     }
+    if (cityFilter) {
+        filtered = filtered.filter(c => c.city === cityFilter);
+    }
+    if (zonesFilter) {
+        filtered = filtered.filter(c => {
+            const z = c.zone_count || 0;
+            if (zonesFilter === '1-4') return z >= 1 && z <= 4;
+            if (zonesFilter === '5-8') return z >= 5 && z <= 8;
+            if (zonesFilter === '9-12') return z >= 9 && z <= 12;
+            if (zonesFilter === '13+') return z >= 13;
+            return true;
+        });
+    }
     if (statusFilter) {
         filtered = filtered.filter(c => getCustomerStatus(c) === statusFilter);
     }
+    if (systemStatusFilter) {
+        filtered = filtered.filter(c => getSystemStatus(c) === systemStatusFilter);
+    }
+
+    // Sort
+    filtered = [...filtered].sort((a, b) => {
+        if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
+        if (sortBy === 'city') return (a.city || '').localeCompare(b.city || '');
+        if (sortBy === 'state') {
+            const sc = (a.state || '').localeCompare(b.state || '');
+            return sc !== 0 ? sc : (a.city || '').localeCompare(b.city || '');
+        }
+        if (sortBy === 'zones') return (b.zone_count || 0) - (a.zone_count || 0);
+        if (sortBy === 'status') {
+            const order = { online: 0, offline: 1, unknown: 2 };
+            return (order[getCustomerStatus(a)] || 2) - (order[getCustomerStatus(b)] || 2);
+        }
+        if (sortBy === 'recent') {
+            return (b.last_seen_online || '').localeCompare(a.last_seen_online || '');
+        }
+        return 0;
+    });
+
+    // Update filter count and clear button
+    const hasFilters = search || stateFilter || cityFilter || zonesFilter || statusFilter || systemStatusFilter;
+    const countEl = document.getElementById('filterCount');
+    const clearBtn = document.getElementById('clearFiltersBtn');
+    if (hasFilters) {
+        countEl.innerHTML = '<strong>' + filtered.length + '</strong> of ' + allCustomers.length + ' properties';
+        clearBtn.style.display = '';
+    } else {
+        countEl.innerHTML = allCustomers.length + ' properties';
+        clearBtn.style.display = 'none';
+    }
+
     renderCustomerGrid(filtered);
+}
+
+function clearAllFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('filterState').value = '';
+    document.getElementById('filterCity').value = '';
+    document.getElementById('filterZones').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterSystemStatus').value = '';
+    document.getElementById('sortBy').value = 'name';
+    filterCustomers();
 }
 
 function getCustomerStatus(c) {
