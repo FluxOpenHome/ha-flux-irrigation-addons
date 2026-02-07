@@ -191,9 +191,12 @@ async def get_device_entities(device_id: str) -> dict:
     entities = await get_entity_registry()
 
     # Domains that represent controllable irrigation zones
+    # ESPHome sprinkler component creates switch.* for valve controls and enable toggles
+    # valve.* is included for non-ESPHome controllers that use the valve domain
     ZONE_DOMAINS = {"switch", "valve"}
     # Domains that represent sensor readings
-    SENSOR_DOMAINS = {"sensor", "binary_sensor"}
+    # text_sensor covers ESPHome text_sensor entities (Status, Time Remaining, Progress, etc.)
+    SENSOR_DOMAINS = {"sensor", "binary_sensor", "text_sensor"}
 
     zones = []
     sensors = []
