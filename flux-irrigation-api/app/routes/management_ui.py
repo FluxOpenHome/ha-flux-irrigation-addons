@@ -420,7 +420,11 @@ function getQuickStats(c) {
     const s = c.last_status.system_status;
     let parts = [];
     if (s.total_zones !== undefined) parts.push(`<span class="customer-stat"><strong>${s.total_zones}</strong> zones</span>`);
-    if (s.active_zones !== undefined && s.active_zones > 0) parts.push(`<span class="customer-stat"><strong>${s.active_zones}</strong> active</span>`);
+    if (s.active_zones > 0 && s.active_zone_name) {
+        const custAliases = c.zone_aliases || {};
+        const aName = custAliases[s.active_zone_entity_id] || s.active_zone_name;
+        parts.push(`<span class="customer-stat" style="color:#27ae60;"><strong>${esc(aName)}</strong> running</span>`);
+    }
     if (s.total_sensors !== undefined) parts.push(`<span class="customer-stat"><strong>${s.total_sensors}</strong> sensors</span>`);
     if (s.system_paused) parts.push('<span class="customer-stat" style="color:#e74c3c;">Paused</span>');
     return parts.join('') || '<span class="customer-stat">Connected</span>';
@@ -641,7 +645,7 @@ async function loadDetailStatus(id) {
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
             <div class="tile"><div class="tile-name">Connection</div><div class="tile-state ${s.ha_connected ? 'on' : ''}">${s.ha_connected ? 'Connected' : 'Disconnected'}</div></div>
             <div class="tile"><div class="tile-name">System</div><div class="tile-state ${s.system_paused ? '' : 'on'}">${s.system_paused ? 'Paused' : 'Active'}</div></div>
-            <div class="tile"><div class="tile-name">Zones</div><div class="tile-state">${s.active_zones || 0} / ${s.total_zones || 0} active</div></div>
+            <div class="tile"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
             <div class="tile"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
         </div>`;
@@ -1044,6 +1048,9 @@ function renderScheduleCard(custId, sched) {
         for (const zn of sortedZones) {
             const { enable, duration, mode } = zoneMap[zn];
             const zoneLabel = getZoneLabel(zn);
+            // Check if this zone is a Pump Start Relay or Master Valve (no run duration)
+            const modeVal = mode ? mode.state.toLowerCase() : '';
+            const isPumpOrMaster = /pump|master|relay/.test(modeVal);
             html += '<tr><td><strong>' + esc(zoneLabel) + '</strong></td>';
             if (hasMode) {
                 if (mode) {
@@ -1071,7 +1078,9 @@ function renderScheduleCard(custId, sched) {
             } else {
                 html += '<td style="color:#95a5a6;">-</td>';
             }
-            if (duration) {
+            if (isPumpOrMaster) {
+                html += '<td style="color:#95a5a6;font-style:italic;">Firmware controlled</td>';
+            } else if (duration) {
                 const attrs = duration.attributes || {};
                 const unit = attrs.unit_of_measurement || 'min';
                 const eid = duration.entity_id;

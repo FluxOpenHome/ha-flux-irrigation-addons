@@ -22,6 +22,8 @@ class SystemStatus(BaseModel):
     system_paused: bool
     total_zones: int
     active_zones: int
+    active_zone_entity_id: Optional[str] = None
+    active_zone_name: Optional[str] = None
     total_sensors: int
     rain_delay_active: bool
     rain_delay_until: Optional[str] = None
@@ -90,12 +92,23 @@ async def get_system_status(request: Request):
         client_ip=request.client.host if request.client else None,
     )
 
+    # Get the first active zone's info (only one can run at a time)
+    active_zone_eid = None
+    active_zone_name = None
+    if active_zones:
+        az = active_zones[0]
+        active_zone_eid = az.get("entity_id")
+        attrs = az.get("attributes", {})
+        active_zone_name = attrs.get("friendly_name") or active_zone_eid
+
     return SystemStatus(
         online=True,
         ha_connected=ha_connected,
         system_paused=schedule_data.get("system_paused", False),
         total_zones=len(zones),
         active_zones=len(active_zones),
+        active_zone_entity_id=active_zone_eid,
+        active_zone_name=active_zone_name,
         total_sensors=len(sensors),
         rain_delay_active=rain_delay_active,
         rain_delay_until=rain_delay_until if rain_delay_active else None,
