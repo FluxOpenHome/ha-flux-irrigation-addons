@@ -65,6 +65,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Fixed
 
+- **Dashboard flickering** — Weather and moisture probe cards no longer flicker on periodic refresh; data is cached and the DOM is only updated when values actually change
 - Run history "hours" parameter parsing error when the select dropdown value was empty — now uses `parseInt` with a fallback to 24 hours
 - Phone number not visible on management dashboard even when set in connection key
 - Zone 5 (and other disabled entities) not appearing — entities with `disabled_by` set are now properly filtered, and the auto-refresh task picks up newly enabled entities automatically

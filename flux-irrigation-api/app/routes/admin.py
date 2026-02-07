@@ -2279,31 +2279,45 @@ ADMIN_HTML = """<!DOCTYPE html>
 
             let html = '';
 
-            // Enable toggle + settings
+            // Enable toggle
             html += '<div style="margin-bottom:16px;">';
             html += '<label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" id="cfgMoistureEnabled" ' + (settings.enabled ? 'checked' : '') + '> Enable Moisture Probe Integration</label>';
             html += '<p style="font-size:12px;color:var(--text-muted);margin-top:4px;">When enabled, soil moisture data from Gophr probes adjusts irrigation durations automatically.</p>';
             html += '</div>';
 
-            // Stale threshold + depth weights
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px;">';
-            html += '<div><label style="font-size:12px;color:var(--text-muted);">Stale Threshold (min)</label>';
-            html += '<input type="number" id="cfgMoistureStale" value="' + (settings.stale_reading_threshold_minutes || 120) + '" min="5" max="1440" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);"></div>';
+            // Stale threshold
+            html += '<div style="margin-bottom:16px;">';
+            html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Stale Reading Threshold</label>';
+            html += '<div style="display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;">';
+            html += '<input type="number" id="cfgMoistureStale" value="' + (settings.stale_reading_threshold_minutes || 120) + '" min="5" max="1440" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;">';
+            html += '<span style="font-size:12px;color:var(--text-muted);">minutes — readings older than this are ignored</span>';
+            html += '</div></div>';
+
+            // Depth weights
             const dw = settings.depth_weights || {shallow: 0.2, mid: 0.5, deep: 0.3};
+            html += '<div style="margin-bottom:16px;">';
+            html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Depth Weights</label>';
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
             for (const d of ['shallow', 'mid', 'deep']) {
-                html += '<div><label style="font-size:12px;color:var(--text-muted);">' + d.charAt(0).toUpperCase() + d.slice(1) + ' Weight</label>';
-                html += '<input type="number" id="cfgMoistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);"></div>';
+                html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + d.charAt(0).toUpperCase() + d.slice(1) + '</label>';
+                html += '<input type="number" id="cfgMoistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
             }
-            html += '</div>';
+            html += '</div></div>';
 
             // Default thresholds
             const dt = settings.default_thresholds || {};
             html += '<div style="margin-bottom:16px;">';
-            html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;">Default Thresholds (%)</label>';
-            html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">';
-            for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry'], ['max_increase_percent','Max +'], ['max_decrease_percent','Max -']]) {
-                html += '<div><label style="font-size:11px;color:var(--text-muted);">' + label + '</label>';
-                html += '<input type="number" id="cfgMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);"></div>';
+            html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Default Thresholds (%)</label>';
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
+            for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry']]) {
+                html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
+                html += '<input type="number" id="cfgMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
+            }
+            html += '</div>';
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">';
+            for (const [key, label] of [['max_increase_percent','Max Increase'], ['max_decrease_percent','Max Decrease']]) {
+                html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
+                html += '<input type="number" id="cfgMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
             }
             html += '</div></div>';
 

@@ -1096,6 +1096,10 @@ function backToList() {
     document.getElementById('detailMap').style.display = 'none';
     window._currentZoneAliases = {};
     window._zoneModes = {};
+    // Clear data caches so next customer loads fresh
+    _mgmtWeatherDataCache = null;
+    _mgmtWeatherRulesCache = null;
+    _mgmtMoistureDataCache = null;
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
 }
@@ -1169,6 +1173,10 @@ async function loadDetailData(id) {
 }
 
 // --- Detail: Weather ---
+let _mgmtWeatherDataCache = null;
+let _mgmtWeatherRulesCache = null;
+let _mgmtMoistureDataCache = null;
+
 async function loadDetailWeather(id) {
     const card = document.getElementById('detailWeatherCard');
     const body = document.getElementById('detailWeatherBody');
@@ -1177,8 +1185,13 @@ async function loadDetailWeather(id) {
         const data = await api('/customers/' + id + '/weather');
         if (!data.weather_enabled) {
             card.style.display = 'none';
+            _mgmtWeatherDataCache = null;
             return;
         }
+        // Skip DOM rebuild if data hasn't changed (prevents flickering on refresh)
+        const dataKey = JSON.stringify(data);
+        if (_mgmtWeatherDataCache === dataKey) return;
+        _mgmtWeatherDataCache = dataKey;
         card.style.display = 'block';
         const w = data.weather || {};
         if (w.error) {
@@ -1279,6 +1292,10 @@ async function loadMgmtWeatherRules(custId) {
     if (!container) return;
     try {
         const data = await api('/customers/' + custId + '/weather/rules');
+        // Skip DOM rebuild if rules haven't changed
+        const rulesKey = JSON.stringify(data);
+        if (_mgmtWeatherRulesCache === rulesKey) return;
+        _mgmtWeatherRulesCache = rulesKey;
         const rules = data.rules || {};
         let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
 
@@ -1536,6 +1553,11 @@ async function loadDetailMoisture(id) {
         const data = await api('/customers/' + id + '/moisture/probes');
         const settings = await api('/customers/' + id + '/moisture/settings');
 
+        // Skip DOM rebuild if data hasn't changed (prevents flickering on refresh)
+        const moistureKey = JSON.stringify(data) + '|' + JSON.stringify(settings);
+        if (_mgmtMoistureDataCache === moistureKey) return;
+        _mgmtMoistureDataCache = moistureKey;
+
         // Always show the moisture card for management — they need access
         // to settings even when probes aren't configured yet
         card.style.display = 'block';
@@ -1624,27 +1646,48 @@ async function loadDetailMoisture(id) {
         html += '<span id="mgmtMoistureSettingsChevron" style="font-size:12px;color:var(--text-muted);">' + (_mgmtMoistureSettingsOpen ? '▼' : '▶') + '</span>';
         html += '</div>';
         html += '<div id="mgmtMoistureSettingsBody" style="display:' + (_mgmtMoistureSettingsOpen ? 'block' : 'none') + ';margin-top:10px;">';
-        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">';
-        html += '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="mgmtMoistureEnabled" ' + (settings.enabled ? 'checked' : '') + ' onchange="mgmtSaveMoistureSettings()"> Enable Moisture Control</label>';
-        html += '<div><label style="font-size:11px;color:var(--text-muted);">Stale Threshold (min)</label><input type="number" id="mgmtMoistureStaleMin" value="' + (settings.stale_reading_threshold_minutes || 120) + '" min="5" max="1440" style="width:80px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
-        html += '</div>';
+
+        // Enable toggle
+        html += '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px;">';
+        html += '<input type="checkbox" id="mgmtMoistureEnabled" ' + (settings.enabled ? 'checked' : '') + '> Enable Moisture Control</label>';
+
+        // Stale threshold
+        html += '<div style="margin-bottom:12px;">';
+        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Stale Reading Threshold</label>';
+        html += '<div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center;">';
+        html += '<input type="number" id="mgmtMoistureStaleMin" value="' + (settings.stale_reading_threshold_minutes || 120) + '" min="5" max="1440" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;">';
+        html += '<span style="font-size:12px;color:var(--text-muted);">minutes — readings older than this are ignored</span>';
+        html += '</div></div>';
+
+        // Depth weights
         const dw = settings.depth_weights || {shallow: 0.2, mid: 0.5, deep: 0.3};
-        html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Depth Weights</div>';
-        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px;">';
+        html += '<div style="margin-bottom:12px;">';
+        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Depth Weights</label>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">';
         for (const d of ['shallow', 'mid', 'deep']) {
-            html += '<div><label style="font-size:11px;color:var(--text-muted);">' + d.charAt(0).toUpperCase() + d.slice(1) + '</label>';
-            html += '<input type="number" id="mgmtMoistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:60px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
+            html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + d.charAt(0).toUpperCase() + d.slice(1) + '</label>';
+            html += '<input type="number" id="mgmtMoistureWeight_' + d + '" value="' + (dw[d] || 0.33) + '" min="0" max="1" step="0.05" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
         }
-        html += '</div>';
+        html += '</div></div>';
+
+        // Default thresholds
         const dt = settings.default_thresholds || {};
-        html += '<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Default Thresholds (%)</div>';
-        html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:4px;">';
-        for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry'], ['max_increase_percent','Max Increase'], ['max_decrease_percent','Max Decrease']]) {
-            html += '<div><label style="font-size:11px;color:var(--text-muted);">' + label + '</label>';
-            html += '<input type="number" id="mgmtMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:70px;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);"></div>';
+        html += '<div style="margin-bottom:12px;">';
+        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Default Thresholds (%)</label>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">';
+        for (const [key, label] of [['skip_threshold','Skip'], ['scale_wet','Wet'], ['scale_dry','Dry']]) {
+            html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
+            html += '<input type="number" id="mgmtMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
         }
         html += '</div>';
-        html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="mgmtSaveMoistureSettings()">Save Settings</button>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">';
+        for (const [key, label] of [['max_increase_percent','Max Increase'], ['max_decrease_percent','Max Decrease']]) {
+            html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
+            html += '<input type="number" id="mgmtMoistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;"></div>';
+        }
+        html += '</div></div>';
+
+        html += '<button class="btn btn-primary btn-sm" style="margin-top:4px;" onclick="mgmtSaveMoistureSettings()">Save Settings</button>';
         html += '</div></div>';
 
         body.innerHTML = html;
