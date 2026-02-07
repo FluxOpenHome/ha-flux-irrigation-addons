@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Any
 from config import get_config
 import ha_client
+import run_log
 
 
 router = APIRouter(prefix="/admin/api/homeowner", tags=["Homeowner Dashboard"])
@@ -193,6 +194,11 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest):
     if not success:
         raise HTTPException(status_code=502, detail="Failed to communicate with Home Assistant.")
 
+    run_log.log_zone_event(
+        entity_id=entity_id, state="on", source="dashboard",
+        zone_name=_zone_name(entity_id),
+    )
+
     # If duration specified, schedule automatic shutoff using zones module
     if body.duration_minutes:
         from routes.zones import _timed_run_tasks, _timed_shutoff
@@ -231,6 +237,11 @@ async def homeowner_stop_zone(zone_id: str):
     if not success:
         raise HTTPException(status_code=502, detail="Failed to communicate with Home Assistant.")
 
+    run_log.log_zone_event(
+        entity_id=entity_id, state="off", source="dashboard",
+        zone_name=_zone_name(entity_id),
+    )
+
     return {"success": True, "zone_id": zone_id, "action": "stop", "message": f"Zone '{zone_id}' stopped"}
 
 
@@ -255,6 +266,10 @@ async def homeowner_stop_all():
         if state in ("on", "open"):
             svc_domain, svc_name = _get_zone_service(entity_id, "off")
             await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
+            run_log.log_zone_event(
+                entity_id=entity_id, state="off", source="stop_all",
+                zone_name=_zone_name(entity_id),
+            )
             stopped.append(entity_id)
 
     return {
@@ -376,6 +391,10 @@ async def homeowner_pause():
             entity_id = zone["entity_id"]
             svc_domain, svc_name = _get_zone_service(entity_id, "off")
             await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
+            run_log.log_zone_event(
+                entity_id=entity_id, state="off", source="system_pause",
+                zone_name=_zone_name(entity_id),
+            )
 
     from routes.schedule import _load_schedules, _save_schedules
     data = _load_schedules()
@@ -410,57 +429,34 @@ async def homeowner_resume():
 
 @router.get("/history/runs", summary="Get run history")
 async def homeowner_history(
-    hours: int = Query(24, ge=1, le=720, description="Hours of history"),
+    hours: int = Query(24, ge=1, le=8760, description="Hours of history (max 1 year)"),
+    zone_id: Optional[str] = Query(None, description="Filter by entity_id"),
 ):
-    """Get irrigation run history for all zones."""
+    """Get irrigation run history from the local JSONL log.
+
+    Each event includes weather conditions captured at the time it happened.
+    """
     _require_homeowner_mode()
-    config = get_config()
 
     end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(hours=hours)
 
-    events = []
-    zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+    events = run_log.get_run_history(hours=hours, zone_id=zone_id)
 
-    for entity in zone_entities:
-        entity_id = entity["entity_id"]
-        zone_name_str = _zone_name(entity_id)
-
-        history = await ha_client.get_history(
-            entity_id=entity_id,
-            start_time=start_time.isoformat(),
-            end_time=end_time.isoformat(),
-        )
-
-        if history and len(history) > 0:
-            prev_event = None
-            for entry in history[0]:
-                event = {
-                    "entity_id": entity_id,
-                    "zone_name": zone_name_str,
-                    "state": entry.get("state", "unknown"),
-                    "timestamp": entry.get("last_changed", ""),
-                    "duration_seconds": None,
-                }
-
-                if prev_event and prev_event["state"] == "on" and event["state"] == "off":
-                    try:
-                        on_time = datetime.fromisoformat(prev_event["timestamp"])
-                        off_time = datetime.fromisoformat(event["timestamp"])
-                        event["duration_seconds"] = (off_time - on_time).total_seconds()
-                    except ValueError:
-                        pass
-
-                events.append(event)
-                prev_event = event
-
-    events.sort(key=lambda e: e["timestamp"], reverse=True)
+    # Get current weather for the summary header
+    current_weather = {}
+    try:
+        from routes.weather import _get_current_weather_snapshot
+        current_weather = _get_current_weather_snapshot()
+    except Exception:
+        pass
 
     return {
         "period_start": start_time.isoformat(),
         "period_end": end_time.isoformat(),
         "events": events,
-        "total_run_events": len([e for e in events if e["state"] == "on"]),
+        "total_run_events": len([e for e in events if e.get("state") in ("on", "open")]),
+        "current_weather": current_weather,
     }
 
 
@@ -505,65 +501,35 @@ async def homeowner_weather():
 
 @router.get("/history/runs/csv", summary="Export run history as CSV")
 async def homeowner_history_csv(
-    hours: int = Query(24, ge=1, le=720, description="Hours of history"),
+    hours: int = Query(24, ge=1, le=8760, description="Hours of history (max 1 year)"),
 ):
     """Export irrigation run history as a downloadable CSV file."""
     from fastapi.responses import Response
 
     _require_homeowner_mode()
-    config = get_config()
 
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(hours=hours)
+    events = run_log.get_run_history(hours=hours)
 
-    events = []
-    zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
-
-    for entity in zone_entities:
-        entity_id = entity["entity_id"]
-        zone_name_str = _zone_name(entity_id)
-
-        history = await ha_client.get_history(
-            entity_id=entity_id,
-            start_time=start_time.isoformat(),
-            end_time=end_time.isoformat(),
-        )
-
-        if history and len(history) > 0:
-            prev_event = None
-            for entry in history[0]:
-                event = {
-                    "entity_id": entity_id,
-                    "zone_name": zone_name_str,
-                    "state": entry.get("state", "unknown"),
-                    "timestamp": entry.get("last_changed", ""),
-                    "duration_seconds": None,
-                }
-
-                if prev_event and prev_event["state"] == "on" and event["state"] == "off":
-                    try:
-                        on_time = datetime.fromisoformat(prev_event["timestamp"])
-                        off_time = datetime.fromisoformat(event["timestamp"])
-                        event["duration_seconds"] = (off_time - on_time).total_seconds()
-                    except ValueError:
-                        pass
-
-                events.append(event)
-                prev_event = event
-
-    events.sort(key=lambda e: e["timestamp"], reverse=True)
-
-    lines = ["timestamp,zone_name,entity_id,state,duration_minutes"]
+    lines = ["timestamp,zone_name,entity_id,state,source,duration_minutes,weather_condition,temperature,humidity,wind_speed,watering_multiplier,weather_rules"]
     for e in events:
         dur = ""
-        if e["duration_seconds"] is not None:
+        if e.get("duration_seconds") is not None:
             dur = str(round(e["duration_seconds"] / 60, 1))
+        wx = e.get("weather") or {}
+        rules_str = ";".join(wx.get("active_adjustments", []))
         line = ",".join([
             e.get("timestamp", ""),
             _csv_escape(e.get("zone_name", "")),
             e.get("entity_id", ""),
             e.get("state", ""),
+            e.get("source", ""),
             dur,
+            _csv_escape(str(wx.get("condition", ""))),
+            _csv_escape(str(wx.get("temperature", ""))),
+            _csv_escape(str(wx.get("humidity", ""))),
+            _csv_escape(str(wx.get("wind_speed", ""))),
+            _csv_escape(str(wx.get("watering_multiplier", ""))),
+            _csv_escape(rules_str),
         ])
         lines.append(line)
 
@@ -626,6 +592,28 @@ def _csv_escape(value: str) -> str:
     if "," in value or '"' in value or "\n" in value:
         return '"' + value.replace('"', '""') + '"'
     return value
+
+
+@router.delete("/weather/log", summary="Clear weather event log")
+async def homeowner_clear_weather_log():
+    """Clear the weather event log."""
+    from routes.weather import WEATHER_LOG_FILE
+    try:
+        if os.path.exists(WEATHER_LOG_FILE):
+            os.remove(WEATHER_LOG_FILE)
+        return {"success": True, "message": "Weather log cleared"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.delete("/history/runs", summary="Clear run history")
+async def homeowner_clear_history():
+    """Clear the local run history log."""
+    _require_homeowner_mode()
+    success = run_log.clear_run_history()
+    if success:
+        return {"success": True, "message": "Run history cleared"}
+    return {"success": False, "error": "Failed to clear run history"}
 
 
 @router.get("/zone_aliases", summary="Get zone aliases")

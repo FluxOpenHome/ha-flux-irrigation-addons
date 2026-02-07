@@ -280,10 +280,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <!-- History Card -->
         <div class="card">
             <div class="card-header">
-                <h2>Recent Run History</h2>
+                <h2>Run History</h2>
                 <div style="display:flex;gap:6px;align-items:center;">
-                    <span style="font-size:12px;color:#999;">Last 24 hours</span>
-                    <button class="btn btn-secondary btn-sm" onclick="mgmtExportHistoryCSV(24)">Export CSV</button>
+                    <select id="mgmtHistoryRange" onchange="loadDetailHistory(currentCustomerId)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">
+                        <option value="24">Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
+                        <option value="720">Last 30 days</option>
+                        <option value="2160">Last 90 days</option>
+                        <option value="8760">Last year</option>
+                    </select>
+                    <button class="btn btn-secondary btn-sm" onclick="mgmtExportHistoryCSV()">Export CSV</button>
+                    <button class="btn btn-danger btn-sm" onclick="mgmtClearRunHistory()">Clear History</button>
                 </div>
             </div>
             <div class="card-body" id="detailHistory">
@@ -731,6 +738,7 @@ async function loadDetailWeather(id) {
         html += '<div style="display:flex;gap:6px;">';
         html += '<button class="btn btn-secondary btn-sm" onclick="mgmtEvaluateWeather()">Test Rules Now</button>';
         html += '<button class="btn btn-secondary btn-sm" onclick="mgmtExportWeatherLogCSV()">Export Log</button>';
+        html += '<button class="btn btn-danger btn-sm" onclick="mgmtClearWeatherLog()">Clear Log</button>';
         html += '</div>';
         html += '</div>';
         html += '<div id="mgmtWeatherRulesContainer"><div class="loading">Loading rules...</div></div>';
@@ -955,8 +963,9 @@ async function mgmtEvaluateWeather() {
 }
 
 // --- CSV Export ---
-function mgmtExportHistoryCSV(hours) {
+function mgmtExportHistoryCSV() {
     if (!currentCustomerId) return;
+    const hours = document.getElementById('mgmtHistoryRange') ? document.getElementById('mgmtHistoryRange').value : '24';
     const url = BASE + '/customers/' + currentCustomerId + '/history/runs/csv?hours=' + hours;
     window.open(url, '_blank');
 }
@@ -965,6 +974,34 @@ function mgmtExportWeatherLogCSV() {
     if (!currentCustomerId) return;
     const url = BASE + '/customers/' + currentCustomerId + '/weather/log/csv';
     window.open(url, '_blank');
+}
+
+async function mgmtClearWeatherLog() {
+    if (!currentCustomerId) return;
+    if (!confirm('Clear all weather log entries for this customer? This cannot be undone.')) return;
+    try {
+        const result = await api('/customers/' + currentCustomerId + '/weather/log', { method: 'DELETE' });
+        if (result.success) {
+            showToast(result.message || 'Weather log cleared');
+            setTimeout(() => loadDetailWeather(currentCustomerId), 1000);
+        } else {
+            showToast(result.error || 'Failed to clear weather log', 'error');
+        }
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function mgmtClearRunHistory() {
+    if (!currentCustomerId) return;
+    if (!confirm('Clear all run history for this customer? This cannot be undone.')) return;
+    try {
+        const result = await api('/customers/' + currentCustomerId + '/history/runs', { method: 'DELETE' });
+        if (result.success) {
+            showToast(result.message || 'Run history cleared');
+            setTimeout(() => loadDetailHistory(currentCustomerId), 1000);
+        } else {
+            showToast(result.error || 'Failed to clear run history', 'error');
+        }
+    } catch (e) { showToast(e.message, 'error'); }
 }
 
 // --- Detail: Status ---
@@ -1551,16 +1588,55 @@ async function setEntityValue(custId, entityId, domain, bodyObj) {
 async function loadDetailHistory(id) {
     const el = document.getElementById('detailHistory');
     try {
-        const data = await api('/customers/' + id + '/history/runs?hours=24');
+        const hours = document.getElementById('mgmtHistoryRange') ? document.getElementById('mgmtHistoryRange').value : '24';
+        const data = await api('/customers/' + id + '/history/runs?hours=' + hours);
         const events = data.events || [];
-        if (events.length === 0) { el.innerHTML = '<div class="empty-state"><p>No run events in the last 24 hours</p></div>'; return; }
-        el.innerHTML = '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid #eee;"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th></tr></thead><tbody>' +
-            events.slice(0, 50).map(e => `<tr style="border-bottom:1px solid #f0f0f0;">
-                <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}</td>
-                <td style="padding:6px;">${e.state === 'on' ? '<span style="color:#27ae60;">ON</span>' : '<span style="color:#95a5a6;">OFF</span>'}</td>
+        if (events.length === 0) { el.innerHTML = '<div class="empty-state"><p>No run events in the selected time range</p></div>'; return; }
+
+        // Show current weather context summary if available
+        const cw = data.current_weather || {};
+        let weatherSummary = '';
+        if (cw.condition) {
+            const condIcons = {'sunny':'☀️','clear-night':'🌙','partlycloudy':'⛅','cloudy':'☁️','rainy':'🌧️','pouring':'🌧️','snowy':'❄️','windy':'💨','fog':'🌫️','lightning':'⚡','lightning-rainy':'⛈️','hail':'🧊'};
+            const wIcon = condIcons[cw.condition] || '🌡️';
+            const mult = cw.watering_multiplier != null ? cw.watering_multiplier : 1.0;
+            const multColor = mult === 1.0 ? '#155724' : mult < 1 ? '#856404' : '#721c24';
+            const multBg = mult === 1.0 ? '#d4edda' : mult < 1 ? '#fff3cd' : '#f8d7da';
+            weatherSummary = '<div style="margin-bottom:12px;padding:8px 12px;background:#f0f8ff;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+                '<span>' + wIcon + ' <strong>' + esc(cw.condition) + '</strong></span>' +
+                (cw.temperature != null ? '<span>🌡️ ' + cw.temperature + '°</span>' : '') +
+                (cw.humidity != null ? '<span>💧 ' + cw.humidity + '%</span>' : '') +
+                (cw.wind_speed != null ? '<span>💨 ' + cw.wind_speed + ' mph</span>' : '') +
+                '<span style="background:' + multBg + ';color:' + multColor + ';padding:2px 8px;border-radius:10px;font-weight:600;">' + mult + 'x</span>' +
+                '</div>';
+        }
+
+        el.innerHTML = weatherSummary +
+            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid #eee;"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
+            events.slice(0, 100).map(e => {
+                const wx = e.weather || {};
+                let wxCell = '-';
+                if (wx.condition) {
+                    const ci = {'sunny':'☀️','clear-night':'🌙','partlycloudy':'⛅','cloudy':'☁️','rainy':'🌧️','pouring':'🌧️','snowy':'❄️','windy':'💨','fog':'🌫️','lightning':'⚡','lightning-rainy':'⛈️','hail':'🧊'};
+                    const wi = ci[wx.condition] || '🌡️';
+                    const wm = wx.watering_multiplier != null ? wx.watering_multiplier : '';
+                    const wmColor = wm === 1.0 ? '#27ae60' : wm < 1 ? '#f39c12' : wm > 1 ? '#e74c3c' : '#999';
+                    wxCell = wi + ' ' + (wx.temperature != null ? wx.temperature + '° ' : '') +
+                        (wm ? '<span style="color:' + wmColor + ';font-weight:600;">' + wm + 'x</span>' : '');
+                    const rules = wx.active_adjustments || wx.rules_triggered || [];
+                    if (rules.length > 0) {
+                        wxCell += '<div style="font-size:10px;color:#856404;margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
+                    }
+                }
+                const srcLabel = e.source ? '<div style="font-size:10px;color:#999;">' + esc(e.source) + '</div>' : '';
+                return `<tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}${srcLabel}</td>
+                <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:#27ae60;">ON</span>' : '<span style="color:#95a5a6;">OFF</span>'}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
-            </tr>`).join('') + '</tbody></table>';
+                <td style="padding:6px;font-size:12px;">${wxCell}</td>
+            </tr>`;
+            }).join('') + '</tbody></table>';
     } catch (e) {
         el.innerHTML = '<div style="color:#e74c3c;">Failed to load history: ' + esc(e.message) + '</div>';
     }

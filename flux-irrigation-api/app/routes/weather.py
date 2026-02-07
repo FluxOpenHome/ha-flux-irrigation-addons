@@ -87,6 +87,72 @@ def cleanup_weather_log(retention_days: int = 30):
     except Exception as e:
         print(f"[WEATHER] Failed to cleanup log: {e}")
 
+def get_weather_context_for_events(events: list[dict]) -> dict:
+    """Build a weather context lookup from the weather log.
+
+    Returns a dict of approximate weather snapshots keyed by hour bucket
+    (YYYY-MM-DDTHH) so run events can look up the closest weather state.
+    Also returns the current weather state from weather_rules.json.
+    """
+    log_entries = get_weather_log(limit=10000)
+    if not log_entries:
+        return {"snapshots": {}, "current": _get_current_weather_snapshot()}
+
+    # Build hourly snapshots from weather log (evaluation events have the most data)
+    snapshots = {}
+    for entry in log_entries:
+        ts = entry.get("timestamp", "")
+        if len(ts) < 13:
+            continue
+        hour_key = ts[:13]  # YYYY-MM-DDTHH
+        snapshots[hour_key] = {
+            "condition": entry.get("condition", ""),
+            "temperature": entry.get("temperature"),
+            "humidity": entry.get("humidity"),
+            "wind_speed": entry.get("wind_speed"),
+            "watering_multiplier": entry.get("watering_multiplier"),
+            "event": entry.get("event", ""),
+            "rules_triggered": entry.get("triggered_rules", []),
+            "reason": entry.get("reason", ""),
+        }
+
+    return {"snapshots": snapshots, "current": _get_current_weather_snapshot()}
+
+
+def _get_current_weather_snapshot() -> dict:
+    """Get the current weather state from the saved rules data."""
+    rules_data = _load_weather_rules()
+    last_data = rules_data.get("last_weather_data", {})
+    return {
+        "condition": last_data.get("condition", ""),
+        "temperature": last_data.get("temperature"),
+        "humidity": last_data.get("humidity"),
+        "wind_speed": last_data.get("wind_speed"),
+        "watering_multiplier": rules_data.get("watering_multiplier", 1.0),
+        "active_adjustments": rules_data.get("active_adjustments", []),
+        "last_evaluation": rules_data.get("last_evaluation"),
+    }
+
+
+def lookup_weather_at(snapshots: dict, timestamp: str) -> dict:
+    """Find the closest weather snapshot for a given event timestamp."""
+    if not timestamp or len(timestamp) < 13:
+        return {}
+    hour_key = timestamp[:13]
+    # Exact hour match
+    if hour_key in snapshots:
+        return snapshots[hour_key]
+    # Try previous hour
+    try:
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        prev_hour = (dt - timedelta(hours=1)).isoformat()[:13]
+        if prev_hour in snapshots:
+            return snapshots[prev_hour]
+    except (ValueError, TypeError):
+        pass
+    return {}
+
+
 DEFAULT_RULES = {
     "rules_version": 1,
     "last_evaluation": None,
@@ -371,6 +437,7 @@ async def run_weather_evaluation() -> dict:
             _save_schedules(schedule_data)
 
             # Stop all active zones
+            import run_log
             zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
             for zone in zones:
                 if zone.get("state") in ("on", "open"):
@@ -380,6 +447,11 @@ async def run_weather_evaluation() -> dict:
                         await ha_client.call_service("valve", "close", {"entity_id": entity_id})
                     else:
                         await ha_client.call_service("switch", "turn_off", {"entity_id": entity_id})
+                    attrs = zone.get("attributes", {})
+                    run_log.log_zone_event(
+                        entity_id=entity_id, state="off", source="weather_pause",
+                        zone_name=attrs.get("friendly_name", entity_id),
+                    )
 
             await ha_client.fire_event("flux_irrigation_weather_pause", {
                 "reason": pause_reason,
@@ -550,6 +622,17 @@ async def evaluate_weather_now():
     """Manually trigger a weather rules evaluation cycle."""
     result = await run_weather_evaluation()
     return result
+
+
+@router.delete("/weather/log", summary="Clear weather event log")
+async def clear_weather_log():
+    """Delete all entries from the weather event log."""
+    try:
+        if os.path.exists(WEATHER_LOG_FILE):
+            os.remove(WEATHER_LOG_FILE)
+        return {"success": True, "message": "Weather log cleared"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 def _csv_escape(value: str) -> str:

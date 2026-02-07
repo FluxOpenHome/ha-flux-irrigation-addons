@@ -496,17 +496,26 @@ async def get_customer_history_csv(customer_id: str, hours: int = 24):
         raise _proxy_error(status_code, data)
 
     events = data.get("events", [])
-    lines = ["timestamp,zone_name,entity_id,state,duration_minutes"]
+    lines = ["timestamp,zone_name,entity_id,state,source,duration_minutes,weather_condition,temperature,humidity,wind_speed,watering_multiplier,weather_rules"]
     for e in events:
         dur = ""
         if e.get("duration_seconds") is not None:
             dur = str(round(e["duration_seconds"] / 60, 1))
+        wx = e.get("weather") or {}
+        rules_str = ";".join(wx.get("active_adjustments", wx.get("rules_triggered", [])))
         line = ",".join([
             e.get("timestamp", ""),
             _csv_escape(e.get("zone_name", "")),
             e.get("entity_id", ""),
             e.get("state", ""),
+            e.get("source", ""),
             dur,
+            _csv_escape(str(wx.get("condition", ""))),
+            _csv_escape(str(wx.get("temperature", ""))),
+            _csv_escape(str(wx.get("humidity", ""))),
+            _csv_escape(str(wx.get("wind_speed", ""))),
+            _csv_escape(str(wx.get("watering_multiplier", ""))),
+            _csv_escape(rules_str),
         ])
         lines.append(line)
 
@@ -565,6 +574,40 @@ async def get_customer_weather_log_csv(customer_id: str, hours: int = 0):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=weather_log.csv"},
     )
+
+
+@router.delete(
+    "/api/customers/{customer_id}/weather/log",
+    summary="Clear customer weather log",
+)
+async def clear_customer_weather_log(customer_id: str):
+    """Clear weather event log on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "DELETE", "/admin/api/homeowner/weather/log"
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to clear weather log"}
+    return data
+
+
+@router.delete(
+    "/api/customers/{customer_id}/history/runs",
+    summary="Clear customer run history",
+)
+async def clear_customer_history(customer_id: str):
+    """Clear run history on a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "DELETE", "/admin/api/homeowner/history/runs"
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to clear run history"}
+    return data
 
 
 def _csv_escape(value: str) -> str:

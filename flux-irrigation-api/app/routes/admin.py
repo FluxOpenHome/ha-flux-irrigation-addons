@@ -89,7 +89,7 @@ class DeviceSelect(BaseModel):
 
 class SettingsUpdate(BaseModel):
     rate_limit_per_minute: Optional[int] = Field(None, ge=1, le=300)
-    log_retention_days: Optional[int] = Field(None, ge=1, le=365)
+    log_retention_days: Optional[int] = Field(None, ge=1, le=730)
     enable_audit_log: Optional[bool] = None
     weather_entity_id: Optional[str] = None
     weather_enabled: Optional[bool] = None
@@ -122,7 +122,7 @@ async def get_settings():
         "allowed_sensor_entities": config.allowed_sensor_entities,
         "allowed_control_entities": config.allowed_control_entities,
         "rate_limit_per_minute": options.get("rate_limit_per_minute", 60),
-        "log_retention_days": options.get("log_retention_days", 30),
+        "log_retention_days": options.get("log_retention_days", 365),
         "enable_audit_log": options.get("enable_audit_log", True),
         "homeowner_url": options.get("homeowner_url", ""),
         "homeowner_label": options.get("homeowner_label", ""),
@@ -1137,7 +1137,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 </div>
                 <div class="form-group">
                     <label>Log Retention (days)</label>
-                    <input type="number" id="logRetention" min="1" max="365" value="30">
+                    <input type="number" id="logRetention" min="1" max="730" value="365">
                 </div>
             </div>
             <div class="form-group" style="display:flex; align-items:center; gap:12px;">
@@ -1223,7 +1223,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             const data = await res.json();
 
             document.getElementById('rateLimit').value = data.rate_limit_per_minute || 60;
-            document.getElementById('logRetention').value = data.log_retention_days || 30;
+            document.getElementById('logRetention').value = data.log_retention_days || 365;
             document.getElementById('auditLogEnabled').checked = data.enable_audit_log !== false;
 
             renderApiKeys(data.api_keys || []);

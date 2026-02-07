@@ -31,7 +31,7 @@ class Config:
     allowed_sensor_entities: list[str] = field(default_factory=list)
     allowed_control_entities: list[str] = field(default_factory=list)
     rate_limit_per_minute: int = 60
-    log_retention_days: int = 30
+    log_retention_days: int = 365
     enable_audit_log: bool = True
     weather_entity_id: str = ""
     weather_enabled: bool = False

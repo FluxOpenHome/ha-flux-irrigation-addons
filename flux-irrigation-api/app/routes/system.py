@@ -128,6 +128,7 @@ async def pause_system(request: Request):
     key_config: ApiKeyConfig = request.state.api_key_config
 
     # Stop all active zones (supports both switch and valve entities)
+    import run_log
     zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
     for zone in zones:
         state = zone.get("state", "")
@@ -138,6 +139,11 @@ async def pause_system(request: Request):
                 await ha_client.call_service("valve", "close", {"entity_id": entity_id})
             else:
                 await ha_client.call_service("switch", "turn_off", {"entity_id": entity_id})
+            attrs = zone.get("attributes", {})
+            run_log.log_zone_event(
+                entity_id=entity_id, state="off", source="system_pause",
+                zone_name=attrs.get("friendly_name", entity_id),
+            )
 
     # Update schedule state
     from routes.schedule import _load_schedules, _save_schedules

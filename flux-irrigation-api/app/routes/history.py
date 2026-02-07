@@ -56,7 +56,7 @@ def _zone_name(entity_id: str) -> str:
 async def get_run_history(
     request: Request,
     zone_id: Optional[str] = Query(None, description="Filter by zone ID"),
-    hours: int = Query(24, ge=1, le=720, description="Hours of history to retrieve"),
+    hours: int = Query(24, ge=1, le=8760, description="Hours of history to retrieve (max 1 year)"),
 ):
     """Get the irrigation run history for all zones or a specific zone."""
     config = get_config()

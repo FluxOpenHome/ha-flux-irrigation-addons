@@ -200,6 +200,12 @@ async def _periodic_log_cleanup():
             cleanup_weather_log(retention_days=config.log_retention_days)
         except Exception as e:
             print(f"[MAIN] Weather log cleanup error: {e}")
+        try:
+            from run_log import cleanup_run_history
+            config = get_config()
+            cleanup_run_history(retention_days=config.log_retention_days)
+        except Exception as e:
+            print(f"[MAIN] Run history cleanup error: {e}")
         await asyncio.sleep(86400)  # 24 hours
 
 
@@ -282,8 +288,13 @@ async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(_periodic_log_cleanup())
     health_task = None
     weather_task = None
+    zone_watcher_task = None
     if config.mode == "management":
         health_task = asyncio.create_task(_periodic_customer_health_check())
+    if config.mode == "homeowner" and config.allowed_zone_entities:
+        from run_log import watch_zone_states
+        zone_watcher_task = asyncio.create_task(watch_zone_states())
+        print(f"[MAIN] Zone state watcher active: monitoring {len(config.allowed_zone_entities)} zone(s)")
     if config.weather_enabled and config.weather_entity_id:
         weather_task = asyncio.create_task(_periodic_weather_check())
         print(f"[MAIN] Weather control active: entity={config.weather_entity_id}, "
@@ -297,6 +308,8 @@ async def lifespan(app: FastAPI):
         health_task.cancel()
     if weather_task:
         weather_task.cancel()
+    if zone_watcher_task:
+        zone_watcher_task.cancel()
     print("[MAIN] Flux Irrigation API shutting down.")
 
 

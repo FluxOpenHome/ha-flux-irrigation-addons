@@ -11,6 +11,7 @@ from auth import require_permission, ApiKeyConfig
 from config import get_config
 import ha_client
 import audit_log
+import run_log
 
 # Track active timed-run tasks so they can be cancelled on manual stop
 _timed_run_tasks: dict[str, asyncio.Task] = {}
@@ -23,6 +24,11 @@ async def _timed_shutoff(entity_id: str, duration_minutes: int):
         # Turn off the zone after the timer expires
         svc_domain, svc_name = _get_zone_service(entity_id, "off")
         await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
+        run_log.log_zone_event(
+            entity_id=entity_id, state="off", source="timed_shutoff",
+            zone_name=_zone_name(entity_id),
+            duration_seconds=duration_minutes * 60,
+        )
         print(f"[ZONES] Timed run complete: {entity_id} turned off after {duration_minutes} min")
     except asyncio.CancelledError:
         print(f"[ZONES] Timed run cancelled for {entity_id}")
@@ -205,6 +211,11 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     if not success:
         raise HTTPException(status_code=502, detail="Failed to communicate with Home Assistant.")
 
+    run_log.log_zone_event(
+        entity_id=entity_id, state="on", source="api",
+        zone_name=_zone_name(entity_id),
+    )
+
     # If duration specified, schedule automatic shutoff
     if body.duration_minutes:
         # Cancel any existing timed run for this entity
@@ -272,6 +283,11 @@ async def stop_zone(zone_id: str, request: Request):
     if not success:
         raise HTTPException(status_code=502, detail="Failed to communicate with Home Assistant.")
 
+    run_log.log_zone_event(
+        entity_id=entity_id, state="off", source="api",
+        zone_name=_zone_name(entity_id),
+    )
+
     audit_log.log_action(
         api_key_name=key_config.name,
         method="POST",
@@ -316,6 +332,10 @@ async def stop_all_zones(request: Request):
             svc_domain, svc_name = _get_zone_service(entity_id, "off")
             await ha_client.call_service(
                 svc_domain, svc_name, {"entity_id": entity_id}
+            )
+            run_log.log_zone_event(
+                entity_id=entity_id, state="off", source="stop_all",
+                zone_name=_zone_name(entity_id),
             )
             stopped.append(entity_id)
 
