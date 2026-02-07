@@ -178,25 +178,41 @@ The management dashboard automatically checks connectivity to all properties eve
 
 ## Features
 
+### Homeowner
+
 - **Homeowner Dashboard** — Full local control with zone start/stop (timed or manual), sensor monitoring, schedule management, run history, and weather conditions
-- **Management Dashboard** — Multi-property grid view with click-to-expand detail cards for each property
 - **Weather-Based Control** — 9 configurable weather rules that automatically pause, reduce, or increase irrigation based on real-time conditions and forecasts
-- **Dual-mode operation** — Same add-on works for homeowners and management companies
 - **Connection keys** — Simple encoded key shares the API URL and credentials for easy setup (send via copy, email, or QR code)
 - **Connection key regeneration lock** — The Generate button is locked when an active key exists, requiring an explicit unlock to prevent accidental invalidation
-- **Update connection key** — Management companies can swap a customer's connection key without losing notes, aliases, or metadata
-- **Revoke access** — Homeowners can instantly revoke management company access with one click, with a confirmation dialog to prevent accidents
-- **Live contact sync** — Homeowner name, phone, and address are synced to the management dashboard automatically on every health check, even if added after the connection key was generated
+- **Revoke access** — Instantly revoke management company access with one click, with a confirmation dialog to prevent accidents
+- **Run history** — JSONL-based local storage of zone run events with weather conditions captured at run time; CSV export
+- **Zone aliases** — Give zones friendly display names on the dashboard
+- **Location map** — Leaflet map on the dashboard shows property location with re-center button
+- **System pause/resume** — Emergency pause that stops all active zones and suspends ESPHome schedule programs
+
+### Management
+
+- **Management Dashboard** — Multi-property grid view with click-to-expand detail cards for each property
+- **Update connection key** — Swap a customer's connection key without losing notes, aliases, or metadata
+- **Customer search and filtering** — Search properties by name, contact, address, phone, or notes; filter by status (online, offline, revoked) and by state or city
+- **Customer notes** — Add and edit notes on property cards
+- **Live contact sync** — Homeowner name, phone, and address are synced automatically on every health check, even if added after the connection key was generated
+- **Remote zone control** — Start, stop, and emergency-stop zones on any connected property
+- **Remote weather management** — View and configure weather rules on customer systems
+- **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
+- **Run history and CSV export** — View and export zone run history and weather logs for each property
+- **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration
+
+### Platform
+
+- **Dual-mode operation** — Same add-on works for homeowners and management companies
 - **Scoped access** — Only irrigation zones and sensors are exposed — no access to lights, locks, cameras, or any other HA entities
 - **API key authentication** — Each management company gets their own API key with configurable permissions
 - **Granular permissions** — Control what each API key can do: read zones, control zones, modify schedules, read sensors, view history
 - **Audit logging** — Every API action is logged with timestamp, API key, action, and details
 - **Rate limiting** — Configurable request limits to protect the homeowner's HA instance
-- **Schedule management** — View and update irrigation schedules remotely (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
-- **System pause/resume** — Emergency pause that stops all active zones and suspends schedules
-- **Zone aliases** — Give zones friendly display names on both homeowner and management dashboards
-- **Location map** — Leaflet map on the dashboard shows property location
-- **Interactive API docs** — Built-in Swagger UI at `/api/docs` for testing and exploration
+- **Entity auto-refresh** — Background task runs every 5 minutes to detect newly enabled or disabled entities in Home Assistant without requiring an add-on restart
+- **Weather event logging** — All weather rule evaluations and actions are logged with CSV export and clearing from both dashboards
 
 ---
 
@@ -395,8 +411,11 @@ irrigation_device_id: ""             # Set via admin panel device picker
 
 # General settings
 rate_limit_per_minute: 60            # API rate limit (1-300)
-log_retention_days: 30               # Audit log retention (1-365)
+log_retention_days: 365              # Audit log retention (1-730)
 enable_audit_log: true               # Enable/disable audit logging
+
+# Connection state (managed automatically)
+connection_revoked: false            # Set to true when homeowner revokes access
 
 # Weather-based control
 weather_entity_id: ""                # HA weather entity (e.g., "weather.home")
@@ -408,11 +427,13 @@ weather_check_interval_minutes: 15   # Evaluation interval (5-60 minutes)
 
 ## API Endpoints
 
-All authenticated endpoints require an `X-API-Key` header:
+These are the external API endpoints that management companies connect to via connection keys. All authenticated endpoints require an `X-API-Key` header:
 
 ```bash
 curl -H "X-API-Key: your-api-key" https://your-ha-instance:8099/api/zones
 ```
+
+> **Note:** The homeowner and management dashboards use additional internal endpoints (under `/admin/api/`) for their UIs. These are not intended for external use and are accessible from the Swagger UI on the management dashboard.
 
 ### Zones
 | Method | Endpoint | Permission | Description |
@@ -440,13 +461,13 @@ curl -H "X-API-Key: your-api-key" https://your-ha-instance:8099/api/zones
 ### History
 | Method | Endpoint | Permission | Description |
 |--------|----------|------------|-------------|
-| GET | `/api/history/runs` | history.read | Zone run history |
+| GET | `/api/history/runs` | history.read | Zone run history (JSONL-based, includes weather conditions at run time) |
 | GET | `/api/history/audit` | history.read | API audit log |
 
 ### System
 | Method | Endpoint | Permission | Description |
 |--------|----------|------------|-------------|
-| GET | `/api/system/health` | (none) | Health check |
+| GET | `/api/system/health` | (none) | Health check (includes `revoked` flag) |
 | GET | `/api/system/status` | zones.read | Full system overview |
 | POST | `/api/system/pause` | system.control | Pause entire system |
 | POST | `/api/system/resume` | system.control | Resume after pause |
@@ -459,10 +480,6 @@ The add-on fires custom events that your HA automations can listen for:
 
 | Event | Description |
 |-------|-------------|
-| `flux_irrigation_timed_run` | A zone was started with a duration |
-| `flux_irrigation_schedule_updated` | Schedule was modified via API |
-| `flux_irrigation_rain_delay` | Rain delay was set |
-| `flux_irrigation_rain_delay_cancelled` | Rain delay was cancelled |
 | `flux_irrigation_system_paused` | System was paused (manual) |
 | `flux_irrigation_system_resumed` | System was resumed (manual) |
 | `flux_irrigation_weather_pause` | System was paused by weather rules |
@@ -481,9 +498,22 @@ The add-on fires custom events that your HA automations can listen for:
 ### Connection key doesn't work for management company
 
 - **Nabu Casa:** Make sure you completed [Step 3](#step-3-one-time-configurationyaml-setup-nabu-casa-only) (configuration.yaml) and restarted HA
-- **Nabu Casa:** Verify the Long-Lived Access Token is entered and valid
+- **Nabu Casa:** Verify the Long-Lived Access Token is entered and valid — the add-on will reject key generation if the token is missing or truncated
 - **Direct:** Verify port 8099 is enabled in the add-on's Network settings and is accessible externally
 - Use the **Test URL** button on the Configuration page to diagnose connectivity
+
+### Connection key stopped working after regeneration
+
+- If you revoked access and then generated a new key but the management company still can't connect:
+  - Make sure the management company is using the **new** connection key (not the old one)
+  - On the management side, click **Update Key** on the property card and paste the new key
+  - If the error mentions the HA token, re-enter your Long-Lived Access Token on the Configuration page and regenerate the connection key
+
+### Management dashboard shows "Access Revoked" but homeowner didn't revoke
+
+- This can happen if the management company's API key is stale (e.g., the homeowner regenerated a new connection key)
+- Ask the homeowner for their latest connection key and use the **Update Key** button on the property card
+- The "Access Revoked" status only appears when the homeowner has explicitly clicked "Revoke Access" — a stale key shows as "Offline" with a message to request the updated key
 
 ### Weather rules not triggering
 
@@ -496,6 +526,11 @@ The add-on fires custom events that your HA automations can listen for:
 
 - This is normal and temporary — the dashboard auto-refreshes every 30 seconds and will recover
 - The homeowner API endpoints work regardless of which mode the UI is set to
+
+### A zone was enabled in HA but isn't showing up
+
+- The add-on runs an entity auto-refresh task every 5 minutes — newly enabled entities will appear automatically
+- If you need them immediately, restart the add-on
 
 ### Map not showing on the homeowner dashboard
 
