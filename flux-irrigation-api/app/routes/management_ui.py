@@ -360,6 +360,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </div>
 </div>
 
+<!-- Update Connection Key Modal -->
+<div id="keyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:12px;padding:24px;width:90%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="font-size:16px;font-weight:600;margin:0;" id="keyModalTitle">&#128273; Update Connection Key</h3>
+            <button onclick="closeKeyModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#7f8c8d;padding:0 4px;">&times;</button>
+        </div>
+        <p style="font-size:13px;color:#7f8c8d;margin-bottom:12px;">Paste the new connection key from the homeowner. This will update the connection credentials while keeping your notes and zone aliases.</p>
+        <textarea id="keyModalInput" style="width:100%;min-height:80px;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical;" placeholder="Paste the new connection key here..."></textarea>
+        <div id="keyModalPreview" style="margin-top:10px;font-size:12px;color:#555;display:none;"></div>
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="closeKeyModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveModalKey()">&#128273; Update Key</button>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
@@ -444,6 +461,7 @@ function renderCustomerGrid(customers) {
                 </div>
                 <div class="customer-actions" onclick="event.stopPropagation()">
                     <button class="btn btn-secondary btn-sm" onclick="editCardNotes('${c.id}', event)">Notes</button>
+                    <button class="btn btn-secondary btn-sm" onclick="updateCardKey('${c.id}', event)" title="Update Connection Key">&#128273; Update Key</button>
                     <button class="btn btn-secondary btn-sm" onclick="checkCustomer('${c.id}')">Test Connection</button>
                     <button class="btn btn-danger btn-sm" onclick="removeCustomer('${c.id}', '${esc(c.name)}')">Remove</button>
                 </div>
@@ -718,13 +736,10 @@ async function checkCustomer(id) {
         const data = await api('/customers/' + id + '/check', { method: 'POST' });
         if (data.reachable && data.authenticated) {
             showToast(data.customer_name + ': Connected successfully');
+        } else if (data.revoked) {
+            showToast(data.customer_name + ': Access Revoked — the homeowner has revoked management access', 'error');
         } else if (data.reachable && !data.authenticated) {
-            const err = (data.error || '').toLowerCase();
-            if (err.includes('key rejected') || err.includes('key lacks permissions') || err.includes('authentication failed')) {
-                showToast(data.customer_name + ': Access Revoked — the homeowner has revoked management access', 'error');
-            } else {
-                showToast(data.customer_name + ': Reachable but auth failed - ' + (data.error || ''), 'error');
-            }
+            showToast(data.customer_name + ': ' + (data.error || 'Authentication failed'), 'error');
         } else {
             showToast(data.customer_name + ': Unreachable - ' + (data.error || ''), 'error');
         }
@@ -800,6 +815,51 @@ function editDetailNotes() {
     const c = allCustomers.find(c => c.id === currentCustomerId);
     const name = c ? c.name : (document.getElementById('detailName').textContent || 'Property');
     openNotesModal(currentCustomerId, name, window._currentCustomerNotes || '', 'detail');
+}
+
+// --- Update Connection Key Modal ---
+let keyModalCustomerId = null;
+
+function updateCardKey(id, event) {
+    event.stopPropagation();
+    const c = allCustomers.find(c => c.id === id);
+    openKeyModal(id, c ? c.name : 'Property');
+}
+
+function openKeyModal(id, name) {
+    keyModalCustomerId = id;
+    document.getElementById('keyModalTitle').innerHTML = '&#128273; Update Key — ' + esc(name);
+    document.getElementById('keyModalInput').value = '';
+    document.getElementById('keyModalPreview').style.display = 'none';
+    const modal = document.getElementById('keyModal');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('keyModalInput').focus(), 50);
+}
+
+function closeKeyModal() {
+    document.getElementById('keyModal').style.display = 'none';
+    keyModalCustomerId = null;
+}
+
+async function saveModalKey() {
+    if (!keyModalCustomerId) return;
+    const id = keyModalCustomerId;
+    const key = document.getElementById('keyModalInput').value.trim();
+    if (!key) { showToast('Paste a connection key', 'error'); return; }
+    try {
+        const data = await api('/customers/' + id + '/connection-key', {
+            method: 'PUT',
+            body: JSON.stringify({ connection_key: key }),
+        });
+        if (data.connectivity && data.connectivity.reachable && data.connectivity.authenticated) {
+            showToast('Connection key updated — connected successfully!');
+        } else {
+            showToast('Connection key updated — ' + (data.connectivity ? (data.connectivity.error || 'checking connection...') : 'will check connection shortly'), 'error');
+        }
+        closeKeyModal();
+        loadCustomers();
+        if (currentCustomerId === id) refreshDetail();
+    } catch (e) { showToast(e.message, 'error'); }
 }
 
 // --- Detail View ---
@@ -1959,12 +2019,18 @@ async function switchToHomeowner() {
 document.addEventListener('DOMContentLoaded', () => {
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
-    // Close notes modal on backdrop click or Escape
+    // Close modals on backdrop click or Escape
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && document.getElementById('notesModal').style.display === 'flex') closeNotesModal();
+        if (e.key === 'Escape') {
+            if (document.getElementById('keyModal').style.display === 'flex') closeKeyModal();
+            else if (document.getElementById('notesModal').style.display === 'flex') closeNotesModal();
+        }
     });
     document.getElementById('notesModal').addEventListener('click', function(e) {
         if (e.target === this) closeNotesModal();
+    });
+    document.getElementById('keyModal').addEventListener('click', function(e) {
+        if (e.target === this) closeKeyModal();
     });
 });
 </script>

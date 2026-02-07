@@ -36,6 +36,13 @@ class UpdateCustomerRequest(BaseModel):
     notes: Optional[str] = Field(None, max_length=500)
 
 
+class UpdateConnectionKeyRequest(BaseModel):
+    connection_key: str = Field(
+        min_length=10,
+        description="New base64 connection key from homeowner",
+    )
+
+
 class UpdateZoneAliasesRequest(BaseModel):
     zone_aliases: dict = Field(
         default_factory=dict,
@@ -161,6 +168,36 @@ async def update_customer(customer_id: str, body: UpdateCustomerRequest):
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     return {"success": True, "customer": _customer_response(customer)}
+
+
+@router.put(
+    "/api/customers/{customer_id}/connection-key",
+    summary="Update customer connection key",
+)
+async def update_connection_key(customer_id: str, body: UpdateConnectionKeyRequest):
+    """Replace a customer's connection key. Preserves notes, aliases, and name."""
+    _require_management_mode()
+    try:
+        customer = customer_store.update_customer_connection_key(
+            customer_id, encoded_key=body.connection_key
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    print(f"[MGMT] Connection key updated for {customer.name}: url='{customer.url}', mode={customer.connection_mode}")
+
+    # Test connectivity immediately with the new key
+    conn = _customer_connection(customer)
+    check_result = await management_client.check_homeowner_connection(conn)
+    customer_store.update_customer_status(customer.id, check_result)
+
+    return {
+        "success": True,
+        "customer": _customer_response(customer),
+        "connectivity": check_result,
+    }
 
 
 @router.put(

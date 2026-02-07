@@ -45,9 +45,23 @@ async def _save_options(options: dict):
         json.dump(options, f, indent=2)
 
     # 2. Push to Supervisor API so settings survive rebuilds
+    #    The Supervisor validates options against config.yaml schema and rejects
+    #    unknown fields. Filter to only known schema fields to prevent one unknown
+    #    field from torpedoing the entire save (which would lose API keys etc.).
+    _KNOWN_SCHEMA_KEYS = {
+        "mode", "homeowner_url", "homeowner_label", "homeowner_address",
+        "homeowner_city", "homeowner_state", "homeowner_zip", "homeowner_phone",
+        "homeowner_first_name", "homeowner_last_name", "homeowner_ha_token",
+        "homeowner_connection_mode", "api_keys", "irrigation_device_id",
+        "rate_limit_per_minute", "log_retention_days", "enable_audit_log",
+        "connection_revoked", "weather_entity_id", "weather_enabled",
+        "weather_check_interval_minutes",
+    }
     supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
     if supervisor_token:
         try:
+            # Only send fields the Supervisor schema knows about
+            safe_options = {k: v for k, v in options.items() if k in _KNOWN_SCHEMA_KEYS}
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     "http://supervisor/addons/self/options",
@@ -55,7 +69,7 @@ async def _save_options(options: dict):
                         "Authorization": f"Bearer {supervisor_token}",
                         "Content-Type": "application/json",
                     },
-                    json={"options": options},
+                    json={"options": safe_options},
                 )
                 if resp.status_code == 200:
                     print(f"[ADMIN] ✓ Options persisted to Supervisor API")
@@ -483,11 +497,12 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     # Auto-detect zone count from selected device
     zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
 
-    # Find or create a dedicated management company key
+    # Find or create a dedicated management company key.
+    # Always generate a fresh random key — this ensures that after a revoke
+    # (which deletes the old key), the new connection key works even if the
+    # Supervisor restored stale options on rebuild.
     existing_keys = options.get("api_keys", [])
     mgmt_key_name = "Management Company (Connection Key)"
-    mgmt_key = None
-    mgmt_key_entry = None
 
     # Full permission set for management company keys
     full_mgmt_permissions = [
@@ -496,29 +511,17 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         "entities.control", "history.read", "system.control",
     ]
 
-    for key_entry in existing_keys:
-        if key_entry.get("name") == mgmt_key_name:
-            mgmt_key = key_entry["key"]
-            mgmt_key_entry = key_entry
-            break
+    # Remove any existing management key — we'll create a fresh one
+    existing_keys = [k for k in existing_keys if k.get("name") != mgmt_key_name]
 
-    if not mgmt_key:
-        mgmt_key = secrets.token_urlsafe(32)
-        existing_keys.append({
-            "key": mgmt_key,
-            "name": mgmt_key_name,
-            "permissions": full_mgmt_permissions,
-        })
-        options["api_keys"] = existing_keys
-    else:
-        # Upgrade existing key permissions if any are missing
-        current_perms = set(mgmt_key_entry.get("permissions", []))
-        needed_perms = set(full_mgmt_permissions)
-        missing = needed_perms - current_perms
-        if missing:
-            mgmt_key_entry["permissions"] = full_mgmt_permissions
-            options["api_keys"] = existing_keys
-            print(f"[ADMIN] Upgraded management key permissions: added {missing}")
+    mgmt_key = secrets.token_urlsafe(32)
+    existing_keys.append({
+        "key": mgmt_key,
+        "name": mgmt_key_name,
+        "permissions": full_mgmt_permissions,
+    })
+    options["api_keys"] = existing_keys
+    print(f"[ADMIN] Generated fresh management API key")
 
     await _save_options(options)
 

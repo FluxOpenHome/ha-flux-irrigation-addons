@@ -165,6 +165,55 @@ def update_customer_zone_aliases(
     return None
 
 
+def update_customer_connection_key(
+    customer_id: str,
+    encoded_key: str,
+) -> Optional[Customer]:
+    """Update a customer's connection key, preserving notes, aliases, and name.
+
+    Decodes the new key and updates connection fields (url, api_key, ha_token,
+    connection_mode) plus contact/address info from the key. Clears the old
+    last_status so the next health check starts fresh.
+    """
+    key_data = decode_connection_key(encoded_key)
+    print(f"[CUST_STORE] Updating key for {customer_id}: url='{key_data.url}', mode='{key_data.mode}'")
+
+    customers = load_customers()
+    for c in customers:
+        if c.id == customer_id:
+            # Update connection fields
+            c.connection_key_encoded = encoded_key
+            c.url = key_data.url
+            c.api_key = key_data.key
+            c.ha_token = key_data.ha_token or ""
+            c.connection_mode = key_data.mode or "direct"
+
+            # Update contact/address from the new key (if provided)
+            if key_data.address:
+                c.address = key_data.address
+            if key_data.city:
+                c.city = key_data.city
+            if key_data.state:
+                c.state = key_data.state
+            if key_data.zip:
+                c.zip = key_data.zip
+            if key_data.phone:
+                c.phone = key_data.phone
+            if key_data.first_name:
+                c.first_name = key_data.first_name
+            if key_data.last_name:
+                c.last_name = key_data.last_name
+            if key_data.zone_count is not None:
+                c.zone_count = key_data.zone_count
+
+            # Clear stale status so it gets refreshed
+            c.last_status = None
+
+            save_customers(customers)
+            return c
+    return None
+
+
 def update_customer_status(customer_id: str, status: dict):
     """Update cached status after a health check.
 

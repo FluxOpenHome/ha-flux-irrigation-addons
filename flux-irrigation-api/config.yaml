@@ -39,6 +39,7 @@ options:
   rate_limit_per_minute: 60
   log_retention_days: 365
   enable_audit_log: true
+  connection_revoked: false
   weather_entity_id: ""
   weather_enabled: false
   weather_check_interval_minutes: 15
@@ -64,6 +65,7 @@ schema:
   rate_limit_per_minute: "int(1,300)"
   log_retention_days: "int(1,730)"
   enable_audit_log: bool
+  connection_revoked: "bool?"
   weather_entity_id: "str?"
   weather_enabled: "bool?"
   weather_check_interval_minutes: "int(5,60)?"
