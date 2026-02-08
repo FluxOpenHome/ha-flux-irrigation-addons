@@ -8,6 +8,8 @@ by management through the proxy architecture.
 
 from datetime import datetime, timedelta
 from typing import Optional
+import secrets
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
@@ -152,6 +154,47 @@ async def issue_calendar_ics(issue_id: str):
             "Content-Disposition": f"attachment; filename=irrigation-service-{svc_date}.ics",
         },
     )
+
+
+# --- Temporary calendar tokens (for direct .ics access bypassing ingress auth) ---
+_cal_tokens: dict[str, dict] = {}  # token -> {"issue_id": str, "expires": float}
+_CAL_TOKEN_TTL = 300  # 5 minutes
+
+
+def _cleanup_expired_tokens():
+    """Remove expired tokens."""
+    now = time.time()
+    expired = [t for t, v in _cal_tokens.items() if now > v["expires"]]
+    for t in expired:
+        _cal_tokens.pop(t, None)
+
+
+@router.post("/{issue_id}/calendar-token", summary="Generate a temporary calendar download token")
+async def create_calendar_token(issue_id: str):
+    """Generate a short-lived token that allows the .ics file to be downloaded
+    without HA ingress authentication. Used by iOS to open the .ics in Safari
+    so that Apple Calendar can handle it natively."""
+    issue = issue_store.get_issue(issue_id)
+    if issue is None:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    if not issue.get("service_date"):
+        raise HTTPException(status_code=404, detail="No service date scheduled")
+
+    _cleanup_expired_tokens()
+    token = secrets.token_urlsafe(32)
+    _cal_tokens[token] = {"issue_id": issue_id, "expires": time.time() + _CAL_TOKEN_TTL}
+    return {"token": token}
+
+
+def get_cal_token_issue_id(token: str) -> str | None:
+    """Look up and consume a calendar token. Returns the issue_id or None."""
+    _cleanup_expired_tokens()
+    entry = _cal_tokens.pop(token, None)
+    if entry is None:
+        return None
+    if time.time() > entry["expires"]:
+        return None
+    return entry["issue_id"]
 
 
 @router.put("/{issue_id}/acknowledge", summary="Acknowledge an issue")
