@@ -2235,7 +2235,7 @@ const SCHEDULE_PATTERNS = {
     start_times: (eid, domain) =>
         domain === 'text' && /start_time/.test(eid),
     run_durations: (eid, domain) =>
-        domain === 'number' && (/run_duration/.test(eid) || (/zone_?\d/.test(eid) && !/repeat|cycle|mode/.test(eid)) || /duration.*zone/.test(eid)),
+        domain === 'number' && (/run_duration/.test(eid) || (/zone_?\\d/.test(eid) && !/repeat|cycle|mode/.test(eid)) || /duration.*zone/.test(eid)),
     repeat_cycles: (eid, domain) =>
         domain === 'number' && /repeat_cycle/.test(eid),
     zone_enables: (eid, domain) =>
