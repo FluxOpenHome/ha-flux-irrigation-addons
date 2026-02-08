@@ -969,7 +969,7 @@ function openQRScanner() {
             // Ignore scan failures — camera is still trying
         }
     ).then(function() {
-        status.textContent = 'Point your camera at the homeowner\'s QR code';
+        status.textContent = 'Point your camera at the homeowner\\'s QR code';
         status.style.color = 'var(--text-muted)';
     }).catch(function(err) {
         var msg = String(err);
