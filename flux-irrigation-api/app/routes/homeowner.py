@@ -137,28 +137,33 @@ async def homeowner_status():
         attrs = az.get("attributes", {})
         active_zone_name = attrs.get("friendly_name") or active_zone_eid
 
-    # Moisture probe summary + multiplier data
+    # --- Weather multiplier (read directly from weather rules file) ---
+    weather_multiplier = 1.0
+    try:
+        from routes.weather import _load_weather_rules
+        weather_rules = _load_weather_rules()
+        weather_multiplier = weather_rules.get("watering_multiplier", 1.0)
+    except Exception:
+        pass
+
+    # --- Moisture probe data ---
     moisture_enabled = False
     moisture_probe_count = 0
-    weather_multiplier = 1.0
     moisture_multiplier = 1.0
     try:
         from routes.moisture import (
             _load_data as _load_moisture_data,
-            get_weather_multiplier,
             calculate_overall_moisture_multiplier,
         )
         moisture_data = _load_moisture_data()
         moisture_enabled = moisture_data.get("enabled", False)
         moisture_probe_count = len(moisture_data.get("probes", {}))
-        weather_multiplier = get_weather_multiplier()
-        try:
-            moisture_result = await calculate_overall_moisture_multiplier()
-            moisture_multiplier = moisture_result.get("moisture_multiplier", 1.0)
-        except Exception:
-            pass
+        moisture_result = await calculate_overall_moisture_multiplier()
+        moisture_multiplier = moisture_result.get("moisture_multiplier", 1.0)
     except Exception:
         pass
+
+    # --- Combined multiplier ---
     combined_multiplier = round(
         weather_multiplier * moisture_multiplier, 3
     ) if moisture_multiplier > 0 else 0.0

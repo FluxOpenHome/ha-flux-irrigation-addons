@@ -782,25 +782,78 @@ async def get_combined_multiplier(zone_entity_id: str) -> dict:
 
 # --- Duration Adjustment for ESPHome Scheduled Runs ---
 
-async def capture_base_durations() -> dict:
-    """Read current number.*_run_duration entities and save as base durations.
+def _find_duration_entities(control_entities: list[str]) -> list[str]:
+    """Identify duration entities from control entity list.
 
-    Scans the config's allowed_control_entities for number.* entities whose
-    name contains 'run_duration', reads their current value, and stores them.
+    ESPHome sprinkler controllers use various naming conventions:
+      - number.*_run_duration     (e.g., number.irrigator_zone_1_run_duration)
+      - number.*_duration_zone_*  (e.g., number.duration_zone_1)
+      - number.*_zone_*           (e.g., number.irrigation_system_zone_1)
+
+    Strategy: find all number.* entities that correspond to zone controls.
+    Excludes repeat_cycle, multiplier, and mode entities.
+    """
+    import re
+    # Match any number.* entity that contains "zone" followed by a digit
+    zone_pattern = re.compile(r"^number\..*zone[_\s]?\d", re.IGNORECASE)
+    # Also match entities with "duration" anywhere
+    duration_pattern = re.compile(r"^number\..*duration", re.IGNORECASE)
+    # Exclude non-duration number entities (repeat cycles, etc.)
+    exclude_pattern = re.compile(r"repeat|cycle|multiplier|mode", re.IGNORECASE)
+
+    matches = []
+    for eid in control_entities:
+        if not eid.startswith("number."):
+            continue
+        if exclude_pattern.search(eid):
+            continue
+        if zone_pattern.match(eid) or duration_pattern.match(eid):
+            matches.append(eid)
+    return matches
+
+
+async def capture_base_durations() -> dict:
+    """Read current zone duration number entities and save as base durations.
+
+    Identifies duration entities from the device's control entities using
+    pattern matching (zone number or 'duration' keyword), reads their current
+    value from HA, and stores them as the baseline for factor adjustments.
+
+    If config entities are empty (e.g. startup race), falls back to querying
+    the device entity registry directly.
 
     Returns the captured durations dict.
     """
     config = get_config()
     data = _load_data()
 
-    # Find run_duration entities from control entities
-    duration_entities = [
-        eid for eid in config.allowed_control_entities
-        if eid.startswith("number.") and "run_duration" in eid
-    ]
+    # Find duration entities from control entities
+    duration_entities = _find_duration_entities(config.allowed_control_entities)
 
+    # Fallback: if config has no control entities, re-resolve from device
+    if not duration_entities and config.irrigation_device_id:
+        print(f"[MOISTURE] No duration entities in config "
+              f"({len(config.allowed_control_entities)} control entities). "
+              f"Re-resolving device entities...")
+        device_entities = await ha_client.get_device_entities(
+            config.irrigation_device_id
+        )
+        other = device_entities.get("other", [])
+        all_eids = [e["entity_id"] for e in other]
+        duration_entities = _find_duration_entities(all_eids)
+        # Update config so future calls work
+        if all_eids:
+            config.allowed_control_entities = all_eids
+            print(f"[MOISTURE] Re-resolved: {len(all_eids)} control entities, "
+                  f"{len(duration_entities)} duration entities")
+
+    print(f"[MOISTURE] capture_base_durations: "
+          f"{len(duration_entities)} duration entities: {duration_entities}")
     if not duration_entities:
-        return {"captured": 0, "base_durations": {}}
+        print(f"[MOISTURE] All control entities: "
+              f"{config.allowed_control_entities}")
+        return {"captured": 0, "base_durations": {},
+                "control_entities": config.allowed_control_entities}
 
     states = await ha_client.get_entities_by_ids(duration_entities)
     base_durations = {}
@@ -872,14 +925,23 @@ async def apply_adjusted_durations() -> dict:
           f"weather_mult={weather_mult}")
 
     # Build reverse mapping: duration_entity_id → zone_entity_id (for moisture lookup)
-    # Convention: switch.irrigator_zone_1 → number.irrigator_zone_1_run_duration
+    # Match by zone number: extract "zone_N" from both and pair them
+    import re
+    def _extract_zone_num(eid: str):
+        m = re.search(r"zone[_\s]?(\d+)", eid, re.IGNORECASE)
+        return m.group(1) if m else None
+
     dur_to_zone = {}
+    zone_by_num = {}
     for zone_eid in config.allowed_zone_entities:
-        zone_suffix = zone_eid.split(".", 1)[1] if "." in zone_eid else zone_eid
-        for dur_eid in base_durations:
-            if zone_suffix in dur_eid:
-                dur_to_zone[dur_eid] = zone_eid
-                break
+        zn = _extract_zone_num(zone_eid)
+        if zn:
+            zone_by_num[zn] = zone_eid
+
+    for dur_eid in base_durations:
+        zn = _extract_zone_num(dur_eid)
+        if zn and zn in zone_by_num:
+            dur_to_zone[dur_eid] = zone_by_num[zn]
 
     for dur_eid, dur_data in base_durations.items():
         base = dur_data["base_value"]
@@ -897,12 +959,14 @@ async def apply_adjusted_durations() -> dict:
             skip = False
 
         if skip:
-            adjusted_value = 1
+            adjusted_value = 1.0
         else:
             combined = weather_mult * moisture_mult
-            adjusted_value = max(1, round(base * combined))
+            adjusted_value = float(max(1, round(base * combined)))
 
-        # Write to HA
+        # Write to HA via number.set_value service
+        print(f"[MOISTURE] Setting {dur_eid}: base={base} → adjusted={adjusted_value} "
+              f"(weather={weather_mult}, moisture={moisture_mult:.3f})")
         success = await ha_client.call_service("number", "set_value", {
             "entity_id": dur_eid,
             "value": adjusted_value,
@@ -920,11 +984,9 @@ async def apply_adjusted_durations() -> dict:
                 "skip": skip,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             }
-            print(f"[MOISTURE] {dur_eid}: {base} → {adjusted_value} "
-                  f"(weather={weather_mult}, moisture={moisture_mult:.3f})")
         else:
             failed.append(dur_eid)
-            print(f"[MOISTURE] Failed to set {dur_eid} to {adjusted_value}")
+            print(f"[MOISTURE] FAILED to set {dur_eid} to {adjusted_value}")
 
     data["duration_adjustment_active"] = applied_count > 0
     data["adjusted_durations"] = adjusted
@@ -961,7 +1023,7 @@ async def restore_base_durations() -> dict:
 
     restored_count = 0
     for dur_eid, dur_data in base_durations.items():
-        base_value = dur_data["base_value"]
+        base_value = float(dur_data["base_value"])
         success = await ha_client.call_service("number", "set_value", {
             "entity_id": dur_eid,
             "value": base_value,
@@ -1210,16 +1272,22 @@ async def api_update_settings(body: MoistureSettingsRequest):
             captured = capture_result.get("captured", 0)
             print(f"[MOISTURE] Toggle ON: captured {captured} base durations")
             if captured == 0:
-                # No run_duration entities found — report clearly
+                # No duration entities found — report with diagnostic details
                 config = get_config()
-                ctrl_count = len(config.allowed_control_entities)
-                dur_entities = [e for e in config.allowed_control_entities
-                                if e.startswith("number.") and "run_duration" in e]
-                print(f"[MOISTURE] Toggle ON: control entities={ctrl_count}, "
-                      f"run_duration matches={dur_entities}")
+                all_ctrl = config.allowed_control_entities
+                number_ents = [e for e in all_ctrl if e.startswith("number.")]
+                print(f"[MOISTURE] Toggle ON FAILED: "
+                      f"control_entities={all_ctrl}, number_ents={number_ents}")
+                detail = ""
+                if not all_ctrl:
+                    detail = " — no control entities configured (device may need re-selection)"
+                elif not number_ents:
+                    detail = f" — {len(all_ctrl)} control entities but none are number.* entities"
+                else:
+                    detail = f" — number.* entities found: {number_ents}"
                 return {
                     "success": False,
-                    "message": f"No run_duration entities found ({ctrl_count} control entities)",
+                    "message": f"No duration entities found{detail}",
                     "applied": 0,
                 }
             result = await apply_adjusted_durations()
