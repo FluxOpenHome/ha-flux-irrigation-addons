@@ -13,7 +13,7 @@ MANAGEMENT_HTML = """<!DOCTYPE html>
 <title>Flux Open Home - Management Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" crossorigin=""></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" crossorigin="" async></script>
 <style>
 :root {
     --bg-body: #f5f6fa;
@@ -949,7 +949,7 @@ function openQRScanner() {
             // Validate it looks like a connection key
             try {
                 const decoded = JSON.parse(atob(decodedText.replace(/-/g, '+').replace(/_/g, '/')));
-                if (!decoded.url || !decoded.api_key) {
+                if (!decoded.url || !decoded.key) {
                     status.textContent = 'QR code does not contain a valid connection key. Try again.';
                     status.style.color = 'var(--color-danger)';
                     return;
