@@ -265,6 +265,30 @@ async def set_entity(entity_id: str, body: EntitySetRequest, request: Request):
     if extra_data:
         action_desc += f" ({extra_data})"
 
+    # Update stored base duration when a duration entity is set
+    if domain == "number" and body.value is not None:
+        try:
+            from routes.moisture import (
+                _load_data as _load_moisture_data,
+                _save_data as _save_moisture_data,
+                apply_adjusted_durations,
+                _find_duration_entities,
+            )
+            dur_entities = _find_duration_entities(config.allowed_control_entities)
+            if entity_id in dur_entities:
+                from datetime import datetime, timezone
+                mdata = _load_moisture_data()
+                base_durations = mdata.get("base_durations", {})
+                base_durations[entity_id] = base_durations.get(entity_id, {})
+                base_durations[entity_id]["base_value"] = float(body.value)
+                base_durations[entity_id]["captured_at"] = datetime.now(timezone.utc).isoformat()
+                mdata["base_durations"] = base_durations
+                _save_moisture_data(mdata)
+                if mdata.get("apply_factors_to_schedule"):
+                    await apply_adjusted_durations()
+        except Exception as e:
+            print(f"[ENTITIES] Base duration update after set failed: {e}")
+
     audit_log.log_action(
         api_key_name=key_config.name,
         method="POST",

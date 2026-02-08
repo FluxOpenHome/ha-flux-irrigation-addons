@@ -368,10 +368,16 @@ async def lifespan(app: FastAPI):
         )
         moisture_data = _load_moisture_data()
         if moisture_data.get("apply_factors_to_schedule"):
-            # Toggle is ON — re-capture fresh base values and apply adjusted durations
-            print("[MAIN] Apply factors to schedule is enabled — capturing base and applying adjusted durations")
-            await capture_base_durations()
-            await apply_adjusted_durations()
+            # Toggle is ON — re-apply adjusted durations using stored base values
+            # Do NOT re-capture: HA entities may have adjusted values from last session
+            if moisture_data.get("base_durations"):
+                print("[MAIN] Apply factors to schedule is enabled — re-applying adjusted durations from stored base")
+                await apply_adjusted_durations()
+            else:
+                # No stored base — must capture fresh (first run after enabling)
+                print("[MAIN] Apply factors enabled but no stored base — capturing fresh base durations")
+                await capture_base_durations()
+                await apply_adjusted_durations()
         elif moisture_data.get("duration_adjustment_active"):
             # Toggle is OFF but durations were adjusted — restore base values (safety net)
             print("[MAIN] Moisture: adjusted durations were active at shutdown — restoring base values")

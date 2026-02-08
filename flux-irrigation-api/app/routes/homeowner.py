@@ -440,6 +440,34 @@ async def homeowner_set_entity(entity_id: str, body: EntitySetRequest):
             detail=f"Failed to call {svc_domain}.{svc_name} for {entity_id}.",
         )
 
+    # If this is a duration entity, always update stored base_durations so the
+    # user-set value is treated as the base.  When Apply Factors is active,
+    # re-apply the factor immediately so HA gets base × multiplier.
+    if domain == "number" and body.value is not None:
+        try:
+            from routes.moisture import (
+                _load_data as _load_moisture_data,
+                _save_data as _save_moisture_data,
+                apply_adjusted_durations,
+                _find_duration_entities,
+            )
+            from config import get_config as _get_config
+            cfg = _get_config()
+            dur_entities = _find_duration_entities(cfg.allowed_control_entities)
+            if entity_id in dur_entities:
+                mdata = _load_moisture_data()
+                base_durations = mdata.get("base_durations", {})
+                base_durations[entity_id] = base_durations.get(entity_id, {})
+                base_durations[entity_id]["base_value"] = float(body.value)
+                base_durations[entity_id]["captured_at"] = datetime.now(timezone.utc).isoformat()
+                mdata["base_durations"] = base_durations
+                _save_moisture_data(mdata)
+                print(f"[HOMEOWNER] Updated base duration for {entity_id} to {body.value}")
+                if mdata.get("apply_factors_to_schedule"):
+                    await apply_adjusted_durations()
+        except Exception as e:
+            print(f"[HOMEOWNER] Base duration update after set failed: {e}")
+
     return {
         "success": True,
         "entity_id": entity_id,

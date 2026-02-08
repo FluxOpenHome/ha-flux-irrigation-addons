@@ -2392,7 +2392,8 @@ function renderScheduleCard(custId, sched, durData) {
                 const eid = duration.entity_id;
                 const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
                 const adj = factorsActive ? adjDurations[eid] : null;
-                html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(duration.state) + '" ' +
+                const baseVal = adj ? String(adj.original) : duration.state;
+                html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
                     'style="width:70px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);"> ' +
                     esc(unit) + ' ' +
@@ -2400,7 +2401,7 @@ function renderScheduleCard(custId, sched, durData) {
                     '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button>' +
                     (adj ? ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                     'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
-                    adj.combined_multiplier.toFixed(2) + 'x</span>' : '') +
+                    adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)</span>' : '') +
                     '</td>';
             } else {
                 html += '<td style="color:var(--text-disabled);">-</td>';
@@ -2677,7 +2678,7 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Start Times</strong> — Set one or more daily start times</li>
 <li style="margin-bottom:4px;"><strong>Zone Durations</strong> — Configure how long each zone runs (in minutes)</li>
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle the schedule on or off without deleting it</li>
-<li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). Each zone row shows a factor badge (e.g. 0.80x) and the adjusted duration in minutes. Durations update automatically as conditions change and restore to originals when disabled.</li>
+<li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). The input field shows the base duration (what the user sets), and a badge next to it shows the adjusted duration and factor (e.g. &quot;24 min (0.80x)&quot;). The base is what you control; the adjusted value is what the controller actually runs. Durations update automatically as conditions change and restore to originals when disabled.</li>
 </ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Rules</h4>

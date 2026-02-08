@@ -1076,7 +1076,8 @@ function renderScheduleCard(sched, durData) {
                 const eid = duration.entity_id;
                 const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
                 const adj = factorsActive ? adjDurations[eid] : null;
-                html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(duration.state) + '" ' +
+                const baseVal = adj ? String(adj.original) : duration.state;
+                html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
                     'style="width:70px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;"> ' +
                     esc(unit) + ' ' +
@@ -1084,7 +1085,7 @@ function renderScheduleCard(sched, durData) {
                     '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button>' +
                     (adj ? ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                     'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
-                    adj.combined_multiplier.toFixed(2) + 'x</span>' : '') +
+                    adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)</span>' : '') +
                     '</td>';
             } else {
                 html += '<td style="color:var(--text-disabled);">-</td>';
@@ -2146,7 +2147,7 @@ const HELP_CONTENT = `
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Schedule Management</h4>
 <p style="margin-bottom:10px;">Your irrigation schedule is configured through your Flux Open Home controller and managed via its ESPHome entities:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Schedule Enable/Disable</strong> — Master toggle to turn the entire schedule on or off</li><li style="margin-bottom:4px;"><strong>Days of Week</strong> — Click day buttons to toggle which days the schedule runs</li><li style="margin-bottom:4px;"><strong>Start Times</strong> — Set when each schedule program begins (HH:MM format)</li><li style="margin-bottom:4px;"><strong>Zone Settings</strong> — Enable/disable individual zones and set run durations for each</li><li style="margin-bottom:4px;"><strong>Zone Modes</strong> — Some zones may have special modes (Pump Start Relay, Master Valve) that are firmware-controlled</li><li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). Each zone row shows a factor badge (e.g. 0.80x) and the adjusted duration in minutes. Durations update automatically as conditions change and restore to originals when disabled.</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Schedule Enable/Disable</strong> — Master toggle to turn the entire schedule on or off</li><li style="margin-bottom:4px;"><strong>Days of Week</strong> — Click day buttons to toggle which days the schedule runs</li><li style="margin-bottom:4px;"><strong>Start Times</strong> — Set when each schedule program begins (HH:MM format)</li><li style="margin-bottom:4px;"><strong>Zone Settings</strong> — Enable/disable individual zones and set run durations for each</li><li style="margin-bottom:4px;"><strong>Zone Modes</strong> — Some zones may have special modes (Pump Start Relay, Master Valve) that are firmware-controlled</li><li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). The input field shows the base duration (what you set), and a badge next to it shows the adjusted duration and factor (e.g. &quot;24 min (0.80x)&quot;). The base is what you control; the adjusted value is what the controller actually runs. Durations update automatically as conditions change and restore to originals when disabled.</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Schedule changes take effect immediately on your controller — no restart needed.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather-Based Control</h4>
