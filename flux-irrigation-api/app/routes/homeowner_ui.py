@@ -242,6 +242,19 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         </div>
     </div>
 
+    <!-- Rain Sensor Card -->
+    <div class="card" id="rainSensorCard" style="display:none;">
+        <div class="card-header">
+            <h2>&#127783;&#65039; Rain Sensor</h2>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span id="rainStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">&#8212;</span>
+            </div>
+        </div>
+        <div class="card-body" id="rainSensorCardBody">
+            <div class="loading">Loading rain sensor...</div>
+        </div>
+    </div>
+
     <!-- Weather Card -->
     <div class="card" id="weatherCard" style="display:none;">
         <div class="card-header">
@@ -303,6 +316,19 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         </div>
     </div>
 
+    <!-- Expansion Boards Card -->
+    <div class="card" id="expansionCard" style="display:none;">
+        <div class="card-header">
+            <h2>&#128268; Expansion Boards</h2>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span id="expansionStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">&#8212;</span>
+            </div>
+        </div>
+        <div class="card-body" id="expansionCardBody">
+            <div class="loading">Loading expansion data...</div>
+        </div>
+    </div>
+
     <!-- History Card -->
     <div class="card">
         <div class="card-header">
@@ -326,7 +352,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 </div>
 
 <!-- Change Log Modal -->
-<div id="changelogModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+<div id="changelogModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:720px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Configuration Change Log</h3>
@@ -342,7 +368,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 </div>
 
 <!-- Help Modal -->
-<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:640px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Homeowner Dashboard Help</h3>
@@ -518,6 +544,20 @@ function classifyScheduleEntity(entity) {
         if (matcher(eid, domain)) return category;
     }
     return null;
+}
+
+// --- Rain sensor entity classification ---
+function isRainEntity(eid) {
+    const e = (eid || '').toLowerCase();
+    return /rain_sensor$/.test(e) || /rain_sensor_enabled/.test(e) ||
+           /rain_delay_enabled/.test(e) || /rain_delay_hours/.test(e) ||
+           /rain_sensor_type/.test(e) || /rain_delay_active/.test(e);
+}
+
+// --- Expansion board entity classification ---
+function isExpansionEntity(eid) {
+    const e = (eid || '').toLowerCase();
+    return /detected_zones/.test(e) || /rescan_expansion/.test(e);
 }
 
 function extractStartTimeNumber(eid) {
@@ -840,7 +880,16 @@ async function loadSensors() {
     const el = document.getElementById('detailSensors');
     try {
         const data = await api('/sensors');
-        const sensors = Array.isArray(data) ? data : (data.sensors || []);
+        const allSensors = Array.isArray(data) ? data : (data.sensors || []);
+
+        // Extract rain and expansion sensor entities into their own cards
+        window._rainSensors = allSensors.filter(s => isRainEntity(s.entity_id));
+        window._expansionSensors = allSensors.filter(s => isExpansionEntity(s.entity_id));
+        renderRainSensorCard();
+        renderExpansionCard();
+
+        // Regular sensors (exclude rain + expansion)
+        const sensors = allSensors.filter(s => !isRainEntity(s.entity_id) && !isExpansionEntity(s.entity_id));
         if (sensors.length === 0) { el.innerHTML = '<div class="empty-state"><p>No sensors found</p></div>'; _sensorGridBuilt = false; return; }
 
         // Build the tile grid once, then only update values
@@ -913,12 +962,21 @@ async function loadControls() {
             if (num) window._zoneModes[num] = { state: zm.state, entity: zm };
         }
 
-        // Render Device Controls
-        if (controlEntities.length === 0) {
+        // Extract rain and expansion control entities into their own cards
+        const rainControls = controlEntities.filter(e => isRainEntity(e.entity_id));
+        const expansionControls = controlEntities.filter(e => isExpansionEntity(e.entity_id));
+        const regularControls = controlEntities.filter(e => !isRainEntity(e.entity_id) && !isExpansionEntity(e.entity_id));
+        window._rainControls = rainControls;
+        window._expansionControls = expansionControls;
+        renderRainSensorCard();
+        renderExpansionCard();
+
+        // Render Device Controls (excluding rain + expansion)
+        if (regularControls.length === 0) {
             controlsEl.innerHTML = '<div class="empty-state"><p>No device controls found</p></div>';
         } else {
             const groups = {};
-            controlEntities.forEach(e => {
+            regularControls.forEach(e => {
                 const d = e.domain || 'unknown';
                 if (!groups[d]) groups[d] = [];
                 groups[d].push(e);
@@ -952,6 +1010,209 @@ async function loadControls() {
         controlsEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load controls: ' + esc(e.message) + '</div>';
         scheduleEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load schedule: ' + esc(e.message) + '</div>';
     }
+}
+
+// --- Rain Sensor Card ---
+function renderRainSensorCard() {
+    const card = document.getElementById('rainSensorCard');
+    const body = document.getElementById('rainSensorCardBody');
+    const badge = document.getElementById('rainStatusBadge');
+    const sensors = window._rainSensors || [];
+    const controls = window._rainControls || [];
+    const all = [...sensors, ...controls];
+    if (all.length === 0) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    // Find specific entities by pattern
+    const findEntity = (list, pattern) => list.find(e => pattern.test((e.entity_id || '').toLowerCase()));
+    const sensorEntity = findEntity(sensors, /rain_sensor$/) || findEntity(sensors, /rain_sensor[^_]/);
+    const enabledEntity = findEntity(controls, /rain_sensor_enabled/);
+    const typeEntity = findEntity(controls, /rain_sensor_type/);
+    const delayEnabledEntity = findEntity(controls, /rain_delay_enabled/);
+    const delayHoursEntity = findEntity(controls, /rain_delay_hours/);
+    const delayActiveEntity = findEntity(sensors, /rain_delay_active/);
+
+    // Status badge
+    const isEnabled = enabledEntity && enabledEntity.state === 'on';
+    const isRaining = sensorEntity && sensorEntity.state === 'on';
+    const delayActive = delayActiveEntity && delayActiveEntity.state === 'on';
+    if (!isEnabled) {
+        badge.textContent = 'Disabled';
+        badge.style.background = 'var(--bg-tile)';
+        badge.style.color = 'var(--text-muted)';
+    } else if (isRaining) {
+        badge.textContent = 'Rain Detected';
+        badge.style.background = 'var(--bg-danger-light)';
+        badge.style.color = 'var(--text-danger-dark)';
+    } else if (delayActive) {
+        badge.textContent = 'Rain Delay';
+        badge.style.background = 'var(--bg-warning)';
+        badge.style.color = 'var(--text-warning)';
+    } else {
+        badge.textContent = 'Dry';
+        badge.style.background = 'var(--bg-success-light)';
+        badge.style.color = 'var(--text-success-dark)';
+    }
+
+    let html = '';
+
+    // Rain sensor status banner
+    if (sensorEntity) {
+        const stateColor = isRaining ? 'var(--color-danger)' : 'var(--color-success)';
+        const stateText = isRaining ? 'Rain Detected' : 'Dry';
+        const bgColor = isRaining ? 'var(--bg-danger-light)' : 'var(--bg-success-light)';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:8px;margin-bottom:16px;background:' + bgColor + ';">' +
+            '<div style="font-size:24px;">' + (isRaining ? '&#127783;&#65039;' : '&#9728;&#65039;') + '</div>' +
+            '<div><div style="font-size:15px;font-weight:600;color:' + stateColor + ';">' + stateText + '</div>' +
+            '<div style="font-size:12px;color:var(--text-muted);">Hardware rain sensor state</div></div></div>';
+    }
+
+    html += '<div class="tile-grid">';
+
+    // Rain Sensor Enabled toggle
+    if (enabledEntity) {
+        const isOn = enabledEntity.state === 'on';
+        html += '<div class="tile ' + (isOn ? 'active' : '') + '">' +
+            '<div class="tile-name">Rain Sensor</div>' +
+            '<div class="tile-state ' + (isOn ? 'on' : '') + '">' + (isOn ? 'Enabled' : 'Disabled') + '</div>' +
+            '<div class="tile-actions">' +
+            '<button class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
+            'onclick="setEntityValue(\\'' + enabledEntity.entity_id + '\\',\\'switch\\',' +
+            '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' + (isOn ? 'Disable' : 'Enable') + '</button>' +
+            '</div></div>';
+    }
+
+    // Rain Sensor Type selector
+    if (typeEntity) {
+        const options = (typeEntity.attributes && typeEntity.attributes.options) || [];
+        const optionsHtml = options.map(o => '<option value="' + esc(o) + '"' + (o === typeEntity.state ? ' selected' : '') + '>' + esc(o) + '</option>').join('');
+        html += '<div class="tile">' +
+            '<div class="tile-name">Sensor Type</div>' +
+            '<div class="tile-state">' + esc(typeEntity.state) + '</div>' +
+            '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
+            '<select id="sel_rain_type" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">' + optionsHtml + '</select>' +
+            '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + typeEntity.entity_id + '\\',\\'select\\',{option:document.getElementById(\\'sel_rain_type\\').value})">Set</button>' +
+            '</div></div>';
+    }
+
+    // Rain Delay Enabled toggle
+    if (delayEnabledEntity) {
+        const isOn = delayEnabledEntity.state === 'on';
+        html += '<div class="tile ' + (isOn ? 'active' : '') + '">' +
+            '<div class="tile-name">Rain Delay</div>' +
+            '<div class="tile-state ' + (isOn ? 'on' : '') + '">' + (isOn ? 'Enabled' : 'Disabled') + '</div>' +
+            '<div class="tile-actions">' +
+            '<button class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
+            'onclick="setEntityValue(\\'' + delayEnabledEntity.entity_id + '\\',\\'switch\\',' +
+            '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' + (isOn ? 'Disable' : 'Enable') + '</button>' +
+            '</div></div>';
+    }
+
+    // Rain Delay Hours
+    if (delayHoursEntity) {
+        const attrs = delayHoursEntity.attributes || {};
+        const min = attrs.min !== undefined ? attrs.min : 1;
+        const max = attrs.max !== undefined ? attrs.max : 72;
+        const step = attrs.step || 1;
+        const unit = attrs.unit_of_measurement || 'h';
+        html += '<div class="tile">' +
+            '<div class="tile-name">Delay Duration</div>' +
+            '<div class="tile-state">' + esc(delayHoursEntity.state) + ' ' + esc(unit) + '</div>' +
+            '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
+            '<input type="number" id="num_rain_delay" value="' + esc(delayHoursEntity.state) + '" min="' + min + '" max="' + max + '" step="' + step + '" style="width:60px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);">' +
+            '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + delayHoursEntity.entity_id + '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'num_rain_delay\\').value)})">Set</button>' +
+            '</div></div>';
+    }
+
+    // Rain Delay Active status
+    if (delayActiveEntity) {
+        const isActive = delayActiveEntity.state === 'on';
+        html += '<div class="tile ' + (isActive ? 'active' : '') + '">' +
+            '<div class="tile-name">Rain Delay Active</div>' +
+            '<div class="tile-state ' + (isActive ? 'on' : '') + '">' + (isActive ? 'Active' : 'Inactive') + '</div>' +
+            '</div>';
+    }
+
+    html += '</div>';
+    body.innerHTML = html;
+}
+
+// --- Expansion Board Card ---
+function renderExpansionCard() {
+    const card = document.getElementById('expansionCard');
+    const body = document.getElementById('expansionCardBody');
+    const badge = document.getElementById('expansionStatusBadge');
+    const sensors = window._expansionSensors || [];
+    const controls = window._expansionControls || [];
+    const all = [...sensors, ...controls];
+    if (all.length === 0) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    // Find specific entities
+    const findEntity = (list, pattern) => list.find(e => pattern.test((e.entity_id || '').toLowerCase()));
+    const detectedEntity = findEntity(sensors, /detected_zones/);
+    const rescanEntity = findEntity(controls, /rescan_expansion/);
+
+    // Parse detected zones text: "16 zones (0x20, 0x21)" or "8 zones (no expansion boards)"
+    let zoneCount = 0;
+    let boards = [];
+    let noBoards = true;
+    if (detectedEntity && detectedEntity.state) {
+        const text = detectedEntity.state;
+        const countMatch = text.match(/(\\d+)\\s*zones?/i);
+        if (countMatch) zoneCount = parseInt(countMatch[1]);
+        noBoards = /no expansion/i.test(text);
+        if (!noBoards) {
+            const addrMatch = text.match(/\\(([^)]+)\\)/);
+            if (addrMatch) {
+                boards = addrMatch[1].split(',').map(s => s.trim()).filter(s => s);
+            }
+        }
+    }
+
+    // Status badge
+    if (noBoards) {
+        badge.textContent = 'Main Board Only';
+        badge.style.background = 'var(--bg-tile)';
+        badge.style.color = 'var(--text-muted)';
+    } else {
+        badge.textContent = boards.length + ' Board' + (boards.length !== 1 ? 's' : '');
+        badge.style.background = 'var(--bg-success-light)';
+        badge.style.color = 'var(--text-success-dark)';
+    }
+
+    let html = '';
+
+    // Zone count banner
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:8px;margin-bottom:16px;background:var(--bg-tile);">' +
+        '<div style="font-size:24px;">&#128268;</div>' +
+        '<div><div style="font-size:15px;font-weight:600;color:var(--text-primary);">' + zoneCount + ' Zones Detected</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);">' + (noBoards ? 'No expansion boards connected' : boards.length + ' expansion board' + (boards.length !== 1 ? 's' : '') + ' connected') + '</div></div></div>';
+
+    // Board tiles (if any)
+    if (!noBoards && boards.length > 0) {
+        html += '<div class="tile-grid">';
+        boards.forEach((addr, i) => {
+            const boardNum = i + 1;
+            const startZone = 8 + (i * 8) + 1;
+            const endZone = startZone + 7;
+            html += '<div class="tile active">' +
+                '<div class="tile-name">Expansion Board ' + boardNum + '</div>' +
+                '<div class="tile-state on">' + esc(addr) + '</div>' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Zones ' + startZone + '-' + endZone + '</div>' +
+                '</div>';
+        });
+        html += '</div>';
+    }
+
+    // Rescan button
+    if (rescanEntity) {
+        html += '<div style="margin-top:12px;text-align:center;">' +
+            '<button class="btn btn-secondary btn-sm" onclick="setEntityValue(\\'' + rescanEntity.entity_id + '\\',\\'button\\',{})">&#128260; Rescan Expansion Boards</button>' +
+            '</div>';
+    }
+
+    body.innerHTML = html;
 }
 
 function renderScheduleCard(sched, durData) {
@@ -1238,7 +1499,7 @@ async function setEntityValue(entityId, domain, bodyObj) {
             body: JSON.stringify(bodyObj),
         });
         showToast('Updated ' + entityId.split('.').pop());
-        setTimeout(() => loadControls(), 1000);
+        setTimeout(() => { loadControls(); loadSensors(); }, 1000);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -2172,6 +2433,11 @@ const HELP_CONTENT = `
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Start</strong> — Turn a zone on immediately with no time limit</li><li style="margin-bottom:4px;"><strong>Timed Start</strong> — Enter a duration in minutes and click <strong>Timed</strong> to run the zone for a set period, then auto-shutoff</li><li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a running zone immediately</li><li style="margin-bottom:4px;"><strong>Emergency Stop All</strong> — Instantly stops every active zone on the system</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Green-highlighted tiles indicate zones that are currently running.</div>
 
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>
+<p style="margin-bottom:10px;">If your irrigation controller has a rain sensor connected, a dedicated Rain Sensor card appears showing:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Status Banner</strong> — Shows current state: Dry (green), Rain Detected (red), Rain Delay (yellow), or Disabled (gray)</li><li style="margin-bottom:4px;"><strong>Rain Sensor Enable</strong> — Toggle rain sensor monitoring on or off</li><li style="margin-bottom:4px;"><strong>Sensor Type</strong> — Set to NC (Normally Closed) or NO (Normally Open) to match your hardware wiring</li><li style="margin-bottom:4px;"><strong>Rain Delay Enable</strong> — Toggle the rain delay feature on or off</li><li style="margin-bottom:4px;"><strong>Delay Duration</strong> — How many hours to delay watering after rain is detected (1-72 hours)</li><li style="margin-bottom:4px;"><strong>Rain Delay Active</strong> — Shows whether rain delay is currently active</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The rain sensor card only appears when rain sensor entities are detected on your irrigation controller.</div>
+
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Sensors</h4>
 <p style="margin-bottom:10px;">The sensors card shows real-time readings from your irrigation controller — soil moisture, temperature, Wi-Fi signal strength, and any other sensors exposed by your device. Wi-Fi signal includes a quality badge (Great/Good/Poor/Bad) based on signal strength in dBm.</p>
 
@@ -2196,6 +2462,11 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">The run history table shows every zone on/off event with:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone name</strong> and source (API, schedule, weather pause, etc.)</li><li style="margin-bottom:4px;"><strong>State</strong> — ON (green) or OFF</li><li style="margin-bottom:4px;"><strong>Time</strong> and <strong>duration</strong> of each run</li><li style="margin-bottom:4px;"><strong>Watering Factor</strong> — The weather-based multiplier applied to schedule-triggered runs (green at 1.0x, yellow below, red above)</li><li style="margin-bottom:4px;"><strong>Probe Factor</strong> — The moisture probe multiplier (only shown when probes are enabled); includes sensor readings at each depth (T=Top/shallow, M=Middle/root zone, B=Bottom/deep) as percentages</li><li style="margin-bottom:4px;"><strong>Weather</strong> — Conditions at the time of the event with any triggered rules</li></ul>
 <p style="margin-bottom:10px;">Use the time range dropdown to view the last 24 hours, 7 days, 30 days, 90 days, or full year. Click <strong>Export CSV</strong> to download history as a spreadsheet. The CSV includes additional columns for probe sensor readings (top, mid, bottom percentages) and moisture profile.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Expansion Boards</h4>
+<p style="margin-bottom:10px;">If your controller supports I2C expansion boards for additional zones, the Expansion Boards card shows:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone Count</strong> — Total number of zones detected (base board + expansion)</li><li style="margin-bottom:4px;"><strong>Board Details</strong> — I2C addresses of connected expansion boards, with the zone range each board controls</li><li style="margin-bottom:4px;"><strong>Rescan</strong> — Trigger an I2C bus rescan to detect newly connected or disconnected boards</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; If no expansion boards are connected, the card shows &quot;No expansion boards connected&quot; with the base zone count. This card only appears when expansion board entities are detected on your controller.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">System Pause / Resume</h4>
 <p style="margin-bottom:10px;"><strong>Pause System</strong> immediately stops all active zones and prevents any new zones from starting — including ESPHome schedule programs. While paused, any zone that tries to turn on will be automatically shut off.</p>

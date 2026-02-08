@@ -1429,7 +1429,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             </div>
 
             <!-- QR Code Modal -->
-            <div id="qrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center;">
+            <div id="qrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">
                 <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                         <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);">Connection Key QR Code</h3>
@@ -1458,7 +1458,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             </div>
 
             <!-- Revoke Confirmation Modal -->
-            <div id="revokeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center;">
+            <div id="revokeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">
                 <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
                         <span style="font-size:28px;">&#9888;</span>
@@ -1557,7 +1557,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 </div>
 
 <!-- Help Modal -->
-<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:640px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Configuration Help</h3>
