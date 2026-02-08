@@ -1664,40 +1664,6 @@ async function loadDetailMoisture(id) {
             html += '<div style="text-align:center;padding:12px;color:var(--text-muted);">No moisture probes configured on this system.</div>';
         }
 
-        // Duration status
-        try {
-            const dur = await api('/customers/' + id + '/moisture/durations');
-            const base = dur.base_durations || {};
-            const adjusted = dur.adjusted_durations || {};
-            if (Object.keys(base).length > 0) {
-                html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Duration Status' + (dur.duration_adjustment_active ? ' <span style="color:var(--color-warning);">(Active)</span>' : '') + '</div>';
-                html += '<div style="overflow-x:auto;"><table style="width:100%;font-size:12px;border-collapse:collapse;">';
-                html += '<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Entity</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Base</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Adjusted</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Multiplier</th></tr>';
-                for (const [eid, b] of Object.entries(base)) {
-                    const adj = adjusted[eid];
-                    const adjVal = adj ? adj.adjusted : b.base_value;
-                    const mult = adj ? adj.combined_multiplier : 1.0;
-                    const name = b.friendly_name || eid.split('.').pop();
-                    html += '<tr style="border-bottom:1px solid var(--border-row);">';
-                    html += '<td style="padding:4px 8px;">' + esc(name) + '</td>';
-                    html += '<td style="text-align:right;padding:4px 8px;">' + b.base_value + ' min</td>';
-                    html += '<td style="text-align:right;padding:4px 8px;font-weight:600;color:' + (adjVal !== b.base_value ? 'var(--color-warning)' : 'var(--text-primary)') + ';">' + adjVal + ' min</td>';
-                    html += '<td style="text-align:right;padding:4px 8px;">' + (mult != null ? mult.toFixed(2) + 'x' : '—') + '</td>';
-                    html += '</tr>';
-                }
-                html += '</table></div></div>';
-            }
-        } catch (e) { /* no durations */ }
-
-        // Duration control buttons
-        if (settings.enabled && probeCount > 0) {
-            html += '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">';
-            html += '<button class="btn btn-secondary btn-sm" onclick="mgmtCaptureDurations()">Capture Base</button>';
-            html += '<button class="btn btn-primary btn-sm" onclick="mgmtApplyDurations()">Apply Adjusted</button>';
-            html += '<button class="btn btn-secondary btn-sm" onclick="mgmtRestoreDurations()">Restore Originals</button>';
-            html += '</div>';
-        }
-
         // Settings (expandable)
         html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:12px;">';
         html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleMgmtMoistureSettings()">';
@@ -1782,11 +1748,44 @@ async function mgmtSaveMoistureSettings() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+async function mgmtLoadDurationStatus(id) {
+    const container = document.getElementById('mgmtDurationStatusTable');
+    if (!container) return;
+    try {
+        const dur = await api('/customers/' + id + '/moisture/durations');
+        const base = dur.base_durations || {};
+        const adjusted = dur.adjusted_durations || {};
+        if (Object.keys(base).length === 0) {
+            container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">No base durations captured yet.</div>';
+            return;
+        }
+        let html = '<div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Duration Status' + (dur.duration_adjustment_active ? ' <span style="color:var(--color-warning);">(Active)</span>' : '') + '</div>';
+        html += '<div style="overflow-x:auto;"><table style="width:100%;font-size:12px;border-collapse:collapse;">';
+        html += '<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Entity</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Base</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Adjusted</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Multiplier</th></tr>';
+        for (const [eid, b] of Object.entries(base)) {
+            const adj = adjusted[eid];
+            const adjVal = adj ? adj.adjusted : b.base_value;
+            const mult = adj ? adj.combined_multiplier : 1.0;
+            const name = b.friendly_name || eid.split('.').pop();
+            html += '<tr style="border-bottom:1px solid var(--border-row);">';
+            html += '<td style="padding:4px 8px;">' + esc(name) + '</td>';
+            html += '<td style="text-align:right;padding:4px 8px;">' + b.base_value + ' min</td>';
+            html += '<td style="text-align:right;padding:4px 8px;font-weight:600;color:' + (adjVal !== b.base_value ? 'var(--color-warning)' : 'var(--text-primary)') + ';">' + adjVal + ' min</td>';
+            html += '<td style="text-align:right;padding:4px 8px;">' + (mult != null ? mult.toFixed(2) + 'x' : '\\u2014') + '</td>';
+            html += '</tr>';
+        }
+        html += '</table></div>';
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">No base durations captured yet.</div>';
+    }
+}
+
 async function mgmtCaptureDurations() {
     try {
         const result = await api('/customers/' + currentCustomerId + '/moisture/durations/capture', 'POST');
         showToast('Captured base durations for ' + result.captured + ' entities');
-        loadDetailMoisture(currentCustomerId);
+        mgmtLoadDurationStatus(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -1794,7 +1793,7 @@ async function mgmtApplyDurations() {
     try {
         const result = await api('/customers/' + currentCustomerId + '/moisture/durations/apply', 'POST');
         showToast('Applied adjusted durations to ' + result.applied + ' zone(s)');
-        loadDetailMoisture(currentCustomerId);
+        mgmtLoadDurationStatus(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -1802,7 +1801,7 @@ async function mgmtRestoreDurations() {
     try {
         const result = await api('/customers/' + currentCustomerId + '/moisture/durations/restore', 'POST');
         showToast('Restored base durations for ' + result.restored + ' entities');
-        loadDetailMoisture(currentCustomerId);
+        mgmtLoadDurationStatus(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -1826,6 +1825,8 @@ async function loadDetailStatus(id) {
         const wfColor = wf === 1.0 ? 'var(--color-success)' : wf < 1 ? 'var(--color-warning)' : wf > 1 ? 'var(--color-danger)' : 'var(--text-placeholder)';
         const wm = s.weather_multiplier != null ? s.weather_multiplier : 1.0;
         const mmult = s.moisture_multiplier != null ? s.moisture_multiplier : 1.0;
+        const moistureActive = s.moisture_enabled && s.moisture_probe_count > 0;
+        const factorBreakdown = moistureActive ? 'W: ' + wm + 'x · M: ' + mmult + 'x' : 'W: ' + wm + 'x';
 
         el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
@@ -1833,7 +1834,7 @@ async function loadDetailStatus(id) {
             <div class="tile"><div class="tile-name">System</div><div class="tile-state ${s.system_paused ? '' : 'on'}">${s.system_paused ? 'Paused' : 'Active'}</div></div>
             <div class="tile"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
             <div class="tile"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
-            <div class="tile"><div class="tile-name">Watering Factor</div><div class="tile-state" style="color:${wfColor};font-weight:700;">${wf}x</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px;">W: ${wm}x · M: ${mmult}x</div></div>
+            <div class="tile"><div class="tile-name">Watering Factor</div><div class="tile-state" style="color:${wfColor};font-weight:700;">${wf}x</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${factorBreakdown}</div></div>
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
         </div>`;
     } catch (e) {
@@ -2408,7 +2409,22 @@ function renderScheduleCard(custId, sched) {
         html += '</div></div>';
     }
 
+    // --- Duration Controls ---
+    html += '<div class="schedule-section" id="mgmtDurationControlsSection">';
+    html += '<div class="schedule-section-label">Duration Controls</div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Capture saves current run durations as your baseline. Apply writes adjusted values (base &times; weather &times; moisture factor). Restore returns to baseline.</div>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
+    html += '<button class="btn btn-secondary btn-sm" onclick="mgmtCaptureDurations()">Capture Base Durations</button>';
+    html += '<button class="btn btn-primary btn-sm" onclick="mgmtApplyDurations()">Apply Adjusted</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="mgmtRestoreDurations()">Restore Originals</button>';
+    html += '</div>';
+    html += '<div id="mgmtDurationStatusTable"></div>';
+    html += '</div>';
+
     el.innerHTML = html;
+
+    // Load duration status table asynchronously
+    mgmtLoadDurationStatus(custId);
 }
 
 function cleanEntityName(friendlyName, entityId) {
@@ -2656,6 +2672,7 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Start Times</strong> — Set one or more daily start times</li>
 <li style="margin-bottom:4px;"><strong>Zone Durations</strong> — Configure how long each zone runs (in minutes)</li>
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle the schedule on or off without deleting it</li>
+<li style="margin-bottom:4px;"><strong>Duration Controls</strong> — Capture current run durations as your baseline, apply adjusted values (base &times; weather &times; moisture factor), or restore original durations</li>
 </ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Rules</h4>
@@ -2673,7 +2690,6 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Mid sensor (root zone)</strong> — PRIMARY decision driver for watering needs</li>
 <li style="margin-bottom:4px;"><strong>Shallow sensor</strong> — Rain detection: wet surface + rain forecast = recent rainfall, reduces/skips watering</li>
 <li style="margin-bottom:4px;"><strong>Deep sensor</strong> — Over-irrigation guard: saturated deep soil triggers reduction</li>
-<li style="margin-bottom:4px;"><strong>Duration Controls</strong> — Capture base durations, apply weather &times; moisture adjusted durations, or restore originals</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease, and rain detection sensitivity</li>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Probe device selection and sensor mapping are configured from the homeowner's Configuration page. The management dashboard controls settings, thresholds, and duration adjustments.</div>

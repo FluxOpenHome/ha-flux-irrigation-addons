@@ -69,6 +69,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Weather settings moved to control pages** — Weather configuration is now accessible from the homeowner and management control interfaces
 - **Unit conversion improvements** — Better handling of temperature and wind speed units across weather integrations
 - **Improved management dashboard** — Contact name, phone, and address displayed on property cards; revoked status detection and display; sort order includes revoked state
+- **Duration Controls moved to Schedule card** — Duration Controls (Capture Base Durations, Apply Adjusted, Restore Originals) and the Duration Status table moved from the Moisture Probes card to the Schedule card on both homeowner and management dashboards, since duration adjustments reflect the overall combined factor (weather × moisture), not just moisture
+- **Watering Factor tile conditional breakdown** — The Watering Factor tile on the System Status card now only shows the moisture multiplier (M: x.xx) when moisture probes are enabled and configured; otherwise it only shows the weather multiplier (W: x.xx)
 
 ### Fixed
 
