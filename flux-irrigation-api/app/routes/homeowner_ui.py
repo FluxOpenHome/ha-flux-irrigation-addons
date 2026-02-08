@@ -2568,15 +2568,27 @@ function toggleDarkMode() {
     if (btn && document.body.classList.contains('dark-mode')) btn.textContent = '☀️';
 })();
 
+// --- Live Clock ---
+let _homeClockTimer = null;
+function startHomeClock() {
+    if (_homeClockTimer) clearInterval(_homeClockTimer);
+    const el = document.getElementById('dashTimezone');
+    function tick() {
+        try {
+            const now = new Date();
+            const time = now.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: true});
+            const abbr = now.toLocaleTimeString('en-US', {timeZoneName: 'short'}).split(' ').pop();
+            el.textContent = time + ' ' + abbr;
+        } catch(e) {}
+    }
+    tick();
+    _homeClockTimer = setInterval(tick, 30000);
+}
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // Show local timezone
-    try {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const now = new Date();
-        const short = now.toLocaleTimeString(undefined, {timeZoneName:'short'}).split(' ').pop();
-        document.getElementById('dashTimezone').textContent = short + ' (' + tz + ')';
-    } catch(e) {}
+    // Start live clock
+    startHomeClock();
 
     // Load zone aliases
     try {

@@ -313,6 +313,9 @@ async def _periodic_customer_health_check():
                 from connection_key import ConnectionKeyData
 
                 customers = load_customers()
+                # Collect issue data for HA notification check
+                customer_issues = {}  # customer_id → {name, issues: [...]}
+
                 for customer in customers:
                     try:
                         conn = ConnectionKeyData(
@@ -332,15 +335,87 @@ async def _periodic_customer_health_check():
                                 )
                                 if issue_status == 200:
                                     result["issue_summary"] = issue_data
+                                    customer_issues[customer.id] = {
+                                        "name": customer.name,
+                                        "issues": issue_data.get("issues", []),
+                                    }
                             except Exception:
                                 pass  # Don't fail health check over issue polling
 
                         update_customer_status(customer.id, result)
                     except Exception as e:
                         print(f"[MAIN] Health check failed for {customer.name}: {e}")
+
+                # Check for new issues and send HA notifications
+                await _check_and_notify_new_issues(customer_issues)
+
         except Exception as e:
             print(f"[MAIN] Customer health check error: {e}")
         await asyncio.sleep(300)  # Every 5 minutes
+
+
+async def _check_and_notify_new_issues(customer_issues: dict):
+    """Compare current issues against last known state, send HA notifications for new ones."""
+    try:
+        import notification_config
+        import ha_client
+
+        notif_config = notification_config.load_config()
+        if not notif_config.get("enabled") or not notif_config.get("ha_notify_service"):
+            # Still update last known so when enabled, we don't flood
+            new_known = {}
+            for cust_id, data in customer_issues.items():
+                new_known[cust_id] = {"ids": [i["id"] for i in data.get("issues", [])]}
+            notification_config.update_last_known_issues(new_known)
+            return
+
+        last_known = notif_config.get("last_known_issues", {})
+        service_name = notif_config["ha_notify_service"]
+        new_known = {}
+        notifications_to_send = []
+
+        for cust_id, data in customer_issues.items():
+            issues = data.get("issues", [])
+            current_ids = [i["id"] for i in issues]
+            new_known[cust_id] = {"ids": current_ids}
+
+            prev_ids = set((last_known.get(cust_id) or {}).get("ids", []))
+            for issue in issues:
+                if issue["id"] not in prev_ids:
+                    # New issue detected
+                    severity = issue.get("severity", "")
+                    if notification_config.should_notify(severity):
+                        notifications_to_send.append({
+                            "customer_name": data["name"],
+                            "severity": severity,
+                            "description": issue.get("description", ""),
+                        })
+
+        # Send notifications
+        severity_emojis = {"severe": "🔴", "annoyance": "🟡", "clarification": "🔵"}
+        for notif in notifications_to_send:
+            emoji = severity_emojis.get(notif["severity"], "⚠️")
+            sev_label = notif["severity"].capitalize()
+            message = (
+                f"{emoji} New {sev_label} from {notif['customer_name']}: "
+                f"{notif['description'][:200]}"
+            )
+            try:
+                await ha_client.call_service("notify", service_name, {
+                    "message": message,
+                    "title": f"Flux Open Home — {sev_label} Issue",
+                })
+                print(f"[MAIN] HA notification sent: {sev_label} from {notif['customer_name']}")
+            except Exception as e:
+                print(f"[MAIN] HA notification failed: {e}")
+
+        # Update last known state
+        notification_config.update_last_known_issues(new_known)
+
+        if notifications_to_send:
+            print(f"[MAIN] Sent {len(notifications_to_send)} HA notification(s) for new issues")
+    except Exception as e:
+        print(f"[MAIN] HA notification check error: {e}")
 
 
 @asynccontextmanager

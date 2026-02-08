@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 import customer_store
 import management_client
+import notification_config
 from config import get_config
 from connection_key import ConnectionKeyData
 
@@ -1049,3 +1050,56 @@ async def resolve_customer_issue(customer_id: str, issue_id: str, request: Reque
     if status_code != 200:
         return _proxy_error(status_code, data)
     return data
+
+
+# --- HA Notification Settings ---
+
+
+class UpdateNotificationSettingsRequest(BaseModel):
+    enabled: Optional[bool] = None
+    ha_notify_service: Optional[str] = Field(None, max_length=200)
+    notify_severe: Optional[bool] = None
+    notify_annoyance: Optional[bool] = None
+    notify_clarification: Optional[bool] = None
+
+
+@router.get("/api/notification-settings", summary="Get HA notification settings")
+async def get_notification_settings():
+    """Get the current HA notification configuration for issue alerts."""
+    _require_management_mode()
+    return notification_config.get_settings()
+
+
+@router.put("/api/notification-settings", summary="Update HA notification settings")
+async def update_notification_settings(body: UpdateNotificationSettingsRequest):
+    """Update the HA notification configuration for issue alerts."""
+    _require_management_mode()
+    return notification_config.update_settings(
+        enabled=body.enabled,
+        ha_notify_service=body.ha_notify_service,
+        notify_severe=body.notify_severe,
+        notify_annoyance=body.notify_annoyance,
+        notify_clarification=body.notify_clarification,
+    )
+
+
+@router.post("/api/notification-settings/test", summary="Send a test notification")
+async def test_notification():
+    """Send a test notification through the configured HA notify service."""
+    _require_management_mode()
+    settings = notification_config.get_settings()
+    if not settings.get("ha_notify_service"):
+        raise HTTPException(status_code=400, detail="No HA notify service configured")
+
+    import ha_client
+    service_name = settings["ha_notify_service"]
+    success = await ha_client.call_service("notify", service_name, {
+        "message": "🧪 Test notification from Flux Open Home — HA notifications are working!",
+        "title": "Flux Open Home Test",
+    })
+    if not success:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to call notify.{service_name} — check that the service exists in Home Assistant",
+        )
+    return {"success": True, "message": f"Test notification sent via notify.{service_name}"}

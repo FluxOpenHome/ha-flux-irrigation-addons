@@ -13,6 +13,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Browser Notifications** — Configurable push notifications for management when new issues are reported; notification preferences per severity level stored in localStorage
 - **Upcoming Service Banner** — When management schedules a service date, a green banner appears on the homeowner dashboard showing the date and any management notes
 - **Issue Acknowledge & Schedule** — Management can acknowledge issues with a note and optionally schedule a service date; issue status flows through open → acknowledged → scheduled → resolved
+- **HA Issue Notifications** — Send push notifications through Home Assistant's notification service (mobile app, SMS, etc.) when customers report new issues; configurable per-severity filters and a test button to verify the setup; settings persist server-side in `/data/notification_config.json`
 - **Gophr Moisture Probe Integration** — Auto-detect Gophr moisture probes from HA sensors and integrate soil moisture data into irrigation decisions
   - Gradient-based moisture algorithm: mid sensor (root zone) is the primary decision driver, shallow sensor detects rain via wetting front analysis, deep sensor guards against over-irrigation
   - Many-to-many probe-to-zone mapping (a probe can serve multiple zones; a zone can use multiple probes)
@@ -88,6 +89,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Fixed
 
+- **Homeowner Dashboard Clock** — The homeowner dashboard now shows a live clock (e.g. "3:45 PM CST") matching the management dashboard's format, instead of only the timezone abbreviation
+- **Management Dark Mode Toggle** — The dark mode toggle button on the management dashboard now correctly shows ☀️ in dark mode and 🌙 in light mode (previously always showed 🌙 due to incorrect element selector)
 - **Modal z-index on mobile** — Changelog, help, QR code, and revoke confirmation modals on the homeowner and admin dashboards were rendered behind the Leaflet map on mobile (z-index:999 vs Leaflet's ~1000). Fixed by bumping all modal z-index to 10000 (matching management dashboard which already worked correctly)
 - **Apply Factors to Schedule — "applied to 0 zones" / "no run duration entities"** — Completely rewrote duration entity discovery to support all ESPHome naming conventions (e.g. `number.*_run_duration`, `number.irrigation_system_zone_N`, `number.duration_zone_N`); zone-to-duration mapping now uses zone number extraction instead of substring matching; added fallback to re-resolve device entities if config is empty; values sent as float to match HA expectations
 - **Apply Factors toggle flashing** — The toggle is now rendered inline as part of the schedule card HTML using the already-fetched duration data (`duration_adjustment_active`), eliminating the separate async API call that caused visible flicker; controls/schedule section only loads once on initial page load (homeowner) or per customer view (management) instead of every refresh cycle

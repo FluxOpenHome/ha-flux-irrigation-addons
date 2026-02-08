@@ -278,7 +278,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <span class="mode-badge">Management Mode</span>
         <button class="btn btn-secondary btn-sm" onclick="switchToHomeowner()">Homeowner</button>
         <button class="dark-toggle" onclick="showAlertsPanel()" title="Customer Issues" id="alertBadgeBtn" style="position:relative;display:none;">&#9888;&#65039;<span id="alertBadgeCount" style="position:absolute;top:-4px;right:-4px;background:#e74c3c;color:white;font-size:10px;font-weight:700;border-radius:50%;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 4px;"></span></button>
-        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
+        <button class="dark-toggle" id="darkModeBtn" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
     </div>
 </div>
@@ -352,6 +352,14 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                             <option value="idle">Idle</option>
                             <option value="paused">Paused</option>
                         </select>
+                        <select id="filterIssues" onchange="filterCustomers()">
+                            <option value="">All Issues</option>
+                            <option value="has_issues">Has Issues</option>
+                            <option value="severe">Severe Issues</option>
+                            <option value="annoyance">Annoyances</option>
+                            <option value="clarification">Clarifications</option>
+                            <option value="no_issues">No Issues</option>
+                        </select>
                         <select id="sortBy" onchange="filterCustomers()">
                             <option value="name">Sort: Name</option>
                             <option value="city">Sort: City</option>
@@ -359,6 +367,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                             <option value="zones">Sort: Zones</option>
                             <option value="status">Sort: Status</option>
                             <option value="recent">Sort: Last Seen</option>
+                            <option value="issues">Sort: Issues</option>
                         </select>
                     </div>
                     <span id="filterCount" class="filter-count"></span>
@@ -654,12 +663,14 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 
 <!-- Notification Preferences Modal -->
 <div id="notifPrefsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10002;align-items:center;justify-content:center;">
-    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:460px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;max-height:90vh;overflow-y:auto;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128276; Notification Preferences</h3>
             <button onclick="closeNotifPrefs()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
         </div>
         <div style="padding:20px 24px 24px 24px;">
+            <!-- Browser Notifications Section -->
+            <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">&#127760; Browser Notifications</p>
             <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Choose which issue severities trigger browser notifications:</p>
             <div style="display:flex;flex-direction:column;gap:10px;">
                 <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifSevere" checked><span style="font-weight:600;color:#e74c3c;">Severe Issues</span></label>
@@ -671,6 +682,32 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                 <button class="btn btn-primary btn-sm" onclick="saveNotifPrefs()">Save</button>
             </div>
             <div id="notifPermStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
+
+            <!-- HA Notification Section -->
+            <div style="border-top:1px solid var(--border-light);margin-top:20px;padding-top:20px;">
+                <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">&#127968; Home Assistant Notifications</p>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Send push notifications (SMS, mobile app, etc.) through your HA notification service when customers report new issues.</p>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">
+                    <input type="checkbox" id="haNotifEnabled">
+                    <span style="font-weight:600;color:var(--text-primary);">Enable HA Notifications</span>
+                </label>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:13px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Notify Service Name</label>
+                    <input type="text" id="haNotifyService" placeholder="e.g. mobile_app_brandons_iphone" style="width:100%;padding:8px 12px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);">
+                    <div style="font-size:11px;color:var(--text-placeholder);margin-top:3px;">The service name after "notify." — find it in HA under Settings &rarr; Automations &rarr; Actions</div>
+                </div>
+                <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Severity filters:</p>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifSevere" checked><span style="font-weight:600;color:#e74c3c;">Severe Issues</span></label>
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifAnnoyance" checked><span style="font-weight:600;color:#f39c12;">Annoyances</span></label>
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifClarification"><span style="font-weight:600;color:#3498db;">Clarifications</span></label>
+                </div>
+                <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;">
+                    <button class="btn btn-secondary btn-sm" onclick="testHANotification()">&#128172; Test</button>
+                    <button class="btn btn-primary btn-sm" onclick="saveHANotifSettings()">Save</button>
+                </div>
+                <div id="haNotifStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -681,10 +718,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
     localStorage.setItem('flux_dark_mode_management', isDark);
-    document.querySelector('.dark-toggle').textContent = isDark ? '☀️' : '🌙';
+    document.getElementById('darkModeBtn').textContent = isDark ? '☀️' : '🌙';
 }
 (function initDarkToggleIcon() {
-    const btn = document.querySelector('.dark-toggle');
+    const btn = document.getElementById('darkModeBtn');
     if (btn && document.body.classList.contains('dark-mode')) btn.textContent = '☀️';
 })();
 
@@ -741,7 +778,7 @@ async function loadCustomers() {
 function renderCustomerGrid(customers) {
     const grid = document.getElementById('customerGrid');
     if (customers.length === 0) {
-        const isFiltered = document.getElementById('searchInput').value || document.getElementById('filterState').value || document.getElementById('filterCity').value || document.getElementById('filterZones').value || document.getElementById('filterStatus').value || document.getElementById('filterSystemStatus').value;
+        const isFiltered = document.getElementById('searchInput').value || document.getElementById('filterState').value || document.getElementById('filterCity').value || document.getElementById('filterZones').value || document.getElementById('filterStatus').value || document.getElementById('filterSystemStatus').value || document.getElementById('filterIssues').value;
         grid.innerHTML = isFiltered
             ? '<div class="empty-state"><h3>No matching properties</h3><p>Try adjusting your search or filters.</p></div>'
             : '<div class="empty-state"><h3>No properties connected</h3><p>Click "+ Add Property" to connect a homeowner\\'s irrigation system.</p></div>';
@@ -776,6 +813,20 @@ function renderCustomerGrid(customers) {
                 <div class="customer-stats">
                     ${zoneInfo}${stats}
                 </div>
+                ${issueCount > 0 ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">' +
+                    (issueSummary.issues || []).slice(0, 3).map(function(issue) {
+                        const iColor = issue.severity === 'severe' ? '#e74c3c' : issue.severity === 'annoyance' ? '#f39c12' : '#3498db';
+                        const iLabel = issue.severity === 'severe' ? 'Severe' : issue.severity === 'annoyance' ? 'Annoyance' : 'Clarification';
+                        const iStatus = issue.status === 'open' ? 'Open' : issue.status === 'acknowledged' ? 'Acknowledged' : issue.status === 'scheduled' ? 'Scheduled' : issue.status;
+                        const iDesc = (issue.description || '').length > 80 ? issue.description.substring(0, 80) + '...' : (issue.description || '');
+                        return '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;font-size:12px;">' +
+                            '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:' + iColor + '22;color:' + iColor + ';white-space:nowrap;flex-shrink:0;">' + esc(iLabel) + '</span>' +
+                            '<span style="color:var(--text-secondary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(iDesc) + '</span>' +
+                            '<span style="color:var(--text-muted);font-size:10px;white-space:nowrap;">' + esc(iStatus) + '</span>' +
+                        '</div>';
+                    }).join('') +
+                    (issueSummary.issues && issueSummary.issues.length > 3 ? '<div style="font-size:11px;color:var(--text-muted);">+ ' + (issueSummary.issues.length - 3) + ' more</div>' : '') +
+                '</div>' : ''}
                 <div class="customer-actions" onclick="event.stopPropagation()">
                     <button class="btn btn-secondary btn-sm" onclick="editCardNotes('${c.id}', event)">Notes</button>
                     <button class="btn btn-secondary btn-sm" onclick="updateCardKey('${c.id}', event)" title="Update Connection Key">&#128273; Update Key</button>
@@ -839,6 +890,7 @@ function filterCustomers() {
     const zonesFilter = document.getElementById('filterZones').value;
     const statusFilter = document.getElementById('filterStatus').value;
     const systemStatusFilter = document.getElementById('filterSystemStatus').value;
+    const issuesFilter = document.getElementById('filterIssues').value;
     const sortBy = document.getElementById('sortBy').value;
 
     let filtered = allCustomers;
@@ -870,6 +922,18 @@ function filterCustomers() {
     if (systemStatusFilter) {
         filtered = filtered.filter(c => getSystemStatus(c) === systemStatusFilter);
     }
+    if (issuesFilter) {
+        filtered = filtered.filter(c => {
+            const count = (c.issue_summary && c.issue_summary.active_count) ? c.issue_summary.active_count : 0;
+            const maxSev = c.issue_summary ? c.issue_summary.max_severity : null;
+            if (issuesFilter === 'has_issues') return count > 0;
+            if (issuesFilter === 'no_issues') return count === 0;
+            if (issuesFilter === 'severe') return count > 0 && c.issue_summary.issues && c.issue_summary.issues.some(i => i.severity === 'severe');
+            if (issuesFilter === 'annoyance') return count > 0 && c.issue_summary.issues && c.issue_summary.issues.some(i => i.severity === 'annoyance');
+            if (issuesFilter === 'clarification') return count > 0 && c.issue_summary.issues && c.issue_summary.issues.some(i => i.severity === 'clarification');
+            return true;
+        });
+    }
 
     // Sort
     filtered = [...filtered].sort((a, b) => {
@@ -887,11 +951,20 @@ function filterCustomers() {
         if (sortBy === 'recent') {
             return (b.last_seen_online || '').localeCompare(a.last_seen_online || '');
         }
+        if (sortBy === 'issues') {
+            const aCount = (a.issue_summary && a.issue_summary.active_count) || 0;
+            const bCount = (b.issue_summary && b.issue_summary.active_count) || 0;
+            if (bCount !== aCount) return bCount - aCount;
+            const sevOrder = {severe: 3, annoyance: 2, clarification: 1};
+            const aSev = a.issue_summary ? (sevOrder[a.issue_summary.max_severity] || 0) : 0;
+            const bSev = b.issue_summary ? (sevOrder[b.issue_summary.max_severity] || 0) : 0;
+            return bSev - aSev;
+        }
         return 0;
     });
 
     // Update filter count and clear button
-    const hasFilters = search || stateFilter || cityFilter || zonesFilter || statusFilter || systemStatusFilter;
+    const hasFilters = search || stateFilter || cityFilter || zonesFilter || statusFilter || systemStatusFilter || issuesFilter;
     const countEl = document.getElementById('filterCount');
     const clearBtn = document.getElementById('clearFiltersBtn');
     if (hasFilters) {
@@ -912,6 +985,7 @@ function clearAllFilters() {
     document.getElementById('filterZones').value = '';
     document.getElementById('filterStatus').value = '';
     document.getElementById('filterSystemStatus').value = '';
+    document.getElementById('filterIssues').value = '';
     document.getElementById('sortBy').value = 'name';
     filterCustomers();
 }
@@ -3396,6 +3470,8 @@ function showNotifPrefs() {
     } else {
         statusEl.textContent = 'Browser notifications not supported';
     }
+    // Load HA notification settings from server
+    loadHANotifSettings();
     document.getElementById('notifPrefsModal').style.display = 'flex';
 }
 function closeNotifPrefs() {
@@ -3421,6 +3497,59 @@ function requestNotifPermission() {
         if (perm === 'granted') showToast('Notifications enabled');
         else showToast('Notification permission ' + perm, 'error');
     });
+}
+
+// --- HA Notification Settings ---
+async function loadHANotifSettings() {
+    try {
+        const data = await api('/notification-settings');
+        document.getElementById('haNotifEnabled').checked = !!data.enabled;
+        document.getElementById('haNotifyService').value = data.ha_notify_service || '';
+        document.getElementById('haNotifSevere').checked = !!data.notify_severe;
+        document.getElementById('haNotifAnnoyance').checked = !!data.notify_annoyance;
+        document.getElementById('haNotifClarification').checked = !!data.notify_clarification;
+        document.getElementById('haNotifStatus').textContent = '';
+    } catch (e) {
+        document.getElementById('haNotifStatus').textContent = 'Could not load HA notification settings';
+    }
+}
+async function saveHANotifSettings() {
+    const payload = {
+        enabled: document.getElementById('haNotifEnabled').checked,
+        ha_notify_service: document.getElementById('haNotifyService').value.trim(),
+        notify_severe: document.getElementById('haNotifSevere').checked,
+        notify_annoyance: document.getElementById('haNotifAnnoyance').checked,
+        notify_clarification: document.getElementById('haNotifClarification').checked,
+    };
+    if (payload.enabled && !payload.ha_notify_service) {
+        showToast('Please enter a notify service name', 'error');
+        return;
+    }
+    try {
+        await api('/notification-settings', { method: 'PUT', body: JSON.stringify(payload) });
+        showToast('HA notification settings saved');
+        document.getElementById('haNotifStatus').textContent = 'Settings saved';
+    } catch (e) {
+        showToast('Failed to save HA notification settings', 'error');
+    }
+}
+async function testHANotification() {
+    const svc = document.getElementById('haNotifyService').value.trim();
+    if (!svc) {
+        showToast('Enter a notify service name first', 'error');
+        return;
+    }
+    // Save first so the test uses current values
+    await saveHANotifSettings();
+    try {
+        const result = await api('/notification-settings/test', { method: 'POST' });
+        showToast(result.message || 'Test notification sent');
+        document.getElementById('haNotifStatus').textContent = 'Test sent successfully';
+    } catch (e) {
+        const msg = (e.message || '').replace('Error: ', '');
+        showToast('Test failed: ' + msg, 'error');
+        document.getElementById('haNotifStatus').textContent = 'Test failed — check service name';
+    }
 }
 
 // --- Help Modal ---
@@ -3558,6 +3687,16 @@ const HELP_CONTENT = `
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Browser Notifications</h4>
 <p style="margin-bottom:10px;">Click the &#9881;&#65039; gear icon in the alerts panel to configure browser notifications. You can choose which severity levels trigger notifications. Browser notification permission must be granted via the &quot;Enable Notifications&quot; button. Notifications fire when new issues are detected during the 60-second auto-refresh.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Home Assistant Notifications</h4>
+<p style="margin-bottom:10px;">In addition to browser notifications, you can configure Home Assistant notifications to receive push notifications on your phone (via the HA Companion App), SMS, or any other notification service set up in your Home Assistant instance.</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Enable</strong> — Check &quot;Enable HA Notifications&quot; and enter the name of your notify service (the part after <code>notify.</code>)</li>
+<li style="margin-bottom:4px;"><strong>Find your service name</strong> — In Home Assistant, go to Settings &rarr; Automations &rarr; Actions, search for &quot;notify&quot;, and look for your service (e.g. <code>mobile_app_brandons_iphone</code>)</li>
+<li style="margin-bottom:4px;"><strong>Severity filters</strong> — Choose which severity levels trigger HA notifications, independently of browser notification settings</li>
+<li style="margin-bottom:4px;"><strong>Test</strong> — Click the Test button to send a test notification and verify everything works</li>
+<li style="margin-bottom:4px;">Notifications include the customer name, issue severity, and description so you know exactly what was reported</li>
+</ul>
 `;
 
 // --- Change Log ---

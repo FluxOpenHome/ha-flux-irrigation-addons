@@ -212,7 +212,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data, and manage duration adjustments on customer systems
 - **Remote rain sensor management** — View and control rain sensor settings (enable/disable, sensor type, rain delay) on customer systems
 - **Remote expansion board status** — View detected zones, expansion board I2C addresses, and trigger rescans on customer controllers
-- **Issue Management** — View and manage homeowner-reported issues across all properties; color-coded alerts on property cards; dedicated alerts panel with all active issues; acknowledge issues with notes and schedule service dates; browser notifications when new issues are reported
+- **Issue Management** — View and manage homeowner-reported issues across all properties; color-coded alerts on property cards; dedicated alerts panel with all active issues; acknowledge issues with notes and schedule service dates; browser notifications and HA push notifications (mobile app, SMS, etc.) when new issues are reported
 - **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
 - **Run history and CSV export** — View and export zone run history and weather logs for each property
 - **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration
