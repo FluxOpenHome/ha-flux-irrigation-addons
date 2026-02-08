@@ -11,6 +11,7 @@ from auth import require_permission, authenticate, ApiKeyConfig
 from config import get_config
 import ha_client
 import audit_log
+from config_changelog import log_change, get_actor
 
 
 router = APIRouter(prefix="/system", tags=["System"])
@@ -197,6 +198,8 @@ async def pause_system(request: Request):
         {"source": f"api:{key_config.name}"},
     )
 
+    log_change(get_actor(request), "System", "Paused irrigation system")
+
     audit_log.log_action(
         api_key_name=key_config.name,
         method="POST",
@@ -239,6 +242,8 @@ async def resume_system(request: Request):
         "flux_irrigation_system_resumed",
         {"source": f"api:{key_config.name}"},
     )
+
+    log_change(get_actor(request), "System", "Resumed irrigation system")
 
     audit_log.log_action(
         api_key_name=key_config.name,

@@ -12,6 +12,7 @@ from config import get_config
 import ha_client
 import audit_log
 import run_log
+from config_changelog import log_change, get_actor
 
 # Track active timed-run tasks so they can be cancelled on manual stop
 _timed_run_tasks: dict[str, asyncio.Task] = {}
@@ -284,6 +285,13 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
         else:
             message += f" for {adjusted_duration} minutes"
 
+    # Log configuration change
+    actor = get_actor(request)
+    desc = f"Started {_zone_name(entity_id).replace('_', ' ').title()}"
+    if body.duration_minutes:
+        desc += f" for {body.duration_minutes} min"
+    log_change(actor, "Zone Control", desc, {"entity_id": entity_id})
+
     audit_log.log_action(
         api_key_name=key_config.name,
         method="POST",
@@ -339,6 +347,10 @@ async def stop_zone(zone_id: str, request: Request):
         zone_name=_zone_name(entity_id),
     )
 
+    log_change(get_actor(request), "Zone Control",
+               f"Stopped {_zone_name(entity_id).replace('_', ' ').title()}",
+               {"entity_id": entity_id})
+
     audit_log.log_action(
         api_key_name=key_config.name,
         method="POST",
@@ -389,6 +401,9 @@ async def stop_all_zones(request: Request):
                 zone_name=_zone_name(entity_id),
             )
             stopped.append(entity_id)
+
+    log_change(get_actor(request), "Zone Control", "Emergency stop — all zones",
+               {"stopped": len(stopped)})
 
     audit_log.log_action(
         api_key_name=key_config.name,

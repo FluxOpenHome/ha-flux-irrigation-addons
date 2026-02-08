@@ -264,6 +264,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <span class="mode-badge">Management Mode</span>
         <button class="btn btn-secondary btn-sm" onclick="switchToHomeowner()">Homeowner</button>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
+        <button class="dark-toggle" onclick="mgmtShowChangelog()" title="Change Log">📋</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
     </div>
 </div>
@@ -363,6 +364,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                 <div id="detailAddress" class="customer-address" style="font-size:14px;margin-top:4px;"></div>
                 <div id="detailContact" style="font-size:14px;color:var(--text-secondary-alt);margin-top:2px;display:none;">&#128100; <span id="detailContactName"></span></div>
                 <div id="detailPhone" style="font-size:13px;color:var(--text-muted);margin-top:2px;display:none;">&#128222; <a id="detailPhoneLink" href="" style="color:var(--color-link);text-decoration:none;"></a></div>
+                <div id="mgmtTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
             </div>
             <div style="display:flex;gap:8px;">
                 <button class="btn btn-secondary btn-sm" onclick="refreshDetail()">Refresh</button>
@@ -517,6 +519,22 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
             <button class="btn btn-secondary" onclick="closeKeyModal()">Cancel</button>
             <button class="btn btn-primary" onclick="saveModalKey()">&#128273; Update Key</button>
+        </div>
+    </div>
+</div>
+
+<!-- Change Log Modal -->
+<div id="mgmtChangelogModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:720px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Configuration Change Log</h3>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <button class="btn btn-secondary btn-sm" onclick="mgmtExportChangelogCSV()">Export CSV</button>
+                <button onclick="mgmtCloseChangelogModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+            </div>
+        </div>
+        <div id="mgmtChangelogContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:13px;color:var(--text-secondary);line-height:1.5;">
+            Loading...
         </div>
     </div>
 </div>
@@ -2758,8 +2776,69 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;">Paste the new connection key from the homeowner</li>
 <li style="margin-bottom:4px;">Your notes and zone aliases are preserved when updating a key</li>
 </ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Configuration Change Log</h4>
+<p style="margin-bottom:10px;">Click the 📋 icon in the header to view all configuration changes made to a customer's system. The log tracks who made each change (Homeowner or Management), when, and what was changed. Changes you make through this dashboard are automatically attributed to "Management." Export to CSV for record-keeping. Up to 1,000 entries are stored per property.</p>
 `;
 
+// --- Change Log ---
+async function mgmtShowChangelog() {
+    if (!currentCustomerId) {
+        showToast('Select a customer first', 'error');
+        return;
+    }
+    document.getElementById('mgmtChangelogModal').style.display = 'flex';
+    mgmtLoadChangelog();
+}
+function mgmtCloseChangelogModal() {
+    document.getElementById('mgmtChangelogModal').style.display = 'none';
+}
+async function mgmtLoadChangelog() {
+    const el = document.getElementById('mgmtChangelogContent');
+    try {
+        const data = await api('/customers/' + currentCustomerId + '/changelog');
+        const entries = data.entries || [];
+        if (entries.length === 0) {
+            el.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">No changes recorded yet.</div>';
+            return;
+        }
+        let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+        html += '<thead><tr style="border-bottom:2px solid var(--border-light);text-align:left;">';
+        html += '<th style="padding:6px 8px;">Time</th>';
+        html += '<th style="padding:6px 8px;">Who</th>';
+        html += '<th style="padding:6px 8px;">Category</th>';
+        html += '<th style="padding:6px 8px;">Change</th>';
+        html += '</tr></thead><tbody>';
+        entries.forEach(function(e) {
+            const dt = new Date(e.timestamp);
+            const timeStr = dt.toLocaleDateString(undefined, {month:'short',day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric',minute:'2-digit'});
+            const isHO = e.actor === 'Homeowner';
+            const badge = '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                'background:' + (isHO ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)') + ';' +
+                'color:' + (isHO ? 'var(--color-info)' : 'var(--color-success)') + ';">' +
+                esc(e.actor) + '</span>';
+            html += '<tr style="border-bottom:1px solid var(--border-light);">';
+            html += '<td style="padding:6px 8px;white-space:nowrap;color:var(--text-muted);">' + esc(timeStr) + '</td>';
+            html += '<td style="padding:6px 8px;">' + badge + '</td>';
+            html += '<td style="padding:6px 8px;color:var(--text-muted);">' + esc(e.category || '') + '</td>';
+            html += '<td style="padding:6px 8px;">' + esc(e.description || '') + '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    } catch (err) {
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load change log.</div>';
+    }
+}
+function mgmtExportChangelogCSV() {
+    if (!currentCustomerId) return;
+    window.open(BASE + '/customers/' + currentCustomerId + '/changelog/csv', '_blank');
+}
+document.getElementById('mgmtChangelogModal').addEventListener('click', function(e) {
+    if (e.target === this) mgmtCloseChangelogModal();
+});
+
+// --- Help ---
 function showHelp() {
     document.getElementById('helpContent').innerHTML = HELP_CONTENT;
     document.getElementById('helpModal').style.display = 'flex';
@@ -2776,12 +2855,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fix docs link for ingress — page is served at /admin, strip it to get ingress base
     const ingressBase = window.location.pathname.replace(/\\/admin\\/?$/, '');
     document.getElementById('docsLink').href = ingressBase + '/api/docs';
+    // Show local timezone
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const now = new Date();
+        const short = now.toLocaleTimeString(undefined, {timeZoneName:'short'}).split(' ').pop();
+        document.getElementById('mgmtTimezone').textContent = short + ' (' + tz + ')';
+    } catch(e) {}
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
     // Close modals on backdrop click or Escape
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-            if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
+            if (document.getElementById('mgmtChangelogModal').style.display === 'flex') mgmtCloseChangelogModal();
+            else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
             else if (document.getElementById('keyModal').style.display === 'flex') closeKeyModal();
             else if (document.getElementById('notesModal').style.display === 'flex') closeNotesModal();
         }

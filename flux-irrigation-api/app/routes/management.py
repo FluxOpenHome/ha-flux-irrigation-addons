@@ -277,7 +277,8 @@ async def start_customer_zone(customer_id: str, zone_id: str, request: Request):
     except Exception:
         body = None
     status_code, data = await management_client.proxy_request(
-        conn, "POST", f"/api/zones/{zone_id}/start", json_body=body
+        conn, "POST", f"/api/zones/{zone_id}/start", json_body=body,
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -293,7 +294,8 @@ async def stop_customer_zone(customer_id: str, zone_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "POST", f"/api/zones/{zone_id}/stop"
+        conn, "POST", f"/api/zones/{zone_id}/stop",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -309,7 +311,8 @@ async def stop_all_customer_zones(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "POST", "/api/zones/stop_all"
+        conn, "POST", "/api/zones/stop_all",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -358,7 +361,8 @@ async def set_customer_entity(customer_id: str, entity_id: str, request: Request
     except Exception:
         body = None
     status_code, data = await management_client.proxy_request(
-        conn, "POST", f"/api/entities/{entity_id}/set", json_body=body
+        conn, "POST", f"/api/entities/{entity_id}/set", json_body=body,
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -374,7 +378,8 @@ async def pause_customer_system(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "POST", "/api/system/pause"
+        conn, "POST", "/api/system/pause",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -390,7 +395,8 @@ async def resume_customer_system(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "POST", "/api/system/resume"
+        conn, "POST", "/api/system/resume",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -470,7 +476,8 @@ async def update_customer_weather_rules(customer_id: str, request: Request):
     except Exception:
         body = None
     status_code, data = await management_client.proxy_request(
-        conn, "PUT", "/admin/api/weather/rules", json_body=body
+        conn, "PUT", "/admin/api/weather/rules", json_body=body,
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -487,7 +494,8 @@ async def evaluate_customer_weather(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "POST", "/admin/api/weather/evaluate"
+        conn, "POST", "/admin/api/weather/evaluate",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
@@ -637,7 +645,8 @@ async def clear_customer_weather_log(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "DELETE", "/admin/api/homeowner/weather/log"
+        conn, "DELETE", "/admin/api/homeowner/weather/log",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to clear weather log"}
@@ -654,7 +663,8 @@ async def clear_customer_history(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "DELETE", "/admin/api/homeowner/history/runs"
+        conn, "DELETE", "/admin/api/homeowner/history/runs",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to clear run history"}
@@ -711,7 +721,8 @@ async def update_customer_moisture_settings(customer_id: str, request: Request):
     except Exception:
         body = None
     status_code, data = await management_client.proxy_request(
-        conn, "PUT", "/admin/api/homeowner/moisture/settings", json_body=body
+        conn, "PUT", "/admin/api/homeowner/moisture/settings", json_body=body,
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to update moisture settings"}
@@ -766,7 +777,8 @@ async def add_customer_moisture_probe(customer_id: str, request: Request):
     except Exception:
         body = None
     status_code, data = await management_client.proxy_request(
-        conn, "POST", "/admin/api/homeowner/moisture/probes", json_body=body
+        conn, "POST", "/admin/api/homeowner/moisture/probes", json_body=body,
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to add probe"}
@@ -787,7 +799,8 @@ async def update_customer_moisture_probe(customer_id: str, probe_id: str, reques
     except Exception:
         body = None
     status_code, data = await management_client.proxy_request(
-        conn, "PUT", f"/admin/api/homeowner/moisture/probes/{probe_id}", json_body=body
+        conn, "PUT", f"/admin/api/homeowner/moisture/probes/{probe_id}", json_body=body,
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to update probe"}
@@ -804,7 +817,8 @@ async def delete_customer_moisture_probe(customer_id: str, probe_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "DELETE", f"/admin/api/homeowner/moisture/probes/{probe_id}"
+        conn, "DELETE", f"/admin/api/homeowner/moisture/probes/{probe_id}",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to remove probe"}
@@ -855,7 +869,8 @@ async def capture_customer_moisture_durations(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "POST", "/admin/api/homeowner/moisture/durations/capture"
+        conn, "POST", "/admin/api/homeowner/moisture/durations/capture",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to capture durations"}
@@ -872,7 +887,8 @@ async def apply_customer_moisture_durations(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "POST", "/admin/api/homeowner/moisture/durations/apply"
+        conn, "POST", "/admin/api/homeowner/moisture/durations/apply",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to apply durations"}
@@ -889,11 +905,61 @@ async def restore_customer_moisture_durations(customer_id: str):
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
     status_code, data = await management_client.proxy_request(
-        conn, "POST", "/admin/api/homeowner/moisture/durations/restore"
+        conn, "POST", "/admin/api/homeowner/moisture/durations/restore",
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to restore durations"}
     return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/changelog",
+    summary="Get customer configuration change log",
+)
+async def get_customer_changelog(customer_id: str, limit: int = 200):
+    """Get configuration change log from a customer system."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/changelog",
+        params={"limit": str(limit)},
+    )
+    if status_code != 200:
+        return {"entries": []}
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/changelog/csv",
+    summary="Export customer change log as CSV",
+)
+async def get_customer_changelog_csv(customer_id: str):
+    """Export configuration change log as CSV from a customer system."""
+    from fastapi.responses import Response
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/changelog",
+        params={"limit": "1000"},
+    )
+    entries = data.get("entries", []) if status_code == 200 else []
+    lines = ["timestamp,actor,category,description"]
+    for e in entries:
+        lines.append(",".join([
+            _csv_escape(e.get("timestamp", "")),
+            _csv_escape(e.get("actor", "")),
+            _csv_escape(e.get("category", "")),
+            _csv_escape(e.get("description", "")),
+        ]))
+    csv_content = "\n".join(lines) + "\n"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=config_changelog.csv"},
+    )
 
 
 def _csv_escape(value: str) -> str:

@@ -35,6 +35,7 @@ async def proxy_request(
     path: str,
     json_body: Optional[dict] = None,
     params: Optional[dict] = None,
+    extra_headers: Optional[dict] = None,
 ) -> tuple[int, dict]:
     """
     Send a request to a remote homeowner's irrigation API.
@@ -50,7 +51,7 @@ async def proxy_request(
         return 400, {"error": "Invalid URL", "detail": f"URL must start with http:// or https:// — got: {url[:50]}"}
 
     if connection.mode == "nabu_casa" and connection.ha_token:
-        return await _proxy_via_nabu_casa(connection, method, path, json_body, params)
+        return await _proxy_via_nabu_casa(connection, method, path, json_body, params, extra_headers)
 
     # If mode is nabu_casa but token is missing, give a clear error
     if connection.mode == "nabu_casa" and not connection.ha_token:
@@ -59,7 +60,7 @@ async def proxy_request(
             "detail": "This customer uses Nabu Casa mode but the HA Long-Lived Access Token is missing. Re-generate the connection key on the homeowner side.",
         }
 
-    return await _proxy_direct(connection, method, path, json_body, params)
+    return await _proxy_direct(connection, method, path, json_body, params, extra_headers)
 
 
 async def _proxy_direct(
@@ -68,6 +69,7 @@ async def _proxy_direct(
     path: str,
     json_body: Optional[dict] = None,
     params: Optional[dict] = None,
+    extra_headers: Optional[dict] = None,
 ) -> tuple[int, dict]:
     """Direct HTTP connection to homeowner's add-on on port 8099."""
     client = _get_client()
@@ -76,6 +78,8 @@ async def _proxy_direct(
         "X-API-Key": connection.key,
         "Content-Type": "application/json",
     }
+    if extra_headers:
+        headers.update(extra_headers)
 
     try:
         response = await client.request(
@@ -117,6 +121,7 @@ async def _proxy_via_nabu_casa(
     path: str,
     json_body: Optional[dict] = None,
     params: Optional[dict] = None,
+    extra_headers: Optional[dict] = None,
 ) -> tuple[int, dict]:
     """
     Route request through HA REST API → rest_command/irrigation_proxy_*.
@@ -140,9 +145,15 @@ async def _proxy_via_nabu_casa(
     service_url = f"{base_url}/api/services/rest_command/{service_name}?return_response"
 
     # Build the full path with query params if any
+    all_params = dict(params) if params else {}
+    # Pass extra headers as query params since Nabu Casa rest_command
+    # proxy doesn't support custom HTTP headers to the add-on
+    if extra_headers:
+        for k, v in extra_headers.items():
+            all_params[k] = v
     full_path = path
-    if params:
-        qs = "&".join(f"{k}={v}" for k, v in params.items())
+    if all_params:
+        qs = "&".join(f"{k}={v}" for k, v in all_params.items())
         full_path = f"{path}?{qs}"
 
     # Service call data — these become template variables in the rest_command

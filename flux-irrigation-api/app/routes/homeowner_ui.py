@@ -203,6 +203,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
+        <button class="dark-toggle" onclick="showChangelog()" title="Change Log">📋</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
@@ -213,6 +214,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div>
             <h2 id="dashTitle" style="font-size:22px;font-weight:600;">My Irrigation System</h2>
             <div id="dashAddress" style="font-size:14px;color:var(--text-disabled);margin-top:4px;display:none;"></div>
+            <div id="dashTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
         </div>
         <div style="display:flex;gap:8px;">
             <button class="btn btn-secondary btn-sm" onclick="refreshDashboard()">Refresh</button>
@@ -315,6 +317,22 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         </div>
         <div class="card-body" id="detailHistory">
             <div class="loading">Loading history...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Change Log Modal -->
+<div id="changelogModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:720px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Configuration Change Log</h3>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <button class="btn btn-secondary btn-sm" onclick="exportChangelogCSV()">Export CSV</button>
+                <button onclick="closeChangelogModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+            </div>
+        </div>
+        <div id="changelogContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:13px;color:var(--text-secondary);line-height:1.5;">
+            Loading...
         </div>
     </div>
 </div>
@@ -2138,6 +2156,14 @@ function toggleDarkMode() {
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
+    // Show local timezone
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const now = new Date();
+        const short = now.toLocaleTimeString(undefined, {timeZoneName:'short'}).split(' ').pop();
+        document.getElementById('dashTimezone').textContent = short + ' (' + tz + ')';
+    } catch(e) {}
+
     // Load zone aliases
     try {
         window._currentZoneAliases = await api('/zone_aliases');
@@ -2203,8 +2229,71 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;"><strong>Pause System</strong> immediately stops all active zones and prevents any new zones from starting — including ESPHome schedule programs. While paused, any zone that tries to turn on will be automatically shut off.</p>
 <p style="margin-bottom:10px;"><strong>Resume System</strong> lifts the pause and allows normal operation. Weather-triggered pauses auto-resume when conditions clear; manual pauses require clicking Resume.</p>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Use <strong>Emergency Stop All</strong> for a quick one-time stop. Use <strong>Pause System</strong> when you need to keep everything off until you manually resume.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Configuration Change Log</h4>
+<p style="margin-bottom:10px;">Click the 📋 icon in the dashboard header to view a log of all configuration changes. Every change records:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Time</strong> — When the change was made (shown in your local timezone)</li><li style="margin-bottom:4px;"><strong>Who</strong> — Whether the change was made by the Homeowner (blue badge) or Management company (green badge)</li><li style="margin-bottom:4px;"><strong>Category</strong> — What type of setting was changed (Schedule, Weather Rules, Moisture Probes, System, Zone Control, etc.)</li><li style="margin-bottom:4px;"><strong>Change</strong> — A human-readable description of what was changed</li></ul>
+<p style="margin-bottom:10px;">The system stores up to 1,000 entries. When the limit is reached, the oldest entries are automatically overwritten. Records cannot be deleted. Click <strong>Export CSV</strong> to download the full log as a spreadsheet.</p>
 `;
 
+// --- Change Log ---
+async function showChangelog() {
+    document.getElementById('changelogModal').style.display = 'flex';
+    loadChangelog();
+}
+function closeChangelogModal() {
+    document.getElementById('changelogModal').style.display = 'none';
+}
+async function loadChangelog() {
+    const el = document.getElementById('changelogContent');
+    try {
+        const data = await api('/changelog');
+        const entries = data.entries || [];
+        if (entries.length === 0) {
+            el.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">No changes recorded yet.</div>';
+            return;
+        }
+        let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+        html += '<thead><tr style="border-bottom:2px solid var(--border-light);text-align:left;">';
+        html += '<th style="padding:6px 8px;">Time</th>';
+        html += '<th style="padding:6px 8px;">Who</th>';
+        html += '<th style="padding:6px 8px;">Category</th>';
+        html += '<th style="padding:6px 8px;">Change</th>';
+        html += '</tr></thead><tbody>';
+        entries.forEach(function(e) {
+            const dt = new Date(e.timestamp);
+            const timeStr = dt.toLocaleDateString(undefined, {month:'short',day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric',minute:'2-digit'});
+            const isHO = e.actor === 'Homeowner';
+            const badge = '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                'background:' + (isHO ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)') + ';' +
+                'color:' + (isHO ? 'var(--color-info)' : 'var(--color-success)') + ';">' +
+                esc(e.actor) + '</span>';
+            html += '<tr style="border-bottom:1px solid var(--border-light);">';
+            html += '<td style="padding:6px 8px;white-space:nowrap;color:var(--text-muted);">' + esc(timeStr) + '</td>';
+            html += '<td style="padding:6px 8px;">' + badge + '</td>';
+            html += '<td style="padding:6px 8px;color:var(--text-muted);">' + esc(e.category || '') + '</td>';
+            html += '<td style="padding:6px 8px;">' + esc(e.description || '') + '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    } catch (err) {
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load change log.</div>';
+    }
+}
+function exportChangelogCSV() {
+    window.open(HBASE + '/changelog/csv', '_blank');
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('changelogModal').style.display === 'flex') {
+        closeChangelogModal();
+    }
+});
+document.getElementById('changelogModal').addEventListener('click', function(e) {
+    if (e.target === this) closeChangelogModal();
+});
+
+// --- Help ---
 function showHelp() {
     document.getElementById('helpContent').innerHTML = HELP_CONTENT;
     document.getElementById('helpModal').style.display = 'flex';

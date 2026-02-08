@@ -9,9 +9,10 @@ for intelligent irrigation scheduling adjustments.
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from config import get_config
 import ha_client
+from config_changelog import log_change, get_actor
 
 
 router = APIRouter(prefix="/admin/api", tags=["Weather Control"])
@@ -601,12 +602,37 @@ async def get_weather_rules():
 
 
 @router.put("/weather/rules", summary="Update weather rules")
-async def update_weather_rules(body: dict):
+async def update_weather_rules(body: dict, request: Request):
     """Update weather rules configuration and re-evaluate immediately."""
     data = _load_weather_rules()
+    old_rules = data.get("rules", {})
     if "rules" in body:
         data["rules"] = body["rules"]
     _save_weather_rules(data)
+
+    # Build friendly changelog description
+    changes = []
+    new_rules = body.get("rules", {})
+    rule_labels = {
+        "rain_detection": "Rain Detection",
+        "rain_forecast": "Rain Forecast",
+        "precipitation_threshold": "Precipitation Threshold",
+        "temperature_freeze": "Freeze Protection",
+        "temperature_cool": "Cool Temperature",
+        "temperature_hot": "Hot Temperature",
+        "wind_speed": "Wind Speed",
+        "humidity": "Humidity",
+    }
+    for rule_key, label in rule_labels.items():
+        old = old_rules.get(rule_key, {})
+        new = new_rules.get(rule_key, {})
+        if old.get("enabled") != new.get("enabled"):
+            changes.append(f"{'Enabled' if new.get('enabled') else 'Disabled'} {label}")
+    desc = "Updated weather rules"
+    if changes:
+        desc += " — " + ", ".join(changes)
+    log_change(get_actor(request), "Weather Rules", desc)
+
     # Re-evaluate rules immediately so the multiplier updates right away
     try:
         result = await run_weather_evaluation()

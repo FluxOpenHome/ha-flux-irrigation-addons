@@ -11,6 +11,7 @@ from auth import require_permission, ApiKeyConfig
 from config import get_config
 import ha_client
 import audit_log
+from config_changelog import log_change, get_actor, friendly_entity_name
 
 
 router = APIRouter(prefix="/entities", tags=["Entities"])
@@ -288,6 +289,13 @@ async def set_entity(entity_id: str, body: EntitySetRequest, request: Request):
                     await apply_adjusted_durations()
         except Exception as e:
             print(f"[ENTITIES] Base duration update after set failed: {e}")
+
+    # Log configuration change
+    actor = get_actor(request)
+    fname = friendly_entity_name(entity_id)
+    val = body.value if body.value is not None else body.state if body.state is not None else body.option
+    log_change(actor, "Schedule", f"Set {fname} to {val}",
+               {"entity_id": entity_id, "value": val})
 
     audit_log.log_action(
         api_key_name=key_config.name,

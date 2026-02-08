@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 from config import get_config, reload_config
+from config_changelog import log_change
 
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -324,6 +325,8 @@ async def select_device(body: DeviceSelect):
 
     config = get_config()
 
+    log_change("Homeowner", "Device Config", f"Selected device: {body.device_id}")
+
     return {
         "success": True,
         "device_id": body.device_id,
@@ -426,6 +429,7 @@ async def update_general_settings(body: SettingsUpdate):
     """Update rate limiting, logging, and other general settings."""
     options = _load_options()
 
+    changes = []
     if body.rate_limit_per_minute is not None:
         options["rate_limit_per_minute"] = body.rate_limit_per_minute
     if body.log_retention_days is not None:
@@ -434,12 +438,20 @@ async def update_general_settings(body: SettingsUpdate):
         options["enable_audit_log"] = body.enable_audit_log
     if body.weather_entity_id is not None:
         options["weather_entity_id"] = body.weather_entity_id
+        changes.append(f"Weather entity: {body.weather_entity_id}")
     if body.weather_enabled is not None:
         options["weather_enabled"] = body.weather_enabled
+        changes.append(f"{'Enabled' if body.weather_enabled else 'Disabled'} weather")
     if body.weather_check_interval_minutes is not None:
         options["weather_check_interval_minutes"] = body.weather_check_interval_minutes
 
     await _save_options(options)
+
+    desc = "Updated system settings"
+    if changes:
+        desc += " — " + ", ".join(changes)
+    log_change("Homeowner", "Device Config", desc)
+
     return {"success": True}
 
 
@@ -594,6 +606,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     )
     encoded = encode_connection_key(key_data)
 
+    log_change("Homeowner", "Connection Key", "Generated new connection key")
+
     return {
         "success": True,
         "connection_key": encoded,
@@ -707,6 +721,8 @@ async def revoke_management_access():
     await _save_options(options)
 
     print(f"[ADMIN] Management company access REVOKED — removed {removed_count} API key(s), cleared connection key URL")
+
+    log_change("Homeowner", "Connection Key", "Revoked management access")
 
     return {
         "success": True,

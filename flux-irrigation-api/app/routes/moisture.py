@@ -22,11 +22,12 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from config import get_config
 import ha_client
+from config_changelog import log_change, get_actor
 
 
 router = APIRouter(prefix="/admin/api/homeowner/moisture", tags=["Moisture Probes"])
@@ -1178,7 +1179,7 @@ async def api_get_probes():
 
 
 @router.post("/probes", summary="Add a new moisture probe")
-async def api_add_probe(body: ProbeCreateRequest):
+async def api_add_probe(body: ProbeCreateRequest, request: Request):
     """Add a new moisture probe with sensor mappings and zone assignments."""
     data = _load_data()
 
@@ -1208,11 +1209,14 @@ async def api_add_probe(body: ProbeCreateRequest):
     data.setdefault("probes", {})[body.probe_id] = probe
     _save_data(data)
 
+    log_change(get_actor(request), "Moisture Probes",
+               f"Added probe: {probe['display_name']}")
+
     return {"success": True, "probe": probe}
 
 
 @router.put("/probes/{probe_id}", summary="Update a moisture probe")
-async def api_update_probe(probe_id: str, body: ProbeUpdateRequest):
+async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Request):
     """Update display name, thresholds, sensor mappings, or zone assignments."""
     data = _load_data()
 
@@ -1230,19 +1234,25 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest):
         probe["thresholds"] = body.thresholds
 
     _save_data(data)
+    log_change(get_actor(request), "Moisture Probes",
+               f"Updated probe: {probe['display_name']}")
     return {"success": True, "probe": probe}
 
 
 @router.delete("/probes/{probe_id}", summary="Remove a moisture probe")
-async def api_delete_probe(probe_id: str):
+async def api_delete_probe(probe_id: str, request: Request):
     """Remove a moisture probe configuration."""
     data = _load_data()
 
     if probe_id not in data.get("probes", {}):
         raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
 
+    display_name = data["probes"][probe_id].get("display_name", probe_id)
     del data["probes"][probe_id]
     _save_data(data)
+
+    log_change(get_actor(request), "Moisture Probes",
+               f"Removed probe: {display_name}")
 
     return {"success": True, "message": f"Probe '{probe_id}' removed"}
 
@@ -1261,12 +1271,15 @@ async def api_get_settings():
 
 
 @router.put("/settings", summary="Update moisture probe settings")
-async def api_update_settings(body: MoistureSettingsRequest):
+async def api_update_settings(body: MoistureSettingsRequest, request: Request):
     """Update global moisture settings (enable/disable, stale threshold, weights, defaults)."""
     data = _load_data()
 
+    # Build changelog description
+    changes = []
     if body.enabled is not None:
         data["enabled"] = body.enabled
+        changes.append(f"{'Enabled' if body.enabled else 'Disabled'} moisture probes")
     if body.stale_reading_threshold_minutes is not None:
         data["stale_reading_threshold_minutes"] = body.stale_reading_threshold_minutes
     if body.depth_weights is not None:
@@ -1279,6 +1292,13 @@ async def api_update_settings(body: MoistureSettingsRequest):
         was_enabled = data.get("apply_factors_to_schedule", False)
         data["apply_factors_to_schedule"] = body.apply_factors_to_schedule
         _save_data(data)
+
+        if body.apply_factors_to_schedule != was_enabled:
+            changes.append(f"{'Enabled' if body.apply_factors_to_schedule else 'Disabled'} Apply Factors to Schedule")
+
+        if changes:
+            log_change(get_actor(request), "Moisture Probes",
+                       "Updated moisture settings — " + ", ".join(changes))
 
         if body.apply_factors_to_schedule and not was_enabled:
             # Toggling ON: always re-capture base durations for fresh values
@@ -1327,6 +1347,9 @@ async def api_update_settings(body: MoistureSettingsRequest):
             }
 
     _save_data(data)
+    if changes:
+        log_change(get_actor(request), "Moisture Probes",
+                   "Updated moisture settings — " + ", ".join(changes))
     return {"success": True, "message": "Moisture settings updated"}
 
 

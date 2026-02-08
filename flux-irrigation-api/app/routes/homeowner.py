@@ -15,6 +15,7 @@ from typing import Optional, Any
 from config import get_config
 import ha_client
 import run_log
+from config_changelog import log_change, get_actor, friendly_entity_name
 
 
 router = APIRouter(prefix="/admin/api/homeowner", tags=["Homeowner Dashboard"])
@@ -218,7 +219,7 @@ async def homeowner_zones():
 
 
 @router.post("/zones/{zone_id}/start", summary="Start a zone")
-async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest):
+async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     """Start an irrigation zone, optionally with a timed duration."""
     _require_homeowner_mode()
     config = get_config()
@@ -276,17 +277,21 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest):
         _timed_run_tasks[entity_id] = task
 
     message = f"Zone '{zone_id}' started"
+    desc = f"Started {_zone_name(entity_id).replace('_', ' ').title()}"
     if body.duration_minutes:
         if adjusted_duration != body.duration_minutes:
             message += f" for {adjusted_duration} minutes (adjusted from {body.duration_minutes})"
         else:
             message += f" for {adjusted_duration} minutes"
+        desc += f" for {body.duration_minutes} min"
+
+    log_change(get_actor(request), "Zone Control", desc, {"entity_id": entity_id})
 
     return {"success": True, "zone_id": zone_id, "action": "start", "message": message}
 
 
 @router.post("/zones/{zone_id}/stop", summary="Stop a zone")
-async def homeowner_stop_zone(zone_id: str):
+async def homeowner_stop_zone(zone_id: str, request: Request):
     """Stop an irrigation zone."""
     _require_homeowner_mode()
     config = get_config()
@@ -312,11 +317,15 @@ async def homeowner_stop_zone(zone_id: str):
         zone_name=_zone_name(entity_id),
     )
 
+    log_change(get_actor(request), "Zone Control",
+               f"Stopped {_zone_name(entity_id).replace('_', ' ').title()}",
+               {"entity_id": entity_id})
+
     return {"success": True, "zone_id": zone_id, "action": "stop", "message": f"Zone '{zone_id}' stopped"}
 
 
 @router.post("/zones/stop_all", summary="Emergency stop all zones")
-async def homeowner_stop_all():
+async def homeowner_stop_all(request: Request):
     """Emergency stop — turn off all irrigation zones."""
     _require_homeowner_mode()
     config = get_config()
@@ -341,6 +350,9 @@ async def homeowner_stop_all():
                 zone_name=_zone_name(entity_id),
             )
             stopped.append(entity_id)
+
+    log_change(get_actor(request), "Zone Control", "Emergency stop — all zones",
+               {"stopped": len(stopped)})
 
     return {
         "success": True,
@@ -419,7 +431,7 @@ async def homeowner_entities():
 
 
 @router.post("/entities/{entity_id:path}/set", summary="Set entity value")
-async def homeowner_set_entity(entity_id: str, body: EntitySetRequest):
+async def homeowner_set_entity(entity_id: str, body: EntitySetRequest, request: Request):
     """Set the value of a device control entity."""
     _require_homeowner_mode()
     config = get_config()
@@ -468,6 +480,13 @@ async def homeowner_set_entity(entity_id: str, body: EntitySetRequest):
         except Exception as e:
             print(f"[HOMEOWNER] Base duration update after set failed: {e}")
 
+    # Log configuration change
+    actor = get_actor(request)
+    fname = friendly_entity_name(entity_id)
+    val = body.value if body.value is not None else body.state if body.state is not None else body.option
+    log_change(actor, "Schedule", f"Set {fname} to {val}",
+               {"entity_id": entity_id, "value": val})
+
     return {
         "success": True,
         "entity_id": entity_id,
@@ -477,7 +496,7 @@ async def homeowner_set_entity(entity_id: str, body: EntitySetRequest):
 
 
 @router.post("/system/pause", summary="Pause irrigation system")
-async def homeowner_pause():
+async def homeowner_pause(request: Request):
     """Pause all irrigation. Active zones will be stopped."""
     _require_homeowner_mode()
     config = get_config()
@@ -510,11 +529,13 @@ async def homeowner_pause():
         {"source": "homeowner_dashboard"},
     )
 
+    log_change(get_actor(request), "System", "Paused irrigation system")
+
     return {"success": True, "system_paused": True, "message": "Irrigation system paused."}
 
 
 @router.post("/system/resume", summary="Resume irrigation system")
-async def homeowner_resume():
+async def homeowner_resume(request: Request):
     """Resume the irrigation system after a pause."""
     _require_homeowner_mode()
 
@@ -535,6 +556,8 @@ async def homeowner_resume():
         "flux_irrigation_system_resumed",
         {"source": "homeowner_dashboard"},
     )
+
+    log_change(get_actor(request), "System", "Resumed irrigation system")
 
     return {"success": True, "system_paused": False, "message": "Irrigation system resumed."}
 
@@ -764,8 +787,34 @@ async def homeowner_get_aliases():
 
 
 @router.put("/zone_aliases", summary="Update zone aliases")
-async def homeowner_update_aliases(body: UpdateAliasesRequest):
+async def homeowner_update_aliases(body: UpdateAliasesRequest, request: Request):
     """Update the homeowner's zone display name aliases."""
     _require_homeowner_mode()
     _save_aliases(body.zone_aliases)
+    log_change(get_actor(request), "Schedule", "Updated zone aliases",
+               {"aliases": body.zone_aliases})
     return {"success": True, "zone_aliases": body.zone_aliases}
+
+
+# --- Configuration Change Log ---
+
+@router.get("/changelog", summary="Get configuration change log")
+async def homeowner_changelog(
+    limit: int = Query(200, ge=1, le=1000, description="Max entries"),
+):
+    """Get the configuration change log, newest first."""
+    from config_changelog import get_changelog as _get_changelog
+    return {"entries": _get_changelog(limit=limit)}
+
+
+@router.get("/changelog/csv", summary="Export change log as CSV")
+async def homeowner_changelog_csv():
+    """Export the configuration change log as a downloadable CSV file."""
+    from fastapi.responses import Response
+    from config_changelog import export_changelog_csv
+    csv_content = export_changelog_csv()
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=config_changelog.csv"},
+    )
