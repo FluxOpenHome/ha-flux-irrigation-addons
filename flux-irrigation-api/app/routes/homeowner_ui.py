@@ -580,19 +580,13 @@ function showMap(lat, lon, label) {
 }
 
 // --- Dashboard Loading ---
-let _controlsLoaded = false;
 async function loadDashboard() {
     loadStatus();
     loadWeather();
     loadMoisture();
     loadZones();
     loadSensors();
-    // Controls/schedule only need to load once — they don't change
-    // on their own. They refresh when the user explicitly changes a value.
-    if (!_controlsLoaded) {
-        loadControls();
-        _controlsLoaded = true;
-    }
+    loadControls();
     loadHistory();
 }
 
@@ -988,8 +982,16 @@ function renderScheduleCard(sched, durData) {
             '</div></div>';
     }
 
-    // --- Apply Factors Toggle (inline, right after schedule enable) ---
-    html += '<div id="applyFactorsToggle" style="margin-bottom:16px;"></div>';
+    // --- Apply Factors Toggle (rendered inline from durData, no separate API call) ---
+    const afOn = durData && durData.duration_adjustment_active;
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;' +
+        'padding:12px 16px;border-radius:8px;margin-bottom:16px;background:' + (afOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
+        '<div><div style="font-size:14px;font-weight:600;color:' + (afOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
+        'Apply Factors to Schedule</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);">Automatically adjust run durations by the combined watering factor</div></div>' +
+        '<button class="btn ' + (afOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
+        'onclick="toggleApplyFactors(' + !afOn + ')">' +
+        (afOn ? 'Disable' : 'Enable') + '</button></div>';
 
     // --- Days of Week ---
     if (day_switches.length > 0) {
@@ -1139,7 +1141,6 @@ function renderScheduleCard(sched, durData) {
     }
 
     el.innerHTML = html;
-    loadApplyFactorsToggle();
 }
 
 function cleanEntityName(friendlyName, entityId) {
@@ -2100,51 +2101,11 @@ async function deleteMoistureProbe(probeId) {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
-let _applyFactorsBuilt = false;
-async function loadApplyFactorsToggle() {
-    const container = document.getElementById('applyFactorsToggle');
-    if (!container) return;
-    try {
-        const settings = await mapi('/settings');
-        const isOn = settings.apply_factors_to_schedule || false;
-
-        // First load — build the full structure once
-        if (!_applyFactorsBuilt || !container.querySelector('[data-af="tile"]')) {
-            container.innerHTML = '<div data-af="tile" style="display:flex;align-items:center;justify-content:space-between;' +
-                'padding:12px 16px;border-radius:8px;background:' + (isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
-                '<div><div data-af="label" style="font-size:14px;font-weight:600;color:' + (isOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
-                'Apply Factors to Schedule</div>' +
-                '<div style="font-size:12px;color:var(--text-muted);">Automatically adjust run durations by the combined watering factor</div></div>' +
-                '<button data-af="btn" class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
-                'onclick="toggleApplyFactors(' + !isOn + ')">' +
-                (isOn ? 'Disable' : 'Enable') + '</button></div>';
-            _applyFactorsBuilt = true;
-        }
-
-        // Targeted updates — only change what changed
-        const tile = container.querySelector('[data-af="tile"]');
-        const label = container.querySelector('[data-af="label"]');
-        const btn = container.querySelector('[data-af="btn"]');
-        if (tile) tile.style.background = isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)';
-        if (label) label.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
-        if (btn) {
-            btn.className = 'btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm';
-            btn.textContent = isOn ? 'Disable' : 'Enable';
-            btn.setAttribute('onclick', 'toggleApplyFactors(' + !isOn + ')');
-        }
-    } catch (e) {
-        if (!_applyFactorsBuilt) {
-            container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Unable to load factor settings.</div>';
-        }
-    }
-}
-
 async function toggleApplyFactors(enable) {
     try {
         const result = await mapi('/settings', 'PUT', { apply_factors_to_schedule: enable });
         const isError = result.success === false;
         showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'), isError ? 'error' : undefined);
-        loadApplyFactorsToggle();
         loadControls();
     } catch (e) { showToast(e.message, 'error'); }
 }
