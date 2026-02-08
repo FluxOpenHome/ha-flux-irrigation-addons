@@ -2590,7 +2590,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Copy</strong> — Copy to clipboard and paste into an email or message</li>
 <li style="margin-bottom:4px;"><strong>Email</strong> — Opens your email client with the key pre-filled</li>
-<li style="margin-bottom:4px;"><strong>QR Code</strong> — Generate a scannable QR code (useful for in-person sharing)</li>
+<li style="margin-bottom:4px;"><strong>QR Code</strong> — Generate a scannable QR code. Your management company can scan this directly from their dashboard using the 📷 Scan QR Code button when adding a property.</li>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The connection key grants access to all your devices — irrigation zones, Gophr moisture probes, weather settings, schedules, and sensors. If you regenerate a key, the old one stops working immediately.</div>
 

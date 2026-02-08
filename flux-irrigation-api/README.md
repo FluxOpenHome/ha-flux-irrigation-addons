@@ -122,7 +122,7 @@ On the Configuration page, in the **Connection Key for Management Company** sect
 
 4. **Copy the connection key** and send it to your management company. They will paste this into their Flux Open Home Irrigation Control add-on to connect to your system.
 
-> **Tip:** You can send the connection key via the **Email** button or display it as a **QR code** for easy scanning.
+> **Tip:** You can send the connection key via the **Email** button or display it as a **QR code**. Your management company can scan the QR code directly from their dashboard when adding a property.
 
 > **Note:** Once a connection key has been generated, the Generate button is locked to prevent accidental regeneration. To generate a new key (which invalidates the old one), click **Unlock to Regenerate** and confirm.
 
@@ -168,7 +168,7 @@ You can disconnect a management company at any time from the Configuration page:
 1. Install the same add-on on your Home Assistant instance (see [Installation](#installation))
 2. Open the add-on panel and click **Switch to Management** (or go to the add-on's Configuration tab and set **mode** to `management`, then restart)
 3. Click **+ Add Property**
-4. Paste the **connection key** provided by a homeowner
+4. Either **paste the connection key** provided by a homeowner, or click **Scan QR Code** to scan the homeowner's QR code with your camera
 5. The property will appear in the dashboard with live status, zone control, sensors, schedules, and weather conditions
 
 The management dashboard automatically checks connectivity to all properties every 5 minutes and shows online/offline status.
@@ -197,6 +197,7 @@ The management dashboard automatically checks connectivity to all properties eve
 ### Management
 
 - **Management Dashboard** — Multi-property grid view with click-to-expand detail cards for each property
+- **QR code scanning** — Scan a homeowner's QR code with your camera to add a property instantly, instead of pasting the connection key
 - **Update connection key** — Swap a customer's connection key without losing notes, aliases, or metadata
 - **Customer search and filtering** — Search properties by name, contact, address, phone, or notes; filter by status (online, offline, revoked) and by state or city
 - **Customer notes** — Add and edit notes on property cards
