@@ -56,9 +56,10 @@ class UpdateZoneAliasesRequest(BaseModel):
 def _require_management_mode():
     config = get_config()
     if config.mode != "management":
+        print(f"[MGMT] Rejected request — config.mode='{config.mode}', expected 'management'")
         raise HTTPException(
             status_code=400,
-            detail="This endpoint is only available in management mode.",
+            detail=f"This endpoint is only available in management mode (current mode: {config.mode}).",
         )
 
 

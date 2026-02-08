@@ -265,7 +265,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <span class="mode-badge">Management Mode</span>
         <button class="btn btn-secondary btn-sm" onclick="switchToHomeowner()">Homeowner</button>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
-        <button class="dark-toggle" onclick="mgmtShowChangelog()" title="Change Log">📋</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
     </div>
 </div>
@@ -371,6 +370,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                 <div id="mgmtTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
             </div>
             <div style="display:flex;gap:8px;">
+                <button class="btn btn-secondary btn-sm" onclick="mgmtShowChangelog()" title="Change Log">&#128203; Log</button>
                 <button class="btn btn-secondary btn-sm" onclick="refreshDetail()">Refresh</button>
                 <button class="btn btn-danger btn-sm" onclick="stopAllZones()">Emergency Stop All</button>
             </div>
@@ -607,6 +607,7 @@ async function api(path, options = {}) {
     const data = await res.json();
     if (!res.ok) {
         const detail = data.detail || data.error || JSON.stringify(data);
+        console.error('[API]', options.method || 'GET', path, res.status, detail);
         throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
     }
     return data;
@@ -865,6 +866,46 @@ function setupUnitConversions(prefix) {
     syncUnitConversion(p + 'wind_speed_kmh', p + 'wind_speed_mph', kmhToMph);
 }
 
+// --- Customer Local Time ---
+const STATE_TIMEZONES = {
+    'AL':'America/Chicago','AK':'America/Anchorage','AZ':'America/Phoenix',
+    'AR':'America/Chicago','CA':'America/Los_Angeles','CO':'America/Denver',
+    'CT':'America/New_York','DE':'America/New_York','FL':'America/New_York',
+    'GA':'America/New_York','HI':'Pacific/Honolulu','ID':'America/Boise',
+    'IL':'America/Chicago','IN':'America/Indiana/Indianapolis','IA':'America/Chicago',
+    'KS':'America/Chicago','KY':'America/New_York','LA':'America/Chicago',
+    'ME':'America/New_York','MD':'America/New_York','MA':'America/New_York',
+    'MI':'America/Detroit','MN':'America/Chicago','MS':'America/Chicago',
+    'MO':'America/Chicago','MT':'America/Denver','NE':'America/Chicago',
+    'NV':'America/Los_Angeles','NH':'America/New_York','NJ':'America/New_York',
+    'NM':'America/Denver','NY':'America/New_York','NC':'America/New_York',
+    'ND':'America/Chicago','OH':'America/New_York','OK':'America/Chicago',
+    'OR':'America/Los_Angeles','PA':'America/New_York','RI':'America/New_York',
+    'SC':'America/New_York','SD':'America/Chicago','TN':'America/Chicago',
+    'TX':'America/Chicago','UT':'America/Denver','VT':'America/New_York',
+    'VA':'America/New_York','WA':'America/Los_Angeles','WV':'America/New_York',
+    'WI':'America/Chicago','WY':'America/Denver','DC':'America/New_York',
+};
+let _customerClockTimer = null;
+function startCustomerClock(state) {
+    stopCustomerClock();
+    const el = document.getElementById('mgmtTimezone');
+    const tz = STATE_TIMEZONES[(state || '').toUpperCase()];
+    if (!tz) { el.textContent = ''; return; }
+    function tick() {
+        const now = new Date();
+        const time = now.toLocaleTimeString('en-US', {timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true});
+        const abbr = now.toLocaleTimeString('en-US', {timeZone: tz, timeZoneName: 'short'}).split(' ').pop();
+        el.textContent = time + ' ' + abbr;
+    }
+    tick();
+    _customerClockTimer = setInterval(tick, 30000);
+}
+function stopCustomerClock() {
+    if (_customerClockTimer) { clearInterval(_customerClockTimer); _customerClockTimer = null; }
+    document.getElementById('mgmtTimezone').textContent = '';
+}
+
 // --- Add Customer ---
 function toggleAddForm() {
     const form = document.getElementById('addForm');
@@ -908,6 +949,8 @@ async function addCustomer() {
     const name = document.getElementById('addName').value.trim();
     const notes = document.getElementById('addNotes').value.trim();
     if (!key) { showToast('Paste a connection key', 'error'); return; }
+    const btn = document.querySelector('#addForm .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
     try {
         const data = await api('/customers', {
             method: 'POST',
@@ -918,6 +961,8 @@ async function addCustomer() {
         loadCustomers();
     } catch (e) {
         showToast(e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Connect'; }
     }
 }
 
@@ -1182,6 +1227,7 @@ async function viewCustomer(id) {
         notesText.style.fontStyle = customer.notes ? 'normal' : 'italic';
         notesText.style.color = customer.notes ? 'var(--text-secondary-alt)' : 'var(--text-disabled)';
         initDetailMap(customer);
+        startCustomerClock(customer.state);
     } catch (e) {
         document.getElementById('detailName').textContent = 'Unknown Property';
         document.getElementById('detailAddress').style.display = 'none';
@@ -1189,6 +1235,7 @@ async function viewCustomer(id) {
         document.getElementById('detailPhone').style.display = 'none';
         document.getElementById('detailMap').style.display = 'none';
         document.getElementById('detailNotesSection').style.display = 'none';
+        stopCustomerClock();
     }
 
     loadDetailData(id);
@@ -1197,6 +1244,7 @@ async function viewCustomer(id) {
 
 function backToList() {
     currentCustomerId = null;
+    stopCustomerClock();
     document.getElementById('detailView').classList.remove('visible');
     document.getElementById('listView').style.display = 'block';
     document.getElementById('apiDocsCard').style.display = 'block';
@@ -2871,7 +2919,7 @@ const HELP_CONTENT = `
 </ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Configuration Change Log</h4>
-<p style="margin-bottom:10px;">Click the 📋 icon in the header to view all configuration changes made to a customer's system. The log tracks who made each change (Homeowner or Management), when, and what was changed. Changes you make through this dashboard are automatically attributed to "Management." Export to CSV for record-keeping. Up to 1,000 entries are stored per property.</p>
+<p style="margin-bottom:10px;">Click the <strong>Log</strong> button in the property detail view to see all configuration changes made to that customer's system. The log tracks who made each change (Homeowner or Management), when, and what was changed. Changes you make through this dashboard are automatically attributed to "Management." Export to CSV for record-keeping. Up to 1,000 entries are stored per property.</p>
 `;
 
 // --- Change Log ---
@@ -2948,13 +2996,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fix docs link for ingress — page is served at /admin, strip it to get ingress base
     const ingressBase = window.location.pathname.replace(/\\/admin\\/?$/, '');
     document.getElementById('docsLink').href = ingressBase + '/api/docs';
-    // Show local timezone
-    try {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const now = new Date();
-        const short = now.toLocaleTimeString(undefined, {timeZoneName:'short'}).split(' ').pop();
-        document.getElementById('mgmtTimezone').textContent = short + ' (' + tz + ')';
-    } catch(e) {}
+    document.getElementById('mgmtTimezone').textContent = '';
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
     // Close modals on backdrop click or Escape
