@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from icalendar import Calendar, Event
 
 from config import get_config
 from config_changelog import log_change, get_actor
@@ -80,10 +81,11 @@ async def issue_summary():
 
 @router.get("/{issue_id}/calendar.ics", summary="Download calendar event for scheduled service")
 async def issue_calendar_ics(issue_id: str):
-    """Generate an .ics calendar file for a scheduled service date.
+    """Generate an RFC 5545 compliant .ics calendar file for a scheduled service date.
 
-    Returns Content-Type: text/calendar so the device's default calendar
-    app opens automatically (Apple Calendar, Google Calendar, Outlook, etc.).
+    Uses the icalendar library to produce a standards-compliant file that
+    calendar applications (Apple Calendar, Google Calendar, Outlook, etc.)
+    can natively import.
     """
     issue = issue_store.get_issue(issue_id)
     if issue is None:
@@ -92,11 +94,8 @@ async def issue_calendar_ics(issue_id: str):
         raise HTTPException(status_code=404, detail="No service date scheduled for this issue")
 
     svc_date = issue["service_date"]  # YYYY-MM-DD
-    dt_start = svc_date.replace("-", "")
-    dt_end_date = datetime.strptime(svc_date, "%Y-%m-%d") + timedelta(days=1)
-    dt_end = dt_end_date.strftime("%Y%m%d")
-    stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    uid = f"flux-svc-{issue['id']}@flux-irrigation"
+    dt_start = datetime.strptime(svc_date, "%Y-%m-%d").date()
+    dt_end = dt_start + timedelta(days=1)
 
     # Build location from config address
     config = get_config()
@@ -122,32 +121,36 @@ async def issue_calendar_ics(issue_id: str):
     description = "Irrigation service visit scheduled by your management company."
     if issue.get("management_note"):
         note_clean = issue["management_note"].replace("\n", " ").replace("\r", " ")
-        description += f"\\nNote from management: {note_clean}"
+        description += f"\nNote from management: {note_clean}"
 
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//Flux Open Home//Irrigation Service//EN",
-        "BEGIN:VEVENT",
-        f"UID:{uid}",
-        f"DTSTAMP:{stamp}",
-        f"DTSTART;VALUE=DATE:{dt_start}",
-        f"DTEND;VALUE=DATE:{dt_end}",
-        f"SUMMARY:{title}",
-        f"DESCRIPTION:{description}",
-    ]
+    # Build RFC 5545 compliant calendar using icalendar library
+    cal = Calendar()
+    cal.add("prodid", "-//Flux Open Home//Irrigation Service//EN")
+    cal.add("version", "2.0")
+    cal.add("calscale", "GREGORIAN")
+    cal.add("method", "PUBLISH")
+
+    event = Event()
+    event.add("uid", f"flux-svc-{issue['id']}@flux-irrigation")
+    event.add("dtstamp", datetime.utcnow())
+    event.add("dtstart", dt_start)
+    event.add("dtend", dt_end)
+    event.add("summary", title)
+    event.add("description", description)
     if location:
-        lines.append(f"LOCATION:{location}")
-    lines += [
-        "STATUS:CONFIRMED",
-        "END:VEVENT",
-        "END:VCALENDAR",
-    ]
-    ics_content = "\r\n".join(lines)
+        event.add("location", location)
+    event.add("status", "CONFIRMED")
+    event.add("transp", "TRANSPARENT")
+
+    cal.add_component(event)
+    ics_content = cal.to_ical()
 
     return Response(
         content=ics_content,
         media_type="text/calendar",
+        headers={
+            "Content-Disposition": f"attachment; filename=irrigation-service-{svc_date}.ics",
+        },
     )
 
 

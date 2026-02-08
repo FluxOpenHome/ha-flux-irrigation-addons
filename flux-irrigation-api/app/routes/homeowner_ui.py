@@ -558,9 +558,9 @@ function renderUpcomingService(issues) {
 // --- Add to Calendar ---
 function addServiceToCalendar() {
     if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
-    // Navigate to the server-side .ics endpoint — the OS opens the
-    // device's default calendar app (Apple Calendar, Google Calendar, etc.)
-    // with the event details pre-filled.
+    // Server-side endpoint generates an RFC 5545 compliant .ics file
+    // using the icalendar library. The Content-Disposition: attachment
+    // header plus text/calendar MIME type triggers the OS calendar handler.
     window.location.href = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
 }
 
@@ -2725,7 +2725,7 @@ const HELP_CONTENT = `
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Submitted</strong> — Your issue has been sent to management</li><li style="margin-bottom:4px;"><strong>Acknowledged</strong> — Management has reviewed your issue and may have left a note</li><li style="margin-bottom:4px;"><strong>Service Scheduled</strong> — A service date has been set</li><li style="margin-bottom:4px;"><strong>Resolved</strong> — Management has marked your issue as complete. You will see their response and can click <strong>Dismiss</strong> to remove it from your dashboard</li></ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Upcoming Service</h4>
-<p style="margin-bottom:10px;">When your management company schedules a service visit, a green <strong>Upcoming Service</strong> banner appears at the top of your dashboard showing the scheduled date. If management included a note, it appears below the date. <strong>Tap the banner</strong> to add the appointment directly to your device's calendar app (Apple Calendar, Google Calendar, Outlook, etc.) with the service date, property address, and management notes pre-filled.</p>
+<p style="margin-bottom:10px;">When your management company schedules a service visit, a green <strong>Upcoming Service</strong> banner appears at the top of your dashboard showing the scheduled date. If management included a note, it appears below the date. <strong>Tap the banner</strong> to add the appointment to your calendar — on mobile it opens Google Calendar with the event pre-filled; on desktop it downloads a calendar file (.ics) that opens in your default calendar app.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Property Address</h4>
 <p style="margin-bottom:10px;">Your property address is shown below the dashboard title. <strong>Tap the address</strong> to open it in your default maps application (Apple Maps on iOS/Mac, Google Maps on other devices).</p>
