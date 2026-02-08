@@ -422,6 +422,18 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- Calendar Picker Modal (iOS) -->
+<div id="calendarPickerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:flex-end;justify-content:center;" onclick="if(event.target===this)closeCalendarPicker()">
+    <div style="background:var(--bg-card);border-radius:16px 16px 0 0;padding:0;width:100%;max-width:500px;box-shadow:0 -4px 24px rgba(0,0,0,0.2);animation:slideUp 0.25s ease-out;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px 10px 20px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);">Add to Calendar</h3>
+            <button onclick="closeCalendarPicker()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div style="padding:12px 20px 24px 20px;display:flex;flex-direction:column;gap:10px;" id="calendarPickerOptions"></div>
+    </div>
+</div>
+<style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>
+
 <script>
 // Homeowner API base — all calls go through /admin/api/homeowner/*
 const HBASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api/homeowner';
@@ -556,66 +568,111 @@ function renderUpcomingService(issues) {
 }
 
 // --- Add to Calendar ---
+function _calEventData() {
+    const svcDate = _upcomingServiceData.service_date.replace(/-/g, '');
+    const d = new Date(_upcomingServiceData.service_date + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    const endDate = d.toISOString().slice(0, 10).replace(/-/g, '');
+    const label = document.getElementById('dashTitle').textContent || '';
+    const title = 'Irrigation Service' + (label ? ' - ' + label : '');
+    const loc = document.getElementById('dashAddress').textContent || '';
+    let details = 'Irrigation service visit scheduled by your management company.';
+    if (_upcomingServiceData.management_note) {
+        details += '\\nNote: ' + _upcomingServiceData.management_note;
+    }
+    return { svcDate: svcDate, endDate: endDate, title: title, location: loc, details: details, isoEnd: d.toISOString().slice(0, 10) };
+}
+
 async function addServiceToCalendar() {
     if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
     const icsUrl = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-    // 1. Try Web Share API (native share sheet - best mobile experience)
+    // 1. Try Web Share API (native share sheet — best mobile experience)
     try {
         const resp = await fetch(icsUrl);
-        if (!resp.ok) throw new Error('Server error');
-        const blob = await resp.blob();
-        const file = new File([blob], 'irrigation-service.ics', { type: 'text/calendar' });
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Irrigation Service' });
-            return;
+        if (resp.ok) {
+            const blob = await resp.blob();
+            const file = new File([blob], 'irrigation-service.ics', { type: 'text/calendar' });
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: 'Irrigation Service' });
+                return;
+            }
         }
-    } catch (e) { /* Web Share unavailable or failed, continue to fallbacks */ }
+    } catch (e) { /* continue to fallbacks */ }
 
-    // 2. Android/Desktop: Blob download via anchor tag (works reliably outside iOS)
+    // 2. Android/Desktop: Blob download via anchor tag
     if (!isIOS) {
         try {
             const resp = await fetch(icsUrl);
-            if (!resp.ok) throw new Error('Server error');
-            const blob = await resp.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'irrigation-service.ics';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
-            return;
-        } catch (e) { /* fall through to Google Calendar */ }
+            if (resp.ok) {
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'irrigation-service.ics';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+                return;
+            }
+        } catch (e) { /* fall through */ }
     }
 
-    // 3. iOS + final fallback: Google Calendar URL (works in any browser/webview)
-    _openGoogleCalendarEvent();
+    // 3. iOS / final fallback: show calendar provider picker
+    _showCalendarPicker();
 }
 
-function _openGoogleCalendarEvent() {
-    const svcDate = _upcomingServiceData.service_date.replace(/-/g, '');
-    const d = new Date(_upcomingServiceData.service_date + 'T12:00:00');
-    d.setDate(d.getDate() + 1);
-    const endDate = d.toISOString().slice(0, 10).replace(/-/g, '');
+function _showCalendarPicker() {
+    const ev = _calEventData();
 
-    const label = document.getElementById('dashTitle').textContent || '';
-    const title = 'Irrigation Service' + (label ? ' - ' + label : '');
-    const location = document.getElementById('dashAddress').textContent || '';
-    let details = 'Irrigation service visit scheduled by your management company.';
-    if (_upcomingServiceData.management_note) {
-        details += '\nNote: ' + _upcomingServiceData.management_note;
-    }
+    const googleUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+        + '&text=' + encodeURIComponent(ev.title)
+        + '&dates=' + ev.svcDate + '/' + ev.endDate
+        + '&details=' + encodeURIComponent(ev.details)
+        + '&location=' + encodeURIComponent(ev.location);
 
-    const url = 'https://calendar.google.com/calendar/render?action=TEMPLATE'
-        + '&text=' + encodeURIComponent(title)
-        + '&dates=' + svcDate + '/' + endDate
-        + '&details=' + encodeURIComponent(details)
-        + '&location=' + encodeURIComponent(location);
+    const outlookUrl = 'https://outlook.live.com/calendar/0/action/compose?'
+        + 'subject=' + encodeURIComponent(ev.title)
+        + '&startdt=' + _upcomingServiceData.service_date
+        + '&enddt=' + ev.isoEnd
+        + '&body=' + encodeURIComponent(ev.details)
+        + '&location=' + encodeURIComponent(ev.location)
+        + '&allday=true';
 
-    (window.top || window.parent || window).location.href = url;
+    const yahooUrl = 'https://calendar.yahoo.com/?v=60'
+        + '&title=' + encodeURIComponent(ev.title)
+        + '&st=' + ev.svcDate
+        + '&dur=allday'
+        + '&desc=' + encodeURIComponent(ev.details)
+        + '&in_loc=' + encodeURIComponent(ev.location);
+
+    const opts = document.getElementById('calendarPickerOptions');
+    opts.innerHTML = '';
+    var items = [
+        { label: 'Google Calendar', url: googleUrl },
+        { label: 'Outlook / Hotmail', url: outlookUrl },
+        { label: 'Yahoo Calendar', url: yahooUrl }
+    ];
+    items.forEach(function(item) {
+        const btn = document.createElement('button');
+        btn.textContent = item.label;
+        btn.style.cssText = 'width:100%;padding:14px 16px;border-radius:10px;border:1px solid var(--border-light);background:var(--bg-tile);color:var(--text-primary);font-size:15px;font-weight:500;cursor:pointer;text-align:left;transition:background 0.15s;';
+        btn.onmouseover = function() { this.style.background = 'var(--bg-hover, #f0f0f0)'; };
+        btn.onmouseout = function() { this.style.background = 'var(--bg-tile)'; };
+        btn.onclick = function() {
+            closeCalendarPicker();
+            // window.open is intercepted by HA companion app and opened in real browser
+            window.open(item.url, '_blank');
+        };
+        opts.appendChild(btn);
+    });
+    document.getElementById('calendarPickerModal').style.display = 'flex';
+}
+
+function closeCalendarPicker() {
+    document.getElementById('calendarPickerModal').style.display = 'none';
 }
 
 // --- Open Address in Maps ---
