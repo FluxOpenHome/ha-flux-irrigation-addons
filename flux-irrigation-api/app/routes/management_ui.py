@@ -1526,6 +1526,7 @@ async function mgmtSaveWeatherRules() {
         _mgmtWeatherRulesCache = null;
         loadDetailWeather(currentCustomerId);
         loadDetailStatus(currentCustomerId);
+        loadDetailControls(currentCustomerId);
     } catch (e) {
         showToast('Failed to save weather rules: ' + e.message, 'error');
     }
@@ -1550,6 +1551,7 @@ async function mgmtEvaluateWeather() {
         _mgmtWeatherDataCache = null;
         loadDetailWeather(currentCustomerId);
         loadDetailStatus(currentCustomerId);
+        loadDetailControls(currentCustomerId);
     } catch (e) {
         showToast('Evaluation failed: ' + e.message, 'error');
     }
@@ -2397,7 +2399,8 @@ function renderScheduleCard(custId, sched, durData) {
                     '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid +
                     '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button>' +
                     (adj ? ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                    'background:var(--bg-active-tile);color:var(--color-warning);">' + adj.combined_multiplier.toFixed(2) + 'x</span>' : '') +
+                    'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
+                    adj.combined_multiplier.toFixed(2) + 'x</span>' : '') +
                     '</td>';
             } else {
                 html += '<td style="color:var(--text-disabled);">-</td>';

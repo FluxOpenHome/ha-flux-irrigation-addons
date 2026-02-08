@@ -540,16 +540,12 @@ async def run_weather_evaluation() -> dict:
     rules_data["watering_multiplier"] = round(multiplier, 2)
     _save_weather_rules(rules_data)
 
-    # Trigger moisture probe re-evaluation in the background so it doesn't
-    # block the weather evaluation response (the HA service calls can be slow)
-    import asyncio
-    async def _background_moisture_eval():
-        try:
-            from routes.moisture import run_moisture_evaluation
-            await run_moisture_evaluation()
-        except Exception as e:
-            print(f"[WEATHER] Background moisture re-evaluation failed: {e}")
-    asyncio.ensure_future(_background_moisture_eval())
+    # Re-apply duration adjustments if apply_factors_to_schedule is on
+    try:
+        from routes.moisture import run_moisture_evaluation
+        await run_moisture_evaluation()
+    except Exception as e:
+        print(f"[WEATHER] Moisture re-evaluation after weather eval failed: {e}")
 
     return {
         "evaluated": True,

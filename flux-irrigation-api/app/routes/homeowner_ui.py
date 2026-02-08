@@ -1083,7 +1083,8 @@ function renderScheduleCard(sched, durData) {
                     '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
                     '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button>' +
                     (adj ? ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                    'background:var(--bg-active-tile);color:var(--color-warning);">' + adj.combined_multiplier.toFixed(2) + 'x</span>' : '') +
+                    'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
+                    adj.combined_multiplier.toFixed(2) + 'x</span>' : '') +
                     '</td>';
             } else {
                 html += '<td style="color:var(--text-disabled);">-</td>';
@@ -1662,6 +1663,7 @@ async function saveWeatherRules() {
         _weatherRulesCache = null;
         loadWeather();
         loadStatus();
+        loadControls();
     } catch (e) {
         showToast('Failed to save weather rules: ' + e.message, 'error');
     }
@@ -1686,6 +1688,7 @@ async function evaluateWeatherNow() {
         _weatherDataCache = null;
         loadWeather();
         loadStatus();
+        loadControls();
     } catch (e) {
         showToast('Evaluation failed: ' + e.message, 'error');
     }
