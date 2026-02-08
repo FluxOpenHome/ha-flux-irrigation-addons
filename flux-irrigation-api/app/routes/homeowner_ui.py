@@ -580,13 +580,14 @@ function showMap(lat, lon, label) {
 }
 
 // --- Dashboard Loading ---
+let _initialLoadDone = false;
 async function loadDashboard() {
     loadStatus();
     loadWeather();
     loadMoisture();
     loadZones();
     loadSensors();
-    loadControls();
+    if (!_initialLoadDone) { loadControls(); _initialLoadDone = true; }
     loadHistory();
 }
 
