@@ -1248,7 +1248,7 @@ function closeQRScanner() {
 }
 
 async function removeCustomer(id, name) {
-    if (!confirm('Remove "' + name + '"? This cannot be undone.')) return;
+    if (!confirm('Remove "' + name + '"?\\n\\nThis is permanent and cannot be recovered. You will need a new connection key from the homeowner to re-add this property.')) return;
     try {
         await api('/customers/' + id, { method: 'DELETE' });
         showToast('Property removed');
