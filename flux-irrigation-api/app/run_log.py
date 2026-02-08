@@ -95,6 +95,11 @@ def log_zone_event(
                         entry["moisture"]["combined_multiplier"] = adj.get("combined_multiplier")
                         entry["moisture"]["original_duration"] = adj.get("original")
                         entry["moisture"]["adjusted_duration"] = adj.get("adjusted")
+                        # Sensor readings and profile for run history display
+                        if adj.get("sensor_readings"):
+                            entry["moisture"]["sensor_readings"] = adj["sensor_readings"]
+                        if adj.get("profile"):
+                            entry["moisture"]["profile"] = adj["profile"]
                         break
     except Exception:
         pass

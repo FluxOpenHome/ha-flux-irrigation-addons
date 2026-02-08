@@ -622,7 +622,7 @@ async def homeowner_history_csv(
 
     events = run_log.get_run_history(hours=hours)
 
-    lines = ["timestamp,zone_name,entity_id,state,source,duration_minutes,weather_condition,temperature,humidity,wind_speed,watering_multiplier,weather_rules,moisture_multiplier,combined_multiplier"]
+    lines = ["timestamp,zone_name,entity_id,state,source,duration_minutes,weather_condition,temperature,humidity,wind_speed,watering_multiplier,weather_rules,moisture_multiplier,combined_multiplier,probe_top_pct,probe_mid_pct,probe_bottom_pct,probe_profile"]
     for e in events:
         dur = ""
         if e.get("duration_seconds") is not None:
@@ -633,11 +633,24 @@ async def homeowner_history_csv(
         # Moisture/combined multiplier only for schedule events
         moisture_mult = ""
         combined_mult = ""
+        probe_top = ""
+        probe_mid = ""
+        probe_bottom = ""
+        probe_profile = ""
         if e.get("source") == "schedule":
             if mo.get("moisture_multiplier") is not None:
                 moisture_mult = str(mo["moisture_multiplier"])
             if mo.get("combined_multiplier") is not None:
                 combined_mult = str(mo["combined_multiplier"])
+            sr = mo.get("sensor_readings") or {}
+            if sr.get("T") is not None:
+                probe_top = str(sr["T"])
+            if sr.get("M") is not None:
+                probe_mid = str(sr["M"])
+            if sr.get("B") is not None:
+                probe_bottom = str(sr["B"])
+            if mo.get("profile"):
+                probe_profile = mo["profile"]
         line = ",".join([
             e.get("timestamp", ""),
             _csv_escape(e.get("zone_name", "")),
@@ -653,6 +666,10 @@ async def homeowner_history_csv(
             _csv_escape(rules_str),
             moisture_mult,
             combined_mult,
+            probe_top,
+            probe_mid,
+            probe_bottom,
+            _csv_escape(probe_profile),
         ])
         lines.append(line)
 

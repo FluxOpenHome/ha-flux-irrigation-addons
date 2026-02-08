@@ -948,6 +948,7 @@ async def apply_adjusted_durations() -> dict:
 
         # Get moisture multiplier for the corresponding zone (defaults to 1.0 if no match)
         zone_eid = dur_to_zone.get(dur_eid)
+        moisture_result = None
         if zone_eid:
             moisture_result = calculate_zone_moisture_multiplier(
                 zone_eid, data, sensor_states,
@@ -974,7 +975,7 @@ async def apply_adjusted_durations() -> dict:
 
         if success:
             applied_count += 1
-            adjusted[dur_eid] = {
+            adj_entry = {
                 "entity_id": dur_eid,
                 "original": base,
                 "adjusted": adjusted_value,
@@ -984,6 +985,19 @@ async def apply_adjusted_durations() -> dict:
                 "skip": skip,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             }
+            # Capture probe sensor readings for run history context
+            if moisture_result and moisture_result.get("probe_details"):
+                pd = moisture_result["probe_details"][0]  # Primary probe
+                readings = pd.get("depth_readings", {})
+                sensor_context = {}
+                for depth_key, depth_label in [("shallow", "T"), ("mid", "M"), ("deep", "B")]:
+                    dr = readings.get(depth_key, {})
+                    if dr.get("value") is not None and not dr.get("stale"):
+                        sensor_context[depth_label] = round(dr["value"], 1)
+                adj_entry["sensor_readings"] = sensor_context
+                adj_entry["profile"] = pd.get("profile", "unknown")
+                adj_entry["reason"] = moisture_result.get("reason", "")
+            adjusted[dur_eid] = adj_entry
         else:
             failed.append(dur_eid)
             print(f"[MOISTURE] FAILED to set {dur_eid} to {adjusted_value}")

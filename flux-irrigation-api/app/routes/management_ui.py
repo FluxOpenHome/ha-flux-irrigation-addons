@@ -1210,15 +1210,18 @@ function _buildMgmtWeatherCardShell() {
     html += '<div data-id="wForecast"></div>';
     html += '<div data-id="wAdjustments"></div>';
     html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:16px;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0;cursor:pointer;" onclick="mgmtToggleWeatherRules()">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<span id="mgmtWeatherRulesChevron" style="font-size:12px;transition:transform 0.2s;">&#9654;</span>';
     html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
+    html += '</div>';
     html += '<div style="display:flex;gap:6px;">';
-    html += '<button class="btn btn-secondary btn-sm" onclick="mgmtEvaluateWeather()">Test Rules Now</button>';
-    html += '<button class="btn btn-secondary btn-sm" onclick="mgmtExportWeatherLogCSV()">Export Log</button>';
-    html += '<button class="btn btn-danger btn-sm" onclick="mgmtClearWeatherLog()">Clear Log</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();mgmtEvaluateWeather()">Test Rules Now</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();mgmtExportWeatherLogCSV()">Export Log</button>';
+    html += '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();mgmtClearWeatherLog()">Clear Log</button>';
     html += '</div>';
     html += '</div>';
-    html += '<div id="mgmtWeatherRulesContainer"><div class="loading">Loading rules...</div></div>';
+    html += '<div id="mgmtWeatherRulesContainer" style="display:none;margin-top:12px;"><div class="loading">Loading rules...</div></div>';
     html += '</div>';
     return html;
 }
@@ -1562,6 +1565,15 @@ function mgmtExportHistoryCSV() {
     const hours = parseInt(hoursRaw, 10) || 24;
     const url = BASE + '/customers/' + currentCustomerId + '/history/runs/csv?hours=' + hours;
     window.open(url, '_blank');
+}
+
+function mgmtToggleWeatherRules() {
+    const container = document.getElementById('mgmtWeatherRulesContainer');
+    const chevron = document.getElementById('mgmtWeatherRulesChevron');
+    if (!container) return;
+    const isHidden = container.style.display === 'none';
+    container.style.display = isHidden ? 'block' : 'none';
+    if (chevron) chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
 }
 
 function mgmtExportWeatherLogCSV() {
@@ -2557,8 +2569,13 @@ async function loadDetailHistory(id) {
                 '</div>';
         }
 
+        // Determine if any event has probe (moisture) data — show column only if so
+        const hasProbeData = events.some(e => e.moisture && e.moisture.moisture_multiplier != null);
+
         el.innerHTML = weatherSummary +
-            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);color:var(--text-muted);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Factor</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
+            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);color:var(--text-muted);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Watering Factor</th>' +
+            (hasProbeData ? '<th style="padding:6px;">Probe Factor</th>' : '') +
+            '<th style="padding:6px;">Weather</th></tr></thead><tbody>' +
             events.slice(0, 100).map(e => {
                 const wx = e.weather || {};
                 let wxCell = '-';
@@ -2574,18 +2591,31 @@ async function loadDetailHistory(id) {
                         wxCell += '<div style="font-size:10px;color:var(--text-warning);margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
                     }
                 }
-                // Factor column — only for schedule-triggered events
-                let factorCell = '<span style="color:var(--text-disabled);">—</span>';
+                // Watering Factor column — weather multiplier for schedule-triggered events
+                let wFactorCell = '<span style="color:var(--text-disabled);">—</span>';
+                if (e.source === 'schedule') {
+                    const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : null;
+                    if (wMult != null) {
+                        const fc = wMult === 1.0 ? 'var(--color-success)' : wMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+                        wFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + wMult + 'x</span>';
+                    }
+                }
+                // Probe Factor column — moisture multiplier + sensor readings
+                let pFactorCell = '<span style="color:var(--text-disabled);">—</span>';
                 if (e.source === 'schedule') {
                     const mo = e.moisture || {};
-                    const combined = mo.combined_multiplier != null ? mo.combined_multiplier : (wx.watering_multiplier != null ? wx.watering_multiplier : null);
-                    if (combined != null) {
-                        const fc = combined === 1.0 ? 'var(--color-success)' : combined < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
-                        factorCell = '<span style="color:' + fc + ';font-weight:600;">' + combined + 'x</span>';
-                        const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : 1.0;
-                        const mMult = mo.moisture_multiplier != null ? mo.moisture_multiplier : null;
-                        if (mMult != null) {
-                            factorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">W:' + wMult + ' · M:' + mMult + '</div>';
+                    const mMult = mo.moisture_multiplier != null ? mo.moisture_multiplier : null;
+                    if (mMult != null) {
+                        const fc = mMult === 1.0 ? 'var(--color-success)' : mMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+                        pFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + mMult + 'x</span>';
+                        // Show sensor readings (T/M/B) if available
+                        const sr = mo.sensor_readings || {};
+                        const parts = [];
+                        if (sr.T != null) parts.push('T:' + sr.T + '%');
+                        if (sr.M != null) parts.push('M:' + sr.M + '%');
+                        if (sr.B != null) parts.push('B:' + sr.B + '%');
+                        if (parts.length > 0) {
+                            pFactorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">' + parts.join(' ') + '</div>';
                         }
                     }
                 }
@@ -2595,8 +2625,9 @@ async function loadDetailHistory(id) {
                 <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:var(--color-success);">ON</span>' : '<span style="color:var(--text-disabled);">OFF</span>'}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
-                <td style="padding:6px;font-size:12px;">${factorCell}</td>
-                <td style="padding:6px;font-size:12px;">${wxCell}</td>
+                <td style="padding:6px;font-size:12px;">${wFactorCell}</td>` +
+                (hasProbeData ? `<td style="padding:6px;font-size:12px;">${pFactorCell}</td>` : '') +
+                `<td style="padding:6px;font-size:12px;">${wxCell}</td>
             </tr>`;
             }).join('') + '</tbody></table>';
     } catch (e) {
@@ -2683,12 +2714,12 @@ const HELP_CONTENT = `
 </ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Rules</h4>
-<p style="margin-bottom:10px;">If the homeowner has configured weather integration, you can view and manage weather-based watering adjustments:</p>
+<p style="margin-bottom:10px;">If the homeowner has configured weather integration, you can view and manage weather-based watering adjustments. The Weather Rules section is collapsed by default — click the header to expand. Action buttons (Test, Export, Clear) remain visible when collapsed.</p>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Rain Skip</strong> — Skip watering when rain is detected or forecasted</li>
 <li style="margin-bottom:4px;"><strong>Wind Delay</strong> — Delay watering during high winds</li>
 <li style="margin-bottom:4px;"><strong>Temperature Adjustments</strong> — Increase or decrease watering based on temperature</li>
-<li style="margin-bottom:4px;"><strong>Watering Multiplier</strong> — See the current weather-adjusted multiplier applied to run times</li>
+<li style="margin-bottom:4px;"><strong>Watering Multiplier</strong> — The weather-adjusted multiplier applied to run times</li>
 </ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Gophr Moisture Probes</h4>
@@ -2705,8 +2736,10 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">View a detailed log of all irrigation activity for each property:</p>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;">Each entry shows the zone, start/stop time, duration, and source (API, schedule, manual, etc.)</li>
-<li style="margin-bottom:4px;">Weather conditions at the time of each run are captured</li>
-<li style="margin-bottom:4px;"><strong>CSV Export</strong> — Download the run history as a spreadsheet</li>
+<li style="margin-bottom:4px;"><strong>Watering Factor</strong> — The weather-based multiplier for schedule-triggered runs</li>
+<li style="margin-bottom:4px;"><strong>Probe Factor</strong> — The moisture probe multiplier with sensor readings (T=Top, M=Middle, B=Bottom) shown as percentages; only visible when probe data exists</li>
+<li style="margin-bottom:4px;"><strong>Weather</strong> — Conditions at the time of each run with triggered rules</li>
+<li style="margin-bottom:4px;"><strong>CSV Export</strong> — Download the run history as a spreadsheet (includes probe sensor readings and profile columns)</li>
 <li style="margin-bottom:4px;"><strong>Clear History</strong> — Remove old entries (this cannot be undone)</li>
 </ul>
 

@@ -54,7 +54,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 - **Moisture Multiplier Badge** — The Moisture Probes card header now shows a multiplier badge (same style as the weather badge) reflecting the current overall moisture factor
 - **Watering Factor Tile** — System Status card on both dashboards shows the combined watering factor (weather × moisture) with a breakdown of individual multipliers
-- **Run History Factor Column** — Run history table includes a "Factor" column showing the combined weather × moisture multiplier for schedule-triggered events; CSV export includes moisture_multiplier and combined_multiplier columns
+- **Run History Factor Columns** — Run history table shows a "Watering Factor" column (weather multiplier) and a "Probe Factor" column (moisture multiplier, only visible when probe data exists); probe factor includes moisture % readings and which sensor depth (T/M/B) drove the adjustment; CSV export includes watering_multiplier, moisture_multiplier, and combined_multiplier columns
 
 ### Changed
 
@@ -70,6 +70,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Unit conversion improvements** — Better handling of temperature and wind speed units across weather integrations
 - **Improved management dashboard** — Contact name, phone, and address displayed on property cards; revoked status detection and display; sort order includes revoked state
 - **Apply Factors to Schedule** — Replaced the manual 3-button Duration Controls (Capture/Apply/Restore) with a single "Apply Factors to Schedule" toggle in the Schedule card, positioned directly below the Schedule Enable toggle. When enabled, the system automatically captures base run durations, applies the combined watering factor (weather × moisture), and keeps durations updated as conditions change. Each zone's Run Duration input shows the base duration (what the user sets) and a badge shows the adjusted duration with the factor (e.g. "24 min (0.80x)"). Setting a duration via the Set button always updates the base, even while factors are active — no need to disable factors first. Disabling the toggle immediately restores original durations.
+- **Collapsible Weather Rules** — The Weather Rules section on both homeowner and management dashboards is now collapsed by default with a chevron indicator; click to expand and view/edit rules; action buttons (Test Rules Now, Export Log, Clear Log) remain visible in the collapsed header
 - **Watering Factor tile conditional breakdown** — The Watering Factor tile on the System Status card now only shows the moisture multiplier (M: x.xx) when moisture probes are enabled and configured; otherwise it only shows the weather multiplier (W: x.xx)
 
 ### Fixed

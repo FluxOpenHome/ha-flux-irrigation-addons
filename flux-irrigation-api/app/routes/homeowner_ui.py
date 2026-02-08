@@ -1240,8 +1240,13 @@ async function loadHistory() {
                 '</div>';
         }
 
+        // Determine if any event has probe (moisture) data — show column only if so
+        const hasProbeData = events.some(e => e.moisture && e.moisture.moisture_multiplier != null);
+
         el.innerHTML = weatherSummary +
-            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Factor</th><th style="padding:6px;">Weather</th></tr></thead><tbody>' +
+            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Watering Factor</th>' +
+            (hasProbeData ? '<th style="padding:6px;">Probe Factor</th>' : '') +
+            '<th style="padding:6px;">Weather</th></tr></thead><tbody>' +
             events.slice(0, 100).map(e => {
                 const wx = e.weather || {};
                 let wxCell = '-';
@@ -1257,18 +1262,31 @@ async function loadHistory() {
                         wxCell += '<div style="font-size:10px;color:var(--text-warning);margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
                     }
                 }
-                // Factor column — only for schedule-triggered events
-                let factorCell = '<span style="color:var(--text-disabled);">—</span>';
+                // Watering Factor column — weather multiplier for schedule-triggered events
+                let wFactorCell = '<span style="color:var(--text-disabled);">—</span>';
+                if (e.source === 'schedule') {
+                    const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : null;
+                    if (wMult != null) {
+                        const fc = wMult === 1.0 ? 'var(--color-success)' : wMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+                        wFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + wMult + 'x</span>';
+                    }
+                }
+                // Probe Factor column — moisture multiplier + sensor readings
+                let pFactorCell = '<span style="color:var(--text-disabled);">—</span>';
                 if (e.source === 'schedule') {
                     const mo = e.moisture || {};
-                    const combined = mo.combined_multiplier != null ? mo.combined_multiplier : (wx.watering_multiplier != null ? wx.watering_multiplier : null);
-                    if (combined != null) {
-                        const fc = combined === 1.0 ? 'var(--color-success)' : combined < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
-                        factorCell = '<span style="color:' + fc + ';font-weight:600;">' + combined + 'x</span>';
-                        const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : 1.0;
-                        const mMult = mo.moisture_multiplier != null ? mo.moisture_multiplier : null;
-                        if (mMult != null) {
-                            factorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">W:' + wMult + ' · M:' + mMult + '</div>';
+                    const mMult = mo.moisture_multiplier != null ? mo.moisture_multiplier : null;
+                    if (mMult != null) {
+                        const fc = mMult === 1.0 ? 'var(--color-success)' : mMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+                        pFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + mMult + 'x</span>';
+                        // Show sensor readings (T/M/B) if available
+                        const sr = mo.sensor_readings || {};
+                        const parts = [];
+                        if (sr.T != null) parts.push('T:' + sr.T + '%');
+                        if (sr.M != null) parts.push('M:' + sr.M + '%');
+                        if (sr.B != null) parts.push('B:' + sr.B + '%');
+                        if (parts.length > 0) {
+                            pFactorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">' + parts.join(' ') + '</div>';
                         }
                     }
                 }
@@ -1278,8 +1296,9 @@ async function loadHistory() {
                 <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:var(--color-success);">ON</span>' : '<span style="color:var(--text-disabled);">OFF</span>'}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
-                <td style="padding:6px;font-size:12px;">${factorCell}</td>
-                <td style="padding:6px;font-size:12px;">${wxCell}</td>
+                <td style="padding:6px;font-size:12px;">${wFactorCell}</td>` +
+                (hasProbeData ? `<td style="padding:6px;font-size:12px;">${pFactorCell}</td>` : '') +
+                `<td style="padding:6px;font-size:12px;">${wxCell}</td>
             </tr>`;
             }).join('') + '</tbody></table>';
     } catch (e) {
@@ -1345,17 +1364,20 @@ function _buildWeatherCardShell() {
     html += '</div>';
     html += '<div data-id="wForecast"></div>';
     html += '<div data-id="wAdjustments"></div>';
-    // Weather Rules Editor — static structure, never changes
+    // Weather Rules Editor — collapsible section, collapsed by default
     html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:16px;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0;cursor:pointer;" onclick="toggleWeatherRules()">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<span id="weatherRulesChevron" style="font-size:12px;transition:transform 0.2s;">&#9654;</span>';
     html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
+    html += '</div>';
     html += '<div style="display:flex;gap:6px;">';
-    html += '<button class="btn btn-secondary btn-sm" onclick="evaluateWeatherNow()">Test Rules Now</button>';
-    html += '<button class="btn btn-secondary btn-sm" onclick="exportWeatherLogCSV()">Export Log</button>';
-    html += '<button class="btn btn-danger btn-sm" onclick="clearWeatherLog()">Clear Log</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();evaluateWeatherNow()">Test Rules Now</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();exportWeatherLogCSV()">Export Log</button>';
+    html += '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();clearWeatherLog()">Clear Log</button>';
     html += '</div>';
     html += '</div>';
-    html += '<div id="weatherRulesContainer"><div class="loading">Loading rules...</div></div>';
+    html += '<div id="weatherRulesContainer" style="display:none;margin-top:12px;"><div class="loading">Loading rules...</div></div>';
     html += '</div>';
     return html;
 }
@@ -1702,6 +1724,15 @@ function exportHistoryCSV() {
     const hours = parseInt(hoursRaw, 10) || 24;
     const url = HBASE + '/history/runs/csv?hours=' + hours;
     window.open(url, '_blank');
+}
+
+function toggleWeatherRules() {
+    const container = document.getElementById('weatherRulesContainer');
+    const chevron = document.getElementById('weatherRulesChevron');
+    if (!container) return;
+    const isHidden = container.style.display === 'none';
+    container.style.display = isHidden ? 'block' : 'none';
+    if (chevron) chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
 }
 
 function exportWeatherLogCSV() {
@@ -2154,7 +2185,7 @@ const HELP_CONTENT = `
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather-Based Control</h4>
 <p style="margin-bottom:10px;">When weather is enabled (configured on the Configuration page), the dashboard shows current conditions and a <strong>watering multiplier</strong>:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>1.0x</strong> (green) — Normal watering, no adjustments active</li><li style="margin-bottom:4px;"><strong>Below 1.0x</strong> (yellow) — Reduced watering due to cool temps, humidity, etc.</li><li style="margin-bottom:4px;"><strong>Above 1.0x</strong> (red) — Increased watering due to hot temperatures</li><li style="margin-bottom:4px;"><strong>Skip/Pause</strong> — Watering paused entirely due to rain, freezing, or high wind</li></ul>
-<p style="margin-bottom:10px;">Configure weather rules by expanding the <strong>Weather Rules</strong> section. Each rule can be individually enabled/disabled. Click <strong>Test Rules Now</strong> to see which rules would trigger under current conditions.</p>
+<p style="margin-bottom:10px;">The <strong>Weather Rules</strong> section is collapsed by default — click the header to expand and configure rules. Each rule can be individually enabled/disabled. Click <strong>Test Rules Now</strong> to evaluate which rules would trigger under current conditions. The action buttons (Test, Export, Clear) are always visible even when the rules section is collapsed.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Gophr Moisture Probes</h4>
 <p style="margin-bottom:10px;">When Gophr moisture probes are connected to Home Assistant, the moisture card shows live soil moisture readings at three depths (shallow, mid, deep). The algorithm uses a <strong>gradient-based approach</strong> that treats each depth as a distinct signal:</p>
@@ -2165,8 +2196,8 @@ const HELP_CONTENT = `
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
 <p style="margin-bottom:10px;">The run history table shows every zone on/off event with:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone name</strong> and source (API, schedule, weather pause, etc.)</li><li style="margin-bottom:4px;"><strong>State</strong> — ON (green) or OFF</li><li style="margin-bottom:4px;"><strong>Time</strong> and <strong>duration</strong> of each run</li><li style="margin-bottom:4px;"><strong>Weather conditions</strong> at the time of the event</li></ul>
-<p style="margin-bottom:10px;">Use the time range dropdown to view the last 24 hours, 7 days, 30 days, 90 days, or full year. Click <strong>Export CSV</strong> to download history as a spreadsheet.</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone name</strong> and source (API, schedule, weather pause, etc.)</li><li style="margin-bottom:4px;"><strong>State</strong> — ON (green) or OFF</li><li style="margin-bottom:4px;"><strong>Time</strong> and <strong>duration</strong> of each run</li><li style="margin-bottom:4px;"><strong>Watering Factor</strong> — The weather-based multiplier applied to schedule-triggered runs (green at 1.0x, yellow below, red above)</li><li style="margin-bottom:4px;"><strong>Probe Factor</strong> — The moisture probe multiplier (only shown when probes are enabled); includes sensor readings at each depth (T=Top/shallow, M=Middle/root zone, B=Bottom/deep) as percentages</li><li style="margin-bottom:4px;"><strong>Weather</strong> — Conditions at the time of the event with any triggered rules</li></ul>
+<p style="margin-bottom:10px;">Use the time range dropdown to view the last 24 hours, 7 days, 30 days, 90 days, or full year. Click <strong>Export CSV</strong> to download history as a spreadsheet. The CSV includes additional columns for probe sensor readings (top, mid, bottom percentages) and moisture profile.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">System Pause / Resume</h4>
 <p style="margin-bottom:10px;"><strong>Pause System</strong> immediately stops all active zones and prevents any new zones from starting — including ESPHome schedule programs. While paused, any zone that tries to turn on will be automatically shut off.</p>
