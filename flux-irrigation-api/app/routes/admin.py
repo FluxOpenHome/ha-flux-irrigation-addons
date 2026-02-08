@@ -1379,10 +1379,6 @@ ADMIN_HTML = """<!DOCTYPE html>
                     </p>
                 </div>
             </div>
-            <div id="zoneCountInfo" class="device-info" style="margin-bottom:16px;display:none;">
-                <strong>Enabled Zones:</strong> <span id="zoneCountValue">0</span>
-                <span style="font-size:12px;color:var(--text-placeholder);margin-left:8px;">(auto-detected from selected device)</span>
-            </div>
             <div id="generateKeyArea">
                 <div id="generateKeyUnlocked" style="display:block;">
                     <button class="btn btn-primary" onclick="generateConnectionKey()">Generate Connection Key</button>
@@ -1857,10 +1853,6 @@ ADMIN_HTML = """<!DOCTYPE html>
             if (data.phone) document.getElementById('homeownerPhone').value = data.phone;
             if (data.first_name) document.getElementById('homeownerFirstName').value = data.first_name;
             if (data.last_name) document.getElementById('homeownerLastName').value = data.last_name;
-            if (data.zone_count !== null && data.zone_count !== undefined) {
-                document.getElementById('zoneCountValue').textContent = data.zone_count;
-                document.getElementById('zoneCountInfo').style.display = 'block';
-            }
             if (data.connection_key) {
                 document.getElementById('connectionKeyValue').textContent = data.connection_key;
                 document.getElementById('connectionKeyDisplay').style.display = 'block';
@@ -1945,10 +1937,6 @@ ADMIN_HTML = """<!DOCTYPE html>
             if (data.connection_key) {
                 document.getElementById('connectionKeyValue').textContent = data.connection_key;
                 document.getElementById('connectionKeyDisplay').style.display = 'block';
-                if (data.zone_count !== null && data.zone_count !== undefined) {
-                    document.getElementById('zoneCountValue').textContent = data.zone_count;
-                    document.getElementById('zoneCountInfo').style.display = 'block';
-                }
                 showToast('Connection key generated' + (mode === 'nabu_casa' ? ' (Nabu Casa mode)' : ''));
                 // Re-lock the generate button now that a key exists
                 lockGenerateKey();
