@@ -58,7 +58,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Changed
 
-- **Uptime Sensor Formatting** — Controller uptime sensor now displays as a cascading breakdown (e.g. "4 days 13 hrs 48 min 32 sec") instead of a raw number with a unit; leading zero segments (years, months, weeks) are hidden when not applicable
+- **Uptime Sensor Formatting** — Controller uptime sensor now displays as a cascading breakdown (e.g. "4 days 13 hrs 48 min") instead of a raw number with a unit; seconds removed for cleaner display; leading zero segments (years, months, weeks) are hidden when not applicable; sensor name shortened from "Irrigation System Irrigation Controller Uptime" to "Irrigation Controller Uptime"
 - **Sensor Tile Targeted Updates** — Sensor tiles no longer rebuild the entire grid on every 30-second refresh; tiles are built once and only individual values are updated in place, eliminating flicker
 - **Advanced Moisture Algorithm** — Replaced the simple weighted-average moisture algorithm with a gradient-based approach that uses each sensor depth as a distinct signal: the mid sensor (root zone) is the primary watering decision driver, the shallow sensor detects recent rain via wetting front analysis combined with weather forecast data, and the deep sensor guards against over-irrigation by detecting water pooling below the root zone
 - **Moisture Probe Configuration on Configuration Page** — Probes are now configured from the Configuration page using a device picker dropdown (instead of keyword-based sensor scanning); select your Gophr device from a filtered list, map its sensors to shallow/mid/deep depths, and add the probe; the Homeowner Dashboard shows the moisture card once probes are added and enabled
@@ -69,7 +69,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Weather settings moved to control pages** — Weather configuration is now accessible from the homeowner and management control interfaces
 - **Unit conversion improvements** — Better handling of temperature and wind speed units across weather integrations
 - **Improved management dashboard** — Contact name, phone, and address displayed on property cards; revoked status detection and display; sort order includes revoked state
-- **Duration Controls moved to Schedule card** — Duration Controls (Capture Base Durations, Apply Adjusted, Restore Originals) and the Duration Status table moved from the Moisture Probes card to the Schedule card on both homeowner and management dashboards, since duration adjustments reflect the overall combined factor (weather × moisture), not just moisture
+- **Apply Factors to Schedule** — Replaced the manual 3-button Duration Controls (Capture/Apply/Restore) with a single "Apply Factors to Schedule" toggle in the Schedule card. When enabled, the system automatically captures base run durations, applies the combined watering factor (weather × moisture), and keeps durations updated as conditions change. Disabling the toggle immediately restores original durations.
 - **Watering Factor tile conditional breakdown** — The Watering Factor tile on the System Status card now only shows the moisture multiplier (M: x.xx) when moisture probes are enabled and configured; otherwise it only shows the weather multiplier (W: x.xx)
 
 ### Fixed

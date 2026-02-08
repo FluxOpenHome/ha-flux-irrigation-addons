@@ -1748,60 +1748,62 @@ async function mgmtSaveMoistureSettings() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function mgmtLoadDurationStatus(id) {
-    const container = document.getElementById('mgmtDurationStatusTable');
+async function mgmtLoadApplyFactorsToggle(id) {
+    const container = document.getElementById('mgmtApplyFactorsToggle');
     if (!container) return;
     try {
-        const dur = await api('/customers/' + id + '/moisture/durations');
+        const [settings, dur] = await Promise.all([
+            api('/customers/' + id + '/moisture/settings'),
+            api('/customers/' + id + '/moisture/durations').catch(() => ({})),
+        ]);
+        const isOn = settings.apply_factors_to_schedule || false;
         const base = dur.base_durations || {};
         const adjusted = dur.adjusted_durations || {};
-        if (Object.keys(base).length === 0) {
-            container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">No base durations captured yet.</div>';
-            return;
+
+        let html = '<div style="display:flex;align-items:center;justify-content:space-between;' +
+            'padding:12px 16px;border-radius:8px;background:' + (isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
+            '<div><div style="font-size:14px;font-weight:600;color:' + (isOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
+            'Apply Factors to Schedule</div>' +
+            '<div style="font-size:12px;color:var(--text-muted);">Automatically adjust run durations by the combined watering factor</div></div>' +
+            '<button class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
+            'onclick="mgmtToggleApplyFactors(' + !isOn + ')">' +
+            (isOn ? 'Disable' : 'Enable') + '</button></div>';
+
+        // Duration status table (only when enabled and base durations exist)
+        if (isOn && Object.keys(base).length > 0) {
+            html += '<div style="margin-top:12px;">';
+            html += '<div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Adjusted Durations</div>';
+            html += '<div style="overflow-x:auto;"><table style="width:100%;font-size:12px;border-collapse:collapse;">';
+            html += '<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Zone</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Base</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Adjusted</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Factor</th></tr>';
+            for (const [eid, b] of Object.entries(base)) {
+                const adj = adjusted[eid];
+                const adjVal = adj ? adj.adjusted : b.base_value;
+                const mult = adj ? adj.combined_multiplier : 1.0;
+                const name = b.friendly_name || eid.split('.').pop();
+                html += '<tr style="border-bottom:1px solid var(--border-row);">';
+                html += '<td style="padding:4px 8px;">' + esc(name) + '</td>';
+                html += '<td style="text-align:right;padding:4px 8px;">' + b.base_value + ' min</td>';
+                html += '<td style="text-align:right;padding:4px 8px;font-weight:600;color:' + (adjVal !== b.base_value ? 'var(--color-warning)' : 'var(--text-primary)') + ';">' + adjVal + ' min</td>';
+                html += '<td style="text-align:right;padding:4px 8px;">' + (mult != null ? mult.toFixed(2) + 'x' : '\\u2014') + '</td>';
+                html += '</tr>';
+            }
+            html += '</table></div></div>';
         }
-        let html = '<div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Duration Status' + (dur.duration_adjustment_active ? ' <span style="color:var(--color-warning);">(Active)</span>' : '') + '</div>';
-        html += '<div style="overflow-x:auto;"><table style="width:100%;font-size:12px;border-collapse:collapse;">';
-        html += '<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Entity</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Base</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Adjusted</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Multiplier</th></tr>';
-        for (const [eid, b] of Object.entries(base)) {
-            const adj = adjusted[eid];
-            const adjVal = adj ? adj.adjusted : b.base_value;
-            const mult = adj ? adj.combined_multiplier : 1.0;
-            const name = b.friendly_name || eid.split('.').pop();
-            html += '<tr style="border-bottom:1px solid var(--border-row);">';
-            html += '<td style="padding:4px 8px;">' + esc(name) + '</td>';
-            html += '<td style="text-align:right;padding:4px 8px;">' + b.base_value + ' min</td>';
-            html += '<td style="text-align:right;padding:4px 8px;font-weight:600;color:' + (adjVal !== b.base_value ? 'var(--color-warning)' : 'var(--text-primary)') + ';">' + adjVal + ' min</td>';
-            html += '<td style="text-align:right;padding:4px 8px;">' + (mult != null ? mult.toFixed(2) + 'x' : '\\u2014') + '</td>';
-            html += '</tr>';
-        }
-        html += '</table></div>';
+
         container.innerHTML = html;
     } catch (e) {
-        container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">No base durations captured yet.</div>';
+        container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Unable to load factor settings.</div>';
     }
 }
 
-async function mgmtCaptureDurations() {
+async function mgmtToggleApplyFactors(enable) {
     try {
-        const result = await api('/customers/' + currentCustomerId + '/moisture/durations/capture', 'POST');
-        showToast('Captured base durations for ' + result.captured + ' entities');
-        mgmtLoadDurationStatus(currentCustomerId);
-    } catch (e) { showToast(e.message, 'error'); }
-}
-
-async function mgmtApplyDurations() {
-    try {
-        const result = await api('/customers/' + currentCustomerId + '/moisture/durations/apply', 'POST');
-        showToast('Applied adjusted durations to ' + result.applied + ' zone(s)');
-        mgmtLoadDurationStatus(currentCustomerId);
-    } catch (e) { showToast(e.message, 'error'); }
-}
-
-async function mgmtRestoreDurations() {
-    try {
-        const result = await api('/customers/' + currentCustomerId + '/moisture/durations/restore', 'POST');
-        showToast('Restored base durations for ' + result.restored + ' entities');
-        mgmtLoadDurationStatus(currentCustomerId);
+        const result = await api('/customers/' + currentCustomerId + '/moisture/settings', {
+            method: 'PUT',
+            body: JSON.stringify({ apply_factors_to_schedule: enable }),
+        });
+        showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'));
+        mgmtLoadApplyFactorsToggle(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -2011,7 +2013,6 @@ function formatUptime(sensor) {
     const days = Math.floor(totalSec / 86400); totalSec %= 86400;
     const hours = Math.floor(totalSec / 3600); totalSec %= 3600;
     const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
 
     const parts = [];
     if (years)  parts.push({ val: years,  label: years === 1 ? 'yr' : 'yrs' });
@@ -2020,7 +2021,6 @@ function formatUptime(sensor) {
     if (days)   parts.push({ val: days,   label: days === 1 ? 'day' : 'days' });
     parts.push({ val: hours, label: 'hrs' });
     parts.push({ val: mins,  label: 'min' });
-    parts.push({ val: secs,  label: 'sec' });
 
     let html = '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:baseline;">';
     for (const p of parts) {
@@ -2031,6 +2031,14 @@ function formatUptime(sensor) {
     }
     html += '</div>';
     return html;
+}
+
+function cleanSensorName(sensor) {
+    let name = cleanEntityName(sensor.friendly_name || sensor.name, sensor.entity_id);
+    if (isUptimeSensor(sensor)) {
+        name = name.replace(/^Irrigation System\\s+/i, '');
+    }
+    return name;
 }
 
 function renderSensorValue(sensor) {
@@ -2073,7 +2081,7 @@ async function loadDetailSensors(id) {
             el.innerHTML = '<div class="tile-grid">' + sensors.map(s => {
                 const eid = esc(s.entity_id);
                 return '<div class="tile" data-eid="' + eid + '">' +
-                    '<div class="tile-name">' + esc(cleanEntityName(s.friendly_name || s.name, s.entity_id)) + '</div>' +
+                    '<div class="tile-name">' + esc(cleanSensorName(s)) + '</div>' +
                     '<div class="tile-value">' + renderSensorValue(s) + '</div>' +
                 '</div>';
             }).join('') + '</div>';
@@ -2409,22 +2417,15 @@ function renderScheduleCard(custId, sched) {
         html += '</div></div>';
     }
 
-    // --- Duration Controls ---
-    html += '<div class="schedule-section" id="mgmtDurationControlsSection">';
-    html += '<div class="schedule-section-label">Duration Controls</div>';
-    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Capture saves current run durations as your baseline. Apply writes adjusted values (base &times; weather &times; moisture factor). Restore returns to baseline.</div>';
-    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
-    html += '<button class="btn btn-secondary btn-sm" onclick="mgmtCaptureDurations()">Capture Base Durations</button>';
-    html += '<button class="btn btn-primary btn-sm" onclick="mgmtApplyDurations()">Apply Adjusted</button>';
-    html += '<button class="btn btn-secondary btn-sm" onclick="mgmtRestoreDurations()">Restore Originals</button>';
-    html += '</div>';
-    html += '<div id="mgmtDurationStatusTable"></div>';
+    // --- Apply Factors toggle ---
+    html += '<div class="schedule-section" id="mgmtApplyFactorsSection">';
+    html += '<div id="mgmtApplyFactorsToggle"><div class="loading" style="padding:8px;">Loading...</div></div>';
     html += '</div>';
 
     el.innerHTML = html;
 
-    // Load duration status table asynchronously
-    mgmtLoadDurationStatus(custId);
+    // Load the apply factors toggle state asynchronously
+    mgmtLoadApplyFactorsToggle(custId);
 }
 
 function cleanEntityName(friendlyName, entityId) {
@@ -2672,7 +2673,7 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Start Times</strong> — Set one or more daily start times</li>
 <li style="margin-bottom:4px;"><strong>Zone Durations</strong> — Configure how long each zone runs (in minutes)</li>
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle the schedule on or off without deleting it</li>
-<li style="margin-bottom:4px;"><strong>Duration Controls</strong> — Capture current run durations as your baseline, apply adjusted values (base &times; weather &times; moisture factor), or restore original durations</li>
+<li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). Durations update automatically as conditions change and restore to originals when disabled.</li>
 </ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Rules</h4>

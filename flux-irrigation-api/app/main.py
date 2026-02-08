@@ -358,17 +358,26 @@ async def lifespan(app: FastAPI):
         customers = load_customers()
         print(f"[MAIN] Management mode: {len(customers)} customer(s) configured")
 
-    # Moisture probe crash recovery: if durations were adjusted when the
-    # add-on last stopped, restore base values so zones don't run with
-    # stale adjusted durations
+    # Moisture probe startup recovery: handle adjusted durations from prior session
     try:
-        from routes.moisture import _load_data as _load_moisture_data, restore_base_durations
+        from routes.moisture import (
+            _load_data as _load_moisture_data,
+            restore_base_durations,
+            capture_base_durations,
+            apply_adjusted_durations,
+        )
         moisture_data = _load_moisture_data()
-        if moisture_data.get("duration_adjustment_active"):
+        if moisture_data.get("apply_factors_to_schedule"):
+            # Toggle is ON — re-capture fresh base values and apply adjusted durations
+            print("[MAIN] Apply factors to schedule is enabled — capturing base and applying adjusted durations")
+            await capture_base_durations()
+            await apply_adjusted_durations()
+        elif moisture_data.get("duration_adjustment_active"):
+            # Toggle is OFF but durations were adjusted — restore base values (safety net)
             print("[MAIN] Moisture: adjusted durations were active at shutdown — restoring base values")
             await restore_base_durations()
     except Exception as e:
-        print(f"[MAIN] Moisture crash recovery error: {e}")
+        print(f"[MAIN] Moisture startup recovery error: {e}")
 
     # Start background tasks
     cleanup_task = asyncio.create_task(_periodic_log_cleanup())

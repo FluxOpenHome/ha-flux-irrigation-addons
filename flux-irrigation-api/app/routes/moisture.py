@@ -42,6 +42,7 @@ PROBE_KEYWORDS = ["gophr", "moisture", "soil"]
 DEFAULT_DATA = {
     "version": 2,
     "enabled": False,
+    "apply_factors_to_schedule": False,
     "stale_reading_threshold_minutes": 120,
     # Legacy depth_weights kept for migration — no longer used in algorithm
     "depth_weights": {"shallow": 0.2, "mid": 0.5, "deep": 0.3},
@@ -839,12 +840,17 @@ async def apply_adjusted_durations() -> dict:
     data = _load_data()
     config = get_config()
 
-    if not data.get("enabled"):
-        return {"success": False, "reason": "Moisture probes not enabled"}
+    if not data.get("apply_factors_to_schedule"):
+        return {"success": False, "reason": "Apply factors to schedule is not enabled"}
 
     base_durations = data.get("base_durations", {})
     if not base_durations:
-        return {"success": False, "reason": "No base durations captured. Use 'Capture Base Durations' first."}
+        # Auto-capture base durations
+        capture_result = await capture_base_durations()
+        if capture_result.get("captured", 0) == 0:
+            return {"success": False, "reason": "No run_duration entities found to adjust"}
+        data = _load_data()  # Reload after capture
+        base_durations = data.get("base_durations", {})
 
     # Check if any zones are currently running — skip if so
     zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
@@ -965,18 +971,12 @@ async def run_moisture_evaluation() -> dict:
     """Run a full moisture evaluation cycle.
 
     Called periodically by the background task and after weather evaluation.
-    Computes multipliers for all mapped zones and applies adjusted durations.
+    If apply_factors_to_schedule is enabled, re-applies adjusted durations.
     """
     data = _load_data()
 
-    if not data.get("enabled"):
-        return {"skipped": True, "reason": "Moisture probes not enabled"}
-
-    if not data.get("probes"):
-        return {"skipped": True, "reason": "No probes configured"}
-
-    if not data.get("base_durations"):
-        return {"skipped": True, "reason": "No base durations captured"}
+    if not data.get("apply_factors_to_schedule"):
+        return {"skipped": True, "reason": "Apply factors to schedule not enabled"}
 
     # Apply adjusted durations (handles running zone check internally)
     result = await apply_adjusted_durations()
@@ -1011,6 +1011,7 @@ class ProbeUpdateRequest(BaseModel):
 
 class MoistureSettingsRequest(BaseModel):
     enabled: Optional[bool] = None
+    apply_factors_to_schedule: Optional[bool] = None
     stale_reading_threshold_minutes: Optional[int] = Field(None, ge=5, le=1440)
     depth_weights: Optional[dict] = None
     default_thresholds: Optional[dict] = None
@@ -1164,6 +1165,7 @@ async def api_get_settings():
     data = _load_data()
     return {
         "enabled": data.get("enabled", False),
+        "apply_factors_to_schedule": data.get("apply_factors_to_schedule", False),
         "stale_reading_threshold_minutes": data.get("stale_reading_threshold_minutes", 120),
         "depth_weights": data.get("depth_weights", DEFAULT_DATA["depth_weights"]),
         "default_thresholds": data.get("default_thresholds", DEFAULT_DATA["default_thresholds"]),
@@ -1183,6 +1185,33 @@ async def api_update_settings(body: MoistureSettingsRequest):
         data["depth_weights"] = body.depth_weights
     if body.default_thresholds is not None:
         data["default_thresholds"] = body.default_thresholds
+
+    # Handle apply_factors_to_schedule toggle
+    if body.apply_factors_to_schedule is not None:
+        was_enabled = data.get("apply_factors_to_schedule", False)
+        data["apply_factors_to_schedule"] = body.apply_factors_to_schedule
+        _save_data(data)
+
+        if body.apply_factors_to_schedule and not was_enabled:
+            # Toggling ON: auto-capture base durations if needed, then apply
+            if not data.get("base_durations"):
+                await capture_base_durations()
+            result = await apply_adjusted_durations()
+            applied = result.get("applied", 0)
+            return {
+                "success": True,
+                "message": f"Factors applied to {applied} zone(s)",
+                "applied": applied,
+            }
+        elif not body.apply_factors_to_schedule and was_enabled:
+            # Toggling OFF: restore base durations
+            result = await restore_base_durations()
+            restored = result.get("restored", 0)
+            return {
+                "success": True,
+                "message": f"Original durations restored for {restored} zone(s)",
+                "restored": restored,
+            }
 
     _save_data(data)
     return {"success": True, "message": "Moisture settings updated"}

@@ -2594,7 +2594,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <li style="margin-bottom:4px;"><strong>Map Sensors</strong> — After selecting a device, map its sensor entities to shallow, mid, and deep depth readings. Sensors with matching depth names are auto-selected.</li>
 <li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. New probes are mapped to all irrigation zones by default.</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Configure stale data threshold, root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li>
-<li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings, zone multipliers, and duration controls</li>
+<li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings and zone multipliers</li>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The combined weather &times; moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled durations automatically.</div>
 
