@@ -278,6 +278,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <span class="mode-badge">Management Mode</span>
         <button class="btn btn-secondary btn-sm" onclick="switchToHomeowner()">Homeowner</button>
         <button class="dark-toggle" onclick="showAlertsPanel()" title="Customer Issues" id="alertBadgeBtn" style="position:relative;display:none;">&#9888;&#65039;<span id="alertBadgeCount" style="position:absolute;top:-4px;right:-4px;background:#e74c3c;color:white;font-size:10px;font-weight:700;border-radius:50%;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 4px;"></span></button>
+        <button class="dark-toggle" onclick="showNotifPrefs()" title="Notification Settings">&#9881;&#65039;</button>
         <button class="dark-toggle" id="darkModeBtn" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
     </div>
