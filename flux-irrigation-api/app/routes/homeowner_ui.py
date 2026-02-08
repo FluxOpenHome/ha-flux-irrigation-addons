@@ -1196,6 +1196,67 @@ async function wapi(path, options = {}) {
 let _weatherDataCache = null;
 let _weatherRulesCache = null;
 let _moistureDataCache = null;
+let _weatherCardBuilt = false;
+
+const _condIcons = {
+    'sunny': '☀️', 'clear-night': '🌙', 'partlycloudy': '⛅',
+    'cloudy': '☁️', 'rainy': '🌧️', 'pouring': '🌧️',
+    'snowy': '❄️', 'windy': '💨', 'fog': '🌫️',
+    'lightning': '⚡', 'lightning-rainy': '⛈️', 'hail': '🧊',
+};
+
+function _buildWeatherCardShell() {
+    // Build the weather card DOM structure once with data-id attributes for targeted updates
+    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">';
+    html += '<div style="background:var(--bg-weather);border-radius:8px;padding:10px;text-align:center;">';
+    html += '<div data-id="wIcon" style="font-size:24px;"></div>';
+    html += '<div data-id="wCondition" style="font-weight:600;text-transform:capitalize;font-size:13px;"></div>';
+    html += '</div>';
+    html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+    html += '<div style="color:var(--text-placeholder);font-size:11px;">Temperature</div>';
+    html += '<div data-id="wTemp" style="font-weight:600;font-size:16px;"></div>';
+    html += '</div>';
+    html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+    html += '<div style="color:var(--text-placeholder);font-size:11px;">Humidity</div>';
+    html += '<div data-id="wHumidity" style="font-weight:600;font-size:16px;"></div>';
+    html += '</div>';
+    html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+    html += '<div style="color:var(--text-placeholder);font-size:11px;">Wind</div>';
+    html += '<div data-id="wWind" style="font-weight:600;font-size:16px;"></div>';
+    html += '</div>';
+    html += '</div>';
+    html += '<div data-id="wForecast"></div>';
+    html += '<div data-id="wAdjustments"></div>';
+    // Weather Rules Editor — static structure, never changes
+    html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:16px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+    html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
+    html += '<div style="display:flex;gap:6px;">';
+    html += '<button class="btn btn-secondary btn-sm" onclick="evaluateWeatherNow()">Test Rules Now</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="exportWeatherLogCSV()">Export Log</button>';
+    html += '<button class="btn btn-danger btn-sm" onclick="clearWeatherLog()">Clear Log</button>';
+    html += '</div>';
+    html += '</div>';
+    html += '<div id="weatherRulesContainer"><div class="loading">Loading rules...</div></div>';
+    html += '</div>';
+    return html;
+}
+
+function _getVisibleWeatherKey(data) {
+    // Build a cache key using ONLY the values the user can see — not timestamps
+    const w = data.weather || {};
+    const parts = [
+        w.condition, w.temperature, w.humidity, w.wind_speed,
+        data.watering_multiplier,
+        JSON.stringify((data.active_adjustments || []).map(a => a.reason || a.rule)),
+    ];
+    // Include forecast visible fields only
+    const fc = (w.forecast || []).slice(0, 5);
+    for (const f of fc) {
+        parts.push(f.condition, f.temperature, f.precipitation_probability);
+    }
+    return parts.join('|');
+}
 
 async function loadWeather() {
     const card = document.getElementById('weatherCard');
@@ -1206,102 +1267,90 @@ async function loadWeather() {
         if (!data.weather_enabled) {
             card.style.display = 'none';
             _weatherDataCache = null;
+            _weatherCardBuilt = false;
             return;
         }
-        // Skip DOM rebuild if data hasn't changed (prevents flickering on refresh)
-        const dataKey = JSON.stringify(data);
-        if (_weatherDataCache === dataKey) return;
-        _weatherDataCache = dataKey;
+
+        // Build the card shell once, then only update data values
+        if (!_weatherCardBuilt) {
+            body.innerHTML = _buildWeatherCardShell();
+            _weatherCardBuilt = true;
+            _weatherDataCache = null; // force data fill on first build
+            loadWeatherRules();
+        }
+
+        // Skip updates if visible data hasn't changed
+        const visibleKey = _getVisibleWeatherKey(data);
+        if (_weatherDataCache === visibleKey) return;
+        _weatherDataCache = visibleKey;
+
         card.style.display = 'block';
         const w = data.weather || {};
         if (w.error) {
             body.innerHTML = '<div style="color:var(--text-placeholder);text-align:center;padding:12px;">' + esc(w.error) + '</div>';
+            _weatherCardBuilt = false;
             return;
         }
 
-        const condIcons = {
-            'sunny': '☀️', 'clear-night': '🌙', 'partlycloudy': '⛅',
-            'cloudy': '☁️', 'rainy': '🌧️', 'pouring': '🌧️',
-            'snowy': '❄️', 'windy': '💨', 'fog': '🌫️',
-            'lightning': '⚡', 'lightning-rainy': '⛈️', 'hail': '🧊',
-        };
-        const icon = condIcons[w.condition] || '🌡️';
+        // --- Targeted updates: only change text/styles, no DOM rebuild ---
+        const icon = _condIcons[w.condition] || '🌡️';
         const mult = data.watering_multiplier != null ? data.watering_multiplier : 1.0;
+
+        // Badge
         badge.textContent = mult + 'x';
         badge.style.background = mult === 1.0 ? 'var(--bg-success-light)' : mult < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
         badge.style.color = mult === 1.0 ? 'var(--text-success-dark)' : mult < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
 
-        let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">';
-        html += '<div style="background:var(--bg-weather);border-radius:8px;padding:10px;text-align:center;">';
-        html += '<div style="font-size:24px;">' + icon + '</div>';
-        html += '<div style="font-weight:600;text-transform:capitalize;font-size:13px;">' + esc(w.condition || 'unknown') + '</div>';
-        html += '</div>';
-        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
-        html += '<div style="color:var(--text-placeholder);font-size:11px;">Temperature</div>';
-        html += '<div style="font-weight:600;font-size:16px;">' + (w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A') + '</div>';
-        html += '</div>';
-        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
-        html += '<div style="color:var(--text-placeholder);font-size:11px;">Humidity</div>';
-        html += '<div style="font-weight:600;font-size:16px;">' + (w.humidity != null ? w.humidity + '%' : 'N/A') + '</div>';
-        html += '</div>';
-        html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
-        html += '<div style="color:var(--text-placeholder);font-size:11px;">Wind</div>';
-        html += '<div style="font-weight:600;font-size:16px;">' + (w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A') + '</div>';
-        html += '</div>';
-        html += '</div>';
+        // Current conditions — update text only
+        const el = (id) => body.querySelector('[data-id=\"' + id + '\"]');
+        el('wIcon').textContent = icon;
+        el('wCondition').textContent = w.condition || 'unknown';
+        el('wTemp').textContent = w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A';
+        el('wHumidity').textContent = w.humidity != null ? w.humidity + '%' : 'N/A';
+        el('wWind').textContent = w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A';
 
-        // 3-day forecast
+        // Forecast — rebuild only the forecast strip (lightweight)
+        const forecastEl = el('wForecast');
         const forecast = w.forecast || [];
         if (forecast.length > 0) {
-            html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
-            html += '<div style="display:flex;gap:8px;overflow-x:auto;">';
+            let fh = '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
+            fh += '<div style="display:flex;gap:8px;overflow-x:auto;">';
             for (let i = 0; i < Math.min(forecast.length, 5); i++) {
                 const f = forecast[i];
                 const dt = f.datetime ? new Date(f.datetime) : null;
                 const dayLabel = dt ? dt.toLocaleDateString('en-US', { weekday: 'short' }) : '';
-                const fIcon = condIcons[f.condition] || '🌡️';
+                const fIcon = _condIcons[f.condition] || '🌡️';
                 const precip = f.precipitation_probability || 0;
-                html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;">';
-                html += '<div style="font-size:11px;color:var(--text-placeholder);">' + esc(dayLabel) + '</div>';
-                html += '<div style="font-size:18px;">' + fIcon + '</div>';
-                html += '<div style="font-size:12px;font-weight:600;">' + (f.temperature != null ? f.temperature + '°' : '') + '</div>';
+                fh += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;">';
+                fh += '<div style="font-size:11px;color:var(--text-placeholder);">' + esc(dayLabel) + '</div>';
+                fh += '<div style="font-size:18px;">' + fIcon + '</div>';
+                fh += '<div style="font-size:12px;font-weight:600;">' + (f.temperature != null ? f.temperature + '°' : '') + '</div>';
                 if (precip > 0) {
-                    html += '<div style="font-size:10px;color:var(--color-link);">💧 ' + precip + '%</div>';
+                    fh += '<div style="font-size:10px;color:var(--color-link);">💧 ' + precip + '%</div>';
                 }
-                html += '</div>';
+                fh += '</div>';
             }
-            html += '</div></div>';
+            fh += '</div></div>';
+            forecastEl.innerHTML = fh;
+        } else {
+            forecastEl.innerHTML = '';
         }
 
-        // Active adjustments
+        // Active adjustments — rebuild only the adjustments box
+        const adjEl = el('wAdjustments');
         const adjustments = data.active_adjustments || [];
         if (adjustments.length > 0) {
-            html += '<div style="margin-top:12px;padding:10px;background:var(--bg-warning);border-radius:8px;font-size:12px;">';
-            html += '<strong style="color:var(--text-warning);">Active Weather Adjustments:</strong>';
-            html += '<ul style="margin:4px 0 0 16px;color:var(--text-warning);">';
+            let ah = '<div style="margin-top:12px;padding:10px;background:var(--bg-warning);border-radius:8px;font-size:12px;">';
+            ah += '<strong style="color:var(--text-warning);">Active Weather Adjustments:</strong>';
+            ah += '<ul style="margin:4px 0 0 16px;color:var(--text-warning);">';
             for (const adj of adjustments) {
-                html += '<li>' + esc(adj.reason || adj.rule) + '</li>';
+                ah += '<li>' + esc(adj.reason || adj.rule) + '</li>';
             }
-            html += '</ul></div>';
+            ah += '</ul></div>';
+            adjEl.innerHTML = ah;
+        } else {
+            adjEl.innerHTML = '';
         }
-
-        // --- Weather Rules Editor ---
-        html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:16px;">';
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
-        html += '<div style="font-size:14px;font-weight:600;">Weather Rules</div>';
-        html += '<div style="display:flex;gap:6px;">';
-        html += '<button class="btn btn-secondary btn-sm" onclick="evaluateWeatherNow()">Test Rules Now</button>';
-        html += '<button class="btn btn-secondary btn-sm" onclick="exportWeatherLogCSV()">Export Log</button>';
-        html += '<button class="btn btn-danger btn-sm" onclick="clearWeatherLog()">Clear Log</button>';
-        html += '</div>';
-        html += '</div>';
-        html += '<div id="weatherRulesContainer"><div class="loading">Loading rules...</div></div>';
-        html += '</div>';
-
-        body.innerHTML = html;
-
-        // Load rules into the container
-        loadWeatherRules();
     } catch (e) {
         card.style.display = 'none';
     }
@@ -1493,10 +1542,10 @@ async function saveWeatherRules() {
         });
         const mult = result.watering_multiplier;
         showToast('Weather rules saved' + (mult != null ? ' — multiplier: ' + mult + 'x' : ''));
-        // Clear cache and refresh weather card to show updated multiplier
+        // Clear cache to pick up new multiplier; card structure stays intact
         _weatherDataCache = null;
         _weatherRulesCache = null;
-        setTimeout(() => loadWeather(), 500);
+        loadWeather();
     } catch (e) {
         showToast('Failed to save weather rules: ' + e.message, 'error');
     }
@@ -1517,8 +1566,9 @@ async function evaluateWeatherNow() {
             const names = triggered.map(t => t.rule.replace(/_/g, ' ')).join(', ');
             showToast('Triggered: ' + names + ' | Multiplier: ' + result.watering_multiplier + 'x');
         }
-        // Refresh the weather card to show updated state
-        setTimeout(() => loadWeather(), 1000);
+        // Refresh weather data (card structure stays intact)
+        _weatherDataCache = null;
+        loadWeather();
     } catch (e) {
         showToast('Evaluation failed: ' + e.message, 'error');
     }
@@ -1557,7 +1607,6 @@ async function clearWeatherLog() {
         const result = await api('/weather/log', { method: 'DELETE' });
         if (result.success) {
             showToast(result.message || 'Weather log cleared');
-            setTimeout(() => loadWeather(), 1000);
         } else {
             showToast(result.error || 'Failed to clear weather log', 'error');
         }

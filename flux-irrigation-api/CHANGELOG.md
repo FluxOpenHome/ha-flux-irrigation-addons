@@ -70,7 +70,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Fixed
 
-- **Dashboard flickering** — Weather and moisture probe cards no longer flicker on periodic refresh; data is cached and the DOM is only updated when values actually change
+- **Weather card flicker eliminated** — Weather card now uses targeted DOM updates instead of full innerHTML rebuilds; the card structure is built once and only individual text values/styles are updated on refresh; cache key uses only visible data (not timestamps) so unchanged weather doesn't trigger any DOM work
+- **Slow weather rules save** — Moisture probe re-evaluation after saving weather rules now runs in the background instead of blocking the save response; previously the chain of HA service calls could cause noticeable delays
 - **Weather rules not applied until next check** — Saving weather rules now immediately re-evaluates conditions and updates the watering multiplier badge; previously the multiplier only updated on the periodic check (up to 15 minutes later) or when clicking "Test Rules Now"
 - **Button entity names** — Device control tiles for button entities no longer show the device name suffix (e.g. "Irrigation System Restart irrigation_controller" → "Irrigation System Restart") and the action button reads "PRESS"
 - Run history "hours" parameter parsing error when the select dropdown value was empty — now uses `parseInt` with a fallback to 24 hours
