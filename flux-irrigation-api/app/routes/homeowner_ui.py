@@ -556,12 +556,35 @@ function renderUpcomingService(issues) {
 }
 
 // --- Add to Calendar ---
-function addServiceToCalendar() {
+async function addServiceToCalendar() {
     if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
-    // Server-side endpoint generates an RFC 5545 compliant .ics file
-    // using the icalendar library. The Content-Disposition: attachment
-    // header plus text/calendar MIME type triggers the OS calendar handler.
-    window.location.href = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
+    const icsUrl = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
+    try {
+        // Fetch .ics from server (works inside HA ingress iframe)
+        const resp = await fetch(icsUrl);
+        if (!resp.ok) throw new Error('Failed to fetch calendar file');
+        const blob = await resp.blob();
+        const file = new File([blob], 'irrigation-service.ics', { type: 'text/calendar' });
+
+        // Mobile: use Web Share API if available (native share sheet on iOS/Android)
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Irrigation Service' });
+            return;
+        }
+
+        // Fallback: Blob download via hidden anchor tag
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'irrigation-service.ics';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+    } catch (e) {
+        // Last resort: open .ics URL directly, breaking out of ingress iframe
+        (window.top || window.parent || window).open(icsUrl, '_blank');
+    }
 }
 
 // --- Open Address in Maps ---
