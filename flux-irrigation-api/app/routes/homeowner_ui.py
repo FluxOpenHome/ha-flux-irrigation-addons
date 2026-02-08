@@ -588,10 +588,7 @@ function addServiceToCalendar() {
     var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     if (isIOS) {
-        // iOS: get a temporary token, then open the .ics via direct port 8099
-        // so Safari handles it natively (same mechanism as Apple Maps links).
-        // Falls back to calendar picker if port 8099 is unreachable.
-        _tryDirectIcsDownload();
+        _showCalendarPicker();
         return;
     }
 
@@ -614,22 +611,6 @@ function addServiceToCalendar() {
         document.body.removeChild(a);
         setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
     }).catch(function() {
-        _showCalendarPicker();
-    });
-}
-
-function _tryDirectIcsDownload() {
-    var tokenUrl = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar-token';
-    fetch(tokenUrl, { method: 'POST' }).then(function(resp) {
-        if (!resp.ok) throw new Error('token failed');
-        return resp.json();
-    }).then(function(data) {
-        // Build URL on port 8099 (direct add-on access, bypasses HA ingress auth)
-        // Same hostname the user is connected to, just different port
-        var directUrl = window.location.protocol + '//' + window.location.hostname + ':8099/cal/' + data.token;
-        window.open(directUrl, '_blank');
-    }).catch(function() {
-        // Port 8099 unreachable (e.g. user is remote via Nabu Casa) — fall back to picker
         _showCalendarPicker();
     });
 }
