@@ -580,13 +580,19 @@ function showMap(lat, lon, label) {
 }
 
 // --- Dashboard Loading ---
+let _controlsLoaded = false;
 async function loadDashboard() {
     loadStatus();
     loadWeather();
     loadMoisture();
     loadZones();
     loadSensors();
-    loadControls();
+    // Controls/schedule only need to load once — they don't change
+    // on their own. They refresh when the user explicitly changes a value.
+    if (!_controlsLoaded) {
+        loadControls();
+        _controlsLoaded = true;
+    }
     loadHistory();
 }
 
