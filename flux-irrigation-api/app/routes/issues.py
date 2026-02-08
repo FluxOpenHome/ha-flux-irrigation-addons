@@ -6,11 +6,14 @@ Issues are stored locally on the homeowner device and accessed
 by management through the proxy architecture.
 """
 
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from config import get_config
 from config_changelog import log_change, get_actor
 import issue_store
 
@@ -73,6 +76,79 @@ async def list_visible_issues():
 async def issue_summary():
     """Lightweight summary of active issues, used by management health check polling."""
     return issue_store.get_issue_summary()
+
+
+@router.get("/{issue_id}/calendar.ics", summary="Download calendar event for scheduled service")
+async def issue_calendar_ics(issue_id: str):
+    """Generate an .ics calendar file for a scheduled service date.
+
+    Returns Content-Type: text/calendar so the device's default calendar
+    app opens automatically (Apple Calendar, Google Calendar, Outlook, etc.).
+    """
+    issue = issue_store.get_issue(issue_id)
+    if issue is None:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    if not issue.get("service_date"):
+        raise HTTPException(status_code=404, detail="No service date scheduled for this issue")
+
+    svc_date = issue["service_date"]  # YYYY-MM-DD
+    dt_start = svc_date.replace("-", "")
+    dt_end_date = datetime.strptime(svc_date, "%Y-%m-%d") + timedelta(days=1)
+    dt_end = dt_end_date.strftime("%Y%m%d")
+    stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    uid = f"flux-svc-{issue['id']}@flux-irrigation"
+
+    # Build location from config address
+    config = get_config()
+    addr_parts = []
+    if config.homeowner_address:
+        addr_parts.append(config.homeowner_address)
+    city_state = []
+    if config.homeowner_city:
+        city_state.append(config.homeowner_city)
+    if config.homeowner_state:
+        city_state.append(config.homeowner_state)
+    if city_state:
+        line = ", ".join(city_state)
+        if config.homeowner_zip:
+            line += " " + config.homeowner_zip
+        addr_parts.append(line)
+    location = ", ".join(addr_parts)
+
+    title = "Irrigation Service"
+    if config.homeowner_label:
+        title += f" - {config.homeowner_label}"
+
+    description = "Irrigation service visit scheduled by your management company."
+    if issue.get("management_note"):
+        note_clean = issue["management_note"].replace("\n", " ").replace("\r", " ")
+        description += f"\\nNote from management: {note_clean}"
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Flux Open Home//Irrigation Service//EN",
+        "BEGIN:VEVENT",
+        f"UID:{uid}",
+        f"DTSTAMP:{stamp}",
+        f"DTSTART;VALUE=DATE:{dt_start}",
+        f"DTEND;VALUE=DATE:{dt_end}",
+        f"SUMMARY:{title}",
+        f"DESCRIPTION:{description}",
+    ]
+    if location:
+        lines.append(f"LOCATION:{location}")
+    lines += [
+        "STATUS:CONFIRMED",
+        "END:VEVENT",
+        "END:VCALENDAR",
+    ]
+    ics_content = "\r\n".join(lines)
+
+    return Response(
+        content=ics_content,
+        media_type="text/calendar",
+    )
 
 
 @router.put("/{issue_id}/acknowledge", summary="Acknowledge an issue")
