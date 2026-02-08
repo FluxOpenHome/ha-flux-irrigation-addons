@@ -1798,7 +1798,8 @@ async function mgmtToggleApplyFactors(enable) {
             method: 'PUT',
             body: JSON.stringify({ apply_factors_to_schedule: enable }),
         });
-        showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'));
+        const isError = result.success === false;
+        showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'), isError ? 'error' : undefined);
         mgmtLoadApplyFactorsToggle(currentCustomerId);
         loadDetailControls(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }

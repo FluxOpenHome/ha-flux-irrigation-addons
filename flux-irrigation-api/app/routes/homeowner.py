@@ -142,7 +142,6 @@ async def homeowner_status():
     moisture_probe_count = 0
     weather_multiplier = 1.0
     moisture_multiplier = 1.0
-    combined_multiplier = 1.0
     try:
         from routes.moisture import (
             _load_data as _load_moisture_data,
@@ -153,13 +152,16 @@ async def homeowner_status():
         moisture_enabled = moisture_data.get("enabled", False)
         moisture_probe_count = len(moisture_data.get("probes", {}))
         weather_multiplier = get_weather_multiplier()
-        moisture_result = await calculate_overall_moisture_multiplier()
-        moisture_multiplier = moisture_result.get("moisture_multiplier", 1.0)
-        combined_multiplier = round(
-            weather_multiplier * moisture_multiplier, 3
-        ) if moisture_multiplier > 0 else 0.0
+        try:
+            moisture_result = await calculate_overall_moisture_multiplier()
+            moisture_multiplier = moisture_result.get("moisture_multiplier", 1.0)
+        except Exception:
+            pass
     except Exception:
         pass
+    combined_multiplier = round(
+        weather_multiplier * moisture_multiplier, 3
+    ) if moisture_multiplier > 0 else 0.0
 
     return {
         "online": True,

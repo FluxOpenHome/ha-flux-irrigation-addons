@@ -357,6 +357,10 @@ async def call_service(
             json=payload,
             timeout=15.0,
         )
+        if response.status_code != 200:
+            print(f"[HA_CLIENT] Service call {domain}.{service} failed: "
+                  f"status={response.status_code}, payload={payload}, "
+                  f"response={response.text[:200]}")
         return response.status_code == 200
 
 

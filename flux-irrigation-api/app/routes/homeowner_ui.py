@@ -2082,7 +2082,8 @@ async function loadApplyFactorsToggle() {
 async function toggleApplyFactors(enable) {
     try {
         const result = await mapi('/settings', 'PUT', { apply_factors_to_schedule: enable });
-        showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'));
+        const isError = result.success === false;
+        showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'), isError ? 'error' : undefined);
         loadApplyFactorsToggle();
         loadControls();
     } catch (e) { showToast(e.message, 'error'); }

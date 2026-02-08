@@ -866,6 +866,10 @@ async def apply_adjusted_durations() -> dict:
 
     adjusted = {}
     applied_count = 0
+    failed = []
+
+    print(f"[MOISTURE] Applying factors: {len(base_durations)} duration entities, "
+          f"weather_mult={weather_mult}")
 
     # Build reverse mapping: duration_entity_id → zone_entity_id (for moisture lookup)
     # Convention: switch.irrigator_zone_1 → number.irrigator_zone_1_run_duration
@@ -893,8 +897,6 @@ async def apply_adjusted_durations() -> dict:
             skip = False
 
         if skip:
-            # Set to minimum (1 minute) — ESPHome won't skip entirely,
-            # but this minimizes water usage
             adjusted_value = 1
         else:
             combined = weather_mult * moisture_mult
@@ -921,9 +923,10 @@ async def apply_adjusted_durations() -> dict:
             print(f"[MOISTURE] {dur_eid}: {base} → {adjusted_value} "
                   f"(weather={weather_mult}, moisture={moisture_mult:.3f})")
         else:
+            failed.append(dur_eid)
             print(f"[MOISTURE] Failed to set {dur_eid} to {adjusted_value}")
 
-    data["duration_adjustment_active"] = True
+    data["duration_adjustment_active"] = applied_count > 0
     data["adjusted_durations"] = adjusted
     data["last_evaluation"] = datetime.now(timezone.utc).isoformat()
     data["last_evaluation_result"] = {
@@ -933,11 +936,15 @@ async def apply_adjusted_durations() -> dict:
     }
     _save_data(data)
 
-    return {
-        "success": True,
+    result = {
+        "success": applied_count > 0,
         "applied": applied_count,
         "adjustments": adjusted,
     }
+    if failed:
+        result["failed"] = failed
+        result["reason"] = f"HA service call failed for {len(failed)} entity(ies)"
+    return result
 
 
 async def restore_base_durations() -> dict:
@@ -1198,14 +1205,33 @@ async def api_update_settings(body: MoistureSettingsRequest):
         _save_data(data)
 
         if body.apply_factors_to_schedule and not was_enabled:
-            # Toggling ON: auto-capture base durations if needed, then apply
-            if not data.get("base_durations"):
-                await capture_base_durations()
+            # Toggling ON: always re-capture base durations for fresh values
+            capture_result = await capture_base_durations()
+            captured = capture_result.get("captured", 0)
+            print(f"[MOISTURE] Toggle ON: captured {captured} base durations")
+            if captured == 0:
+                # No run_duration entities found — report clearly
+                config = get_config()
+                ctrl_count = len(config.allowed_control_entities)
+                dur_entities = [e for e in config.allowed_control_entities
+                                if e.startswith("number.") and "run_duration" in e]
+                print(f"[MOISTURE] Toggle ON: control entities={ctrl_count}, "
+                      f"run_duration matches={dur_entities}")
+                return {
+                    "success": False,
+                    "message": f"No run_duration entities found ({ctrl_count} control entities)",
+                    "applied": 0,
+                }
             result = await apply_adjusted_durations()
             applied = result.get("applied", 0)
+            reason = result.get("reason", "")
+            msg = f"Factors applied to {applied} zone(s)"
+            if applied == 0 and reason:
+                msg = f"Apply failed: {reason}"
+            print(f"[MOISTURE] Toggle ON: apply result: applied={applied}, reason={reason}")
             return {
-                "success": True,
-                "message": f"Factors applied to {applied} zone(s)",
+                "success": applied > 0,
+                "message": msg,
                 "applied": applied,
             }
         elif not body.apply_factors_to_schedule and was_enabled:
