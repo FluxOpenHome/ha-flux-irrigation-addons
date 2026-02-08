@@ -693,9 +693,14 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                     <span style="font-weight:600;color:var(--text-primary);">Enable HA Notifications</span>
                 </label>
                 <div style="margin-bottom:12px;">
-                    <label style="font-size:13px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Notify Service Name</label>
-                    <input type="text" id="haNotifyService" placeholder="e.g. mobile_app_brandons_iphone" style="width:100%;padding:8px 12px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);">
-                    <div style="font-size:11px;color:var(--text-placeholder);margin-top:3px;">The service name after "notify." — find it in HA under Settings &rarr; Automations &rarr; Actions</div>
+                    <label style="font-size:13px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Notify Service</label>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <select id="haNotifyService" style="flex:1;padding:8px 12px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);">
+                            <option value="">-- Select a notify service --</option>
+                        </select>
+                        <button class="btn btn-secondary btn-sm" onclick="loadNotifyServices()" title="Refresh service list" style="padding:6px 10px;font-size:16px;line-height:1;">&#8635;</button>
+                    </div>
+                    <div id="haNotifyServiceHint" style="font-size:11px;color:var(--text-placeholder);margin-top:3px;">Auto-detected from Home Assistant</div>
                 </div>
                 <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Severity filters:</p>
                 <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
@@ -3518,21 +3523,65 @@ function requestNotifPermission() {
 }
 
 // --- HA Notification Settings ---
+async function loadNotifyServices() {
+    var sel = document.getElementById('haNotifyService');
+    var saved = sel.value;
+    var hint = document.getElementById('haNotifyServiceHint');
+    hint.textContent = 'Loading services from Home Assistant...';
+    try {
+        var data = await api('/notification-settings/services');
+        var services = data.services || [];
+        // Keep the first placeholder option, clear the rest
+        sel.innerHTML = '<option value="">-- Select a notify service --</option>';
+        services.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name + ' (notify.' + s.id + ')';
+            sel.appendChild(opt);
+        });
+        // Restore previously saved value
+        if (saved) sel.value = saved;
+        // If saved value not in list, add it as a custom option so it's not lost
+        if (saved && sel.value !== saved) {
+            var opt = document.createElement('option');
+            opt.value = saved;
+            opt.textContent = saved + ' (saved)';
+            sel.appendChild(opt);
+            sel.value = saved;
+        }
+        hint.textContent = services.length ? services.length + ' service(s) found' : 'No notify services found in HA';
+    } catch (e) {
+        hint.textContent = 'Could not load services — you can type a name manually';
+    }
+}
 async function loadHANotifSettings() {
     try {
-        const data = await api('/notification-settings');
+        var data = await api('/notification-settings');
         document.getElementById('haNotifEnabled').checked = !!data.enabled;
-        document.getElementById('haNotifyService').value = data.ha_notify_service || '';
         document.getElementById('haNotifSevere').checked = !!data.notify_severe;
         document.getElementById('haNotifAnnoyance').checked = !!data.notify_annoyance;
         document.getElementById('haNotifClarification').checked = !!data.notify_clarification;
         document.getElementById('haNotifStatus').textContent = '';
+        // Load services dropdown, then set the saved value
+        await loadNotifyServices();
+        if (data.ha_notify_service) {
+            var sel = document.getElementById('haNotifyService');
+            sel.value = data.ha_notify_service;
+            // If saved value not in dropdown, add it
+            if (sel.value !== data.ha_notify_service) {
+                var opt = document.createElement('option');
+                opt.value = data.ha_notify_service;
+                opt.textContent = data.ha_notify_service + ' (saved)';
+                sel.appendChild(opt);
+                sel.value = data.ha_notify_service;
+            }
+        }
     } catch (e) {
         document.getElementById('haNotifStatus').textContent = 'Could not load HA notification settings';
     }
 }
 async function saveHANotifSettings() {
-    const payload = {
+    var payload = {
         enabled: document.getElementById('haNotifEnabled').checked,
         ha_notify_service: document.getElementById('haNotifyService').value.trim(),
         notify_severe: document.getElementById('haNotifSevere').checked,
@@ -3540,7 +3589,7 @@ async function saveHANotifSettings() {
         notify_clarification: document.getElementById('haNotifClarification').checked,
     };
     if (payload.enabled && !payload.ha_notify_service) {
-        showToast('Please enter a notify service name', 'error');
+        showToast('Please select a notify service', 'error');
         return;
     }
     try {
@@ -3552,9 +3601,9 @@ async function saveHANotifSettings() {
     }
 }
 async function testHANotification() {
-    const svc = document.getElementById('haNotifyService').value.trim();
+    var svc = document.getElementById('haNotifyService').value.trim();
     if (!svc) {
-        showToast('Enter a notify service name first', 'error');
+        showToast('Select a notify service first', 'error');
         return;
     }
     // Save first so the test uses current values

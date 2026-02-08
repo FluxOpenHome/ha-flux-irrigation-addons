@@ -8,6 +8,7 @@ to monitor and control remote homeowner irrigation systems.
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+import httpx
 
 import customer_store
 import management_client
@@ -1103,3 +1104,36 @@ async def test_notification():
             detail=f"Failed to call notify.{service_name} — check that the service exists in Home Assistant",
         )
     return {"success": True, "message": f"Test notification sent via notify.{service_name}"}
+
+
+@router.get("/api/notification-settings/services", summary="Discover available HA notify services")
+async def discover_notify_services():
+    """Query Home Assistant for all available notify.* services.
+
+    Returns a list of service names (e.g. 'mobile_app_brandons_iphone')
+    that can be used in the notification settings.
+    """
+    _require_management_mode()
+    import ha_client
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{ha_client.HA_BASE_URL}/services",
+            headers=ha_client._get_headers(),
+            timeout=10.0,
+        )
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="Failed to query HA services")
+
+    services = []
+    for domain_entry in response.json():
+        if domain_entry.get("domain") == "notify":
+            for svc_name, svc_info in domain_entry.get("services", {}).items():
+                if svc_name == "send_message":
+                    continue
+                label = svc_info.get("name") or svc_name.replace("_", " ").title()
+                services.append({"id": svc_name, "name": label})
+            break
+
+    services.sort(key=lambda s: s["name"])
+    return {"services": services}
