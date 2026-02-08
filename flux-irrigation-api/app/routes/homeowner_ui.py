@@ -559,32 +559,63 @@ function renderUpcomingService(issues) {
 async function addServiceToCalendar() {
     if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
     const icsUrl = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+    // 1. Try Web Share API (native share sheet - best mobile experience)
     try {
-        // Fetch .ics from server (works inside HA ingress iframe)
         const resp = await fetch(icsUrl);
-        if (!resp.ok) throw new Error('Failed to fetch calendar file');
+        if (!resp.ok) throw new Error('Server error');
         const blob = await resp.blob();
         const file = new File([blob], 'irrigation-service.ics', { type: 'text/calendar' });
-
-        // Mobile: use Web Share API if available (native share sheet on iOS/Android)
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({ files: [file], title: 'Irrigation Service' });
             return;
         }
+    } catch (e) { /* Web Share unavailable or failed, continue to fallbacks */ }
 
-        // Fallback: Blob download via hidden anchor tag
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'irrigation-service.ics';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
-    } catch (e) {
-        // Last resort: open .ics URL directly, breaking out of ingress iframe
-        (window.top || window.parent || window).open(icsUrl, '_blank');
+    // 2. Android/Desktop: Blob download via anchor tag (works reliably outside iOS)
+    if (!isIOS) {
+        try {
+            const resp = await fetch(icsUrl);
+            if (!resp.ok) throw new Error('Server error');
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'irrigation-service.ics';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+            return;
+        } catch (e) { /* fall through to Google Calendar */ }
     }
+
+    // 3. iOS + final fallback: Google Calendar URL (works in any browser/webview)
+    _openGoogleCalendarEvent();
+}
+
+function _openGoogleCalendarEvent() {
+    const svcDate = _upcomingServiceData.service_date.replace(/-/g, '');
+    const d = new Date(_upcomingServiceData.service_date + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    const endDate = d.toISOString().slice(0, 10).replace(/-/g, '');
+
+    const label = document.getElementById('dashTitle').textContent || '';
+    const title = 'Irrigation Service' + (label ? ' - ' + label : '');
+    const location = document.getElementById('dashAddress').textContent || '';
+    let details = 'Irrigation service visit scheduled by your management company.';
+    if (_upcomingServiceData.management_note) {
+        details += '\nNote: ' + _upcomingServiceData.management_note;
+    }
+
+    const url = 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+        + '&text=' + encodeURIComponent(title)
+        + '&dates=' + svcDate + '/' + endDate
+        + '&details=' + encodeURIComponent(details)
+        + '&location=' + encodeURIComponent(location);
+
+    (window.top || window.parent || window).location.href = url;
 }
 
 // --- Open Address in Maps ---
