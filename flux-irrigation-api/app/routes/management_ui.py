@@ -456,8 +456,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
             <div class="card-body" id="detailSchedule">
                 <div class="loading">Loading schedule...</div>
             </div>
-            <div class="card-body" id="mgmtApplyFactorsToggle" style="padding-top:0;">
-            </div>
         </div>
 
         <!-- History Card -->
@@ -2279,6 +2277,9 @@ function renderScheduleCard(custId, sched, durData) {
             (isOn ? 'Disable Schedule' : 'Enable Schedule') + '</button>' +
             '</div></div>';
     }
+
+    // --- Apply Factors Toggle (inline, right after schedule enable) ---
+    html += '<div id="mgmtApplyFactorsToggle" style="margin-bottom:16px;"></div>';
 
     // --- Days of Week ---
     if (day_switches.length > 0) {
