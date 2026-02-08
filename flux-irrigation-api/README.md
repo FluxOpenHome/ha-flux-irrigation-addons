@@ -193,7 +193,8 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Rain Sensor Card** — Dedicated card for rain sensor hardware entities showing sensor state (Dry/Rain Detected), enable/disable, sensor type (NC/NO), rain delay controls, and delay duration; auto-detected from controller entities
 - **Expansion Board Card** — Dedicated card for I2C expansion board status showing detected zone count, board I2C addresses with zone ranges, and rescan button; shows "No expansion boards connected" when none detected
 - **Issue Reporting** — Report issues to your management company with three severity levels (Clarification, Annoyance, Severe Issue); track issue status (Submitted, Acknowledged, Service Scheduled) and see management notes
-- **Upcoming Service** — When your management company schedules a service visit, a green banner appears at the top of the dashboard showing the date and any notes from management
+- **Upcoming Service** — When your management company schedules a service visit, a green banner appears at the top of the dashboard showing the date and any notes from management; tap the banner to download a calendar event (.ics file)
+- **Clickable Address** — Tap your property address to open it in Apple Maps (iOS/Mac) or Google Maps (Android/other) for directions
 - **System pause/resume** — Emergency pause that stops all active zones and suspends ESPHome schedule programs
 - **Dark mode** — Toggle between light and dark themes; preference is saved per-device and applied instantly
 - **In-app help** — ❓ button on every page opens a scrollable help modal explaining all features and controls for that screen
@@ -213,6 +214,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Remote rain sensor management** — View and control rain sensor settings (enable/disable, sensor type, rain delay) on customer systems
 - **Remote expansion board status** — View detected zones, expansion board I2C addresses, and trigger rescans on customer controllers
 - **Issue Management** — View and manage homeowner-reported issues across all properties; color-coded alerts on property cards; dedicated alerts panel with all active issues; acknowledge issues with notes and schedule service dates; browser notifications and HA push notifications (mobile app, SMS, etc.) when new issues are reported
+- **Clickable Addresses** — Click any property address on cards or detail views to open it in Apple Maps or Google Maps for easy navigation to the property
 - **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
 - **Run history and CSV export** — View and export zone run history and weather logs for each property
 - **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration

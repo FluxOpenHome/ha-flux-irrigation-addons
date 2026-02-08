@@ -218,7 +218,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     <div class="detail-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
         <div>
             <h2 id="dashTitle" style="font-size:22px;font-weight:600;">My Irrigation System</h2>
-            <div id="dashAddress" style="font-size:14px;color:var(--text-disabled);margin-top:4px;display:none;"></div>
+            <div id="dashAddress" onclick="openAddressInMaps()" style="font-size:14px;color:var(--color-link);margin-top:4px;display:none;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" title="Open in Maps"></div>
             <div id="dashTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
         </div>
         <div style="display:flex;gap:8px;">
@@ -228,14 +228,16 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     </div>
 
     <!-- Upcoming Service Banner -->
-    <div id="upcomingServiceBanner" style="display:none;background:linear-gradient(135deg,#1abc9c,#16a085);color:white;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+    <div id="upcomingServiceBanner" onclick="addServiceToCalendar()" style="display:none;background:linear-gradient(135deg,#1abc9c,#16a085);color:white;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.1);cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)';">
         <div style="display:flex;align-items:center;gap:10px;">
             <span style="font-size:20px;">&#128295;</span>
-            <div>
+            <div style="flex:1;">
                 <div style="font-weight:600;font-size:15px;" id="upcomingServiceDate"></div>
                 <div style="font-size:13px;opacity:0.9;margin-top:2px;" id="upcomingServiceNote"></div>
             </div>
+            <span style="font-size:18px;opacity:0.8;" title="Add to Calendar">&#128197;</span>
         </div>
+        <div style="font-size:11px;opacity:0.7;margin-top:6px;text-align:center;">Tap to add to calendar</div>
     </div>
 
     <!-- Active Issues Summary -->
@@ -531,12 +533,15 @@ function hideIssueBanners() {
     document.getElementById('activeIssuesBanner').style.display = 'none';
 }
 
+let _upcomingServiceData = null;
+
 function renderUpcomingService(issues) {
     const banner = document.getElementById('upcomingServiceBanner');
     const scheduled = issues.filter(function(i) { return i.service_date; });
-    if (scheduled.length === 0) { banner.style.display = 'none'; return; }
+    if (scheduled.length === 0) { banner.style.display = 'none'; _upcomingServiceData = null; return; }
     scheduled.sort(function(a, b) { return a.service_date.localeCompare(b.service_date); });
     const next = scheduled[0];
+    _upcomingServiceData = next;
     const dt = new Date(next.service_date + 'T12:00:00');
     const dateStr = dt.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
     document.getElementById('upcomingServiceDate').textContent = 'Upcoming Service: ' + dateStr;
@@ -548,6 +553,70 @@ function renderUpcomingService(issues) {
         noteEl.style.display = 'none';
     }
     banner.style.display = 'block';
+}
+
+// --- Calendar (.ics) Generation ---
+function addServiceToCalendar() {
+    if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
+    const svcDate = _upcomingServiceData.service_date; // YYYY-MM-DD
+    const note = _upcomingServiceData.management_note || '';
+    const title = document.getElementById('dashTitle').textContent || 'Irrigation Service';
+    const addr = document.getElementById('dashAddress').textContent || '';
+    // Format date as all-day event: YYYYMMDD
+    const dtStart = svcDate.replace(/-/g, '');
+    // End date is next day for all-day events
+    const parts = svcDate.split('-');
+    const endDt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]) + 1);
+    const dtEnd = endDt.getFullYear() + String(endDt.getMonth() + 1).padStart(2, '0') + String(endDt.getDate()).padStart(2, '0');
+    const now = new Date();
+    const stamp = now.getUTCFullYear() + String(now.getUTCMonth() + 1).padStart(2, '0') + String(now.getUTCDate()).padStart(2, '0') + 'T' + String(now.getUTCHours()).padStart(2, '0') + String(now.getUTCMinutes()).padStart(2, '0') + String(now.getUTCSeconds()).padStart(2, '0') + 'Z';
+    const uid = 'flux-svc-' + _upcomingServiceData.id + '@flux-irrigation';
+    let description = 'Irrigation service visit scheduled by your management company.';
+    if (note) description += '\\\\nNote from management: ' + note.replace(/[\\r\\n]+/g, ' ');
+    // Build ICS content - lines joined with CRLF as required by RFC 5545
+    const CRLF = '\\r\\n';
+    const lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Flux Open Home//Irrigation Service//EN',
+        'BEGIN:VEVENT',
+        'UID:' + uid,
+        'DTSTAMP:' + stamp,
+        'DTSTART;VALUE=DATE:' + dtStart,
+        'DTEND;VALUE=DATE:' + dtEnd,
+        'SUMMARY:Irrigation Service - ' + title,
+        'DESCRIPTION:' + description,
+        addr ? 'LOCATION:' + addr : '',
+        'STATUS:CONFIRMED',
+        'END:VEVENT',
+        'END:VCALENDAR'
+    ].filter(Boolean);
+    const ics = lines.join(CRLF);
+    // Download the ICS file
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'irrigation-service-' + svcDate + '.ics';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Calendar event downloaded — open the .ics file to add it to your calendar');
+}
+
+// --- Open Address in Maps ---
+function openAddressInMaps() {
+    const addr = document.getElementById('dashAddress').textContent;
+    if (!addr) return;
+    const encoded = encodeURIComponent(addr);
+    // Detect iOS/macOS for Apple Maps, otherwise Google Maps
+    const isApple = /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent);
+    if (isApple) {
+        window.open('https://maps.apple.com/?q=' + encoded, '_blank');
+    } else {
+        window.open('https://www.google.com/maps/search/?api=1&query=' + encoded, '_blank');
+    }
 }
 
 function renderActiveIssuesBanner(issues) {
@@ -2697,7 +2766,10 @@ const HELP_CONTENT = `
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Submitted</strong> — Your issue has been sent to management</li><li style="margin-bottom:4px;"><strong>Acknowledged</strong> — Management has reviewed your issue and may have left a note</li><li style="margin-bottom:4px;"><strong>Service Scheduled</strong> — A service date has been set</li><li style="margin-bottom:4px;"><strong>Resolved</strong> — Management has marked your issue as complete. You will see their response and can click <strong>Dismiss</strong> to remove it from your dashboard</li></ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Upcoming Service</h4>
-<p style="margin-bottom:10px;">When your management company schedules a service visit, a green <strong>Upcoming Service</strong> banner appears at the top of your dashboard showing the scheduled date. If management included a note, it appears below the date.</p>
+<p style="margin-bottom:10px;">When your management company schedules a service visit, a green <strong>Upcoming Service</strong> banner appears at the top of your dashboard showing the scheduled date. If management included a note, it appears below the date. <strong>Tap the banner</strong> to download a calendar event (.ics file) that you can add to your phone or computer calendar.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Property Address</h4>
+<p style="margin-bottom:10px;">Your property address is shown below the dashboard title. <strong>Tap the address</strong> to open it in your default maps application (Apple Maps on iOS/Mac, Google Maps on other devices).</p>
 `;
 
 // --- Change Log ---

@@ -388,7 +388,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <div class="detail-header">
             <div>
                 <h2 id="detailName"></h2>
-                <div id="detailAddress" class="customer-address" style="font-size:14px;margin-top:4px;"></div>
+                <div id="detailAddress" class="customer-address" style="font-size:14px;margin-top:4px;cursor:pointer;color:var(--color-link);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" onclick="openAddressInMaps(this.textContent)" title="Open in Maps"></div>
                 <div id="detailContact" style="font-size:14px;color:var(--text-secondary-alt);margin-top:2px;display:none;">&#128100; <span id="detailContactName"></span></div>
                 <div id="detailPhone" style="font-size:13px;color:var(--text-muted);margin-top:2px;display:none;">&#128222; <a id="detailPhoneLink" href="" style="color:var(--color-link);text-decoration:none;"></a></div>
                 <div id="mgmtTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
@@ -808,7 +808,7 @@ function renderCustomerGrid(customers) {
                     </span>
                 </div>
                 ${contactName ? '<div style="font-size:13px;color:var(--text-secondary-alt);margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
-                ${addr ? '<div class="customer-address">' + esc(addr) + '</div>' : ''}
+                ${addr ? '<div class="customer-address" onclick="openAddressInMaps(\\''+encodeURIComponent(addr)+'\\');event.stopPropagation();" style="cursor:pointer;color:var(--color-link);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" title="Open in Maps">' + esc(addr) + '</div>' : ''}
                 ${c.phone ? '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:var(--color-link);text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
                 ${c.notes ? '<div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
                 <div class="customer-stats">
@@ -853,6 +853,23 @@ function formatAddress(c) {
         parts.push(c.zip);
     }
     return parts.join(', ');
+}
+
+// --- Open Address in Maps ---
+function openAddressInMaps(addrOrEncoded) {
+    let addr = addrOrEncoded;
+    if (!addr) return;
+    // If it looks URL-encoded (from card onclick), decode it
+    if (addr.indexOf('%') !== -1) {
+        try { addr = decodeURIComponent(addr); } catch(e) {}
+    }
+    const encoded = encodeURIComponent(addr);
+    const isApple = /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent);
+    if (isApple) {
+        window.open('https://maps.apple.com/?q=' + encoded, '_blank');
+    } else {
+        window.open('https://www.google.com/maps/search/?api=1&query=' + encoded, '_blank');
+    }
 }
 
 function populateStateFilter(customers) {
@@ -3592,6 +3609,9 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>System State</strong> — Filter by running/idle/paused</li>
 <li style="margin-bottom:4px;"><strong>Sort</strong> — Order by name, city, state, zones, status, or last seen</li>
 </ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Clickable Addresses</h4>
+<p style="margin-bottom:10px;">Property addresses on both the card list and detail view are clickable. <strong>Click an address</strong> to open it in your default maps application (Apple Maps on iOS/Mac, Google Maps on other devices). This makes it easy to get directions to a property.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Property Detail View</h4>
 <p style="margin-bottom:10px;">Click a property card to see its full details including zone controls, sensors, schedule, weather, and run history. Use the <strong>← Back</strong> button to return to the property list.</p>
