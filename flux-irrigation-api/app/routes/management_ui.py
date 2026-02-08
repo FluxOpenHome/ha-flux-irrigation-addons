@@ -1259,6 +1259,7 @@ function backToList() {
     _mgmtMoistureDataCache = null;
     _mgmtWeatherCardBuilt = false;
     _mgmtSensorGridBuilt = false;
+    _mgmtControlsLoadedFor = null;
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
 }
@@ -1321,13 +1322,17 @@ function showMap(lat, lon, label) {
     setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 200);
 }
 
+let _mgmtControlsLoadedFor = null;
 async function loadDetailData(id) {
     loadDetailStatus(id);
     loadDetailWeather(id);
     loadDetailMoisture(id);
     loadDetailZones(id);
     loadDetailSensors(id);
-    loadDetailControls(id);  // Also renders the Schedule card from entities
+    if (_mgmtControlsLoadedFor !== id) {
+        loadDetailControls(id);
+        _mgmtControlsLoadedFor = id;
+    }
     loadDetailHistory(id);
 }
 
@@ -1921,45 +1926,6 @@ async function mgmtSaveMoistureSettings() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
-let _mgmtApplyFactorsBuilt = false;
-async function mgmtLoadApplyFactorsToggle(id) {
-    const container = document.getElementById('mgmtApplyFactorsToggle');
-    if (!container) return;
-    try {
-        const settings = await api('/customers/' + id + '/moisture/settings');
-        const isOn = settings.apply_factors_to_schedule || false;
-
-        // First load — build the full structure once
-        if (!_mgmtApplyFactorsBuilt || !container.querySelector('[data-af="tile"]')) {
-            container.innerHTML = '<div data-af="tile" style="display:flex;align-items:center;justify-content:space-between;' +
-                'padding:12px 16px;border-radius:8px;background:' + (isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
-                '<div><div data-af="label" style="font-size:14px;font-weight:600;color:' + (isOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
-                'Apply Factors to Schedule</div>' +
-                '<div style="font-size:12px;color:var(--text-muted);">Automatically adjust run durations by the combined watering factor</div></div>' +
-                '<button data-af="btn" class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
-                'onclick="mgmtToggleApplyFactors(' + !isOn + ')">' +
-                (isOn ? 'Disable' : 'Enable') + '</button></div>';
-            _mgmtApplyFactorsBuilt = true;
-        }
-
-        // Targeted updates
-        const tile = container.querySelector('[data-af="tile"]');
-        const label = container.querySelector('[data-af="label"]');
-        const btn = container.querySelector('[data-af="btn"]');
-        if (tile) tile.style.background = isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)';
-        if (label) label.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
-        if (btn) {
-            btn.className = 'btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm';
-            btn.textContent = isOn ? 'Disable' : 'Enable';
-            btn.setAttribute('onclick', 'mgmtToggleApplyFactors(' + !isOn + ')');
-        }
-    } catch (e) {
-        if (!_mgmtApplyFactorsBuilt) {
-            container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Unable to load factor settings.</div>';
-        }
-    }
-}
-
 async function mgmtToggleApplyFactors(enable) {
     try {
         const result = await api('/customers/' + currentCustomerId + '/moisture/settings', {
@@ -1968,7 +1934,6 @@ async function mgmtToggleApplyFactors(enable) {
         });
         const isError = result.success === false;
         showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'), isError ? 'error' : undefined);
-        mgmtLoadApplyFactorsToggle(currentCustomerId);
         loadDetailControls(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
@@ -2446,8 +2411,16 @@ function renderScheduleCard(custId, sched, durData) {
             '</div></div>';
     }
 
-    // --- Apply Factors Toggle (inline, right after schedule enable) ---
-    html += '<div id="mgmtApplyFactorsToggle" style="margin-bottom:16px;"></div>';
+    // --- Apply Factors Toggle (rendered inline from durData) ---
+    const afOn = durData && durData.duration_adjustment_active;
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;' +
+        'padding:12px 16px;border-radius:8px;margin-bottom:16px;background:' + (afOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
+        '<div><div style="font-size:14px;font-weight:600;color:' + (afOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
+        'Apply Factors to Schedule</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);">Automatically adjust run durations by the combined watering factor</div></div>' +
+        '<button class="btn ' + (afOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
+        'onclick="mgmtToggleApplyFactors(' + !afOn + ')">' +
+        (afOn ? 'Disable' : 'Enable') + '</button></div>';
 
     // --- Days of Week ---
     if (day_switches.length > 0) {
@@ -2599,7 +2572,6 @@ function renderScheduleCard(custId, sched, durData) {
     }
 
     el.innerHTML = html;
-    mgmtLoadApplyFactorsToggle(custId);
 }
 
 function cleanEntityName(friendlyName, entityId) {
