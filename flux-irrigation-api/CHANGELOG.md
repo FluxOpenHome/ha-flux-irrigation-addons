@@ -8,6 +8,11 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Added
 
+- **Issue Reporting System** — Homeowners can report issues directly from their dashboard with three severity levels (Clarification, Annoyance, Severe Issue) and a description field; management company receives color-coded alerts on property cards and a persistent alert badge in the management header
+- **Management Alert Badge** — Real-time notification badge in the management header showing total active issues across all properties; click to view all issues grouped by customer in a dedicated alerts panel
+- **Browser Notifications** — Configurable push notifications for management when new issues are reported; notification preferences per severity level stored in localStorage
+- **Upcoming Service Banner** — When management schedules a service date, a green banner appears on the homeowner dashboard showing the date and any management notes
+- **Issue Acknowledge & Schedule** — Management can acknowledge issues with a note and optionally schedule a service date; issue status flows through open → acknowledged → scheduled → resolved
 - **Gophr Moisture Probe Integration** — Auto-detect Gophr moisture probes from HA sensors and integrate soil moisture data into irrigation decisions
   - Gradient-based moisture algorithm: mid sensor (root zone) is the primary decision driver, shallow sensor detects rain via wetting front analysis, deep sensor guards against over-irrigation
   - Many-to-many probe-to-zone mapping (a probe can serve multiple zones; a zone can use multiple probes)

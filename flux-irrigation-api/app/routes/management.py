@@ -114,6 +114,7 @@ def _customer_response(customer: customer_store.Customer) -> dict:
         "last_seen_online": customer.last_seen_online,
         "last_status": customer.last_status,
         "zone_aliases": customer.zone_aliases,
+        "issue_summary": customer.issue_summary,
     }
 
 
@@ -970,3 +971,81 @@ def _csv_escape(value: str) -> str:
     if "," in value or '"' in value or "\n" in value:
         return '"' + value.replace('"', '""') + '"'
     return value
+
+
+# --- Issue Proxy Endpoints ---
+
+
+@router.get(
+    "/api/customers/{customer_id}/issues",
+    summary="Get customer issues",
+)
+async def get_customer_issues(customer_id: str):
+    """Get all issues reported by a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/issues"
+    )
+    if status_code != 200:
+        return {"issues": [], "total": 0}
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/issues/active",
+    summary="Get customer active issues",
+)
+async def get_customer_active_issues(customer_id: str):
+    """Get active (non-resolved) issues from a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/issues/active"
+    )
+    if status_code != 200:
+        return {"issues": [], "total": 0}
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/issues/{issue_id}/acknowledge",
+    summary="Acknowledge a customer issue",
+)
+async def acknowledge_customer_issue(customer_id: str, issue_id: str, request: Request):
+    """Management acknowledges an issue, optionally scheduling a service date."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", f"/admin/api/homeowner/issues/{issue_id}/acknowledge",
+        json_body=body,
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        return _proxy_error(status_code, data)
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/issues/{issue_id}/resolve",
+    summary="Resolve a customer issue",
+)
+async def resolve_customer_issue(customer_id: str, issue_id: str, request: Request):
+    """Management marks an issue as resolved."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", f"/admin/api/homeowner/issues/{issue_id}/resolve",
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        return _proxy_error(status_code, data)
+    return data

@@ -39,6 +39,7 @@ class Customer:
     ha_token: str = ""
     connection_mode: str = "direct"  # "direct" or "nabu_casa"
     zone_aliases: dict = field(default_factory=dict)  # entity_id → alias name
+    issue_summary: Optional[dict] = field(default=None)  # cached from health check
 
 
 def load_customers() -> list[Customer]:
@@ -57,6 +58,7 @@ def load_customers() -> list[Customer]:
             c.setdefault("phone", "")
             c.setdefault("first_name", "")
             c.setdefault("last_name", "")
+            c.setdefault("issue_summary", None)
             customers.append(Customer(**c))
         return customers
     except (json.JSONDecodeError, IOError, TypeError):
@@ -237,6 +239,11 @@ def update_customer_status(customer_id: str, status: dict):
                         live_val = sys_status.get(field_name, "")
                         if live_val:  # Only overwrite if homeowner has a value
                             setattr(c, field_name, live_val)
+
+            # Cache issue summary from health check
+            issue_summary = status.get("issue_summary")
+            if issue_summary is not None:
+                c.issue_summary = issue_summary
 
             save_customers(customers)
             return

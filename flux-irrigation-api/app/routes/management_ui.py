@@ -141,6 +141,9 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 .customer-card.offline { border-left-color: #e74c3c; }
 .customer-card.revoked { border-left-color: var(--text-disabled); background: var(--bg-revoked-card); }
 .customer-card.unknown { border-left-color: var(--color-warning); }
+.customer-card.has-severe-issue { border-left-color: #e74c3c !important; }
+.customer-card.has-annoyance-issue { border-left-color: #f39c12 !important; }
+.customer-card.has-clarification-issue { border-left-color: #3498db !important; }
 .customer-card-body { padding: 16px; }
 .customer-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
 .customer-name { font-size: 16px; font-weight: 600; color: var(--text-primary); }
@@ -274,8 +277,9 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     <div class="header-actions">
         <span class="mode-badge">Management Mode</span>
         <button class="btn btn-secondary btn-sm" onclick="switchToHomeowner()">Homeowner</button>
+        <button class="dark-toggle" onclick="showAlertsPanel()" title="Customer Issues" id="alertBadgeBtn" style="position:relative;display:none;">&#9888;&#65039;<span id="alertBadgeCount" style="position:absolute;top:-4px;right:-4px;background:#e74c3c;color:white;font-size:10px;font-weight:700;border-radius:50%;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 4px;"></span></button>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
-        <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
+        <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
     </div>
 </div>
 
@@ -394,6 +398,16 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                     <div id="detailNotesText" style="font-size:14px;color:var(--text-secondary-alt);margin-top:2px;white-space:pre-wrap;"></div>
                 </div>
                 <button class="btn btn-secondary btn-sm" onclick="editDetailNotes()">Edit</button>
+            </div>
+        </div>
+
+        <!-- Issues Card -->
+        <div class="card" id="detailIssuesCard" style="display:none;">
+            <div class="card-header">
+                <h2>&#9888;&#65039; Issues <span id="detailIssuesBadge" style="font-size:12px;padding:2px 8px;border-radius:10px;background:#e74c3c;color:white;margin-left:6px;display:none;"></span></h2>
+            </div>
+            <div class="card-body" id="detailIssuesBody">
+                <div class="loading">Loading issues...</div>
             </div>
         </div>
 
@@ -603,6 +617,64 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     </div>
 </div>
 
+<!-- Alerts Panel Modal -->
+<div id="alertsPanelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:640px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#9888;&#65039; Customer Issues</h3>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button onclick="showNotifPrefs()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;" title="Notification Preferences">&#9881;&#65039;</button>
+                <button onclick="closeAlertsPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+            </div>
+        </div>
+        <div id="alertsPanelContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:14px;color:var(--text-secondary);line-height:1.6;"></div>
+    </div>
+</div>
+
+<!-- Acknowledge Issue Modal -->
+<div id="ackModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10001;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Acknowledge Issue</h3>
+            <button onclick="closeAckModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div style="padding:20px 24px 24px 24px;">
+            <div id="ackIssueDetails" style="margin-bottom:16px;"></div>
+            <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Note to Homeowner (optional)</label>
+            <textarea id="ackNote" maxlength="500" placeholder="Add a note for the homeowner..." style="width:100%;min-height:80px;padding:10px 12px;border-radius:8px;border:1px solid var(--border-light);background:var(--bg-tile);color:var(--text-primary);font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
+            <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin:12px 0 6px 0;">Schedule Service Date (optional)</label>
+            <input type="date" id="ackServiceDate" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border-light);background:var(--bg-tile);color:var(--text-primary);font-size:14px;box-sizing:border-box;">
+            <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+                <button class="btn btn-secondary btn-sm" onclick="closeAckModal()">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="ackSubmitBtn" onclick="submitAcknowledge()">Acknowledge</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Notification Preferences Modal -->
+<div id="notifPrefsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10002;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128276; Notification Preferences</h3>
+            <button onclick="closeNotifPrefs()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div style="padding:20px 24px 24px 24px;">
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Choose which issue severities trigger browser notifications:</p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifSevere" checked><span style="font-weight:600;color:#e74c3c;">Severe Issues</span></label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifAnnoyance" checked><span style="font-weight:600;color:#f39c12;">Annoyances</span></label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifClarification"><span style="font-weight:600;color:#3498db;">Clarifications</span></label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px;justify-content:space-between;align-items:center;">
+                <button class="btn btn-secondary btn-sm" onclick="requestNotifPermission()">Enable Notifications</button>
+                <button class="btn btn-primary btn-sm" onclick="saveNotifPrefs()">Save</button>
+            </div>
+            <div id="notifPermStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
@@ -658,6 +730,8 @@ async function loadCustomers() {
         populateCityFilter(allCustomers);
         document.getElementById('searchBar').style.display = allCustomers.length > 0 ? 'flex' : 'none';
         filterCustomers();
+        updateAlertBadge(allCustomers);
+        checkForNewIssues(allCustomers);
     } catch (e) {
         document.getElementById('customerGrid').innerHTML =
             '<div class="empty-state"><h3>Error loading properties</h3><p>' + e.message + '</p></div>';
@@ -679,11 +753,17 @@ function renderCustomerGrid(customers) {
         const addr = formatAddress(c);
         const contactName = [c.first_name, c.last_name].filter(Boolean).join(' ');
         const zoneInfo = c.zone_count ? '<span class="customer-stat"><strong>' + c.zone_count + '</strong> zones</span>' : '';
+        const issueSummary = c.issue_summary;
+        const issueCount = issueSummary && issueSummary.active_count ? issueSummary.active_count : 0;
+        const issueMaxSev = issueSummary ? issueSummary.max_severity : null;
+        const issueCardClass = issueCount > 0 ? (issueMaxSev === 'severe' ? ' has-severe-issue' : issueMaxSev === 'annoyance' ? ' has-annoyance-issue' : ' has-clarification-issue') : '';
+        const issueBadgeColor = issueMaxSev === 'severe' ? '#e74c3c' : issueMaxSev === 'annoyance' ? '#f39c12' : '#3498db';
+        const issueBadgeHtml = issueCount > 0 ? '<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:8px;font-size:11px;font-weight:700;background:' + issueBadgeColor + '22;color:' + issueBadgeColor + ';">&#9888; ' + issueCount + '</span>' : '';
         return `
-        <div class="customer-card ${status}" onclick="viewCustomer('${c.id}')">
+        <div class="customer-card ${status}${issueCardClass}" onclick="viewCustomer('${c.id}')">
             <div class="customer-card-body">
                 <div class="customer-card-header">
-                    <span class="customer-name">${esc(c.name)}</span>
+                    <span class="customer-name">${esc(c.name)}${issueBadgeHtml}</span>
                     <span class="customer-status">
                         <span class="status-dot ${status}"></span>
                         ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:var(--text-disabled);">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
@@ -1300,6 +1380,8 @@ function backToList() {
     window._rainControls = [];
     window._expansionSensors = [];
     window._expansionControls = [];
+    // Hide issue card for next customer
+    document.getElementById('detailIssuesCard').style.display = 'none';
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
 }
@@ -1374,6 +1456,7 @@ async function loadDetailData(id) {
         _mgmtControlsLoadedFor = id;
     }
     loadDetailHistory(id);
+    loadDetailIssues(id);
 }
 
 // --- Detail: Weather ---
@@ -3056,6 +3139,290 @@ async function switchToHomeowner() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+// --- Issue Management ---
+const SEV_COLORS = {severe: '#e74c3c', annoyance: '#f39c12', clarification: '#3498db'};
+const SEV_LABELS = {severe: 'Severe Issue', annoyance: 'Annoyance', clarification: 'Clarification'};
+const ISSUE_STATUS_LABELS = {open: 'Open', acknowledged: 'Acknowledged', scheduled: 'Service Scheduled', resolved: 'Resolved'};
+let _ackCustId = null, _ackIssueId = null;
+
+function updateAlertBadge(customers) {
+    let totalActive = 0;
+    let maxSev = null;
+    const sevOrder = {severe: 3, annoyance: 2, clarification: 1};
+    customers.forEach(function(c) {
+        if (c.issue_summary && c.issue_summary.active_count > 0) {
+            totalActive += c.issue_summary.active_count;
+            if (!maxSev || (sevOrder[c.issue_summary.max_severity] || 0) > (sevOrder[maxSev] || 0)) {
+                maxSev = c.issue_summary.max_severity;
+            }
+        }
+    });
+    const btn = document.getElementById('alertBadgeBtn');
+    const count = document.getElementById('alertBadgeCount');
+    if (totalActive > 0) {
+        btn.style.display = 'inline-flex';
+        count.textContent = totalActive;
+        count.style.background = SEV_COLORS[maxSev] || '#e74c3c';
+    } else {
+        btn.style.display = 'none';
+    }
+}
+
+function showAlertsPanel() {
+    loadAlertsPanel();
+    document.getElementById('alertsPanelModal').style.display = 'flex';
+}
+function closeAlertsPanel() {
+    document.getElementById('alertsPanelModal').style.display = 'none';
+}
+
+function loadAlertsPanel() {
+    const el = document.getElementById('alertsPanelContent');
+    const customersWithIssues = allCustomers.filter(function(c) {
+        return c.issue_summary && c.issue_summary.active_count > 0;
+    });
+    if (customersWithIssues.length === 0) {
+        el.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">No active issues across any properties.</div>';
+        return;
+    }
+    let html = '';
+    customersWithIssues.forEach(function(c) {
+        const issues = c.issue_summary.issues || [];
+        html += '<div style="margin-bottom:20px;">';
+        html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:8px;cursor:pointer;text-decoration:underline;" onclick="closeAlertsPanel();viewCustomer(\\'' + c.id + '\\')">' + esc(c.name) + '</div>';
+        issues.forEach(function(issue) {
+            const color = SEV_COLORS[issue.severity] || '#999';
+            const dt = new Date(issue.created_at);
+            const now = new Date();
+            const diffMs = now - dt;
+            const diffH = Math.floor(diffMs / 3600000);
+            const timeAgo = diffH < 1 ? 'Just now' : diffH < 24 ? diffH + 'h ago' : Math.floor(diffH / 24) + 'd ago';
+            html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);">';
+            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:' + color + '22;color:' + color + ';white-space:nowrap;">' + esc(SEV_LABELS[issue.severity] || issue.severity) + '</span>';
+            html += '<div style="flex:1;min-width:0;">';
+            html += '<div style="font-size:13px;color:var(--text-primary);word-break:break-word;">' + esc(issue.description) + '</div>';
+            html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + esc(timeAgo) + ' &middot; ' + esc(ISSUE_STATUS_LABELS[issue.status] || issue.status) + '</div>';
+            html += '</div>';
+            html += '<div style="display:flex;gap:4px;flex-shrink:0;">';
+            if (issue.status === 'open') {
+                html += '<button class="btn btn-primary btn-sm" onclick="openAckModal(\\'' + c.id + '\\', \\'' + issue.id + '\\')">Acknowledge</button>';
+            }
+            if (issue.status !== 'resolved') {
+                html += '<button class="btn btn-secondary btn-sm" onclick="resolveIssueFromPanel(\\'' + c.id + '\\', \\'' + issue.id + '\\')">Resolve</button>';
+            }
+            html += '</div></div>';
+        });
+        html += '</div>';
+    });
+    el.innerHTML = html;
+}
+
+// --- Detail View Issues ---
+async function loadDetailIssues(custId) {
+    const card = document.getElementById('detailIssuesCard');
+    const body = document.getElementById('detailIssuesBody');
+    const badge = document.getElementById('detailIssuesBadge');
+    try {
+        const data = await api('/customers/' + custId + '/issues/active');
+        const issues = data.issues || [];
+        if (issues.length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+        card.style.display = 'block';
+        badge.textContent = issues.length;
+        badge.style.display = 'inline';
+        let html = '';
+        issues.forEach(function(issue) {
+            const color = SEV_COLORS[issue.severity] || '#999';
+            const dt = new Date(issue.created_at);
+            const timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+            html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);">';
+            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:' + color + '22;color:' + color + ';white-space:nowrap;">' + esc(SEV_LABELS[issue.severity] || issue.severity) + '</span>';
+            html += '<div style="flex:1;min-width:0;">';
+            html += '<div style="font-size:13px;color:var(--text-primary);word-break:break-word;">' + esc(issue.description) + '</div>';
+            html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + esc(timeStr) + ' &middot; ' + esc(ISSUE_STATUS_LABELS[issue.status] || issue.status) + '</div>';
+            if (issue.management_note) {
+                html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;padding:4px 8px;background:var(--bg-tile);border-radius:4px;">&#128172; ' + esc(issue.management_note) + '</div>';
+            }
+            if (issue.service_date) {
+                html += '<div style="font-size:12px;color:var(--color-success);margin-top:2px;">&#128197; Service: ' + esc(issue.service_date) + '</div>';
+            }
+            html += '</div>';
+            html += '<div style="display:flex;gap:4px;flex-shrink:0;">';
+            if (issue.status === 'open') {
+                html += '<button class="btn btn-primary btn-sm" onclick="openAckModal(\\'' + custId + '\\', \\'' + issue.id + '\\')">Acknowledge</button>';
+            } else if (issue.status === 'acknowledged' || issue.status === 'scheduled') {
+                html += '<button class="btn btn-secondary btn-sm" onclick="openAckModal(\\'' + custId + '\\', \\'' + issue.id + '\\')">Update</button>';
+            }
+            if (issue.status !== 'resolved') {
+                html += '<button class="btn btn-secondary btn-sm" onclick="resolveIssue(\\'' + custId + '\\', \\'' + issue.id + '\\')">Resolve</button>';
+            }
+            html += '</div></div>';
+        });
+        body.innerHTML = html;
+    } catch (e) {
+        card.style.display = 'none';
+    }
+}
+
+// --- Acknowledge Modal ---
+function openAckModal(custId, issueId) {
+    _ackCustId = custId;
+    _ackIssueId = issueId;
+    document.getElementById('ackNote').value = '';
+    document.getElementById('ackServiceDate').value = '';
+    // Set min date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('ackServiceDate').min = today;
+    // Show issue details
+    const cust = allCustomers.find(function(c) { return c.id === custId; });
+    let issueDetail = '';
+    if (cust && cust.issue_summary && cust.issue_summary.issues) {
+        const issue = cust.issue_summary.issues.find(function(i) { return i.id === issueId; });
+        if (issue) {
+            const color = SEV_COLORS[issue.severity] || '#999';
+            issueDetail = '<div style="padding:10px;border-radius:8px;background:var(--bg-tile);margin-bottom:12px;">';
+            issueDetail += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:' + color + '22;color:' + color + ';">' + esc(SEV_LABELS[issue.severity] || issue.severity) + '</span>';
+            issueDetail += '<div style="font-size:13px;color:var(--text-primary);margin-top:6px;">' + esc(issue.description) + '</div>';
+            issueDetail += '</div>';
+        }
+    }
+    document.getElementById('ackIssueDetails').innerHTML = issueDetail;
+    document.getElementById('ackModal').style.display = 'flex';
+}
+function closeAckModal() {
+    document.getElementById('ackModal').style.display = 'none';
+    _ackCustId = null;
+    _ackIssueId = null;
+}
+
+async function submitAcknowledge() {
+    if (!_ackCustId || !_ackIssueId) return;
+    const btn = document.getElementById('ackSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+        const body = {};
+        const note = document.getElementById('ackNote').value.trim();
+        const serviceDate = document.getElementById('ackServiceDate').value;
+        if (note) body.note = note;
+        if (serviceDate) body.service_date = serviceDate;
+        await api('/customers/' + _ackCustId + '/issues/' + _ackIssueId + '/acknowledge', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        showToast('Issue acknowledged');
+        closeAckModal();
+        if (currentCustomerId) loadDetailIssues(currentCustomerId);
+        loadCustomers();
+    } catch (e) {
+        showToast(e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Acknowledge';
+    }
+}
+
+async function resolveIssue(custId, issueId) {
+    if (!confirm('Mark this issue as resolved?')) return;
+    try {
+        await api('/customers/' + custId + '/issues/' + issueId + '/resolve', {
+            method: 'PUT',
+        });
+        showToast('Issue resolved');
+        if (currentCustomerId) loadDetailIssues(currentCustomerId);
+        loadCustomers();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function resolveIssueFromPanel(custId, issueId) {
+    if (!confirm('Mark this issue as resolved?')) return;
+    try {
+        await api('/customers/' + custId + '/issues/' + issueId + '/resolve', {
+            method: 'PUT',
+        });
+        showToast('Issue resolved');
+        loadCustomers();
+        loadAlertsPanel();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+// --- Browser Notifications ---
+function checkForNewIssues(customers) {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted') return;
+    const prefs = JSON.parse(localStorage.getItem('flux_notification_prefs') || '{"severe":true,"annoyance":true,"clarification":false}');
+    const lastKnown = JSON.parse(localStorage.getItem('flux_last_known_issues') || '{}');
+    const newKnown = {};
+    customers.forEach(function(c) {
+        const summary = c.issue_summary;
+        const currentIds = (summary && summary.issues) ? summary.issues.map(function(i) { return i.id; }) : [];
+        newKnown[c.id] = {count: currentIds.length, ids: currentIds};
+        const prev = lastKnown[c.id];
+        if (!prev) return;  // First load — don't spam notifications
+        const prevIds = prev.ids || [];
+        if (summary && summary.issues) {
+            summary.issues.forEach(function(issue) {
+                if (prevIds.indexOf(issue.id) === -1 && prefs[issue.severity]) {
+                    try {
+                        new Notification('New Issue: ' + esc(c.name), {
+                            body: (SEV_LABELS[issue.severity] || issue.severity) + ': ' + (issue.description || '').substring(0, 100),
+                            icon: '&#9888;',
+                            tag: 'flux-issue-' + issue.id,
+                        });
+                    } catch (e) { /* notification failed */ }
+                }
+            });
+        }
+    });
+    localStorage.setItem('flux_last_known_issues', JSON.stringify(newKnown));
+}
+
+// --- Notification Preferences ---
+function showNotifPrefs() {
+    const prefs = JSON.parse(localStorage.getItem('flux_notification_prefs') || '{"severe":true,"annoyance":true,"clarification":false}');
+    document.getElementById('notifSevere').checked = !!prefs.severe;
+    document.getElementById('notifAnnoyance').checked = !!prefs.annoyance;
+    document.getElementById('notifClarification').checked = !!prefs.clarification;
+    const statusEl = document.getElementById('notifPermStatus');
+    if (typeof Notification !== 'undefined') {
+        statusEl.textContent = 'Browser notification permission: ' + Notification.permission;
+    } else {
+        statusEl.textContent = 'Browser notifications not supported';
+    }
+    document.getElementById('notifPrefsModal').style.display = 'flex';
+}
+function closeNotifPrefs() {
+    document.getElementById('notifPrefsModal').style.display = 'none';
+}
+function saveNotifPrefs() {
+    const prefs = {
+        severe: document.getElementById('notifSevere').checked,
+        annoyance: document.getElementById('notifAnnoyance').checked,
+        clarification: document.getElementById('notifClarification').checked,
+    };
+    localStorage.setItem('flux_notification_prefs', JSON.stringify(prefs));
+    showToast('Notification preferences saved');
+    closeNotifPrefs();
+}
+function requestNotifPermission() {
+    if (typeof Notification === 'undefined') {
+        showToast('Browser notifications not supported', 'error');
+        return;
+    }
+    Notification.requestPermission().then(function(perm) {
+        document.getElementById('notifPermStatus').textContent = 'Browser notification permission: ' + perm;
+        if (perm === 'granted') showToast('Notifications enabled');
+        else showToast('Notification permission ' + perm, 'error');
+    });
+}
+
 // --- Help Modal ---
 const HELP_CONTENT = `
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 8px 0;">Dashboard Overview</h4>
@@ -3180,6 +3547,17 @@ const HELP_CONTENT = `
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Configuration Change Log</h4>
 <p style="margin-bottom:10px;">Click the <strong>Log</strong> button in the property detail view to see all configuration changes made to that customer's system. Every entry shows the exact property changed with old and new values (e.g., &quot;Humidity Threshold (%): 80 -&gt; 90&quot;, &quot;Phone: (empty) -&gt; 555-1234&quot;). The log tracks who made each change (Homeowner or Management), when, and what category. Changes you make through this dashboard are automatically attributed to &quot;Management.&quot; Export to CSV for record-keeping. Up to 1,000 entries are stored per property.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Issue Reporting &amp; Alerts</h4>
+<p style="margin-bottom:10px;">Homeowners can report issues directly from their dashboard. Issues appear in two places:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Alert Badge</strong> — The &#9888;&#65039; button in the header shows a count of all active issues across properties. Click it to see all issues in one panel.</li><li style="margin-bottom:4px;"><strong>Property Cards</strong> — Cards with active issues show a colored badge and border indicating the highest severity: <span style="color:#e74c3c;font-weight:600;">Red</span> = Severe, <span style="color:#f39c12;font-weight:600;">Amber</span> = Annoyance, <span style="color:#3498db;font-weight:600;">Blue</span> = Clarification.</li><li style="margin-bottom:4px;"><strong>Detail View</strong> — When viewing a property, the Issues card shows all active issues with full details and action buttons.</li></ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Acknowledging &amp; Scheduling Service</h4>
+<p style="margin-bottom:10px;">For each issue, you can:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Acknowledge</strong> — Let the homeowner know you have seen their issue. You can add a note and optionally schedule a service date.</li><li style="margin-bottom:4px;"><strong>Schedule Service</strong> — Pick a date and the homeowner will see an &quot;Upcoming Service&quot; banner on their dashboard.</li><li style="margin-bottom:4px;"><strong>Resolve</strong> — Mark the issue as complete. It is removed from active lists but remains in the system history.</li></ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Browser Notifications</h4>
+<p style="margin-bottom:10px;">Click the &#9881;&#65039; gear icon in the alerts panel to configure browser notifications. You can choose which severity levels trigger notifications. Browser notification permission must be granted via the &quot;Enable Notifications&quot; button. Notifications fire when new issues are detected during the 60-second auto-refresh.</p>
 `;
 
 // --- Change Log ---
@@ -3262,7 +3640,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close modals on backdrop click or Escape
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-            if (document.getElementById('qrScanModal').style.display === 'flex') closeQRScanner();
+            if (document.getElementById('notifPrefsModal').style.display === 'flex') closeNotifPrefs();
+            else if (document.getElementById('ackModal').style.display === 'flex') closeAckModal();
+            else if (document.getElementById('alertsPanelModal').style.display === 'flex') closeAlertsPanel();
+            else if (document.getElementById('qrScanModal').style.display === 'flex') closeQRScanner();
             else if (document.getElementById('mgmtChangelogModal').style.display === 'flex') mgmtCloseChangelogModal();
             else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
             else if (document.getElementById('keyModal').style.display === 'flex') closeKeyModal();
@@ -3277,6 +3658,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('qrScanModal').addEventListener('click', function(e) {
         if (e.target === this) closeQRScanner();
+    });
+    document.getElementById('alertsPanelModal').addEventListener('click', function(e) {
+        if (e.target === this) closeAlertsPanel();
+    });
+    document.getElementById('ackModal').addEventListener('click', function(e) {
+        if (e.target === this) closeAckModal();
+    });
+    document.getElementById('notifPrefsModal').addEventListener('click', function(e) {
+        if (e.target === this) closeNotifPrefs();
     });
 });
 </script>

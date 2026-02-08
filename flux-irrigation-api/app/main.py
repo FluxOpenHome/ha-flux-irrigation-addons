@@ -22,7 +22,7 @@ import os
 
 from config import get_config, async_initialize
 from audit_log import cleanup_old_logs
-from routes import zones, sensors, entities, history, system, admin, management, homeowner, weather, moisture
+from routes import zones, sensors, entities, history, system, admin, management, homeowner, weather, moisture, issues
 
 
 PROXY_SERVICE_NAMES = [
@@ -322,6 +322,19 @@ async def _periodic_customer_health_check():
                             mode=customer.connection_mode or "direct",
                         )
                         result = await check_homeowner_connection(conn)
+
+                        # Also fetch issue summary if customer is reachable
+                        if result.get("reachable") and result.get("authenticated"):
+                            try:
+                                import management_client
+                                issue_status, issue_data = await management_client.proxy_request(
+                                    conn, "GET", "/admin/api/homeowner/issues/summary"
+                                )
+                                if issue_status == 200:
+                                    result["issue_summary"] = issue_data
+                            except Exception:
+                                pass  # Don't fail health check over issue polling
+
                         update_customer_status(customer.id, result)
                     except Exception as e:
                         print(f"[MAIN] Health check failed for {customer.name}: {e}")
@@ -480,6 +493,7 @@ app.include_router(management.router)
 app.include_router(homeowner.router)
 app.include_router(weather.router)
 app.include_router(moisture.router)
+app.include_router(issues.router)
 
 
 @app.get("/", include_in_schema=False)

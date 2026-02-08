@@ -208,7 +208,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         </div>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log">📋</button>
-        <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
+        <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
+        <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue">&#9888;&#65039;</button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -225,6 +226,20 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <button class="btn btn-danger btn-sm" onclick="stopAllZones()">Emergency Stop All</button>
         </div>
     </div>
+
+    <!-- Upcoming Service Banner -->
+    <div id="upcomingServiceBanner" style="display:none;background:linear-gradient(135deg,#1abc9c,#16a085);color:white;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:20px;">&#128295;</span>
+            <div>
+                <div style="font-weight:600;font-size:15px;" id="upcomingServiceDate"></div>
+                <div style="font-size:13px;opacity:0.9;margin-top:2px;" id="upcomingServiceNote"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Issues Summary -->
+    <div id="activeIssuesBanner" style="display:none;margin-bottom:16px;"></div>
 
     <!-- Location Map -->
     <div id="detailMap" style="height:200px;border-radius:12px;margin-bottom:20px;display:none;overflow:hidden;"></div>
@@ -378,6 +393,31 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     </div>
 </div>
 
+<!-- Report Issue Modal -->
+<div id="reportIssueModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:500px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#9888;&#65039; Report an Issue</h3>
+            <button onclick="closeReportIssue()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div style="padding:20px 24px 24px 24px;">
+            <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:8px;">Severity</label>
+            <div style="display:flex;gap:8px;margin-bottom:16px;" id="severityBtns">
+                <button type="button" class="severity-btn" data-sev="clarification" onclick="selectSeverity(\'clarification\')" style="flex:1;padding:10px 8px;border-radius:8px;border:2px solid #3498db;cursor:pointer;font-size:13px;font-weight:600;background:var(--bg-tile);color:#3498db;transition:all 0.15s ease;">Clarification</button>
+                <button type="button" class="severity-btn" data-sev="annoyance" onclick="selectSeverity(\'annoyance\')" style="flex:1;padding:10px 8px;border-radius:8px;border:2px solid #f39c12;cursor:pointer;font-size:13px;font-weight:600;background:var(--bg-tile);color:#f39c12;transition:all 0.15s ease;">Annoyance</button>
+                <button type="button" class="severity-btn" data-sev="severe" onclick="selectSeverity(\'severe\')" style="flex:1;padding:10px 8px;border-radius:8px;border:2px solid #e74c3c;cursor:pointer;font-size:13px;font-weight:600;background:var(--bg-tile);color:#e74c3c;transition:all 0.15s ease;">Severe Issue</button>
+            </div>
+            <label style="font-size:13px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:8px;">Describe the Issue</label>
+            <textarea id="issueDescription" maxlength="1000" placeholder="Please describe the issue you are experiencing..." style="width:100%;min-height:100px;padding:10px 12px;border-radius:8px;border:1px solid var(--border-light);background:var(--bg-tile);color:var(--text-primary);font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
+            <div style="text-align:right;font-size:11px;color:var(--text-muted);margin-top:4px;"><span id="issueCharCount">0</span>/1000</div>
+            <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+                <button class="btn btn-secondary btn-sm" onclick="closeReportIssue()">Cancel</button>
+                <button class="btn btn-danger btn-sm" id="submitIssueBtn" onclick="submitIssue()">Submit Issue</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
@@ -395,6 +435,146 @@ function showToast(msg, type = 'success') {
     toast.textContent = msg;
     container.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
+}
+
+// --- Report Issue ---
+let selectedSeverity = null;
+const ISSUE_BASE = HBASE.replace('/api/homeowner', '/api/homeowner/issues');
+
+function showReportIssue() {
+    selectedSeverity = null;
+    document.getElementById('issueDescription').value = '';
+    document.getElementById('issueCharCount').textContent = '0';
+    document.querySelectorAll('#severityBtns .severity-btn').forEach(function(b) {
+        b.style.background = 'var(--bg-tile)';
+        const sev = b.getAttribute('data-sev');
+        b.style.color = sev === 'clarification' ? '#3498db' : sev === 'annoyance' ? '#f39c12' : '#e74c3c';
+    });
+    document.getElementById('reportIssueModal').style.display = 'flex';
+}
+
+function closeReportIssue() {
+    document.getElementById('reportIssueModal').style.display = 'none';
+}
+
+function selectSeverity(sev) {
+    selectedSeverity = sev;
+    const colors = {clarification: '#3498db', annoyance: '#f39c12', severe: '#e74c3c'};
+    document.querySelectorAll('#severityBtns .severity-btn').forEach(function(b) {
+        const bSev = b.getAttribute('data-sev');
+        if (bSev === sev) {
+            b.style.background = colors[sev];
+            b.style.color = 'white';
+        } else {
+            b.style.background = 'var(--bg-tile)';
+            b.style.color = colors[bSev];
+        }
+    });
+}
+
+document.getElementById('issueDescription').addEventListener('input', function() {
+    document.getElementById('issueCharCount').textContent = this.value.length;
+});
+
+async function submitIssue() {
+    if (!selectedSeverity) { showToast('Please select a severity level', 'error'); return; }
+    const desc = document.getElementById('issueDescription').value.trim();
+    if (!desc) { showToast('Please describe the issue', 'error'); return; }
+    if (desc.length > 1000) { showToast('Description must be under 1000 characters', 'error'); return; }
+    const btn = document.getElementById('submitIssueBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    try {
+        const resp = await fetch(ISSUE_BASE + '/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({severity: selectedSeverity, description: desc}),
+        });
+        if (!resp.ok) throw new Error('Failed to submit issue');
+        showToast('Issue reported successfully');
+        closeReportIssue();
+        loadActiveIssues();
+    } catch (e) {
+        showToast(e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Submit Issue';
+    }
+}
+
+// Escape + backdrop for report issue modal
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('reportIssueModal').style.display === 'flex') {
+        closeReportIssue();
+    }
+});
+document.getElementById('reportIssueModal').addEventListener('click', function(e) {
+    if (e.target === this) closeReportIssue();
+});
+
+// --- Active Issues & Upcoming Service ---
+async function loadActiveIssues() {
+    try {
+        const resp = await fetch(ISSUE_BASE + '/active');
+        if (!resp.ok) { hideIssueBanners(); return; }
+        const data = await resp.json();
+        const issues = data.issues || [];
+        renderUpcomingService(issues);
+        renderActiveIssuesBanner(issues);
+    } catch (e) {
+        hideIssueBanners();
+    }
+}
+
+function hideIssueBanners() {
+    document.getElementById('upcomingServiceBanner').style.display = 'none';
+    document.getElementById('activeIssuesBanner').style.display = 'none';
+}
+
+function renderUpcomingService(issues) {
+    const banner = document.getElementById('upcomingServiceBanner');
+    const scheduled = issues.filter(function(i) { return i.service_date; });
+    if (scheduled.length === 0) { banner.style.display = 'none'; return; }
+    scheduled.sort(function(a, b) { return a.service_date.localeCompare(b.service_date); });
+    const next = scheduled[0];
+    const dt = new Date(next.service_date + 'T12:00:00');
+    const dateStr = dt.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
+    document.getElementById('upcomingServiceDate').textContent = 'Upcoming Service: ' + dateStr;
+    const noteEl = document.getElementById('upcomingServiceNote');
+    if (next.management_note) {
+        noteEl.textContent = next.management_note;
+        noteEl.style.display = 'block';
+    } else {
+        noteEl.style.display = 'none';
+    }
+    banner.style.display = 'block';
+}
+
+function renderActiveIssuesBanner(issues) {
+    const container = document.getElementById('activeIssuesBanner');
+    if (issues.length === 0) { container.style.display = 'none'; return; }
+    const sevColors = {severe: '#e74c3c', annoyance: '#f39c12', clarification: '#3498db'};
+    const sevLabels = {severe: 'Severe Issue', annoyance: 'Annoyance', clarification: 'Clarification'};
+    const statusLabels = {open: 'Submitted', acknowledged: 'Acknowledged', scheduled: 'Service Scheduled'};
+    let html = '<div style="background:var(--bg-card);border-radius:12px;padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">';
+    html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">Your Reported Issues</div>';
+    issues.forEach(function(issue) {
+        const color = sevColors[issue.severity] || '#999';
+        const dt = new Date(issue.created_at);
+        const timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);">';
+        html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:' + color + '22;color:' + color + ';white-space:nowrap;">' + esc(sevLabels[issue.severity] || issue.severity) + '</span>';
+        html += '<div style="flex:1;min-width:0;">';
+        html += '<div style="font-size:13px;color:var(--text-primary);word-break:break-word;">' + esc(issue.description) + '</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + esc(timeStr) + ' &middot; ' + esc(statusLabels[issue.status] || issue.status) + '</div>';
+        if (issue.management_note) {
+            html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;padding:4px 8px;background:var(--bg-tile);border-radius:4px;">&#128172; ' + esc(issue.management_note) + '</div>';
+        }
+        html += '</div></div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    container.style.display = 'block';
 }
 
 // --- Mode Switch ---
@@ -633,6 +813,7 @@ async function loadDashboard() {
     loadSensors();
     if (!_initialLoadDone) { loadControls(); _initialLoadDone = true; }
     loadHistory();
+    loadActiveIssues();
 }
 
 async function refreshDashboard() {
@@ -2477,6 +2658,15 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">Click the <strong>&#128203; Log</strong> button in the header to view a log of all configuration changes. Every change records:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Time</strong> — When the change was made (shown in your local timezone)</li><li style="margin-bottom:4px;"><strong>Who</strong> — Whether the change was made by the Homeowner (blue badge) or Management company (green badge)</li><li style="margin-bottom:4px;"><strong>Category</strong> — What type of setting was changed (Schedule, Weather Rules, Moisture Probes, System, Zone Control, Device Config, Connection Key, etc.)</li><li style="margin-bottom:4px;"><strong>Change</strong> — A detailed description of what was changed, showing old and new values (e.g., &quot;Humidity Threshold (%): 80 -&gt; 90&quot;, &quot;Zone alias Zone 1: Front Yard -&gt; Front Garden&quot;)</li></ul>
 <p style="margin-bottom:10px;">The system stores up to 1,000 entries. When the limit is reached, the oldest entries are automatically overwritten. Records cannot be deleted. Click <strong>Export CSV</strong> to download the full log as a spreadsheet.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Report an Issue</h4>
+<p style="margin-bottom:10px;">Click the <strong>&#9888;&#65039; Warning</strong> button in the header to report an issue to your management company. You can:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Select Severity</strong> — Choose from three levels: <span style="color:#3498db;font-weight:600;">Clarification</span> (question or minor request), <span style="color:#f39c12;font-weight:600;">Annoyance</span> (something bothering you), or <span style="color:#e74c3c;font-weight:600;">Severe Issue</span> (urgent problem needing immediate attention)</li><li style="margin-bottom:4px;"><strong>Describe the Issue</strong> — Provide details about what you are experiencing (up to 1,000 characters)</li></ul>
+<p style="margin-bottom:10px;">After submitting, your issue appears in the <strong>Your Reported Issues</strong> section below the dashboard title. You can track the status of each issue:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Submitted</strong> — Your issue has been sent to management</li><li style="margin-bottom:4px;"><strong>Acknowledged</strong> — Management has reviewed your issue</li><li style="margin-bottom:4px;"><strong>Service Scheduled</strong> — A service date has been set</li></ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Upcoming Service</h4>
+<p style="margin-bottom:10px;">When your management company schedules a service visit, a green <strong>Upcoming Service</strong> banner appears at the top of your dashboard showing the scheduled date. If management included a note, it appears below the date.</p>
 `;
 
 // --- Change Log ---
