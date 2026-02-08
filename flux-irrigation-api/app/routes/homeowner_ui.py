@@ -186,6 +186,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     .start-times-grid { grid-template-columns: 1fr; }
     .system-controls-row { flex-direction: column; }
     .dark-toggle { font-size: 14px; padding: 3px 6px; }
+    .zone-settings-table { table-layout: fixed; }
+    .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
+    .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
+    .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
 }
 </style>
 </head>

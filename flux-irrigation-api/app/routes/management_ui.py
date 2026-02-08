@@ -249,7 +249,17 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     .system-controls-row { flex-direction: column; }
     .detail-header { flex-direction: column; gap: 8px; align-items: flex-start; }
     .customer-card-body { padding: 12px; }
-    .customer-actions { flex-wrap: wrap; }
+    .customer-card-body { padding: 10px; }
+    .customer-card-header { margin-bottom: 4px; }
+    .customer-name { font-size: 14px; }
+    .customer-address { margin-bottom: 2px; font-size: 11px; }
+    .customer-stats { margin-top: 4px; gap: 10px; font-size: 12px; }
+    .customer-actions { flex-wrap: wrap; gap: 4px; margin-top: 6px; padding-top: 6px; }
+    .customer-grid { gap: 10px; }
+    .zone-settings-table { table-layout: fixed; }
+    .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
+    .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
+    .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
 }
 </style>
 </head>
