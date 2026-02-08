@@ -189,7 +189,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Run history** — JSONL-based local storage of zone run events with weather conditions captured at run time; CSV export
 - **Zone aliases** — Give zones friendly display names on the dashboard
 - **Location map** — Leaflet map on the dashboard shows property location with re-center button
-- **Gophr Moisture Probes** — Select Gophr devices from a filtered device picker and map sensors to irrigation zones (many-to-many); moisture multiplier adjusts both API timed runs and ESPHome scheduled durations; combined weather × moisture multiplier; capture/apply/restore base durations for ESPHome schedule integration
+- **Gophr Moisture Probes** — Select Gophr devices from a filtered device picker and map sensors to irrigation zones (many-to-many); moisture multiplier adjusts both API timed runs and ESPHome scheduled durations; combined weather × moisture multiplier; Gophr logo displayed on all dashboard Moisture Probes card headers with dark/light mode support
 - **System pause/resume** — Emergency pause that stops all active zones and suspends ESPHome schedule programs
 - **Dark mode** — Toggle between light and dark themes; preference is saved per-device and applied instantly
 - **In-app help** — ❓ button on every page opens a scrollable help modal explaining all features and controls for that screen
@@ -202,6 +202,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Customer search and filtering** — Search properties by name, contact, address, phone, or notes; filter by status (online, offline, revoked) and by state or city
 - **Customer notes** — Add and edit notes on property cards
 - **Live contact sync** — Homeowner name, phone, and address are synced automatically on every health check, even if added after the connection key was generated
+- **Customer local time** — Property detail view shows the customer's local time and timezone abbreviation (e.g., "2:30 PM EST"), derived from the customer's state address
 - **Remote zone control** — Start, stop, and emergency-stop zones on any connected property
 - **Remote weather management** — View and configure weather rules on customer systems
 - **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data, and manage duration adjustments on customer systems
@@ -220,6 +221,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Rate limiting** — Configurable request limits to protect the homeowner's HA instance
 - **Entity auto-refresh** — Background task runs every 5 minutes to detect newly enabled or disabled entities in Home Assistant without requiring an add-on restart
 - **Moisture probe integration** — Gophr probes are added via a device picker (filtered for moisture/probe devices); weighted three-depth algorithm produces a moisture multiplier that combines with the weather multiplier for precise watering control; crash recovery restores base durations on add-on restart
+- **Configuration change log** — Every configuration change is logged with old → new values, who made the change, when, and what category; rolling 1000-entry buffer with CSV export; available on all dashboards
 - **Weather event logging** — All weather rule evaluations and actions are logged with CSV export and clearing from both dashboards
 - **Dark mode** — All pages (homeowner dashboard, configuration, management dashboard) support dark mode with a 🌙/☀️ toggle; preferences are saved per-device in localStorage
 - **In-app help** — Every page has a ❓ help button that opens a scrollable modal with page-specific documentation covering all features and controls

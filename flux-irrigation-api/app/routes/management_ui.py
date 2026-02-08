@@ -2900,8 +2900,11 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;">Your notes and zone aliases are preserved when updating a key</li>
 </ul>
 
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Customer Local Time</h4>
+<p style="margin-bottom:10px;">The property detail view header shows the customer's local time in 12-hour format with timezone abbreviation (e.g., &quot;2:30 PM EST&quot;). The timezone is derived from the customer's state address field. This helps you know what time it is at the property when making schedule changes or troubleshooting.</p>
+
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Configuration Change Log</h4>
-<p style="margin-bottom:10px;">Click the <strong>Log</strong> button in the property detail view to see all configuration changes made to that customer's system. The log tracks who made each change (Homeowner or Management), when, and what was changed. Changes you make through this dashboard are automatically attributed to "Management." Export to CSV for record-keeping. Up to 1,000 entries are stored per property.</p>
+<p style="margin-bottom:10px;">Click the <strong>Log</strong> button in the property detail view to see all configuration changes made to that customer's system. Every entry shows the exact property changed with old and new values (e.g., &quot;Humidity Threshold (%): 80 -&gt; 90&quot;, &quot;Phone: (empty) -&gt; 555-1234&quot;). The log tracks who made each change (Homeowner or Management), when, and what category. Changes you make through this dashboard are automatically attributed to &quot;Management.&quot; Export to CSV for record-keeping. Up to 1,000 entries are stored per property.</p>
 `;
 
 // --- Change Log ---

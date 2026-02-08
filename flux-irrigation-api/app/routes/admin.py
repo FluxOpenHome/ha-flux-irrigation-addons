@@ -2629,7 +2629,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <li style="margin-bottom:4px;"><strong>Email</strong> — Opens your email client with the key pre-filled</li>
 <li style="margin-bottom:4px;"><strong>QR Code</strong> — Generate a scannable QR code. Your management company can scan this directly from their dashboard using the 📷 Scan QR Code button when adding a property.</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The connection key grants access to all your devices — irrigation zones, Gophr moisture probes, weather settings, schedules, and sensors. If you regenerate a key, the old one stops working immediately.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The connection key grants access to all your devices — irrigation zones, Gophr moisture probes, weather settings, schedules, and sensors. If you regenerate a key, the old one stops working immediately. Any changes to your contact info (name, phone, address) are recorded in the configuration change log with old and new values.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Settings</h4>
 <p style="margin-bottom:10px;">Enable weather-aware irrigation by connecting a Home Assistant weather entity. When enabled, weather data is used for smart watering adjustments on the Homeowner Dashboard.</p>
