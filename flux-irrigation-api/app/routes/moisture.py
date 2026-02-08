@@ -867,25 +867,30 @@ async def apply_adjusted_durations() -> dict:
     adjusted = {}
     applied_count = 0
 
-    # Build a mapping: zone_entity_id → run_duration_entity_id
+    # Build reverse mapping: duration_entity_id → zone_entity_id (for moisture lookup)
     # Convention: switch.irrigator_zone_1 → number.irrigator_zone_1_run_duration
-    # We find the mapping by looking for a run_duration entity that contains the zone name
-    zone_to_duration = {}
+    dur_to_zone = {}
     for zone_eid in config.allowed_zone_entities:
         zone_suffix = zone_eid.split(".", 1)[1] if "." in zone_eid else zone_eid
         for dur_eid in base_durations:
             if zone_suffix in dur_eid:
-                zone_to_duration[zone_eid] = dur_eid
+                dur_to_zone[dur_eid] = zone_eid
                 break
 
-    for zone_eid, dur_eid in zone_to_duration.items():
-        base = base_durations[dur_eid]["base_value"]
+    for dur_eid, dur_data in base_durations.items():
+        base = dur_data["base_value"]
 
-        moisture_result = calculate_zone_moisture_multiplier(
-            zone_eid, data, sensor_states,
-        )
-        moisture_mult = moisture_result["multiplier"]
-        skip = moisture_result["skip"]
+        # Get moisture multiplier for the corresponding zone (defaults to 1.0 if no match)
+        zone_eid = dur_to_zone.get(dur_eid)
+        if zone_eid:
+            moisture_result = calculate_zone_moisture_multiplier(
+                zone_eid, data, sensor_states,
+            )
+            moisture_mult = moisture_result["multiplier"]
+            skip = moisture_result["skip"]
+        else:
+            moisture_mult = 1.0
+            skip = False
 
         if skip:
             # Set to minimum (1 minute) — ESPHome won't skip entirely,

@@ -295,6 +295,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-body" id="detailSchedule">
             <div class="loading">Loading schedule...</div>
         </div>
+        <div class="card-body" id="applyFactorsToggle" style="padding-top:0;">
+        </div>
     </div>
 
     <!-- History Card -->
@@ -858,7 +860,10 @@ async function loadControls() {
     const controlsEl = document.getElementById('detailControls');
     const scheduleEl = document.getElementById('detailSchedule');
     try {
-        const data = await api('/entities');
+        const [data, durData] = await Promise.all([
+            api('/entities'),
+            mapi('/durations').catch(() => ({})),
+        ]);
         const allEntities = Array.isArray(data) ? data : (data.entities || []);
 
         const scheduleByCategory = {
@@ -920,7 +925,7 @@ async function loadControls() {
         }
 
         // Render Schedule card
-        renderScheduleCard(scheduleByCategory);
+        renderScheduleCard(scheduleByCategory, durData);
 
     } catch (e) {
         controlsEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load controls: ' + esc(e.message) + '</div>';
@@ -928,9 +933,12 @@ async function loadControls() {
     }
 }
 
-function renderScheduleCard(sched) {
+function renderScheduleCard(sched, durData) {
     const el = document.getElementById('detailSchedule');
     const { schedule_enable, day_switches, start_times, run_durations, repeat_cycles, zone_enables, zone_modes, system_controls } = sched;
+    const adjDurations = (durData && durData.adjusted_durations) || {};
+    const baseDurations = (durData && durData.base_durations) || {};
+    const factorsActive = durData && durData.duration_adjustment_active;
     const total = schedule_enable.length + day_switches.length + start_times.length + run_durations.length +
         repeat_cycles.length + zone_enables.length + zone_modes.length + system_controls.length;
 
@@ -1067,12 +1075,16 @@ function renderScheduleCard(sched) {
                 const unit = attrs.unit_of_measurement || 'min';
                 const eid = duration.entity_id;
                 const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
-                html += '<td><input type="number" id="' + inputId + '" value="' + esc(duration.state) + '" ' +
+                const adj = factorsActive ? adjDurations[eid] : null;
+                html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(duration.state) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
                     'style="width:70px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;"> ' +
                     esc(unit) + ' ' +
                     '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
-                    '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button></td>';
+                    '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button>' +
+                    (adj ? ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                    'background:var(--bg-active-tile);color:var(--color-warning);">' + adj.combined_multiplier.toFixed(2) + 'x</span>' : '') +
+                    '</td>';
             } else {
                 html += '<td style="color:var(--text-disabled);">-</td>';
             }
@@ -1099,14 +1111,7 @@ function renderScheduleCard(sched) {
         html += '</div></div>';
     }
 
-    // --- Apply Factors toggle ---
-    html += '<div class="schedule-section" id="applyFactorsSection">';
-    html += '<div id="applyFactorsToggle"><div class="loading" style="padding:8px;">Loading...</div></div>';
-    html += '</div>';
-
     el.innerHTML = html;
-
-    // Load the apply factors toggle state asynchronously
     loadApplyFactorsToggle();
 }
 
@@ -1656,6 +1661,7 @@ async function saveWeatherRules() {
         _weatherDataCache = null;
         _weatherRulesCache = null;
         loadWeather();
+        loadStatus();
     } catch (e) {
         showToast('Failed to save weather rules: ' + e.message, 'error');
     }
@@ -1679,6 +1685,7 @@ async function evaluateWeatherNow() {
         // Refresh weather data (card structure stays intact)
         _weatherDataCache = null;
         loadWeather();
+        loadStatus();
     } catch (e) {
         showToast('Evaluation failed: ' + e.message, 'error');
     }
@@ -1951,6 +1958,7 @@ async function saveMoistureSettings() {
         showToast(result.message || 'Settings saved');
         _moistureDataCache = null;
         loadMoisture();
+        loadStatus();
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -2032,51 +2040,42 @@ async function deleteMoistureProbe(probeId) {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+let _applyFactorsBuilt = false;
 async function loadApplyFactorsToggle() {
     const container = document.getElementById('applyFactorsToggle');
     if (!container) return;
     try {
-        const [settings, dur] = await Promise.all([
-            mapi('/settings'),
-            mapi('/durations').catch(() => ({})),
-        ]);
+        const settings = await mapi('/settings');
         const isOn = settings.apply_factors_to_schedule || false;
-        const base = dur.base_durations || {};
-        const adjusted = dur.adjusted_durations || {};
 
-        let html = '<div style="display:flex;align-items:center;justify-content:space-between;' +
-            'padding:12px 16px;border-radius:8px;background:' + (isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
-            '<div><div style="font-size:14px;font-weight:600;color:' + (isOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
-            'Apply Factors to Schedule</div>' +
-            '<div style="font-size:12px;color:var(--text-muted);">Automatically adjust run durations by the combined watering factor</div></div>' +
-            '<button class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
-            'onclick="toggleApplyFactors(' + !isOn + ')">' +
-            (isOn ? 'Disable' : 'Enable') + '</button></div>';
-
-        // Duration status table (only when enabled and base durations exist)
-        if (isOn && Object.keys(base).length > 0) {
-            html += '<div style="margin-top:12px;">';
-            html += '<div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Adjusted Durations</div>';
-            html += '<div style="overflow-x:auto;"><table style="width:100%;font-size:12px;border-collapse:collapse;">';
-            html += '<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Zone</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Base</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Adjusted</th><th style="text-align:right;padding:4px 8px;color:var(--text-muted);">Factor</th></tr>';
-            for (const [eid, b] of Object.entries(base)) {
-                const adj = adjusted[eid];
-                const adjVal = adj ? adj.adjusted : b.base_value;
-                const mult = adj ? adj.combined_multiplier : 1.0;
-                const name = b.friendly_name || eid.split('.').pop();
-                html += '<tr style="border-bottom:1px solid var(--border-row);">';
-                html += '<td style="padding:4px 8px;">' + esc(name) + '</td>';
-                html += '<td style="text-align:right;padding:4px 8px;">' + b.base_value + ' min</td>';
-                html += '<td style="text-align:right;padding:4px 8px;font-weight:600;color:' + (adjVal !== b.base_value ? 'var(--color-warning)' : 'var(--text-primary)') + ';">' + adjVal + ' min</td>';
-                html += '<td style="text-align:right;padding:4px 8px;">' + (mult != null ? mult.toFixed(2) + 'x' : '\\u2014') + '</td>';
-                html += '</tr>';
-            }
-            html += '</table></div></div>';
+        // First load — build the full structure once
+        if (!_applyFactorsBuilt || !container.querySelector('[data-af="tile"]')) {
+            container.innerHTML = '<div data-af="tile" style="display:flex;align-items:center;justify-content:space-between;' +
+                'padding:12px 16px;border-radius:8px;background:' + (isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
+                '<div><div data-af="label" style="font-size:14px;font-weight:600;color:' + (isOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
+                'Apply Factors to Schedule</div>' +
+                '<div style="font-size:12px;color:var(--text-muted);">Automatically adjust run durations by the combined watering factor</div></div>' +
+                '<button data-af="btn" class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
+                'onclick="toggleApplyFactors(' + !isOn + ')">' +
+                (isOn ? 'Disable' : 'Enable') + '</button></div>';
+            _applyFactorsBuilt = true;
         }
 
-        container.innerHTML = html;
+        // Targeted updates — only change what changed
+        const tile = container.querySelector('[data-af="tile"]');
+        const label = container.querySelector('[data-af="label"]');
+        const btn = container.querySelector('[data-af="btn"]');
+        if (tile) tile.style.background = isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)';
+        if (label) label.style.color = isOn ? 'var(--color-success)' : 'var(--text-secondary)';
+        if (btn) {
+            btn.className = 'btn ' + (isOn ? 'btn-danger' : 'btn-primary') + ' btn-sm';
+            btn.textContent = isOn ? 'Disable' : 'Enable';
+            btn.setAttribute('onclick', 'toggleApplyFactors(' + !isOn + ')');
+        }
     } catch (e) {
-        container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Unable to load factor settings.</div>';
+        if (!_applyFactorsBuilt) {
+            container.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Unable to load factor settings.</div>';
+        }
     }
 }
 
@@ -2085,6 +2084,7 @@ async function toggleApplyFactors(enable) {
         const result = await mapi('/settings', 'PUT', { apply_factors_to_schedule: enable });
         showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'));
         loadApplyFactorsToggle();
+        loadControls();
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -2142,7 +2142,7 @@ const HELP_CONTENT = `
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Schedule Management</h4>
 <p style="margin-bottom:10px;">Your irrigation schedule is configured through your Flux Open Home controller and managed via its ESPHome entities:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Schedule Enable/Disable</strong> — Master toggle to turn the entire schedule on or off</li><li style="margin-bottom:4px;"><strong>Days of Week</strong> — Click day buttons to toggle which days the schedule runs</li><li style="margin-bottom:4px;"><strong>Start Times</strong> — Set when each schedule program begins (HH:MM format)</li><li style="margin-bottom:4px;"><strong>Zone Settings</strong> — Enable/disable individual zones and set run durations for each</li><li style="margin-bottom:4px;"><strong>Zone Modes</strong> — Some zones may have special modes (Pump Start Relay, Master Valve) that are firmware-controlled</li><li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). Durations update automatically as conditions change and restore to originals when disabled.</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Schedule Enable/Disable</strong> — Master toggle to turn the entire schedule on or off</li><li style="margin-bottom:4px;"><strong>Days of Week</strong> — Click day buttons to toggle which days the schedule runs</li><li style="margin-bottom:4px;"><strong>Start Times</strong> — Set when each schedule program begins (HH:MM format)</li><li style="margin-bottom:4px;"><strong>Zone Settings</strong> — Enable/disable individual zones and set run durations for each</li><li style="margin-bottom:4px;"><strong>Zone Modes</strong> — Some zones may have special modes (Pump Start Relay, Master Valve) that are firmware-controlled</li><li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). Each zone row shows a factor badge (e.g. 0.80x) and the adjusted duration in minutes. Durations update automatically as conditions change and restore to originals when disabled.</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Schedule changes take effect immediately on your controller — no restart needed.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather-Based Control</h4>
