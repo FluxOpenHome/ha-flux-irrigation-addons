@@ -13,6 +13,7 @@ MANAGEMENT_HTML = """<!DOCTYPE html>
 <title>Flux Open Home - Management Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" crossorigin=""></script>
 <style>
 :root {
     --bg-body: #f5f6fa;
@@ -286,7 +287,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                     <div class="form-group">
                         <label>Connection Key</label>
                         <textarea id="addKey" placeholder="Paste the connection key from the homeowner..." oninput="previewKey()"></textarea>
-                        <p class="hint">The homeowner generates this key from their Flux Open Home Irrigation Control add-on.</p>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+                            <p class="hint" style="margin:0;">The homeowner generates this key from their Flux Open Home Irrigation Control add-on.</p>
+                            <button class="btn btn-secondary btn-sm" onclick="openQRScanner()" style="white-space:nowrap;font-size:12px;">&#128247; Scan QR Code</button>
+                        </div>
                     </div>
                     <div id="keyPreview" class="key-preview">
                         <div class="label">Key decoded:</div>
@@ -540,6 +544,19 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 </div>
 
 <!-- Help Modal -->
+<div id="qrScanModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);">Scan QR Code</h3>
+            <button onclick="closeQRScanner()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div style="padding:16px 20px 20px 20px;">
+            <div id="qrReader" style="width:100%;border-radius:8px;overflow:hidden;"></div>
+            <p id="qrScanStatus" style="text-align:center;font-size:13px;color:var(--text-muted);margin:12px 0 0 0;">Point your camera at the homeowner's QR code</p>
+        </div>
+    </div>
+</div>
+
 <div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:640px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
@@ -901,6 +918,79 @@ async function addCustomer() {
         loadCustomers();
     } catch (e) {
         showToast(e.message, 'error');
+    }
+}
+
+// --- QR Code Scanner ---
+let qrScanner = null;
+
+function openQRScanner() {
+    // Make sure the add form is visible
+    const form = document.getElementById('addForm');
+    if (!form.classList.contains('visible')) form.classList.add('visible');
+
+    const modal = document.getElementById('qrScanModal');
+    const status = document.getElementById('qrScanStatus');
+    status.textContent = 'Initializing camera...';
+    status.style.color = 'var(--text-muted)';
+    modal.style.display = 'flex';
+
+    if (typeof Html5Qrcode === 'undefined') {
+        status.textContent = 'QR scanner library failed to load. Please check your internet connection.';
+        status.style.color = 'var(--color-danger)';
+        return;
+    }
+
+    qrScanner = new Html5Qrcode('qrReader');
+    qrScanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        function onScanSuccess(decodedText) {
+            // Validate it looks like a connection key
+            try {
+                const decoded = JSON.parse(atob(decodedText.replace(/-/g, '+').replace(/_/g, '/')));
+                if (!decoded.url || !decoded.api_key) {
+                    status.textContent = 'QR code does not contain a valid connection key. Try again.';
+                    status.style.color = 'var(--color-danger)';
+                    return;
+                }
+            } catch (e) {
+                status.textContent = 'QR code does not contain a valid connection key. Try again.';
+                status.style.color = 'var(--color-danger)';
+                return;
+            }
+            // Success — fill in the key and close scanner
+            document.getElementById('addKey').value = decodedText;
+            previewKey();
+            closeQRScanner();
+            showToast('QR code scanned successfully');
+        },
+        function onScanFailure() {
+            // Ignore scan failures — camera is still trying
+        }
+    ).then(function() {
+        status.textContent = 'Point your camera at the homeowner\'s QR code';
+        status.style.color = 'var(--text-muted)';
+    }).catch(function(err) {
+        var msg = String(err);
+        if (msg.indexOf('NotAllowedError') !== -1 || msg.indexOf('Permission') !== -1) {
+            status.textContent = 'Camera access denied. Please allow camera access in your browser or Home Assistant settings and try again.';
+        } else if (msg.indexOf('NotFoundError') !== -1 || msg.indexOf('no camera') !== -1) {
+            status.textContent = 'No camera found. QR scanning requires a device with a camera.';
+        } else {
+            status.textContent = 'Could not start camera: ' + msg;
+        }
+        status.style.color = 'var(--color-danger)';
+    });
+}
+
+function closeQRScanner() {
+    var modal = document.getElementById('qrScanModal');
+    modal.style.display = 'none';
+    if (qrScanner) {
+        qrScanner.stop().catch(function() {});
+        qrScanner.clear();
+        qrScanner = null;
     }
 }
 
@@ -2677,13 +2767,16 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">The Management Dashboard lets you monitor and control irrigation systems across multiple properties from a single interface. Each property is a homeowner who has shared their connection key with you.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Adding Properties</h4>
-<p style="margin-bottom:10px;">To add a property, click <strong>+ Add Property</strong> and paste the connection key provided by the homeowner. The key is generated from their Flux Open Home Irrigation Control add-on's Configuration page.</p>
+<p style="margin-bottom:10px;">To add a property, click <strong>+ Add Property</strong> and either paste the connection key or scan the homeowner's QR code. The key is generated from their Flux Open Home Irrigation Control add-on's Configuration page.</p>
 <ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Paste key</strong> — Paste the connection key directly into the text area</li>
+<li style="margin-bottom:4px;"><strong>Scan QR Code</strong> — Click the 📷 Scan QR Code button to open your camera and scan the homeowner's QR code. The connection key will be filled in automatically</li>
 <li style="margin-bottom:4px;">The key is automatically decoded to preview the property name, address, and connection type</li>
 <li style="margin-bottom:4px;">You can optionally set a custom display name and notes</li>
 <li style="margin-bottom:4px;">Click <strong>Connect</strong> to add the property to your dashboard</li>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Connection keys contain the URL, API key, and property details. You don't need to configure anything else.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">📷 QR scanning requires camera access. Your browser or Home Assistant app may ask for camera permission the first time you use it.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Property Cards</h4>
 <p style="margin-bottom:10px;">Each property is displayed as a card showing its current status:</p>
@@ -2867,7 +2960,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close modals on backdrop click or Escape
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-            if (document.getElementById('mgmtChangelogModal').style.display === 'flex') mgmtCloseChangelogModal();
+            if (document.getElementById('qrScanModal').style.display === 'flex') closeQRScanner();
+            else if (document.getElementById('mgmtChangelogModal').style.display === 'flex') mgmtCloseChangelogModal();
             else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
             else if (document.getElementById('keyModal').style.display === 'flex') closeKeyModal();
             else if (document.getElementById('notesModal').style.display === 'flex') closeNotesModal();
@@ -2878,6 +2972,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('keyModal').addEventListener('click', function(e) {
         if (e.target === this) closeKeyModal();
+    });
+    document.getElementById('qrScanModal').addEventListener('click', function(e) {
+        if (e.target === this) closeQRScanner();
     });
 });
 </script>
