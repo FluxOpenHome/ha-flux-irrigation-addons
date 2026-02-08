@@ -610,8 +610,7 @@ async def update_weather_rules(body: dict, request: Request):
         data["rules"] = body["rules"]
     _save_weather_rules(data)
 
-    # Build friendly changelog description
-    changes = []
+    # Build detailed changelog — log each changed property with old → new
     new_rules = body.get("rules", {})
     rule_labels = {
         "rain_detection": "Rain Detection",
@@ -622,16 +621,47 @@ async def update_weather_rules(body: dict, request: Request):
         "temperature_hot": "Hot Temperature",
         "wind_speed": "Wind Speed",
         "humidity": "Humidity",
+        "seasonal_adjustment": "Seasonal Adjustment",
     }
+    field_labels = {
+        "enabled": "Enabled",
+        "resume_delay_hours": "Resume Delay (hrs)",
+        "lookahead_hours": "Lookahead (hrs)",
+        "probability_threshold": "Probability Threshold (%)",
+        "skip_if_rain_above_mm": "Rain Threshold (mm)",
+        "freeze_threshold_f": "Freeze Threshold (F)",
+        "freeze_threshold_c": "Freeze Threshold (C)",
+        "cool_threshold_f": "Cool Threshold (F)",
+        "cool_threshold_c": "Cool Threshold (C)",
+        "hot_threshold_f": "Hot Threshold (F)",
+        "hot_threshold_c": "Hot Threshold (C)",
+        "reduction_percent": "Reduction (%)",
+        "increase_percent": "Increase (%)",
+        "max_wind_speed_mph": "Max Wind (mph)",
+        "max_wind_speed_kmh": "Max Wind (km/h)",
+        "high_humidity_threshold": "Humidity Threshold (%)",
+    }
+    actor = get_actor(request)
     for rule_key, label in rule_labels.items():
         old = old_rules.get(rule_key, {})
         new = new_rules.get(rule_key, {})
-        if old.get("enabled") != new.get("enabled"):
-            changes.append(f"{'Enabled' if new.get('enabled') else 'Disabled'} {label}")
-    desc = "Updated weather rules"
-    if changes:
-        desc += " — " + ", ".join(changes)
-    log_change(get_actor(request), "Weather Rules", desc)
+        if old == new:
+            continue
+        changes = []
+        all_keys = set(list(old.keys()) + list(new.keys()))
+        for k in sorted(all_keys):
+            if k == "monthly_multipliers":
+                continue
+            old_val = old.get(k)
+            new_val = new.get(k)
+            if old_val != new_val:
+                fl = field_labels.get(k, k.replace("_", " ").title())
+                if k == "enabled":
+                    changes.append(f"{'Enabled' if new_val else 'Disabled'}")
+                else:
+                    changes.append(f"{fl}: {old_val} -> {new_val}")
+        if changes:
+            log_change(actor, "Weather Rules", f"{label} — " + ", ".join(changes))
 
     # Re-evaluate rules immediately so the multiplier updates right away
     try:

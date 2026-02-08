@@ -248,6 +248,10 @@ async def set_entity(entity_id: str, body: EntitySetRequest, request: Request):
     entity_id = _resolve_control_entity(entity_id, config)
     domain = entity_id.split(".")[0] if "." in entity_id else ""
 
+    # Fetch current state before changing it (for changelog old → new)
+    old_state = await ha_client.get_entity_state(entity_id)
+    old_val = old_state.get("state", "unknown") if old_state else "unknown"
+
     # Determine which HA service to call
     svc_domain, svc_name, extra_data = _get_set_service(domain, body)
 
@@ -290,12 +294,12 @@ async def set_entity(entity_id: str, body: EntitySetRequest, request: Request):
         except Exception as e:
             print(f"[ENTITIES] Base duration update after set failed: {e}")
 
-    # Log configuration change
+    # Log configuration change with old → new
     actor = get_actor(request)
     fname = friendly_entity_name(entity_id)
-    val = body.value if body.value is not None else body.state if body.state is not None else body.option
-    log_change(actor, "Schedule", f"Set {fname} to {val}",
-               {"entity_id": entity_id, "value": val})
+    new_val = body.value if body.value is not None else body.state if body.state is not None else body.option
+    log_change(actor, "Schedule", f"Set {fname}: {old_val} -> {new_val}",
+               {"entity_id": entity_id, "old_value": old_val, "new_value": new_val})
 
     audit_log.log_action(
         api_key_name=key_config.name,

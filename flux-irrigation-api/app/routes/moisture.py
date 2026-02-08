@@ -1224,18 +1224,42 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Req
         raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
 
     probe = data["probes"][probe_id]
+    changes = []
+    display = probe.get("display_name", probe_id)
     if body.display_name is not None:
+        if probe.get("display_name") != body.display_name:
+            changes.append(f"Name: {probe.get('display_name', '')} -> {body.display_name}")
         probe["display_name"] = body.display_name
+        display = body.display_name
     if body.sensors is not None:
+        old_sensors = probe.get("sensors", {})
+        if old_sensors != body.sensors:
+            for depth in ("shallow", "mid", "deep"):
+                ov = old_sensors.get(depth, "")
+                nv = body.sensors.get(depth, "")
+                if ov != nv:
+                    changes.append(f"{depth.title()} sensor: {ov or '(none)'} -> {nv or '(none)'}")
         probe["sensors"] = body.sensors
     if body.zone_mappings is not None:
+        old_zones = set(probe.get("zone_mappings", []))
+        new_zones = set(body.zone_mappings)
+        added = new_zones - old_zones
+        removed = old_zones - new_zones
+        if added:
+            changes.append(f"Added zones: {', '.join(sorted(added))}")
+        if removed:
+            changes.append(f"Removed zones: {', '.join(sorted(removed))}")
         probe["zone_mappings"] = body.zone_mappings
     if body.thresholds is not None:
         probe["thresholds"] = body.thresholds
 
     _save_data(data)
-    log_change(get_actor(request), "Moisture Probes",
-               f"Updated probe: {probe['display_name']}")
+    actor = get_actor(request)
+    if changes:
+        for change in changes:
+            log_change(actor, "Moisture Probes", f"{display} — {change}")
+    else:
+        log_change(actor, "Moisture Probes", f"Updated probe: {display}")
     return {"success": True, "probe": probe}
 
 
@@ -1275,16 +1299,44 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
     """Update global moisture settings (enable/disable, stale threshold, weights, defaults)."""
     data = _load_data()
 
-    # Build changelog description
+    # Build changelog description with old → new values
     changes = []
     if body.enabled is not None:
+        old = data.get("enabled", False)
         data["enabled"] = body.enabled
-        changes.append(f"{'Enabled' if body.enabled else 'Disabled'} moisture probes")
+        if old != body.enabled:
+            changes.append(f"Moisture probes: {'Disabled' if old else 'Enabled'} -> {'Enabled' if body.enabled else 'Disabled'}")
     if body.stale_reading_threshold_minutes is not None:
+        old = data.get("stale_reading_threshold_minutes", 120)
+        if old != body.stale_reading_threshold_minutes:
+            changes.append(f"Stale reading threshold: {old} -> {body.stale_reading_threshold_minutes} min")
         data["stale_reading_threshold_minutes"] = body.stale_reading_threshold_minutes
     if body.depth_weights is not None:
+        old = data.get("depth_weights", DEFAULT_DATA["depth_weights"])
+        if old != body.depth_weights:
+            for wk in ("shallow", "mid", "deep"):
+                ov = old.get(wk)
+                nv = body.depth_weights.get(wk)
+                if ov != nv:
+                    changes.append(f"Depth weight {wk}: {ov} -> {nv}")
         data["depth_weights"] = body.depth_weights
     if body.default_thresholds is not None:
+        old_thresh = data.get("default_thresholds", DEFAULT_DATA["default_thresholds"])
+        thresh_labels = {
+            "root_zone_skip": "Root Zone Skip (%)",
+            "root_zone_wet": "Root Zone Wet (%)",
+            "root_zone_optimal": "Root Zone Optimal (%)",
+            "root_zone_dry": "Root Zone Dry (%)",
+            "max_increase_percent": "Max Increase (%)",
+            "max_decrease_percent": "Max Decrease (%)",
+            "rain_boost_threshold": "Rain Boost Threshold",
+        }
+        for tk in set(list(old_thresh.keys()) + list(body.default_thresholds.keys())):
+            ov = old_thresh.get(tk)
+            nv = body.default_thresholds.get(tk)
+            if ov != nv:
+                label = thresh_labels.get(tk, tk.replace("_", " ").title())
+                changes.append(f"{label}: {ov} -> {nv}")
         data["default_thresholds"] = body.default_thresholds
 
     # Handle apply_factors_to_schedule toggle
@@ -1294,11 +1346,12 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
         _save_data(data)
 
         if body.apply_factors_to_schedule != was_enabled:
-            changes.append(f"{'Enabled' if body.apply_factors_to_schedule else 'Disabled'} Apply Factors to Schedule")
+            changes.append(f"Apply Factors to Schedule: {'Disabled' if was_enabled else 'Enabled'} -> {'Enabled' if body.apply_factors_to_schedule else 'Disabled'}")
 
         if changes:
-            log_change(get_actor(request), "Moisture Probes",
-                       "Updated moisture settings — " + ", ".join(changes))
+            actor = get_actor(request)
+            for change in changes:
+                log_change(actor, "Moisture Probes", change)
 
         if body.apply_factors_to_schedule and not was_enabled:
             # Toggling ON: always re-capture base durations for fresh values
@@ -1348,8 +1401,9 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
 
     _save_data(data)
     if changes:
-        log_change(get_actor(request), "Moisture Probes",
-                   "Updated moisture settings — " + ", ".join(changes))
+        actor = get_actor(request)
+        for change in changes:
+            log_change(actor, "Moisture Probes", change)
     return {"success": True, "message": "Moisture settings updated"}
 
 

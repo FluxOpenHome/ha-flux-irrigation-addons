@@ -496,7 +496,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 </div>
 
 <!-- Notes Modal -->
-<div id="notesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+<div id="notesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:90%;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);" id="notesModalTitle">Edit Notes</h3>
@@ -511,7 +511,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 </div>
 
 <!-- Update Connection Key Modal -->
-<div id="keyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+<div id="keyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:90%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);" id="keyModalTitle">&#128273; Update Connection Key</h3>
@@ -528,7 +528,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 </div>
 
 <!-- Change Log Modal -->
-<div id="mgmtChangelogModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+<div id="mgmtChangelogModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:720px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Configuration Change Log</h3>
@@ -544,7 +544,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 </div>
 
 <!-- Help Modal -->
-<div id="qrScanModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+<div id="qrScanModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);">Scan QR Code</h3>
@@ -557,7 +557,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     </div>
 </div>
 
-<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;">
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:640px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Management Dashboard Help</h3>

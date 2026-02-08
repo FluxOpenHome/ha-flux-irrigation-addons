@@ -441,6 +441,10 @@ async def homeowner_set_entity(entity_id: str, body: EntitySetRequest, request: 
 
     domain = entity_id.split(".")[0] if "." in entity_id else ""
 
+    # Fetch current state before changing it (for changelog old → new)
+    old_state = await ha_client.get_entity_state(entity_id)
+    old_val = old_state.get("state", "unknown") if old_state else "unknown"
+
     from routes.entities import _get_set_service
     svc_domain, svc_name, extra_data = _get_set_service(domain, body)
     service_data = {"entity_id": entity_id, **extra_data}
@@ -480,12 +484,12 @@ async def homeowner_set_entity(entity_id: str, body: EntitySetRequest, request: 
         except Exception as e:
             print(f"[HOMEOWNER] Base duration update after set failed: {e}")
 
-    # Log configuration change
+    # Log configuration change with old → new
     actor = get_actor(request)
     fname = friendly_entity_name(entity_id)
-    val = body.value if body.value is not None else body.state if body.state is not None else body.option
-    log_change(actor, "Schedule", f"Set {fname} to {val}",
-               {"entity_id": entity_id, "value": val})
+    new_val = body.value if body.value is not None else body.state if body.state is not None else body.option
+    log_change(actor, "Schedule", f"Set {fname}: {old_val} -> {new_val}",
+               {"entity_id": entity_id, "old_value": old_val, "new_value": new_val})
 
     return {
         "success": True,
@@ -790,9 +794,28 @@ async def homeowner_get_aliases():
 async def homeowner_update_aliases(body: UpdateAliasesRequest, request: Request):
     """Update the homeowner's zone display name aliases."""
     _require_homeowner_mode()
+    old_aliases = _load_aliases()
     _save_aliases(body.zone_aliases)
-    log_change(get_actor(request), "Schedule", "Updated zone aliases",
-               {"aliases": body.zone_aliases})
+
+    # Log individual alias changes with old → new
+    actor = get_actor(request)
+    all_keys = set(list(old_aliases.keys()) + list(body.zone_aliases.keys()))
+    changes_logged = False
+    for key in sorted(all_keys):
+        old_name = old_aliases.get(key, "")
+        new_name = body.zone_aliases.get(key, "")
+        if old_name != new_name:
+            zone_label = key.split(".", 1)[1].replace("_", " ").title() if "." in key else key
+            if old_name and new_name:
+                log_change(actor, "Schedule", f"Zone alias {zone_label}: {old_name} -> {new_name}")
+            elif new_name:
+                log_change(actor, "Schedule", f"Zone alias {zone_label}: (default) -> {new_name}")
+            else:
+                log_change(actor, "Schedule", f"Zone alias {zone_label}: {old_name} -> (default)")
+            changes_logged = True
+    if not changes_logged:
+        log_change(actor, "Schedule", "Updated zone aliases (no changes)")
+
     return {"success": True, "zone_aliases": body.zone_aliases}
 
 

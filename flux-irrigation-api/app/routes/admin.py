@@ -431,26 +431,41 @@ async def update_general_settings(body: SettingsUpdate):
 
     changes = []
     if body.rate_limit_per_minute is not None:
+        old = options.get("rate_limit_per_minute", 60)
+        if old != body.rate_limit_per_minute:
+            changes.append(f"Rate limit: {old} -> {body.rate_limit_per_minute}/min")
         options["rate_limit_per_minute"] = body.rate_limit_per_minute
     if body.log_retention_days is not None:
+        old = options.get("log_retention_days", 365)
+        if old != body.log_retention_days:
+            changes.append(f"Log retention: {old} -> {body.log_retention_days} days")
         options["log_retention_days"] = body.log_retention_days
     if body.enable_audit_log is not None:
+        old = options.get("enable_audit_log", True)
+        if old != body.enable_audit_log:
+            changes.append(f"Audit log: {'Enabled' if body.enable_audit_log else 'Disabled'}")
         options["enable_audit_log"] = body.enable_audit_log
     if body.weather_entity_id is not None:
+        old = options.get("weather_entity_id", "")
+        if old != body.weather_entity_id:
+            changes.append(f"Weather entity: {old or '(none)'} -> {body.weather_entity_id or '(none)'}")
         options["weather_entity_id"] = body.weather_entity_id
-        changes.append(f"Weather entity: {body.weather_entity_id}")
     if body.weather_enabled is not None:
+        old = options.get("weather_enabled", False)
+        if old != body.weather_enabled:
+            changes.append(f"Weather: {'Enabled' if body.weather_enabled else 'Disabled'}")
         options["weather_enabled"] = body.weather_enabled
-        changes.append(f"{'Enabled' if body.weather_enabled else 'Disabled'} weather")
     if body.weather_check_interval_minutes is not None:
+        old = options.get("weather_check_interval_minutes", 15)
+        if old != body.weather_check_interval_minutes:
+            changes.append(f"Weather check interval: {old} -> {body.weather_check_interval_minutes} min")
         options["weather_check_interval_minutes"] = body.weather_check_interval_minutes
 
     await _save_options(options)
 
-    desc = "Updated system settings"
     if changes:
-        desc += " — " + ", ".join(changes)
-    log_change("Homeowner", "Device Config", desc)
+        for change in changes:
+            log_change("Homeowner", "Device Config", change)
 
     return {"success": True}
 
@@ -515,6 +530,26 @@ async def generate_connection_key(body: ConnectionKeyRequest):
         )
 
     options = _load_options()
+
+    # Track contact/address changes for changelog
+    contact_changes = []
+    contact_fields = {
+        "homeowner_url": ("URL", url),
+        "homeowner_label": ("Property label", body.label),
+        "homeowner_address": ("Address", body.address),
+        "homeowner_city": ("City", body.city),
+        "homeowner_state": ("State", body.state),
+        "homeowner_zip": ("ZIP", body.zip),
+        "homeowner_phone": ("Phone", body.phone),
+        "homeowner_first_name": ("First name", body.first_name),
+        "homeowner_last_name": ("Last name", body.last_name),
+        "homeowner_connection_mode": ("Connection mode", body.connection_mode),
+    }
+    for opt_key, (label, new_val) in contact_fields.items():
+        old_val = options.get(opt_key, "")
+        if old_val != new_val:
+            contact_changes.append(f"{label}: {old_val or '(empty)'} -> {new_val or '(empty)'}")
+
     options["homeowner_url"] = url
     options["homeowner_label"] = body.label
     options["homeowner_address"] = body.address
@@ -607,6 +642,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     encoded = encode_connection_key(key_data)
 
     log_change("Homeowner", "Connection Key", "Generated new connection key")
+    for change in contact_changes:
+        log_change("Homeowner", "Connection Key", change)
 
     return {
         "success": True,
