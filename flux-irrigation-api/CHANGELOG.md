@@ -12,7 +12,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Management Alert Badge** — Real-time notification badge in the management header showing total active issues across all properties; click to view all issues grouped by customer in a dedicated alerts panel
 - **Browser Notifications** — Configurable push notifications for management when new issues are reported; notification preferences per severity level stored in localStorage
 - **Upcoming Service Banner** — When management schedules a service date, a green banner appears on the homeowner dashboard showing the date and any management notes
-- **Issue Acknowledge & Schedule** — Management can acknowledge issues with a note and optionally schedule a service date; issue status flows through open → acknowledged → scheduled → resolved
+- **Issue Acknowledge & Schedule** — Management can acknowledge issues with a note and optionally schedule a service date; issue status flows through open → acknowledged → scheduled → resolved → dismissed
+- **Issue Dismiss** — Resolved issues remain visible to the homeowner so they can see management's response and notes; homeowner clicks "Dismiss" to remove the resolved issue from their dashboard
 - **HA Issue Notifications** — Send push notifications through Home Assistant's notification service (mobile app, SMS, etc.) when customers report new issues; configurable per-severity filters and a test button to verify the setup; settings persist server-side in `/data/notification_config.json`
 - **Gophr Moisture Probe Integration** — Auto-detect Gophr moisture probes from HA sensors and integrate soil moisture data into irrigation decisions
   - Gradient-based moisture algorithm: mid sensor (root zone) is the primary decision driver, shallow sensor detects rain via wetting front analysis, deep sensor guards against over-irrigation

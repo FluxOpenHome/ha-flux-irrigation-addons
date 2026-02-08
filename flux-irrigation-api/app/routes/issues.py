@@ -62,6 +62,13 @@ async def list_active_issues():
     return {"issues": issues, "total": len(issues)}
 
 
+@router.get("/visible", summary="List visible issues for homeowner")
+async def list_visible_issues():
+    """Return issues visible to the homeowner: active + resolved-but-not-dismissed."""
+    issues = issue_store.get_visible_issues()
+    return {"issues": issues, "total": len(issues)}
+
+
 @router.get("/summary", summary="Issue summary for health check")
 async def issue_summary():
     """Lightweight summary of active issues, used by management health check polling."""
@@ -93,4 +100,16 @@ async def resolve_issue(issue_id: str, request: Request):
 
     log_change(get_actor(request), "Issues",
                f"Resolved issue ({issue['severity']}): {issue['description'][:100]}")
+    return {"issue": issue}
+
+
+@router.put("/{issue_id}/dismiss", summary="Dismiss a resolved issue")
+async def dismiss_issue(issue_id: str, request: Request):
+    """Homeowner dismisses a resolved issue from their dashboard."""
+    issue = issue_store.dismiss_issue(issue_id)
+    if issue is None:
+        raise HTTPException(status_code=404, detail="Issue not found or not yet resolved")
+
+    log_change(get_actor(request), "Issues",
+               f"Dismissed resolved issue ({issue['severity']}): {issue['description'][:100]}")
     return {"issue": issue}

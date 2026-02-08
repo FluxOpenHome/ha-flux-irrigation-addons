@@ -515,11 +515,11 @@ document.getElementById('reportIssueModal').addEventListener('click', function(e
 // --- Active Issues & Upcoming Service ---
 async function loadActiveIssues() {
     try {
-        const resp = await fetch(ISSUE_BASE + '/active');
+        const resp = await fetch(ISSUE_BASE + '/visible');
         if (!resp.ok) { hideIssueBanners(); return; }
         const data = await resp.json();
         const issues = data.issues || [];
-        renderUpcomingService(issues);
+        renderUpcomingService(issues.filter(function(i) { return i.status !== 'resolved'; }));
         renderActiveIssuesBanner(issues);
     } catch (e) {
         hideIssueBanners();
@@ -555,26 +555,45 @@ function renderActiveIssuesBanner(issues) {
     if (issues.length === 0) { container.style.display = 'none'; return; }
     const sevColors = {severe: '#e74c3c', annoyance: '#f39c12', clarification: '#3498db'};
     const sevLabels = {severe: 'Severe Issue', annoyance: 'Annoyance', clarification: 'Clarification'};
-    const statusLabels = {open: 'Submitted', acknowledged: 'Acknowledged', scheduled: 'Service Scheduled'};
+    const statusLabels = {open: 'Submitted', acknowledged: 'Acknowledged', scheduled: 'Service Scheduled', resolved: 'Resolved'};
     let html = '<div style="background:var(--bg-card);border-radius:12px;padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">';
     html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">Your Reported Issues</div>';
     issues.forEach(function(issue) {
         const color = sevColors[issue.severity] || '#999';
+        const isResolved = issue.status === 'resolved';
         const dt = new Date(issue.created_at);
         const timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
-        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);">';
-        html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:' + color + '22;color:' + color + ';white-space:nowrap;">' + esc(sevLabels[issue.severity] || issue.severity) + '</span>';
+        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);' + (isResolved ? 'opacity:0.85;' : '') + '">';
+        if (isResolved) {
+            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#27ae6022;color:#27ae60;white-space:nowrap;">&#10003; Resolved</span>';
+        } else {
+            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:' + color + '22;color:' + color + ';white-space:nowrap;">' + esc(sevLabels[issue.severity] || issue.severity) + '</span>';
+        }
         html += '<div style="flex:1;min-width:0;">';
         html += '<div style="font-size:13px;color:var(--text-primary);word-break:break-word;">' + esc(issue.description) + '</div>';
         html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + esc(timeStr) + ' &middot; ' + esc(statusLabels[issue.status] || issue.status) + '</div>';
         if (issue.management_note) {
-            html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;padding:4px 8px;background:var(--bg-tile);border-radius:4px;">&#128172; ' + esc(issue.management_note) + '</div>';
+            html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;padding:6px 10px;background:var(--bg-tile);border-radius:6px;border-left:3px solid var(--color-primary);">&#128172; <strong>Management:</strong> ' + esc(issue.management_note) + '</div>';
+        }
+        if (isResolved) {
+            html += '<div style="margin-top:6px;"><button onclick="dismissIssue(\\''+issue.id+'\\')" class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 10px;">Dismiss</button></div>';
         }
         html += '</div></div>';
     });
     html += '</div>';
     container.innerHTML = html;
     container.style.display = 'block';
+}
+
+async function dismissIssue(issueId) {
+    try {
+        const resp = await fetch(ISSUE_BASE + '/' + issueId + '/dismiss', { method: 'PUT' });
+        if (!resp.ok) throw new Error('Failed to dismiss');
+        showToast('Issue dismissed');
+        loadActiveIssues();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
 }
 
 // --- Mode Switch ---
@@ -2675,7 +2694,7 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">Click the <strong>&#9888;&#65039; Warning</strong> button in the header to report an issue to your management company. You can:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Select Severity</strong> — Choose from three levels: <span style="color:#3498db;font-weight:600;">Clarification</span> (question or minor request), <span style="color:#f39c12;font-weight:600;">Annoyance</span> (something bothering you), or <span style="color:#e74c3c;font-weight:600;">Severe Issue</span> (urgent problem needing immediate attention)</li><li style="margin-bottom:4px;"><strong>Describe the Issue</strong> — Provide details about what you are experiencing (up to 1,000 characters)</li></ul>
 <p style="margin-bottom:10px;">After submitting, your issue appears in the <strong>Your Reported Issues</strong> section below the dashboard title. You can track the status of each issue:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Submitted</strong> — Your issue has been sent to management</li><li style="margin-bottom:4px;"><strong>Acknowledged</strong> — Management has reviewed your issue</li><li style="margin-bottom:4px;"><strong>Service Scheduled</strong> — A service date has been set</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Submitted</strong> — Your issue has been sent to management</li><li style="margin-bottom:4px;"><strong>Acknowledged</strong> — Management has reviewed your issue and may have left a note</li><li style="margin-bottom:4px;"><strong>Service Scheduled</strong> — A service date has been set</li><li style="margin-bottom:4px;"><strong>Resolved</strong> — Management has marked your issue as complete. You will see their response and can click <strong>Dismiss</strong> to remove it from your dashboard</li></ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Upcoming Service</h4>
 <p style="margin-bottom:10px;">When your management company schedules a service visit, a green <strong>Upcoming Service</strong> banner appears at the top of your dashboard showing the scheduled date. If management included a note, it appears below the date.</p>

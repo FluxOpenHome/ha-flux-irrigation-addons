@@ -5,7 +5,7 @@ Manages homeowner-reported issues for the management company.
 Persists issue data in /data/issues.json.
 
 Issue lifecycle:
-  open → acknowledged → scheduled (if service_date set) → resolved
+  open → acknowledged → scheduled (if service_date set) → resolved → dismissed
 """
 
 import json
@@ -36,6 +36,9 @@ def _load_data() -> dict:
                 for key, default in DEFAULT_DATA.items():
                     if key not in data:
                         data[key] = default
+                # Backfill missing fields from older versions
+                for issue in data.get("issues", []):
+                    issue.setdefault("homeowner_dismissed", False)
                 return data
         except (json.JSONDecodeError, IOError):
             pass
@@ -69,6 +72,7 @@ def create_issue(severity: str, description: str) -> dict:
         "management_note": None,
         "service_date": None,
         "resolved_at": None,
+        "homeowner_dismissed": False,
     }
     data["issues"].append(issue)
     _save_data(data)
@@ -86,6 +90,33 @@ def get_active_issues() -> list:
     data = _load_data()
     active = [i for i in data["issues"] if i.get("status") != "resolved"]
     return sorted(active, key=lambda i: i.get("created_at", ""), reverse=True)
+
+
+def get_visible_issues() -> list:
+    """Return issues visible to the homeowner: active + resolved-but-not-dismissed.
+
+    This lets homeowners see management's response (note, resolution) before
+    dismissing the issue from their dashboard.
+    """
+    data = _load_data()
+    visible = [
+        i for i in data["issues"]
+        if i.get("status") != "resolved" or not i.get("homeowner_dismissed")
+    ]
+    return sorted(visible, key=lambda i: i.get("created_at", ""), reverse=True)
+
+
+def dismiss_issue(issue_id: str) -> dict | None:
+    """Homeowner dismisses a resolved issue so it no longer shows on their dashboard."""
+    data = _load_data()
+    for issue in data["issues"]:
+        if issue["id"] == issue_id:
+            if issue.get("status") != "resolved":
+                return None  # Can only dismiss resolved issues
+            issue["homeowner_dismissed"] = True
+            _save_data(data)
+            return issue
+    return None
 
 
 def get_issue(issue_id: str) -> dict | None:
