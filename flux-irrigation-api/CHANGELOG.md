@@ -58,6 +58,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ### Changed
 
+- **Uptime Sensor Formatting** — Controller uptime sensor now displays as a cascading breakdown (e.g. "4 days 13 hrs 48 min 32 sec") instead of a raw number with a unit; leading zero segments (years, months, weeks) are hidden when not applicable
+- **Sensor Tile Targeted Updates** — Sensor tiles no longer rebuild the entire grid on every 30-second refresh; tiles are built once and only individual values are updated in place, eliminating flicker
 - **Advanced Moisture Algorithm** — Replaced the simple weighted-average moisture algorithm with a gradient-based approach that uses each sensor depth as a distinct signal: the mid sensor (root zone) is the primary watering decision driver, the shallow sensor detects recent rain via wetting front analysis combined with weather forecast data, and the deep sensor guards against over-irrigation by detecting water pooling below the root zone
 - **Moisture Probe Configuration on Configuration Page** — Probes are now configured from the Configuration page using a device picker dropdown (instead of keyword-based sensor scanning); select your Gophr device from a filtered list, map its sensors to shallow/mid/deep depths, and add the probe; the Homeowner Dashboard shows the moisture card once probes are added and enabled
 - **Gophr Logo** — The Gophr logo is displayed next to the Moisture Probes card header on the Configuration page

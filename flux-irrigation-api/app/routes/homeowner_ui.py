@@ -715,6 +715,73 @@ async function renameZone(entityId) {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+// --- Uptime Formatting ---
+function isUptimeSensor(sensor) {
+    const eid = (sensor.entity_id || '').toLowerCase();
+    const name = (sensor.friendly_name || sensor.name || '').toLowerCase();
+    const dc = (sensor.device_class || '').toLowerCase();
+    return (eid.includes('uptime') || name.includes('uptime'))
+        && (dc === 'duration' || dc === 'timestamp' || ['s','d','h','min'].includes((sensor.unit_of_measurement || '').toLowerCase()));
+}
+
+function formatUptime(sensor) {
+    if (!isUptimeSensor(sensor)) return null;
+    let totalSec = 0;
+    const dc = (sensor.device_class || '').toLowerCase();
+    const unit = (sensor.unit_of_measurement || '').toLowerCase();
+    if (dc === 'timestamp') {
+        // State is an ISO timestamp of when the device started
+        const started = new Date(sensor.state);
+        if (isNaN(started.getTime())) return null;
+        totalSec = Math.floor((Date.now() - started.getTime()) / 1000);
+    } else {
+        const raw = parseFloat(sensor.state);
+        if (isNaN(raw)) return null;
+        // Convert to seconds based on unit
+        if (unit === 'd')        totalSec = Math.floor(raw * 86400);
+        else if (unit === 'h')   totalSec = Math.floor(raw * 3600);
+        else if (unit === 'min') totalSec = Math.floor(raw * 60);
+        else                     totalSec = Math.floor(raw);
+    }
+    if (totalSec < 0) return null;
+
+    const years = Math.floor(totalSec / 31536000); totalSec %= 31536000;
+    const months = Math.floor(totalSec / 2592000); totalSec %= 2592000;
+    const weeks = Math.floor(totalSec / 604800); totalSec %= 604800;
+    const days = Math.floor(totalSec / 86400); totalSec %= 86400;
+    const hours = Math.floor(totalSec / 3600); totalSec %= 3600;
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+
+    // Build parts, skipping leading zeros
+    const parts = [];
+    if (years)  parts.push({ val: years,  unit: 'y', label: years === 1 ? 'yr' : 'yrs' });
+    if (months) parts.push({ val: months, unit: 'mo', label: months === 1 ? 'mo' : 'mos' });
+    if (weeks)  parts.push({ val: weeks,  unit: 'w', label: weeks === 1 ? 'wk' : 'wks' });
+    if (days)   parts.push({ val: days,   unit: 'd', label: days === 1 ? 'day' : 'days' });
+    // Always show h/m/s once we have at least one part or if that's all there is
+    parts.push({ val: hours, unit: 'h', label: 'hrs' });
+    parts.push({ val: mins,  unit: 'm', label: 'min' });
+    parts.push({ val: secs,  unit: 's', label: 'sec' });
+
+    // Render as a compact segmented display
+    let html = '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:baseline;">';
+    for (const p of parts) {
+        html += '<div style="text-align:center;">';
+        html += '<span style="font-weight:700;font-size:15px;color:var(--text-primary);">' + p.val + '</span>';
+        html += '<span style="font-size:10px;color:var(--text-muted);margin-left:1px;">' + p.label + '</span>';
+        html += '</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+function renderSensorValue(sensor) {
+    const uptimeHtml = formatUptime(sensor);
+    if (uptimeHtml) return uptimeHtml;
+    return '<div class="tile-state">' + esc(sensor.state) + (sensor.unit_of_measurement ? ' ' + esc(sensor.unit_of_measurement) : '') + wifiSignalBadge(sensor) + '</div>';
+}
+
 // --- WiFi Signal Quality ---
 function wifiSignalBadge(sensor) {
     const eid = (sensor.entity_id || '').toLowerCase();
@@ -735,19 +802,44 @@ function wifiSignalBadge(sensor) {
 }
 
 // --- Sensors ---
+let _sensorGridBuilt = false;
 async function loadSensors() {
     const el = document.getElementById('detailSensors');
     try {
         const data = await api('/sensors');
         const sensors = Array.isArray(data) ? data : (data.sensors || []);
-        if (sensors.length === 0) { el.innerHTML = '<div class="empty-state"><p>No sensors found</p></div>'; return; }
-        el.innerHTML = '<div class="tile-grid">' + sensors.map(s => `
-            <div class="tile">
-                <div class="tile-name">${esc(s.friendly_name || s.name || s.entity_id)}</div>
-                <div class="tile-state">${esc(s.state)}${s.unit_of_measurement ? ' ' + esc(s.unit_of_measurement) : ''}${wifiSignalBadge(s)}</div>
-            </div>`).join('') + '</div>';
+        if (sensors.length === 0) { el.innerHTML = '<div class="empty-state"><p>No sensors found</p></div>'; _sensorGridBuilt = false; return; }
+
+        // Build the tile grid once, then only update values
+        const eids = sensors.map(s => s.entity_id).sort().join(',');
+        const gridExists = _sensorGridBuilt && el.querySelector('.tile-grid');
+        if (!gridExists || el.getAttribute('data-eids') !== eids) {
+            // First load or sensor list changed — full build
+            el.innerHTML = '<div class="tile-grid">' + sensors.map(s => {
+                const eid = esc(s.entity_id);
+                return '<div class="tile" data-eid="' + eid + '">' +
+                    '<div class="tile-name">' + esc(cleanEntityName(s.friendly_name || s.name, s.entity_id)) + '</div>' +
+                    '<div class="tile-value">' + renderSensorValue(s) + '</div>' +
+                '</div>';
+            }).join('') + '</div>';
+            el.setAttribute('data-eids', eids);
+            _sensorGridBuilt = true;
+        } else {
+            // Targeted update — only change the value content of each tile
+            for (const s of sensors) {
+                const tile = el.querySelector('[data-eid="' + s.entity_id + '"]');
+                if (!tile) continue;
+                const valEl = tile.querySelector('.tile-value');
+                if (!valEl) continue;
+                const newHtml = renderSensorValue(s);
+                if (valEl.innerHTML !== newHtml) {
+                    valEl.innerHTML = newHtml;
+                }
+            }
+        }
     } catch (e) {
         el.innerHTML = '<div style="color:var(--color-danger);">Failed to load sensors: ' + esc(e.message) + '</div>';
+        _sensorGridBuilt = false;
     }
 }
 
