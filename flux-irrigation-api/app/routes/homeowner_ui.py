@@ -583,57 +583,50 @@ function _calEventData() {
     return { svcDate: svcDate, endDate: endDate, title: title, location: loc, details: details, isoEnd: d.toISOString().slice(0, 10) };
 }
 
-async function addServiceToCalendar() {
+function addServiceToCalendar() {
     if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
-    const icsUrl = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-    // 1. Try Web Share API (native share sheet — best mobile experience)
-    try {
-        const resp = await fetch(icsUrl);
-        if (resp.ok) {
-            const blob = await resp.blob();
-            const file = new File([blob], 'irrigation-service.ics', { type: 'text/calendar' });
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({ files: [file], title: 'Irrigation Service' });
-                return;
-            }
-        }
-    } catch (e) { /* continue to fallbacks */ }
-
-    // 2. Android/Desktop: Blob download via anchor tag
-    if (!isIOS) {
-        try {
-            const resp = await fetch(icsUrl);
-            if (resp.ok) {
-                const blob = await resp.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'irrigation-service.ics';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
-                return;
-            }
-        } catch (e) { /* fall through */ }
+    // iOS: skip async fetch entirely — go straight to calendar picker
+    // Android/Desktop: try .ics blob download first
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) {
+        _showCalendarPicker();
+        return;
     }
 
-    // 3. iOS / final fallback: show calendar provider picker
-    _showCalendarPicker();
+    // Android/Desktop: try blob download, fall back to picker
+    var icsUrl = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
+    fetch(icsUrl).then(function(resp) {
+        if (!resp.ok) throw new Error('err');
+        return resp.blob();
+    }).then(function(blob) {
+        var file = new File([blob], 'irrigation-service.ics', { type: 'text/calendar' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            return navigator.share({ files: [file], title: 'Irrigation Service' });
+        }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'irrigation-service.ics';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+    }).catch(function() {
+        _showCalendarPicker();
+    });
 }
 
 function _showCalendarPicker() {
-    const ev = _calEventData();
+    var ev = _calEventData();
 
-    const googleUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+    var googleUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE'
         + '&text=' + encodeURIComponent(ev.title)
         + '&dates=' + ev.svcDate + '/' + ev.endDate
         + '&details=' + encodeURIComponent(ev.details)
         + '&location=' + encodeURIComponent(ev.location);
 
-    const outlookUrl = 'https://outlook.live.com/calendar/0/action/compose?'
+    var outlookUrl = 'https://outlook.live.com/calendar/0/action/compose?'
         + 'subject=' + encodeURIComponent(ev.title)
         + '&startdt=' + _upcomingServiceData.service_date
         + '&enddt=' + ev.isoEnd
@@ -641,33 +634,49 @@ function _showCalendarPicker() {
         + '&location=' + encodeURIComponent(ev.location)
         + '&allday=true';
 
-    const yahooUrl = 'https://calendar.yahoo.com/?v=60'
-        + '&title=' + encodeURIComponent(ev.title)
-        + '&st=' + ev.svcDate
-        + '&dur=allday'
-        + '&desc=' + encodeURIComponent(ev.details)
-        + '&in_loc=' + encodeURIComponent(ev.location);
-
-    const opts = document.getElementById('calendarPickerOptions');
+    var opts = document.getElementById('calendarPickerOptions');
     opts.innerHTML = '';
+
+    // Build real <a> tags (not buttons) so the user physically taps the link.
+    // HA companion app intercepts <a target="_blank"> the same way
+    // openAddressInMaps() works via window.open.
     var items = [
         { label: 'Google Calendar', url: googleUrl },
-        { label: 'Outlook / Hotmail', url: outlookUrl },
-        { label: 'Yahoo Calendar', url: yahooUrl }
+        { label: 'Outlook / Hotmail', url: outlookUrl }
     ];
     items.forEach(function(item) {
-        const btn = document.createElement('button');
-        btn.textContent = item.label;
-        btn.style.cssText = 'width:100%;padding:14px 16px;border-radius:10px;border:1px solid var(--border-light);background:var(--bg-tile);color:var(--text-primary);font-size:15px;font-weight:500;cursor:pointer;text-align:left;transition:background 0.15s;';
-        btn.onmouseover = function() { this.style.background = 'var(--bg-hover, #f0f0f0)'; };
-        btn.onmouseout = function() { this.style.background = 'var(--bg-tile)'; };
-        btn.onclick = function() {
-            closeCalendarPicker();
-            // window.open is intercepted by HA companion app and opened in real browser
-            window.open(item.url, '_blank');
-        };
-        opts.appendChild(btn);
+        var a = document.createElement('a');
+        a.href = item.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = item.label;
+        a.style.cssText = 'display:block;width:100%;padding:14px 16px;border-radius:10px;border:1px solid var(--border-light);background:var(--bg-tile);color:var(--text-primary);font-size:15px;font-weight:500;cursor:pointer;text-align:left;text-decoration:none;box-sizing:border-box;';
+        a.onclick = function() { setTimeout(closeCalendarPicker, 300); };
+        opts.appendChild(a);
     });
+
+    // Copy link fallback — guaranteed to work in any webview
+    var copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy Calendar Link';
+    copyBtn.style.cssText = 'width:100%;padding:14px 16px;border-radius:10px;border:1px dashed var(--border-light);background:transparent;color:var(--text-secondary);font-size:14px;cursor:pointer;text-align:left;';
+    copyBtn.onclick = function() {
+        navigator.clipboard.writeText(googleUrl).then(function() {
+            showToast('Calendar link copied! Paste in Safari to add event.');
+            closeCalendarPicker();
+        }).catch(function() {
+            // clipboard failed — select-all fallback
+            var inp = document.createElement('input');
+            inp.value = googleUrl;
+            document.body.appendChild(inp);
+            inp.select();
+            document.execCommand('copy');
+            document.body.removeChild(inp);
+            showToast('Calendar link copied! Paste in Safari to add event.');
+            closeCalendarPicker();
+        });
+    };
+    opts.appendChild(copyBtn);
+
     document.getElementById('calendarPickerModal').style.display = 'flex';
 }
 
