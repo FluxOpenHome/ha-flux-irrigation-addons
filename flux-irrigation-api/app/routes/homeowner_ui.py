@@ -395,6 +395,20 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     </div>
 </div>
 
+<!-- Calendar Picker Modal -->
+<div id="calendarPickerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);">&#128197; Add to Calendar</h3>
+            <button onclick="closeCalendarPicker()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div style="padding:16px 20px 20px 20px;">
+            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 14px 0;">Choose your calendar app:</p>
+            <div style="display:flex;flex-direction:column;gap:8px;" id="calendarOptions"></div>
+        </div>
+    </div>
+</div>
+
 <!-- Report Issue Modal -->
 <div id="reportIssueModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:500px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
@@ -555,44 +569,102 @@ function renderUpcomingService(issues) {
     banner.style.display = 'block';
 }
 
-// --- Calendar (.ics) Generation ---
+// --- Calendar Picker ---
 function addServiceToCalendar() {
     if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
-    const svcDate = _upcomingServiceData.service_date; // YYYY-MM-DD
+    const svcDate = _upcomingServiceData.service_date;
     const note = _upcomingServiceData.management_note || '';
-    const title = document.getElementById('dashTitle').textContent || 'Irrigation Service';
+    const title = 'Irrigation Service - ' + (document.getElementById('dashTitle').textContent || 'My Property');
     const addr = document.getElementById('dashAddress').textContent || '';
-    // Format date as all-day event: YYYYMMDD
+    let desc = 'Irrigation service visit scheduled by your management company.';
+    if (note) desc += ' Note from management: ' + note;
+
     const dtStart = svcDate.replace(/-/g, '');
-    // End date is next day for all-day events
-    const parts = svcDate.split('-');
-    const endDt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]) + 1);
-    const dtEnd = endDt.getFullYear() + String(endDt.getMonth() + 1).padStart(2, '0') + String(endDt.getDate()).padStart(2, '0');
+    const endDt = new Date(svcDate + 'T00:00:00');
+    endDt.setDate(endDt.getDate() + 1);
+    const dtEnd = endDt.toISOString().slice(0, 10).replace(/-/g, '');
+    const endDateStr = endDt.toISOString().slice(0, 10);
+
+    // Google Calendar URL
+    const gParams = new URLSearchParams({action:'TEMPLATE', text:title, dates:dtStart+'/'+dtEnd});
+    if (desc) gParams.set('details', desc);
+    if (addr) gParams.set('location', addr);
+    const googleUrl = 'https://calendar.google.com/calendar/render?' + gParams.toString();
+
+    // Outlook URL
+    const oParams = new URLSearchParams({path:'/calendar/action/compose', rru:'addevent', startdt:svcDate, enddt:endDateStr, subject:title, allday:'true'});
+    if (desc) oParams.set('body', desc);
+    if (addr) oParams.set('location', addr);
+    const outlookUrl = 'https://outlook.live.com/calendar/deeplink/compose?' + oParams.toString();
+
+    // Yahoo URL
+    const yParams = new URLSearchParams({v:'60', title:title, st:dtStart, dur:'allday'});
+    if (desc) yParams.set('desc', desc);
+    if (addr) yParams.set('in_loc', addr);
+    const yahooUrl = 'https://calendar.yahoo.com/?' + yParams.toString();
+
+    // Build options
+    const options = document.getElementById('calendarOptions');
+    const btnStyle = 'display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border:1px solid var(--border-light);background:var(--bg-tile);cursor:pointer;text-decoration:none;color:var(--text-primary);font-size:14px;font-weight:500;transition:background 0.15s;';
+    options.innerHTML =
+        '<a href="' + esc(googleUrl) + '" target="_blank" rel="noopener" style="' + btnStyle + '" onclick="closeCalendarPicker()">' +
+            '<span style="font-size:22px;">&#128197;</span>' +
+            '<div><div>Google Calendar</div><div style="font-size:11px;color:var(--text-muted);font-weight:400;">Opens in browser</div></div>' +
+        '</a>' +
+        '<a href="' + esc(outlookUrl) + '" target="_blank" rel="noopener" style="' + btnStyle + '" onclick="closeCalendarPicker()">' +
+            '<span style="font-size:22px;">&#128233;</span>' +
+            '<div><div>Outlook</div><div style="font-size:11px;color:var(--text-muted);font-weight:400;">Opens in browser</div></div>' +
+        '</a>' +
+        '<a href="' + esc(yahooUrl) + '" target="_blank" rel="noopener" style="' + btnStyle + '" onclick="closeCalendarPicker()">' +
+            '<span style="font-size:22px;">&#128198;</span>' +
+            '<div><div>Yahoo Calendar</div><div style="font-size:11px;color:var(--text-muted);font-weight:400;">Opens in browser</div></div>' +
+        '</a>' +
+        '<div onclick="downloadIcsFile()" style="' + btnStyle + '">' +
+            '<span style="font-size:22px;">&#127823;</span>' +
+            '<div><div>Apple Calendar / Other</div><div style="font-size:11px;color:var(--text-muted);font-weight:400;">Downloads .ics file</div></div>' +
+        '</div>';
+    document.getElementById('calendarPickerModal').style.display = 'flex';
+}
+
+function closeCalendarPicker() {
+    document.getElementById('calendarPickerModal').style.display = 'none';
+}
+
+// Escape + backdrop handlers for calendar picker
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('calendarPickerModal').style.display === 'flex') {
+        closeCalendarPicker();
+    }
+});
+document.getElementById('calendarPickerModal').addEventListener('click', function(e) {
+    if (e.target === this) closeCalendarPicker();
+});
+
+function downloadIcsFile() {
+    if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
+    const svcDate = _upcomingServiceData.service_date;
+    const note = _upcomingServiceData.management_note || '';
+    const title = 'Irrigation Service - ' + (document.getElementById('dashTitle').textContent || 'My Property');
+    const addr = document.getElementById('dashAddress').textContent || '';
+    const dtStart = svcDate.replace(/-/g, '');
+    const endDt = new Date(svcDate + 'T00:00:00');
+    endDt.setDate(endDt.getDate() + 1);
+    const dtEnd = endDt.toISOString().slice(0, 10).replace(/-/g, '');
     const now = new Date();
-    const stamp = now.getUTCFullYear() + String(now.getUTCMonth() + 1).padStart(2, '0') + String(now.getUTCDate()).padStart(2, '0') + 'T' + String(now.getUTCHours()).padStart(2, '0') + String(now.getUTCMinutes()).padStart(2, '0') + String(now.getUTCSeconds()).padStart(2, '0') + 'Z';
+    const stamp = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     const uid = 'flux-svc-' + _upcomingServiceData.id + '@flux-irrigation';
-    let description = 'Irrigation service visit scheduled by your management company.';
-    if (note) description += '\\\\nNote from management: ' + note.replace(/[\\r\\n]+/g, ' ');
-    // Build ICS content - lines joined with CRLF as required by RFC 5545
+    let icsDesc = 'Irrigation service visit scheduled by your management company.';
+    if (note) icsDesc += '\\\\nNote from management: ' + note.replace(/[\\r\\n]+/g, ' ');
     const CRLF = '\\r\\n';
     const lines = [
-        'BEGIN:VCALENDAR',
-        'VERSION:2.0',
-        'PRODID:-//Flux Open Home//Irrigation Service//EN',
-        'BEGIN:VEVENT',
-        'UID:' + uid,
-        'DTSTAMP:' + stamp,
-        'DTSTART;VALUE=DATE:' + dtStart,
-        'DTEND;VALUE=DATE:' + dtEnd,
-        'SUMMARY:Irrigation Service - ' + title,
-        'DESCRIPTION:' + description,
-        addr ? 'LOCATION:' + addr : '',
-        'STATUS:CONFIRMED',
-        'END:VEVENT',
-        'END:VCALENDAR'
+        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Flux Open Home//Irrigation Service//EN',
+        'BEGIN:VEVENT', 'UID:' + uid, 'DTSTAMP:' + stamp,
+        'DTSTART;VALUE=DATE:' + dtStart, 'DTEND;VALUE=DATE:' + dtEnd,
+        'SUMMARY:' + title, 'DESCRIPTION:' + icsDesc,
+        addr ? 'LOCATION:' + addr : '', 'STATUS:CONFIRMED',
+        'END:VEVENT', 'END:VCALENDAR'
     ].filter(Boolean);
     const ics = lines.join(CRLF);
-    // Download the ICS file
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -602,7 +674,8 @@ function addServiceToCalendar() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Calendar event downloaded — open the .ics file to add it to your calendar');
+    closeCalendarPicker();
+    showToast('Calendar file downloaded — open it to add to your calendar');
 }
 
 // --- Open Address in Maps ---
@@ -2766,7 +2839,7 @@ const HELP_CONTENT = `
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Submitted</strong> — Your issue has been sent to management</li><li style="margin-bottom:4px;"><strong>Acknowledged</strong> — Management has reviewed your issue and may have left a note</li><li style="margin-bottom:4px;"><strong>Service Scheduled</strong> — A service date has been set</li><li style="margin-bottom:4px;"><strong>Resolved</strong> — Management has marked your issue as complete. You will see their response and can click <strong>Dismiss</strong> to remove it from your dashboard</li></ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Upcoming Service</h4>
-<p style="margin-bottom:10px;">When your management company schedules a service visit, a green <strong>Upcoming Service</strong> banner appears at the top of your dashboard showing the scheduled date. If management included a note, it appears below the date. <strong>Tap the banner</strong> to download a calendar event (.ics file) that you can add to your phone or computer calendar.</p>
+<p style="margin-bottom:10px;">When your management company schedules a service visit, a green <strong>Upcoming Service</strong> banner appears at the top of your dashboard showing the scheduled date. If management included a note, it appears below the date. <strong>Tap the banner</strong> to add the appointment to your calendar — choose from Google Calendar, Outlook, Yahoo Calendar, or download an .ics file for Apple Calendar and other apps.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Property Address</h4>
 <p style="margin-bottom:10px;">Your property address is shown below the dashboard title. <strong>Tap the address</strong> to open it in your default maps application (Apple Maps on iOS/Mac, Google Maps on other devices).</p>
