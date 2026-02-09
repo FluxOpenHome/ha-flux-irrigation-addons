@@ -2421,9 +2421,10 @@ function mgmtShowWakeSchedule(probeId) {
         mgmtShowModal('Wake Schedule', body);
         return;
     }
-    if (prep && prep.prep_entries && prep.prep_entries.length > 0) {
+    var entries = (prep && prep.display_entries && prep.display_entries.length > 0) ? prep.display_entries : (prep && prep.prep_entries ? prep.prep_entries : []);
+    if (entries.length > 0) {
         /* Sort entries by target_wake_minutes chronologically */
-        var sorted = prep.prep_entries.slice().sort(function(a, b) {
+        var sorted = entries.slice().sort(function(a, b) {
             return a.target_wake_minutes - b.target_wake_minutes;
         });
         /* Use customer's timezone for NEXT marker, not manager's local time */

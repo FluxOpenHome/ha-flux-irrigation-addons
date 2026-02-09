@@ -704,18 +704,24 @@ async def calculate_irrigation_timeline() -> dict:
             except (ValueError, TypeError):
                 pass
 
-        # For each schedule, find the first mapped zone
+        # For each schedule, find ALL mapped zones (for display) and the
+        # FIRST mapped zone (for prep timing — probe wakes before this one).
         first_mapped_per_schedule = []
+        all_mapped_per_schedule = []
         for sched in schedules:
+            found_first = False
             for zone in sched["zones"]:
                 if zone["zone_entity_id"] in mapped_zones:
-                    first_mapped_per_schedule.append({
+                    entry = {
                         "schedule_start_time": sched["start_time"],
                         "zone_num": zone["zone_num"],
                         "zone_entity_id": zone["zone_entity_id"],
                         "zone_start_minutes": zone["expected_start_minutes"],
-                    })
-                    break  # first mapped in this schedule
+                    }
+                    all_mapped_per_schedule.append(entry)
+                    if not found_first:
+                        first_mapped_per_schedule.append(entry)
+                        found_first = True
 
         # Calculate prep trigger time: zone_start - (current_sleep + PREP_BUFFER)
         # This is when we need to reprogram the probe's sleep duration
@@ -724,11 +730,6 @@ async def calculate_irrigation_timeline() -> dict:
             zone_start_min = fm["zone_start_minutes"]
             prep_trigger = zone_start_min - (current_sleep + PREP_BUFFER_MINUTES)
             target_wake = zone_start_min - TARGET_WAKE_BEFORE_MINUTES
-            # Calculate what sleep duration to set so probe wakes at target_wake
-            # When we set the sleep at prep_trigger time, the probe needs to sleep
-            # from its NEXT sleep cycle until target_wake.
-            # Since we set the duration while the probe is sleeping, it will
-            # use the new duration on its next cycle.
             prep_entries.append({
                 "schedule_start_time": fm["schedule_start_time"],
                 "zone_num": fm["zone_num"],
@@ -738,10 +739,24 @@ async def calculate_irrigation_timeline() -> dict:
                 "target_wake_minutes": target_wake % 1440,
             })
 
+        # Build display entries for ALL mapped zones (wake schedule popup)
+        display_entries = []
+        for am in all_mapped_per_schedule:
+            zone_start_min = am["zone_start_minutes"]
+            target_wake = zone_start_min - TARGET_WAKE_BEFORE_MINUTES
+            display_entries.append({
+                "schedule_start_time": am["schedule_start_time"],
+                "zone_num": am["zone_num"],
+                "zone_entity_id": am["zone_entity_id"],
+                "zone_start_minutes": zone_start_min,
+                "target_wake_minutes": target_wake % 1440,
+            })
+
         probe_prep[pid] = {
             "original_sleep_duration": current_sleep,
             "current_sleep_duration": current_sleep,
             "prep_entries": prep_entries,
+            "display_entries": display_entries,
             "state": "idle",
             "skipped_zones": [],
             "active_schedule_start_time": None,
