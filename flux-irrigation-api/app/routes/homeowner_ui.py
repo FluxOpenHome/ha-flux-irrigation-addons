@@ -2888,11 +2888,19 @@ async function loadMoisture() {
                     }
                 }
                 html += '</div>';
-                // Device sensor pills
+                // Device sensor pills — show ALL detected entities
                 const _extraLabels = [];
                 if (es.wifi) _extraLabels.push('WiFi');
                 if (es.battery) _extraLabels.push('Batt');
                 if (es.sleep_duration) _extraLabels.push('Sleep');
+                if (es.sleep_disabled) _extraLabels.push('Sleep Toggle');
+                if (es.status_led) _extraLabels.push('Status LED');
+                if (es.sleep_duration_number) _extraLabels.push('Sleep Control');
+                if (es.solar_charging) _extraLabels.push('Solar');
+                if (es.sleep_now) _extraLabels.push('Sleep Now');
+                if (es.min_awake_minutes) _extraLabels.push('Min Awake');
+                if (es.max_awake_minutes) _extraLabels.push('Max Awake');
+                if (es.schedule_times && es.schedule_times.length) _extraLabels.push('Schedule (' + es.schedule_times.length + ')');
                 if (_extraLabels.length > 0) {
                     html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">';
                     for (const lbl of _extraLabels) {
@@ -2926,6 +2934,7 @@ async function loadMoisture() {
         // Populate device picker after DOM is ready
         loadHoMoistureDevices();
     } catch (e) {
+        console.error('[MOISTURE] loadMoisture failed:', e);
         card.style.display = 'none';
     }
 }
@@ -3237,7 +3246,11 @@ async function addHoProbeFromDevice() {
         });
         showToast('Probe "' + displayName + '" added — use Edit Zones to assign zones');
         _moistureDataCache = null;
-        loadMoisture();
+        _moistureExpanded.management = true;
+        await loadMoisture();
+        // Scroll to the management section so user sees their new probe
+        const mgmtBody = document.getElementById('moistureManagementBody');
+        if (mgmtBody) mgmtBody.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) { showToast(e.message || 'Failed to add probe', 'error'); }
 }
 
@@ -3247,6 +3260,7 @@ async function deleteMoistureProbe(probeId) {
         await mapi('/probes/' + encodeURIComponent(probeId), 'DELETE');
         showToast('Probe removed');
         _moistureDataCache = null;
+        _moistureExpanded.management = true;
         loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
 }
@@ -3264,6 +3278,7 @@ async function updateProbeEntities(probeId) {
             showToast(result.diagnostic.disabled_sensors.length + ' sensors disabled in HA — enable them first', 'warning');
         }
         _moistureDataCache = null;
+        _moistureExpanded.management = true;
         loadMoisture();
     } catch (e) { showToast(e.message || 'Failed to update entities', 'error'); }
 }
