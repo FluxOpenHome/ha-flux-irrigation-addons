@@ -2418,6 +2418,7 @@ async def api_autodetect_device_sensors(device_id: str):
     max_awake_entity = None
     status_led_entity = None
     solar_charging_entity = None
+    sleep_now_entity = None
 
     # Get ALL entities for this device (we already got sensors above, now we need the rest)
     all_device_entity_ids = await ha_client.get_entities_for_device(device_id)
@@ -2463,6 +2464,12 @@ async def api_autodetect_device_sensors(device_id: str):
                 sleep_duration_number = eid
                 print(f"[MOISTURE]   MATCH sleep_duration_number: {eid}")
 
+        # Sleep Now button (button.gophr_*_sleep_now) — forces the device to sleep immediately
+        if domain == "button" and "sleep_now" in eid_lower:
+            if not sleep_now_entity:
+                sleep_now_entity = eid
+                print(f"[MOISTURE]   MATCH sleep_now: {eid}")
+
     # Sort schedule times by number suffix (schedule_time_1, _2, _3, _4)
     schedule_times.sort(key=lambda e: int(re.search(r'(\d+)$', e).group(1)) if re.search(r'(\d+)$', e) else 99)
 
@@ -2480,6 +2487,8 @@ async def api_autodetect_device_sensors(device_id: str):
         extra_map["sleep_duration_number"] = sleep_duration_number
     if solar_charging_entity:
         extra_map["solar_charging"] = solar_charging_entity
+    if sleep_now_entity:
+        extra_map["sleep_now"] = sleep_now_entity
 
     print(f"[MOISTURE] autodetect result: depths={depth_map}, extras={extra_map}")
 
@@ -2985,6 +2994,37 @@ async def api_set_sleep_disabled(probe_id: str, body: SleepDisabledRequest, requ
         }
 
 
+@router.post("/probes/{probe_id}/sleep-now", summary="Force probe to sleep immediately")
+async def api_press_sleep_now(probe_id: str, request: Request):
+    """Press the sleep_now button on a Gophr probe to force it to sleep immediately.
+
+    Useful for precise wake timing — set the desired sleep_duration first,
+    then press sleep_now to start the countdown immediately.
+    The probe must be awake for this to work.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
+
+    sleep_now_eid = (probe.get("extra_sensors") or {}).get("sleep_now")
+    if not sleep_now_eid:
+        raise HTTPException(status_code=400, detail="No sleep_now button entity detected for this probe")
+
+    display_name = probe.get("display_name", probe_id)
+
+    success = await press_probe_sleep_now(probe_id)
+    if success:
+        log_change(get_actor(request), "Moisture Probes",
+                   f"Sleep Now pressed for {display_name}")
+        return {
+            "success": True,
+            "message": f"Sleep Now pressed for {display_name} — probe will sleep immediately",
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to press sleep_now button on device")
+
+
 @router.get("/settings", summary="Get moisture probe settings")
 async def api_get_settings():
     """Get global moisture probe settings."""
@@ -3472,6 +3512,34 @@ async def set_probe_sleep_disabled(probe_id: str, disabled: bool) -> bool:
     })
     print(f"[MOISTURE] Sleep {'disabled' if disabled else 'enabled'} for {probe_id} "
           f"({sleep_switch_eid}): {'OK' if success else 'FAILED'}")
+    return success
+
+
+async def press_probe_sleep_now(probe_id: str) -> bool:
+    """Press the sleep_now button on a Gophr probe to force it to sleep immediately.
+
+    Useful for precise wake timing control — set the desired sleep_duration first,
+    then press sleep_now to start the countdown immediately instead of waiting for
+    the device's natural sleep cycle.
+
+    Returns True if the service call succeeded.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        print(f"[MOISTURE] press_probe_sleep_now: probe {probe_id} not found")
+        return False
+
+    sleep_now_eid = (probe.get("extra_sensors") or {}).get("sleep_now")
+    if not sleep_now_eid:
+        print(f"[MOISTURE] press_probe_sleep_now: no sleep_now button for {probe_id}")
+        return False
+
+    success = await ha_client.call_service("button", "press", {
+        "entity_id": sleep_now_eid,
+    })
+    print(f"[MOISTURE] Sleep Now pressed for {probe_id} ({sleep_now_eid}): "
+          f"{'OK' if success else 'FAILED'}")
     return success
 
 

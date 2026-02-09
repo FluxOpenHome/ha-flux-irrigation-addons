@@ -2729,6 +2729,10 @@ async function loadMoisture() {
                         }
                         html += '</div>';
                     }
+                    // Sleep Now button — press to force the probe to sleep immediately
+                    if (es.sleep_now) {
+                        html += '<button onclick="hoPressSleepNow(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--color-info);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-info);margin-top:2px;" title="Force probe to sleep now (starts the sleep duration countdown immediately)">Sleep Now</button>';
+                    }
                     html += '</div>';
                 }
 
@@ -3129,6 +3133,7 @@ async function onHoMoistureDeviceChange() {
         if (extraSensors.status_led) extras.push('Status LED');
         if (extraSensors.sleep_duration_number) extras.push('Sleep Control');
         if (extraSensors.solar_charging) extras.push('Solar');
+        if (extraSensors.sleep_now) extras.push('Sleep Now');
 
         if (detected.length > 0 || extras.length > 0) {
             html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Auto-detected sensors</div>';
@@ -3280,6 +3285,15 @@ async function hoToggleSleepDisabled(probeId, disabled) {
         } else {
             showToast('Sleep ' + action);
         }
+        _moistureDataCache = null;
+        loadMoisture();
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function hoPressSleepNow(probeId) {
+    try {
+        const result = await mapi('/probes/' + encodeURIComponent(probeId) + '/sleep-now', 'POST');
+        showToast(result.message || 'Sleep Now pressed');
         _moistureDataCache = null;
         loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }

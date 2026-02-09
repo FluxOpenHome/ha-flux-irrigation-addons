@@ -2208,6 +2208,10 @@ async function loadDetailMoisture(id) {
                         }
                         html += '</div>';
                     }
+                    // Sleep Now button — press to force the probe to sleep immediately
+                    if (es.sleep_now) {
+                        html += '<button onclick="mgmtPressSleepNow(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--color-info);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-info);margin-top:2px;" title="Force probe to sleep now (starts the sleep duration countdown immediately)">Sleep Now</button>';
+                    }
                     html += '</div>';
                 }
 
@@ -2407,6 +2411,17 @@ async function mgmtToggleSleepDisabled(probeId, disabled) {
         } else {
             showToast('Sleep ' + action);
         }
+        _mgmtMoistureDataCache = null;
+        loadDetailMoisture(currentCustomerId);
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function mgmtPressSleepNow(probeId) {
+    try {
+        const result = await api('/customers/' + currentCustomerId + '/moisture/probes/' + encodeURIComponent(probeId) + '/sleep-now', {
+            method: 'POST',
+        });
+        showToast(result.message || 'Sleep Now pressed');
         _mgmtMoistureDataCache = null;
         loadDetailMoisture(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
