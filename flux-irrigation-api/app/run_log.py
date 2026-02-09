@@ -13,10 +13,19 @@ Each entry includes weather conditions at the time of the event.
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 RUN_LOG_FILE = "/data/run_history.jsonl"
+
+_ZONE_NUM_RE = re.compile(r'zone[_]?(\d+)', re.IGNORECASE)
+
+
+def _extract_zone_number(entity_id: str) -> int:
+    """Extract numeric zone number from entity_id (e.g. 'switch.xxx_zone_3' → 3)."""
+    m = _ZONE_NUM_RE.search(entity_id)
+    return int(m.group(1)) if m else 0
 
 # Cache of last-known zone states for the background watcher
 _zone_states: dict[str, str] = {}
@@ -140,6 +149,15 @@ def get_run_history(hours: int = 24, zone_id: Optional[str] = None, limit: int =
     if hours > 0:
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
+    # Filter out hidden zones beyond detected_zone_count
+    max_zones = 0
+    try:
+        from config import get_config
+        cfg = get_config()
+        max_zones = cfg.detected_zone_count if hasattr(cfg, "detected_zone_count") else 0
+    except Exception:
+        pass
+
     entries = []
     try:
         with open(RUN_LOG_FILE, "r") as f:
@@ -153,6 +171,11 @@ def get_run_history(hours: int = 24, zone_id: Optional[str] = None, limit: int =
                         continue
                     if zone_id and entry.get("entity_id") != zone_id:
                         continue
+                    # Skip hidden zones beyond detected expansion board count
+                    if max_zones > 0:
+                        zn = _extract_zone_number(entry.get("entity_id", ""))
+                        if zn > max_zones:
+                            continue
                     entries.append(entry)
                 except json.JSONDecodeError:
                     continue
@@ -554,6 +577,14 @@ async def watch_zone_states():
                 continue
 
             allowed = set(config.allowed_zone_entities)
+
+            # Filter out hidden zones beyond detected_zone_count
+            max_zones = config.detected_zone_count if hasattr(config, "detected_zone_count") else 0
+            if max_zones > 0:
+                allowed = {
+                    eid for eid in allowed
+                    if _extract_zone_number(eid) <= max_zones
+                }
 
             # Try WebSocket first (real-time, sub-second)
             try:

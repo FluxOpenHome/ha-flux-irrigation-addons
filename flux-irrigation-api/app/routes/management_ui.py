@@ -1750,9 +1750,28 @@ async function loadDetailWeather(id) {
         const icon = _mgmtCondIcons[w.condition] || '🌡️';
         const mult = data.watering_multiplier != null ? data.watering_multiplier : 1.0;
 
-        badge.textContent = mult + 'x';
-        badge.style.background = mult === 1.0 ? 'var(--bg-success-light)' : mult < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
-        badge.style.color = mult === 1.0 ? 'var(--text-success-dark)' : mult < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+        // Badge — show skip message if a pause/skip adjustment is active
+        const adjustments = data.active_adjustments || [];
+        const skipAdj = adjustments.find(a => a.action === 'pause' || a.action === 'skip');
+        if (skipAdj) {
+            let skipText = 'Skipping Watering';
+            if (skipAdj.expires_at) {
+                try {
+                    const expiresMs = new Date(skipAdj.expires_at).getTime() - Date.now();
+                    if (expiresMs > 0) {
+                        const hrs = Math.round(expiresMs / 3600000 * 10) / 10;
+                        skipText = 'Skipping Watering for ' + hrs + ' hr' + (hrs !== 1 ? 's' : '');
+                    }
+                } catch(_) {}
+            }
+            badge.textContent = skipText;
+            badge.style.background = 'var(--bg-danger-light)';
+            badge.style.color = 'var(--text-danger-dark)';
+        } else {
+            badge.textContent = mult + 'x';
+            badge.style.background = mult === 1.0 ? 'var(--bg-success-light)' : mult < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+            badge.style.color = mult === 1.0 ? 'var(--text-success-dark)' : mult < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+        }
 
         const el = (did) => body.querySelector('[data-id=\"' + did + '\"]');
         el('wIcon').textContent = icon;
@@ -1790,7 +1809,6 @@ async function loadDetailWeather(id) {
 
         // Active adjustments
         const adjEl = el('wAdjustments');
-        const adjustments = data.active_adjustments || [];
         if (adjustments.length > 0) {
             let ah = '<div style="margin-top:12px;padding:10px;background:var(--bg-warning);border-radius:8px;font-size:12px;">';
             ah += '<strong style="color:var(--text-warning);">Active Weather Adjustments:</strong>';
@@ -4016,7 +4034,8 @@ async function loadDetailHistory(id) {
                     const zGpm = gpmMap[e.entity_id];
                     if (zGpm > 0) {
                         gpmCell = zGpm.toFixed(1);
-                        if (e.duration_seconds > 0 && (e.state === 'on' || e.state === 'open')) {
+                        // duration_seconds is set on OFF events (calculated from ON→OFF span)
+                        if (e.duration_seconds > 0) {
                             const gal = (e.duration_seconds / 60) * zGpm;
                             estGalCell = '<span style="font-weight:600;">' + gal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</span>';
                         }
@@ -4058,7 +4077,8 @@ async function loadDetailEstGallons(id) {
         const data = await api('/customers/' + id + '/history/runs?hours=' + hours);
         const events = data.events || [];
         // Filter to ON/open events with duration and GPM
-        const relevant = events.filter(e => (e.state === 'on' || e.state === 'open') && e.duration_seconds > 0 && gpmMap[e.entity_id]);
+        // Filter to events with duration and GPM (duration_seconds is set on OFF events)
+        const relevant = events.filter(e => e.duration_seconds > 0 && gpmMap[e.entity_id]);
         if (relevant.length === 0) {
             card.style.display = '';
             el.innerHTML = '<div class="empty-state"><p>No water usage data for the selected period</p></div>';
