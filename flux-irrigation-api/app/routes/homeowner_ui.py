@@ -3895,7 +3895,7 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     window._hoZoneDetailsEntityId = entityId;
     window._hoZoneDetailsHeads = zoneData.heads;
 
-    showModal('Zone Details — ' + displayName, body);
+    showModal('Zone Details — ' + displayName, body, '95vw');
 
     // Build the table with existing data
     setTimeout(function() { hoRenderHeadTable(zoneData.heads); }, 50);
@@ -4079,13 +4079,19 @@ async function hoSaveZoneHeads() {
     }
 }
 
-function showModal(title, bodyHtml) {
+function showModal(title, bodyHtml, maxWidth) {
     document.getElementById('dynamicModalTitle').textContent = title;
     document.getElementById('dynamicModalBody').innerHTML = bodyHtml;
+    var inner = document.getElementById('dynamicModal').querySelector('div');
+    inner.style.maxWidth = maxWidth || '400px';
+    inner.style.maxHeight = maxWidth ? '90vh' : '80vh';
     document.getElementById('dynamicModal').style.display = 'flex';
 }
 function closeDynamicModal() {
     document.getElementById('dynamicModal').style.display = 'none';
+    var inner = document.getElementById('dynamicModal').querySelector('div');
+    inner.style.maxWidth = '400px';
+    inner.style.maxHeight = '80vh';
     if (_calWetTimer) { clearInterval(_calWetTimer); _calWetTimer = null; }
 }
 document.addEventListener('keydown', function(e) {

@@ -4675,7 +4675,7 @@ async function mgmtShowZoneDetailsModal(entityId, displayName) {
     window._mgmtZoneDetailsEntityId = entityId;
     window._mgmtZoneDetailsHeads = zoneData.heads;
 
-    mgmtShowModal('Zone Details — ' + displayName, body);
+    mgmtShowModal('Zone Details — ' + displayName, body, '95vw');
 
     // Build the table with existing data
     setTimeout(function() { mgmtRenderHeadTable(zoneData.heads); }, 50);
@@ -4843,13 +4843,19 @@ async function mgmtSaveZoneHeads() {
     }
 }
 
-function mgmtShowModal(title, bodyHtml) {
+function mgmtShowModal(title, bodyHtml, maxWidth) {
     document.getElementById('mgmtDynamicModalTitle').textContent = title;
     document.getElementById('mgmtDynamicModalBody').innerHTML = bodyHtml;
+    var inner = document.getElementById('mgmtDynamicModal').querySelector('div');
+    inner.style.maxWidth = maxWidth || '400px';
+    inner.style.maxHeight = maxWidth ? '90vh' : '80vh';
     document.getElementById('mgmtDynamicModal').style.display = 'flex';
 }
 function closeMgmtDynamicModal() {
     document.getElementById('mgmtDynamicModal').style.display = 'none';
+    var inner = document.getElementById('mgmtDynamicModal').querySelector('div');
+    inner.style.maxWidth = '400px';
+    inner.style.maxHeight = '80vh';
     if (_mgmtCalWetTimer) { clearInterval(_mgmtCalWetTimer); _mgmtCalWetTimer = null; }
 }
 document.getElementById('helpModal').addEventListener('click', function(e) {
