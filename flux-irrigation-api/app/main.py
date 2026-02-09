@@ -466,17 +466,21 @@ async def _check_and_notify_new_issues(customer_issues: dict):
         import ha_client
 
         notif_config = notification_config.load_config()
+        last_known = notif_config.get("last_known_issues", {})
+
         if not notif_config.get("enabled") or not notif_config.get("ha_notify_service"):
-            # Still update last known so when enabled, we don't flood
-            new_known = {}
+            # Still update last known so when enabled, we don't flood.
+            # Preserve entries for customers not in this cycle (health check failed).
+            new_known = dict(last_known)
             for cust_id, data in customer_issues.items():
                 new_known[cust_id] = {"ids": [i["id"] for i in data.get("issues", [])]}
             notification_config.update_last_known_issues(new_known)
             return
 
-        last_known = notif_config.get("last_known_issues", {})
         service_name = notif_config["ha_notify_service"]
-        new_known = {}
+        # Start with last_known so customers whose health check failed
+        # this cycle keep their issue IDs (prevents duplicate notifications)
+        new_known = dict(last_known)
         notifications_to_send = []
 
         for cust_id, data in customer_issues.items():
