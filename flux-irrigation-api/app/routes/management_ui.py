@@ -2035,11 +2035,16 @@ async function loadDetailMoisture(id) {
         badge.style.background = settings.enabled ? 'var(--bg-success-light)' : 'var(--bg-tile)';
         badge.style.color = settings.enabled ? 'var(--text-success-dark)' : 'var(--text-muted)';
 
-        // Update moisture multiplier badge
-        const mm = multData.moisture_multiplier != null ? multData.moisture_multiplier : 1.0;
-        multBadge.textContent = mm === 0 ? 'Skip' : mm + 'x';
-        multBadge.style.background = mm === 0 ? 'var(--bg-danger-light)' : mm === 1.0 ? 'var(--bg-success-light)' : mm < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
-        multBadge.style.color = mm === 0 ? 'var(--color-danger)' : mm === 1.0 ? 'var(--text-success-dark)' : mm < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+        // Update moisture multiplier badge — show min across per-zone multipliers
+        const perZone = (multData && multData.per_zone) || {};
+        const pzVals = Object.values(perZone);
+        const mm = pzVals.length > 0
+            ? Math.min.apply(null, pzVals.map(function(v) { return v.moisture_multiplier != null ? v.moisture_multiplier : 1.0; }))
+            : 1.0;
+        const anyZoneSkip = pzVals.some(function(v) { return v.skip; });
+        multBadge.textContent = anyZoneSkip ? 'Skip' : mm === 1.0 ? '1.0x' : mm + 'x';
+        multBadge.style.background = anyZoneSkip ? 'var(--bg-danger-light)' : mm === 1.0 ? 'var(--bg-success-light)' : mm < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+        multBadge.style.color = anyZoneSkip ? 'var(--color-danger)' : mm === 1.0 ? 'var(--text-success-dark)' : mm < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
         multBadge.style.display = settings.enabled ? '' : 'none';
 
         let html = '';
@@ -2315,21 +2320,12 @@ async function loadDetailStatus(id) {
             btn.textContent = 'Pause System';
             btn.className = 'btn btn-secondary btn-sm';
         }
-        const wf = s.combined_multiplier != null ? s.combined_multiplier : 1.0;
-        const wfColor = wf === 0 ? 'var(--color-danger)' : wf === 1.0 ? 'var(--color-success)' : wf < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
-        const wfLabel = wf === 0 ? 'Skip Watering' : wf + 'x';
-        const wm = s.weather_multiplier != null ? s.weather_multiplier : 1.0;
-        const mmult = s.moisture_multiplier != null ? s.moisture_multiplier : 1.0;
-        const moistureActive = s.moisture_enabled && s.moisture_probe_count > 0;
-        const factorBreakdown = wf === 0 ? 'Soil moisture exceeds skip threshold' : (moistureActive ? 'W: ' + wm + 'x · M: ' + mmult + 'x' : 'W: ' + wm + 'x');
-
         el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
             <div class="tile"><div class="tile-name">Connection</div><div class="tile-state ${s.ha_connected ? 'on' : ''}">${s.ha_connected ? 'Connected' : 'Disconnected'}</div></div>
             <div class="tile"><div class="tile-name">System</div><div class="tile-state ${s.system_paused ? '' : 'on'}">${s.system_paused ? 'Paused' : 'Active'}</div></div>
             <div class="tile"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
             <div class="tile"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
-            <div class="tile"><div class="tile-name">Watering Factor</div><div class="tile-state" style="color:${wfColor};font-weight:700;">${wfLabel}</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${factorBreakdown}</div></div>
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
         </div>`;
     } catch (e) {
@@ -3040,9 +3036,9 @@ function renderScheduleCard(custId, sched, durData, multData) {
     const adjDurations = (durData && durData.adjusted_durations) || {};
     const baseDurations = (durData && durData.base_durations) || {};
     const factorsActive = durData && durData.duration_adjustment_active;
-    const liveCombinedMult = (multData && multData.combined_multiplier != null) ? multData.combined_multiplier : 1.0;
     const liveWeatherMult = (multData && multData.weather_multiplier != null) ? multData.weather_multiplier : 1.0;
-    const liveMoistureMult = (multData && multData.moisture_multiplier != null) ? multData.moisture_multiplier : 1.0;
+    const perZoneMult = (multData && multData.per_zone) || {};
+    const moistureEnabled = multData && multData.moisture_enabled;
     const total = schedule_enable.length + day_switches.length + start_times.length + run_durations.length +
         repeat_cycles.length + zone_enables.length + zone_modes.length + system_controls.length;
 
@@ -3072,18 +3068,15 @@ function renderScheduleCard(custId, sched, durData, multData) {
 
     // --- Apply Factors Toggle (rendered inline from durData) ---
     const afOn = durData && durData.duration_adjustment_active;
-    var factorSummary = 'Automatically adjust run durations by the combined watering factor';
-    if (liveCombinedMult === 0) {
-        factorSummary = 'Skip Watering — soil moisture exceeds skip threshold';
-    } else if (liveCombinedMult !== 1.0 || liveWeatherMult !== 1.0 || liveMoistureMult !== 1.0) {
-        factorSummary = 'Current factor: ' + liveCombinedMult.toFixed(2) + 'x';
-        if (liveMoistureMult !== 1.0 && liveWeatherMult !== 1.0) {
-            factorSummary += ' (W:' + liveWeatherMult.toFixed(2) + ' × M:' + liveMoistureMult.toFixed(2) + ')';
-        } else if (liveMoistureMult !== 1.0) {
-            factorSummary += ' (Moisture: ' + liveMoistureMult.toFixed(2) + 'x)';
-        } else if (liveWeatherMult !== 1.0) {
-            factorSummary += ' (Weather: ' + liveWeatherMult.toFixed(2) + 'x)';
-        }
+    var factorSummary = 'Automatically adjust run durations by weather and moisture factors';
+    const perZoneKeys = Object.keys(perZoneMult);
+    const anySkip = perZoneKeys.some(function(k) { return perZoneMult[k].skip; });
+    if (liveWeatherMult !== 1.0 || perZoneKeys.length > 0) {
+        var parts = [];
+        if (liveWeatherMult !== 1.0) parts.push('Weather: ' + liveWeatherMult.toFixed(2) + 'x');
+        if (perZoneKeys.length > 0) parts.push('Moisture: per-zone');
+        if (anySkip) parts.push('Skip active on ' + perZoneKeys.filter(function(k) { return perZoneMult[k].skip; }).length + ' zone(s)');
+        factorSummary = parts.join(' · ');
     }
     html += '<div style="display:flex;align-items:center;justify-content:space-between;' +
         'padding:12px 16px;border-radius:8px;margin-bottom:16px;background:' + (afOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
@@ -3220,7 +3213,23 @@ function renderScheduleCard(custId, sched, durData, multData) {
                 const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
                 const adj = factorsActive ? adjDurations[eid] : null;
                 const baseVal = adj ? String(adj.original) : duration.state;
-                // Compute projected adjusted duration using live multiplier (shown even when factors not applied)
+                // Look up per-zone moisture multiplier for this zone number
+                var zoneMoistMult = 1.0;
+                var zoneSkip = false;
+                var zoneCombined = liveWeatherMult;
+                var zoneHasMoisture = false;
+                for (var pzKey in perZoneMult) {
+                    var pzMatch = pzKey.match(/zone[_]?(\\d+)/i);
+                    if (pzMatch && pzMatch[1] === String(zn)) {
+                        zoneMoistMult = perZoneMult[pzKey].moisture_multiplier || 1.0;
+                        zoneSkip = perZoneMult[pzKey].skip || false;
+                        zoneCombined = perZoneMult[pzKey].combined || liveWeatherMult;
+                        zoneHasMoisture = true;
+                        break;
+                    }
+                }
+                if (!zoneHasMoisture) zoneCombined = liveWeatherMult;
+                // Compute projected adjusted duration using per-zone multiplier
                 var factorBadge = '';
                 if (adj && adj.skip) {
                     // Factors applied and skip triggered — show skip badge
@@ -3231,18 +3240,20 @@ function renderScheduleCard(custId, sched, durData, multData) {
                     factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                         'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
                         adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)</span>';
-                } else if (liveCombinedMult === 0) {
-                    // Factors not applied but skip would trigger — show skip preview
+                } else if (zoneSkip) {
+                    // Factors not applied but skip would trigger for THIS zone
                     factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                         'background:var(--bg-tile);color:var(--color-danger);opacity:0.8;" title="Watering would be skipped if Apply Factors is enabled">Skip Watering</span>';
-                } else if (Math.abs(liveCombinedMult - 1.0) >= 0.005) {
+                } else if (Math.abs(zoneCombined - 1.0) >= 0.005) {
                     // Factors not applied but multiplier differs from 1.0 — show preview
                     var curVal = parseFloat(duration.state) || 0;
-                    var projVal = Math.max(1, Math.round(curVal * liveCombinedMult));
+                    var projVal = Math.max(1, Math.round(curVal * zoneCombined));
+                    var tooltipParts = 'W:' + liveWeatherMult.toFixed(2);
+                    if (zoneHasMoisture) tooltipParts += ' × M:' + zoneMoistMult.toFixed(2);
                     factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-tile);color:var(--color-warning);opacity:0.8;" title="Projected duration if Apply Factors is enabled (W:' +
-                        liveWeatherMult.toFixed(2) + ' × M:' + liveMoistureMult.toFixed(2) + ')">' +
-                        projVal + ' ' + esc(unit) + ' (' + liveCombinedMult.toFixed(2) + 'x)</span>';
+                        'background:var(--bg-tile);color:var(--color-warning);opacity:0.8;" title="Projected duration if Apply Factors is enabled (' +
+                        tooltipParts + ')">' +
+                        projVal + ' ' + esc(unit) + ' (' + zoneCombined.toFixed(2) + 'x)</span>';
                 }
                 html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +

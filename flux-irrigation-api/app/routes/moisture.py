@@ -17,6 +17,7 @@ Key concepts:
   - For API/dashboard timed runs: adjusts the duration passed to _timed_shutoff()
 """
 
+import asyncio
 import json
 import os
 import re
@@ -815,10 +816,11 @@ def get_weather_multiplier() -> float:
 
 
 async def get_combined_multiplier(zone_entity_id: str) -> dict:
-    """Get the combined weather × moisture multiplier for a zone.
+    """Get the combined weather × moisture multiplier for a specific zone.
 
-    Uses the system-wide overall moisture multiplier so the value is
-    consistent with the status tile and schedule card display.
+    Uses per-zone moisture multiplier — only probes mapped to this zone
+    contribute to the moisture factor.  Zones without mapped probes get
+    weather-only (moisture_multiplier = 1.0).
 
     Returns:
         {
@@ -842,9 +844,12 @@ async def get_combined_multiplier(zone_entity_id: str) -> dict:
             "moisture_reason": "Moisture probes not enabled",
         }
 
-    overall = await calculate_overall_moisture_multiplier()
-    moisture_mult = overall.get("moisture_multiplier", 1.0)
-    skip = moisture_mult == 0
+    sensor_states = await _get_probe_sensor_states(data.get("probes", {}))
+    zone_result = calculate_zone_moisture_multiplier(
+        zone_entity_id, data, sensor_states,
+    )
+    moisture_mult = zone_result.get("multiplier", 1.0)
+    skip = zone_result.get("skip", False)
 
     combined = weather_mult * moisture_mult if not skip else 0.0
 
@@ -853,7 +858,7 @@ async def get_combined_multiplier(zone_entity_id: str) -> dict:
         "weather_multiplier": weather_mult,
         "moisture_multiplier": moisture_mult,
         "moisture_skip": skip,
-        "moisture_reason": overall.get("reason", ""),
+        "moisture_reason": zone_result.get("reason", ""),
     }
 
 
@@ -957,12 +962,43 @@ async def capture_base_durations() -> dict:
     return {"captured": len(base_durations), "base_durations": base_durations}
 
 
+_ZONE_NUMBER_RE = re.compile(r'zone[_]?(\d+)', re.IGNORECASE)
+
+
+def _extract_zone_num_from_duration(dur_eid: str) -> int:
+    """Extract zone number from a duration entity_id.
+
+    Examples:
+        number.irrigator_zone_3_run_duration → 3
+        number.duration_zone_1 → 1
+        number.irrigation_system_zone_12 → 12
+    """
+    m = _ZONE_NUMBER_RE.search(dur_eid)
+    return int(m.group(1)) if m else 0
+
+
+def _find_zone_entity(zone_num: int, config) -> str:
+    """Find the zone switch/valve entity_id matching a zone number.
+
+    Searches config.allowed_zone_entities for switch.*zone_N or valve.*zone_N.
+    Returns the matching entity_id, or an empty string if not found.
+    """
+    if not zone_num:
+        return ""
+    for eid in config.allowed_zone_entities:
+        m = _ZONE_NUMBER_RE.search(eid)
+        if m and int(m.group(1)) == zone_num:
+            return eid
+    return ""
+
+
 async def apply_adjusted_durations() -> dict:
     """Compute and write adjusted durations to HA number entities.
 
-    For each zone with mapped probes and a corresponding run_duration entity:
-    1. Compute the combined weather × moisture multiplier
-    2. Calculate adjusted duration = base × combined_multiplier
+    For each zone's run_duration entity:
+    1. Compute the per-zone moisture multiplier (only zones with mapped probes
+       get moisture adjustment; unmapped zones get weather-only)
+    2. Calculate adjusted duration = base × weather × moisture
     3. Write the adjusted value to the HA number entity
 
     Returns summary of applied adjustments.
@@ -994,23 +1030,26 @@ async def apply_adjusted_durations() -> dict:
     sensor_states = await _get_probe_sensor_states(data.get("probes", {}))
     weather_mult = get_weather_multiplier()
 
-    # Use a single system-wide moisture multiplier so the value matches the
-    # status tile and is consistent across all zones.
-    overall_result = await calculate_overall_moisture_multiplier()
-    overall_moisture_mult = overall_result.get("moisture_multiplier", 1.0)
-    overall_skip = overall_moisture_mult == 0
-
     adjusted = {}
     applied_count = 0
     failed = []
 
-    print(f"[MOISTURE] Applying factors: {len(base_durations)} duration entities, "
-          f"weather_mult={weather_mult}, moisture_mult={overall_moisture_mult}")
+    print(f"[MOISTURE] Applying per-zone factors: {len(base_durations)} duration entities, "
+          f"weather_mult={weather_mult}")
 
     for dur_eid, dur_data in base_durations.items():
         base = dur_data["base_value"]
-        moisture_mult = overall_moisture_mult
-        skip = overall_skip
+
+        # Extract zone number from duration entity → find matching zone entity
+        zone_num = _extract_zone_num_from_duration(dur_eid)
+        zone_entity_id = _find_zone_entity(zone_num, config)
+
+        # Get per-zone moisture multiplier (only zones with mapped probes are affected)
+        zone_result = calculate_zone_moisture_multiplier(
+            zone_entity_id, data, sensor_states,
+        )
+        moisture_mult = zone_result.get("multiplier", 1.0)
+        skip = zone_result.get("skip", False)
 
         if skip:
             adjusted_value = 0.0
@@ -1020,7 +1059,8 @@ async def apply_adjusted_durations() -> dict:
 
         # Write to HA via number.set_value service
         print(f"[MOISTURE] Setting {dur_eid}: base={base} → adjusted={adjusted_value} "
-              f"(weather={weather_mult}, moisture={moisture_mult:.3f})")
+              f"(weather={weather_mult}, moisture={moisture_mult:.3f}, "
+              f"zone={zone_entity_id or 'unknown'})")
         success = await ha_client.call_service("number", "set_value", {
             "entity_id": dur_eid,
             "value": adjusted_value,
@@ -1036,12 +1076,15 @@ async def apply_adjusted_durations() -> dict:
                 "moisture_multiplier": moisture_mult,
                 "combined_multiplier": round(weather_mult * moisture_mult, 3),
                 "skip": skip,
+                "zone_entity_id": zone_entity_id,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             }
-            # Capture overall probe context for run history
-            if overall_result.get("avg_moisture") is not None:
-                adj_entry["profile"] = overall_result.get("profile", "unknown")
-                adj_entry["reason"] = overall_result.get("reason", "")
+            # Capture per-zone probe context for run history
+            if zone_result.get("avg_moisture") is not None:
+                adj_entry["profile"] = zone_result.get("profile", "unknown")
+                adj_entry["reason"] = zone_result.get("reason", "")
+            elif zone_result.get("probe_count", 0) == 0:
+                adj_entry["reason"] = "No probes mapped — weather only"
             adjusted[dur_eid] = adj_entry
         else:
             failed.append(dur_eid)
@@ -1347,12 +1390,60 @@ async def api_autodetect_device_sensors(device_id: str):
             depth_map["mid"] = unmatched_moisture[1]["entity_id"]
             depth_map["shallow"] = unmatched_moisture[2]["entity_id"]
 
+    # --- Detect Gophr sleep/schedule entities (text, switch, number domains) ---
+    # These are NOT sensor entities, so we scan the full entity registry for this device.
+    schedule_times = []
+    sleep_disabled_switch = None
+    min_awake_entity = None
+    max_awake_entity = None
+
+    entity_registry = await ha_client.get_entity_registry()
+    for entity in entity_registry:
+        if entity.get("device_id") != device_id:
+            continue
+        if entity.get("disabled_by"):
+            continue
+        eid = entity.get("entity_id", "")
+        eid_lower = eid.lower()
+        domain = eid.split(".")[0] if "." in eid else ""
+
+        # Schedule time text entities (text.gophr_*_schedule_time_1..4)
+        if domain == "text" and "schedule_time" in eid_lower:
+            schedule_times.append(eid)
+            print(f"[MOISTURE]   MATCH schedule_time: {eid}")
+
+        # Sleep disabled switch (switch.gophr_*_sleep_disabled)
+        if domain == "switch" and "sleep_disabled" in eid_lower:
+            sleep_disabled_switch = eid
+            print(f"[MOISTURE]   MATCH sleep_disabled: {eid}")
+
+        # Min/max awake minutes (number.gophr_*_min_awake_minutes, etc.)
+        if domain == "number":
+            if "min_awake" in eid_lower:
+                min_awake_entity = eid
+                print(f"[MOISTURE]   MATCH min_awake: {eid}")
+            elif "max_awake" in eid_lower:
+                max_awake_entity = eid
+                print(f"[MOISTURE]   MATCH max_awake: {eid}")
+
+    # Sort schedule times by number suffix (schedule_time_1, _2, _3, _4)
+    schedule_times.sort(key=lambda e: int(re.search(r'(\d+)$', e).group(1)) if re.search(r'(\d+)$', e) else 99)
+
+    if schedule_times:
+        extra_map["schedule_times"] = schedule_times
+    if sleep_disabled_switch:
+        extra_map["sleep_disabled"] = sleep_disabled_switch
+    if min_awake_entity:
+        extra_map["min_awake_minutes"] = min_awake_entity
+    if max_awake_entity:
+        extra_map["max_awake_minutes"] = max_awake_entity
+
     print(f"[MOISTURE] autodetect result: depths={depth_map}, extras={extra_map}")
 
     return {
         "device_id": device_id,
         "sensors": depth_map,
-        "extra_sensors": {k: v for k, v in extra_map.items() if v},
+        "extra_sensors": {k: v for k, v in extra_map.items() if v is not None},
         "all_sensors": sensors,
         "total": len(sensors),
     }
@@ -1377,9 +1468,13 @@ async def api_get_probes():
         for eid in probe.get("sensors", {}).values():
             if eid:
                 all_sensor_ids.add(eid)
-        for eid in probe.get("extra_sensors", {}).values():
-            if eid:
-                all_sensor_ids.add(eid)
+        for key, val in probe.get("extra_sensors", {}).items():
+            if isinstance(val, list):
+                for eid in val:
+                    if eid:
+                        all_sensor_ids.add(eid)
+            elif val:
+                all_sensor_ids.add(val)
 
     # Single batch fetch for all sensor states
     all_states = await ha_client.get_entities_by_ids(list(all_sensor_ids)) if all_sensor_ids else []
@@ -1431,6 +1526,30 @@ async def api_get_probes():
                 "unit": sd.get("unit") or default_unit,
                 "entity_id": eid,
                 "friendly_name": sd.get("friendly_name", eid),
+            }
+
+        # Gophr schedule/sleep entities
+        schedule_time_eids = extra.get("schedule_times", [])
+        if schedule_time_eids:
+            sched_list = []
+            for st_eid in schedule_time_eids:
+                sd = state_lookup.get(st_eid, {})
+                sched_list.append({
+                    "entity_id": st_eid,
+                    "value": sd.get("raw_state", "unknown"),
+                    "friendly_name": sd.get("friendly_name", st_eid),
+                })
+            device_sensors["schedule_times"] = sched_list
+
+        for skey in ("sleep_disabled", "min_awake_minutes", "max_awake_minutes"):
+            s_eid = extra.get(skey)
+            if not s_eid:
+                continue
+            sd = state_lookup.get(s_eid, {})
+            device_sensors[skey] = {
+                "entity_id": s_eid,
+                "value": sd.get("raw_state", "unknown"),
+                "friendly_name": sd.get("friendly_name", s_eid),
             }
 
         enriched[probe_id] = {
@@ -1616,6 +1735,7 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
     # Handle apply_factors_to_schedule toggle
     if body.apply_factors_to_schedule is not None:
         was_enabled = data.get("apply_factors_to_schedule", False)
+        currently_active = data.get("duration_adjustment_active", False)
         data["apply_factors_to_schedule"] = body.apply_factors_to_schedule
         _save_data(data)
 
@@ -1627,7 +1747,8 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
             for change in changes:
                 log_change(actor, "Moisture Probes", change)
 
-        if body.apply_factors_to_schedule and not was_enabled:
+        # Re-apply if enabling (or re-enabling after a failed attempt)
+        if body.apply_factors_to_schedule and (not was_enabled or not currently_active):
             # Toggling ON: always re-capture base durations for fresh values
             capture_result = await capture_base_durations()
             captured = capture_result.get("captured", 0)
@@ -1663,7 +1784,7 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
                 "message": msg,
                 "applied": applied,
             }
-        elif not body.apply_factors_to_schedule and was_enabled:
+        elif not body.apply_factors_to_schedule and (was_enabled or currently_active):
             # Toggling OFF: restore base durations
             result = await restore_base_durations()
             restored = result.get("restored", 0)
@@ -1806,21 +1927,53 @@ async def calculate_overall_moisture_multiplier() -> dict:
     }
 
 
-@router.get("/multiplier", summary="Get overall moisture multiplier")
+@router.get("/multiplier", summary="Get per-zone moisture multipliers")
 async def api_overall_multiplier():
-    """Get the overall moisture multiplier across all probes.
+    """Get moisture multipliers for all zones with mapped probes.
 
-    Returns both the moisture-only multiplier and a combined (weather × moisture)
-    multiplier for the system-level watering factor display.
+    Returns weather multiplier (system-wide) and per-zone moisture
+    multipliers.  Zones without mapped probes are not listed in
+    per_zone — the frontend should default them to weather-only.
     """
-    result = await calculate_overall_moisture_multiplier()
+    data = _load_data()
+    config = get_config()
     weather_mult = get_weather_multiplier()
-    moisture_mult = result["moisture_multiplier"]
-    combined = round(weather_mult * moisture_mult, 3) if moisture_mult > 0 else 0.0
+
+    if not data.get("enabled"):
+        return {
+            "weather_multiplier": weather_mult,
+            "moisture_enabled": False,
+            "per_zone": {},
+        }
+
+    probes = data.get("probes", {})
+    sensor_states = await _get_probe_sensor_states(probes)
+
+    # Build per-zone multipliers for all zones that have mapped probes
+    per_zone = {}
+    mapped_zone_eids = set()
+    for probe_id, probe in probes.items():
+        for zone_eid in probe.get("zone_mappings", []):
+            mapped_zone_eids.add(zone_eid)
+
+    for zone_eid in mapped_zone_eids:
+        zone_result = calculate_zone_moisture_multiplier(
+            zone_eid, data, sensor_states,
+        )
+        moisture_mult = zone_result.get("multiplier", 1.0)
+        skip = zone_result.get("skip", False)
+        combined = round(weather_mult * moisture_mult, 3) if not skip else 0.0
+        per_zone[zone_eid] = {
+            "moisture_multiplier": moisture_mult,
+            "combined": combined,
+            "skip": skip,
+            "reason": zone_result.get("reason", ""),
+        }
+
     return {
-        **result,
         "weather_multiplier": weather_mult,
-        "combined_multiplier": combined,
+        "moisture_enabled": True,
+        "per_zone": per_zone,
     }
 
 
@@ -1876,3 +2029,258 @@ async def api_get_durations():
         "last_evaluation": data.get("last_evaluation"),
         "last_evaluation_result": data.get("last_evaluation_result", {}),
     }
+
+
+# --- Gophr Sleep/Wake Schedule Sync ---
+
+# Track active mid-run moisture monitoring tasks
+_active_moisture_monitors: dict[str, asyncio.Task] = {}
+
+
+async def sync_schedule_times_to_probes() -> dict:
+    """Sync irrigation controller start times to Gophr schedule_time entities.
+
+    Reads the irrigation controller's text.*_start_time_* entities,
+    then writes matching values to each Gophr probe's schedule_time text
+    entities so the device wakes before irrigation runs.
+
+    Returns summary of sync operations.
+    """
+    config = get_config()
+    data = _load_data()
+    probes = data.get("probes", {})
+
+    if not probes:
+        return {"success": True, "synced": 0, "reason": "No probes configured"}
+
+    # Find probes with schedule_times in extra_sensors
+    probes_with_schedules = {}
+    for probe_id, probe in probes.items():
+        sched_eids = (probe.get("extra_sensors") or {}).get("schedule_times", [])
+        if sched_eids:
+            probes_with_schedules[probe_id] = sched_eids
+
+    if not probes_with_schedules:
+        return {"success": True, "synced": 0, "reason": "No probes with schedule_time entities"}
+
+    # Get irrigation controller start times
+    start_time_eids = [
+        eid for eid in config.allowed_control_entities
+        if eid.startswith("text.") and "start_time" in eid.lower()
+    ]
+    start_time_eids.sort(key=lambda e: int(m.group(1)) if (m := re.search(r'(\d+)', e.split("start_time")[-1])) else 99)
+
+    # Fetch current start time values
+    irrigation_times = []
+    if start_time_eids:
+        states = await ha_client.get_entities_by_ids(start_time_eids)
+        for s in states:
+            val = s.get("state", "")
+            if val and val not in ("unknown", "unavailable"):
+                irrigation_times.append(val)
+
+    print(f"[MOISTURE] Schedule sync: {len(irrigation_times)} irrigation start times, "
+          f"{len(probes_with_schedules)} probes with schedule entities")
+
+    synced_count = 0
+    details = []
+
+    for probe_id, gophr_sched_eids in probes_with_schedules.items():
+        probe_synced = []
+        for i, gophr_eid in enumerate(gophr_sched_eids):
+            # Map irrigation start time to Gophr schedule slot
+            new_val = irrigation_times[i] if i < len(irrigation_times) else "00:00"
+            success = await ha_client.call_service("text", "set_value", {
+                "entity_id": gophr_eid,
+                "value": str(new_val),
+            })
+            if success:
+                probe_synced.append(f"{gophr_eid} = {new_val}")
+                synced_count += 1
+            else:
+                probe_synced.append(f"{gophr_eid} FAILED")
+
+        details.append({
+            "probe_id": probe_id,
+            "synced": probe_synced,
+        })
+        print(f"[MOISTURE] Schedule sync for {probe_id}: {probe_synced}")
+
+    # Store last sync time
+    data["last_schedule_sync"] = datetime.now(timezone.utc).isoformat()
+    _save_data(data)
+
+    return {
+        "success": synced_count > 0,
+        "synced": synced_count,
+        "irrigation_times": irrigation_times,
+        "details": details,
+    }
+
+
+async def set_probe_sleep_disabled(probe_id: str, disabled: bool) -> bool:
+    """Enable or disable sleep on a Gophr probe.
+
+    Args:
+        probe_id: The probe identifier
+        disabled: True to disable sleep (keep awake), False to re-enable sleep
+
+    Returns True if the service call succeeded.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        print(f"[MOISTURE] set_probe_sleep_disabled: probe {probe_id} not found")
+        return False
+
+    sleep_switch_eid = (probe.get("extra_sensors") or {}).get("sleep_disabled")
+    if not sleep_switch_eid:
+        print(f"[MOISTURE] set_probe_sleep_disabled: no sleep_disabled switch for {probe_id}")
+        return False
+
+    svc = "turn_on" if disabled else "turn_off"
+    success = await ha_client.call_service("switch", svc, {
+        "entity_id": sleep_switch_eid,
+    })
+    print(f"[MOISTURE] Sleep {'disabled' if disabled else 'enabled'} for {probe_id} "
+          f"({sleep_switch_eid}): {'OK' if success else 'FAILED'}")
+    return success
+
+
+async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
+    """Monitor moisture during an active zone run.
+
+    Polls the probe's sensor readings every 30 seconds while the zone is running.
+    If moisture exceeds the skip threshold, turns off the zone early.
+    """
+    import run_log
+
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        return
+
+    zone_name = zone_entity_id  # Fallback, will be resolved later
+
+    print(f"[MOISTURE] Starting mid-run monitor: zone={zone_entity_id}, probe={probe_id}")
+
+    try:
+        while True:
+            await asyncio.sleep(30)
+
+            # Check if zone is still running
+            zone_states = await ha_client.get_entities_by_ids([zone_entity_id])
+            if not zone_states or zone_states[0].get("state") not in ("on", "open"):
+                print(f"[MOISTURE] Mid-run monitor: zone {zone_entity_id} no longer running")
+                break
+
+            # Get fresh sensor readings (bypass cache for real-time)
+            fresh_data = _load_data()
+            fresh_probe = fresh_data.get("probes", {}).get(probe_id)
+            if not fresh_probe:
+                break
+
+            sensor_states = await _get_probe_sensor_states({probe_id: fresh_probe})
+
+            # Check moisture level using zone-specific multiplier
+            zone_result = calculate_zone_moisture_multiplier(
+                zone_entity_id, fresh_data, sensor_states,
+            )
+
+            if zone_result.get("skip"):
+                # Moisture exceeded threshold — shut off zone
+                domain = zone_entity_id.split(".")[0] if "." in zone_entity_id else "switch"
+                if domain == "valve":
+                    svc = "close"
+                else:
+                    svc = "turn_off"
+                await ha_client.call_service(domain, svc, {"entity_id": zone_entity_id})
+
+                # Resolve zone name for logging
+                attrs = zone_states[0].get("attributes", {}) if zone_states else {}
+                zone_name = attrs.get("friendly_name", zone_entity_id)
+
+                run_log.log_zone_event(
+                    entity_id=zone_entity_id,
+                    state="off",
+                    source="moisture_cutoff",
+                    zone_name=zone_name,
+                )
+                print(f"[MOISTURE] Mid-run cutoff: {zone_entity_id} — moisture exceeded threshold "
+                      f"(mult={zone_result.get('multiplier')}, reason={zone_result.get('reason')})")
+                break
+            else:
+                mult = zone_result.get("multiplier", 1.0)
+                print(f"[MOISTURE] Mid-run check: {zone_entity_id} moisture OK (mult={mult:.2f})")
+
+    except asyncio.CancelledError:
+        print(f"[MOISTURE] Mid-run monitor cancelled: {zone_entity_id}")
+    except Exception as e:
+        print(f"[MOISTURE] Mid-run monitor error: {zone_entity_id}: {e}")
+    finally:
+        # Clean up from active monitors dict
+        _active_moisture_monitors.pop(zone_entity_id, None)
+        # Re-enable sleep on the probe
+        await set_probe_sleep_disabled(probe_id, False)
+        print(f"[MOISTURE] Mid-run monitor ended: {zone_entity_id}")
+
+
+async def on_zone_state_change(zone_entity_id: str, new_state: str):
+    """Called by run_log when a zone state changes.
+
+    If a zone turns ON and has a mapped probe with sleep control,
+    disables probe sleep and starts moisture monitoring.
+    If a zone turns OFF, re-enables sleep and cancels monitoring.
+    """
+    data = _load_data()
+    if not data.get("enabled"):
+        return
+
+    is_on = new_state in ("on", "open")
+    is_off = new_state in ("off", "closed")
+
+    if not (is_on or is_off):
+        return
+
+    # Find probes mapped to this zone that have sleep control
+    for probe_id, probe in data.get("probes", {}).items():
+        if zone_entity_id not in probe.get("zone_mappings", []):
+            continue
+        sleep_switch = (probe.get("extra_sensors") or {}).get("sleep_disabled")
+        if not sleep_switch:
+            continue
+
+        if is_on:
+            # Zone turned on — disable sleep and start monitoring
+            await set_probe_sleep_disabled(probe_id, True)
+
+            # Start mid-run moisture monitoring
+            if zone_entity_id not in _active_moisture_monitors:
+                task = asyncio.create_task(
+                    monitor_zone_moisture(zone_entity_id, probe_id)
+                )
+                _active_moisture_monitors[zone_entity_id] = task
+                print(f"[MOISTURE] Zone ON → sleep disabled, monitoring started: "
+                      f"{zone_entity_id} → {probe_id}")
+
+        elif is_off:
+            # Zone turned off — cancel monitoring (sleep re-enabled in monitor's finally)
+            task = _active_moisture_monitors.get(zone_entity_id)
+            if task and not task.done():
+                task.cancel()
+                print(f"[MOISTURE] Zone OFF → cancelling monitor: {zone_entity_id}")
+            else:
+                # No active monitor, just re-enable sleep
+                await set_probe_sleep_disabled(probe_id, False)
+                print(f"[MOISTURE] Zone OFF → sleep re-enabled: {probe_id}")
+
+
+@router.post("/probes/sync-schedules", summary="Sync irrigation schedules to moisture probes")
+async def api_sync_schedules():
+    """Sync irrigation controller start times to all Gophr probe schedule_time entities.
+
+    This writes the irrigation schedule start times to each Gophr device so it
+    knows when to wake up for watering runs.
+    """
+    result = await sync_schedule_times_to_probes()
+    return result
