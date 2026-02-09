@@ -1460,6 +1460,7 @@ async function viewCustomer(id) {
         document.getElementById('detailName').textContent = customer.name;
         window._currentZoneAliases = customer.zone_aliases || {};
         window._currentCustomerNotes = customer.notes || '';
+        window._currentCustomerState = customer.state || '';
         const addr = formatAddress(customer);
         const addrEl = document.getElementById('detailAddress');
         if (addr) {
@@ -1609,17 +1610,13 @@ function showMap(lat, lon, label) {
     setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 200);
 }
 
-let _mgmtControlsLoadedFor = null;
 async function loadDetailData(id) {
     loadDetailStatus(id);
     loadDetailWeather(id);
     loadDetailMoisture(id);
     loadDetailZones(id);
     loadDetailSensors(id);
-    if (_mgmtControlsLoadedFor !== id) {
-        loadDetailControls(id);
-        _mgmtControlsLoadedFor = id;
-    }
+    loadDetailControls(id);
     loadDetailHistory(id);
     loadDetailIssues(id);
 }
@@ -2409,33 +2406,46 @@ function mgmtShowWakeSchedule(probeId) {
     var prep = window['_wakePrep_' + probeId];
     var body = '';
     if (prep && prep.prep_entries && prep.prep_entries.length > 0) {
-        var nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+        /* Sort entries by target_wake_minutes chronologically */
+        var sorted = prep.prep_entries.slice().sort(function(a, b) {
+            return a.target_wake_minutes - b.target_wake_minutes;
+        });
+        /* Use customer's timezone for NEXT marker, not manager's local time */
+        var _custTz = STATE_TIMEZONES[(window._currentCustomerState || '').toUpperCase()];
+        var _custNow = new Date();
+        var nowMin;
+        if (_custTz) {
+            try {
+                var _parts = _custNow.toLocaleTimeString('en-GB', {timeZone: _custTz, hour12: false}).split(':');
+                nowMin = parseInt(_parts[0]) * 60 + parseInt(_parts[1]);
+            } catch(e) { nowMin = _custNow.getHours() * 60 + _custNow.getMinutes(); }
+        } else {
+            nowMin = _custNow.getHours() * 60 + _custNow.getMinutes();
+        }
         var nextIdx = -1;
-        for (var ni = 0; ni < prep.prep_entries.length; ni++) {
-            if (prep.prep_entries[ni].target_wake_minutes > nowMin) { nextIdx = ni; break; }
+        for (var ni = 0; ni < sorted.length; ni++) {
+            if (sorted[ni].target_wake_minutes > nowMin) { nextIdx = ni; break; }
+        }
+        function _fmtTime(m) {
+            var h = Math.floor(m / 60) % 24;
+            var mn = Math.round(m % 60);
+            var ap = h >= 12 ? 'PM' : 'AM';
+            var h12 = h % 12 || 12;
+            return h12 + ':' + (mn < 10 ? '0' : '') + mn + ' ' + ap;
         }
         body += '<div style="display:flex;flex-direction:column;gap:6px;">';
-        for (var wi = 0; wi < prep.prep_entries.length; wi++) {
-            var we = prep.prep_entries[wi];
-            var twm = we.target_wake_minutes;
-            var twH = Math.floor(twm / 60) % 24;
-            var twM = Math.round(twm % 60);
-            var twAmPm = twH >= 12 ? 'PM' : 'AM';
-            var twH12 = twH % 12 || 12;
-            var wakeTimeStr = twH12 + ':' + (twM < 10 ? '0' : '') + twM + ' ' + twAmPm;
-            var zsm = we.zone_start_minutes || 0;
-            var zsH = Math.floor(zsm / 60) % 24;
-            var zsM = Math.round(zsm % 60);
-            var zsAmPm = zsH >= 12 ? 'PM' : 'AM';
-            var zsH12 = zsH % 12 || 12;
-            var zoneTimeStr = zsH12 + ':' + (zsM < 10 ? '0' : '') + zsM + ' ' + zsAmPm;
+        for (var wi = 0; wi < sorted.length; wi++) {
+            var we = sorted[wi];
+            var wakeTimeStr = _fmtTime(we.target_wake_minutes);
+            var zoneTimeStr = _fmtTime(we.zone_start_minutes || 0);
+            var schedLabel = we.schedule_start_time || '';
             var isNext = (wi === nextIdx);
             body += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;' +
                 (isNext ? 'background:var(--bg-active-tile);' : '') + '">';
             body += '<span style="font-size:16px;">&#9200;</span>';
             body += '<div style="flex:1;">';
             body += '<div style="font-size:13px;' + (isNext ? 'font-weight:600;color:var(--color-warning);' : 'color:var(--text-secondary);') + '">Wake at <strong>' + wakeTimeStr + '</strong></div>';
-            body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' runs at ' + zoneTimeStr + '</div>';
+            body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' runs at ' + zoneTimeStr + (schedLabel ? ' &mdash; ' + schedLabel + ' schedule' : '') + '</div>';
             body += '</div>';
             if (isNext) body += '<span style="font-size:9px;background:var(--color-warning);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">NEXT</span>';
             body += '</div>';

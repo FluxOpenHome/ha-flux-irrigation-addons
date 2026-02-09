@@ -992,7 +992,8 @@ async function loadDashboard() {
     loadMoisture();
     loadZones();
     loadSensors();
-    if (!_initialLoadDone) { loadControls(); _initialLoadDone = true; }
+    loadControls();
+    if (!_initialLoadDone) _initialLoadDone = true;
     loadHistory();
     loadActiveIssues();
 }
@@ -3313,33 +3314,45 @@ function hoShowWakeSchedule(probeId) {
     var prep = window['_wakePrep_' + probeId];
     var body = '';
     if (prep && prep.prep_entries && prep.prep_entries.length > 0) {
-        var nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+        /* Sort entries by target_wake_minutes chronologically */
+        var sorted = prep.prep_entries.slice().sort(function(a, b) {
+            return a.target_wake_minutes - b.target_wake_minutes;
+        });
+        /* Use homeowner's configured timezone for NEXT marker */
+        var _now = new Date();
+        var nowMin;
+        if (_homeTimezone) {
+            try {
+                var _parts = _now.toLocaleTimeString('en-GB', {timeZone: _homeTimezone, hour12: false}).split(':');
+                nowMin = parseInt(_parts[0]) * 60 + parseInt(_parts[1]);
+            } catch(e) { nowMin = _now.getHours() * 60 + _now.getMinutes(); }
+        } else {
+            nowMin = _now.getHours() * 60 + _now.getMinutes();
+        }
         var nextIdx = -1;
-        for (var ni = 0; ni < prep.prep_entries.length; ni++) {
-            if (prep.prep_entries[ni].target_wake_minutes > nowMin) { nextIdx = ni; break; }
+        for (var ni = 0; ni < sorted.length; ni++) {
+            if (sorted[ni].target_wake_minutes > nowMin) { nextIdx = ni; break; }
+        }
+        function _fmtTime(m) {
+            var h = Math.floor(m / 60) % 24;
+            var mn = Math.round(m % 60);
+            var ap = h >= 12 ? 'PM' : 'AM';
+            var h12 = h % 12 || 12;
+            return h12 + ':' + (mn < 10 ? '0' : '') + mn + ' ' + ap;
         }
         body += '<div style="display:flex;flex-direction:column;gap:6px;">';
-        for (var wi = 0; wi < prep.prep_entries.length; wi++) {
-            var we = prep.prep_entries[wi];
-            var twm = we.target_wake_minutes;
-            var twH = Math.floor(twm / 60) % 24;
-            var twM = Math.round(twm % 60);
-            var twAmPm = twH >= 12 ? 'PM' : 'AM';
-            var twH12 = twH % 12 || 12;
-            var wakeTimeStr = twH12 + ':' + (twM < 10 ? '0' : '') + twM + ' ' + twAmPm;
-            var zsm = we.zone_start_minutes || 0;
-            var zsH = Math.floor(zsm / 60) % 24;
-            var zsM = Math.round(zsm % 60);
-            var zsAmPm = zsH >= 12 ? 'PM' : 'AM';
-            var zsH12 = zsH % 12 || 12;
-            var zoneTimeStr = zsH12 + ':' + (zsM < 10 ? '0' : '') + zsM + ' ' + zsAmPm;
+        for (var wi = 0; wi < sorted.length; wi++) {
+            var we = sorted[wi];
+            var wakeTimeStr = _fmtTime(we.target_wake_minutes);
+            var zoneTimeStr = _fmtTime(we.zone_start_minutes || 0);
+            var schedLabel = we.schedule_start_time || '';
             var isNext = (wi === nextIdx);
             body += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;' +
                 (isNext ? 'background:var(--bg-active-tile);' : '') + '">';
             body += '<span style="font-size:16px;">&#9200;</span>';
             body += '<div style="flex:1;">';
             body += '<div style="font-size:13px;' + (isNext ? 'font-weight:600;color:var(--color-warning);' : 'color:var(--text-secondary);') + '">Wake at <strong>' + wakeTimeStr + '</strong></div>';
-            body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' runs at ' + zoneTimeStr + '</div>';
+            body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' runs at ' + zoneTimeStr + (schedLabel ? ' &mdash; ' + schedLabel + ' schedule' : '') + '</div>';
             body += '</div>';
             if (isNext) body += '<span style="font-size:9px;background:var(--color-warning);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">NEXT</span>';
             body += '</div>';
@@ -3384,15 +3397,39 @@ function toggleDarkMode() {
 })();
 
 // --- Live Clock ---
+const STATE_TIMEZONES = {
+    'AL':'America/Chicago','AK':'America/Anchorage','AZ':'America/Phoenix',
+    'AR':'America/Chicago','CA':'America/Los_Angeles','CO':'America/Denver',
+    'CT':'America/New_York','DE':'America/New_York','FL':'America/New_York',
+    'GA':'America/New_York','HI':'Pacific/Honolulu','ID':'America/Boise',
+    'IL':'America/Chicago','IN':'America/Indiana/Indianapolis','IA':'America/Chicago',
+    'KS':'America/Chicago','KY':'America/New_York','LA':'America/Chicago',
+    'ME':'America/New_York','MD':'America/New_York','MA':'America/New_York',
+    'MI':'America/Detroit','MN':'America/Chicago','MS':'America/Chicago',
+    'MO':'America/Chicago','MT':'America/Denver','NE':'America/Chicago',
+    'NV':'America/Los_Angeles','NH':'America/New_York','NJ':'America/New_York',
+    'NM':'America/Denver','NY':'America/New_York','NC':'America/New_York',
+    'ND':'America/Chicago','OH':'America/New_York','OK':'America/Chicago',
+    'OR':'America/Los_Angeles','PA':'America/New_York','RI':'America/New_York',
+    'SC':'America/New_York','SD':'America/Chicago','TN':'America/Chicago',
+    'TX':'America/Chicago','UT':'America/Denver','VT':'America/New_York',
+    'VA':'America/New_York','WA':'America/Los_Angeles','WV':'America/New_York',
+    'WI':'America/Chicago','WY':'America/Denver','DC':'America/New_York',
+};
 let _homeClockTimer = null;
-function startHomeClock() {
+let _homeTimezone = null;
+function startHomeClock(state) {
     if (_homeClockTimer) clearInterval(_homeClockTimer);
     const el = document.getElementById('dashTimezone');
+    _homeTimezone = STATE_TIMEZONES[(state || '').toUpperCase()] || null;
     function tick() {
         try {
             const now = new Date();
-            const time = now.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: true});
-            const abbr = now.toLocaleTimeString('en-US', {timeZoneName: 'short'}).split(' ').pop();
+            const opts = {hour: 'numeric', minute: '2-digit', hour12: true};
+            const abbrOpts = {timeZoneName: 'short'};
+            if (_homeTimezone) { opts.timeZone = _homeTimezone; abbrOpts.timeZone = _homeTimezone; }
+            const time = now.toLocaleTimeString('en-US', opts);
+            const abbr = now.toLocaleTimeString('en-US', Object.assign({}, opts, abbrOpts)).split(' ').pop();
             el.textContent = time + ' ' + abbr;
         } catch(e) {}
     }
@@ -3402,8 +3439,8 @@ function startHomeClock() {
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // Start live clock
-    startHomeClock();
+    // Start clock with browser time initially (will update with correct TZ after status loads)
+    startHomeClock('');
 
     // Load zone aliases
     try {
@@ -3416,9 +3453,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load dashboard
     loadDashboard();
 
-    // Init map from status (address comes from config)
+    // Init map from status (address comes from config) and set timezone
     try {
         const status = await api('/status');
+        if (status.state) {
+            startHomeClock(status.state);
+        }
         if (status.address || status.city || status.state || status.zip) {
             initDetailMap(status);
         }
