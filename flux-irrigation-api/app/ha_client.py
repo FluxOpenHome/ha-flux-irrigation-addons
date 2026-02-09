@@ -4,6 +4,7 @@ Communicates with HA to read entity states and call services.
 Uses REST API for states/services and WebSocket API for device/entity registry.
 """
 
+import asyncio
 import json
 import httpx
 import websockets
@@ -34,21 +35,26 @@ async def _ws_command(command: str) -> list[dict]:
     # Pass auth header during WebSocket upgrade handshake (required by Supervisor proxy)
     extra_headers = {"Authorization": f"Bearer {token}"}
 
-    async with websockets.connect(HA_WS_URL, additional_headers=extra_headers) as ws:
+    async with websockets.connect(
+        HA_WS_URL,
+        additional_headers=extra_headers,
+        open_timeout=10,
+        close_timeout=5,
+    ) as ws:
         # Step 1: Receive auth_required
-        msg = json.loads(await ws.recv())
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
         if msg.get("type") != "auth_required":
             raise ConnectionError(f"Unexpected WS message: {msg}")
 
         # Step 2: Authenticate
         await ws.send(json.dumps({"type": "auth", "access_token": token}))
-        msg = json.loads(await ws.recv())
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
         if msg.get("type") != "auth_ok":
             raise PermissionError(f"WS authentication failed: {msg}")
 
         # Step 3: Send command
         await ws.send(json.dumps({"id": 1, "type": command}))
-        msg = json.loads(await ws.recv())
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
         if not msg.get("success"):
             raise RuntimeError(f"WS command '{command}' failed: {msg}")
 

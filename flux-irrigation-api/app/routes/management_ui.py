@@ -746,17 +746,32 @@ function showToast(msg, type = 'success') {
 
 // --- API Helper ---
 async function api(path, options = {}) {
-    const res = await fetch(BASE + path, {
-        headers: { 'Content-Type': 'application/json', ...options.headers },
-        ...options,
-    });
-    const data = await res.json();
-    if (!res.ok) {
-        const detail = data.detail || data.error || JSON.stringify(data);
-        console.error('[API]', options.method || 'GET', path, res.status, detail);
-        throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+        const res = await fetch(BASE + path, {
+            headers: { 'Content-Type': 'application/json', ...options.headers },
+            signal: controller.signal,
+            ...options,
+        });
+        clearTimeout(timeoutId);
+        let data;
+        try { data = await res.json(); } catch (_) {
+            throw new Error('Server returned non-JSON response (HTTP ' + res.status + ')');
+        }
+        if (!res.ok) {
+            const detail = data.detail || data.error || JSON.stringify(data);
+            console.error('[API]', options.method || 'GET', path, res.status, detail);
+            throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+        }
+        return data;
+    } catch (e) {
+        clearTimeout(timeoutId);
+        if (e.name === 'AbortError') {
+            throw new Error('Request timed out — the property may be offline or slow to respond');
+        }
+        throw e;
     }
-    return data;
 }
 
 // --- Customer List ---

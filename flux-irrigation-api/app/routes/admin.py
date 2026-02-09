@@ -2285,18 +2285,32 @@ ADMIN_HTML = """<!DOCTYPE html>
     const MBASE = BASE + '/homeowner/moisture';
 
     async function mcfg(path, method = 'GET', bodyData = null) {
-        const opts = { method, headers: {} };
-        if (bodyData) {
-            opts.headers['Content-Type'] = 'application/json';
-            opts.body = JSON.stringify(bodyData);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        try {
+            const opts = { method, headers: {}, signal: controller.signal };
+            if (bodyData) {
+                opts.headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify(bodyData);
+            }
+            const res = await fetch(MBASE + path, opts);
+            clearTimeout(timeoutId);
+            let data;
+            try { data = await res.json(); } catch (_) {
+                throw new Error('Server returned non-JSON response (HTTP ' + res.status + ')');
+            }
+            if (!res.ok) {
+                const detail = data.detail || data.error || JSON.stringify(data);
+                throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+            }
+            return data;
+        } catch (e) {
+            clearTimeout(timeoutId);
+            if (e.name === 'AbortError') {
+                throw new Error('Request timed out — Home Assistant may be busy or the device is offline');
+            }
+            throw e;
         }
-        const res = await fetch(MBASE + path, opts);
-        const data = await res.json();
-        if (!res.ok) {
-            const detail = data.detail || data.error || JSON.stringify(data);
-            throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
-        }
-        return data;
     }
 
     async function loadMoistureConfig() {
@@ -2371,10 +2385,10 @@ ADMIN_HTML = """<!DOCTYPE html>
                     const zones = probe.zone_mappings || [];
                     html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
                     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-                    html += '<strong style="font-size:14px;">' + esc(probe.display_name || pid) + '</strong>';
-                    html += '<button class="btn btn-danger btn-sm" onclick="removeMoistureProbe(\\'' + esc(pid) + '\\')">Remove</button>';
+                    html += '<strong style="font-size:14px;">' + escHtml(probe.display_name || pid) + '</strong>';
+                    html += '<button class="btn btn-danger btn-sm" onclick="removeMoistureProbe(\\'' + escHtml(pid) + '\\')">Remove</button>';
                     html += '</div>';
-                    html += '<div style="font-size:12px;color:var(--text-muted);">ID: ' + esc(pid) + '</div>';
+                    html += '<div style="font-size:12px;color:var(--text-muted);">ID: ' + escHtml(pid) + '</div>';
                     html += '<div style="font-size:12px;margin-top:4px;"><strong>Sensors:</strong> ' + Object.entries(ss).map(function(e){return e[0] + ' = ' + e[1];}).join(', ') + '</div>';
                     html += '<div style="font-size:12px;margin-top:2px;"><strong>Zones:</strong> ' + (zones.length > 0 ? zones.map(function(z){return z.split(".").pop();}).join(', ') : '<em>None mapped</em>') + '</div>';
                     html += '</div>';
@@ -2403,7 +2417,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             // Populate device dropdown after rendering
             loadMoistureDevices();
         } catch (e) {
-            content.innerHTML = '<div style="color:var(--color-danger);">Failed to load moisture configuration: ' + esc(e.message) + '</div>';
+            content.innerHTML = '<div style="color:var(--color-danger);">Failed to load moisture configuration: ' + escHtml(e.message) + '</div>';
         }
     }
 
@@ -2505,7 +2519,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             for (const s of sensors) {
                 const state = s.state != null ? s.state : '—';
                 const unit = s.unit_of_measurement || '';
-                html += '<div>' + esc(s.entity_id) + ' = <strong>' + esc(String(state)) + '</strong> ' + esc(unit) + '</div>';
+                html += '<div>' + escHtml(s.entity_id) + ' = <strong>' + escHtml(String(state)) + '</strong> ' + escHtml(unit) + '</div>';
             }
             html += '</div>';
 
@@ -2520,7 +2534,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                     const nameLabel = s.friendly_name || eidShort;
                     const auto = s.entity_id.toLowerCase().includes(depth) || (s.friendly_name || '').toLowerCase().includes(depth) ? ' (auto)' : '';
                     const selected = (s.entity_id.toLowerCase().includes(depth) || (s.friendly_name || '').toLowerCase().includes(depth)) ? ' selected' : '';
-                    html += '<option value="' + esc(s.entity_id) + '"' + selected + '>' + esc(nameLabel) + auto + '</option>';
+                    html += '<option value="' + escHtml(s.entity_id) + '"' + selected + '>' + escHtml(nameLabel) + auto + '</option>';
                 }
                 html += '</select></div>';
             }
@@ -2531,13 +2545,13 @@ ADMIN_HTML = """<!DOCTYPE html>
             // Derive a default name from the device
             const select = document.getElementById('cfgMoistureDeviceSelect');
             const deviceName = select.options[select.selectedIndex] ? select.options[select.selectedIndex].textContent : 'Probe';
-            html += '<input type="text" id="cfgProbeDevice_name" value="' + esc(deviceName) + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;"></div>';
+            html += '<input type="text" id="cfgProbeDevice_name" value="' + escHtml(deviceName) + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;"></div>';
 
             html += '<button class="btn btn-primary btn-sm" onclick="addProbeFromDevice()">Add Probe</button>';
             html += '</div>';
             el.innerHTML = html;
         } catch (e) {
-            el.innerHTML = '<div style="color:var(--color-danger);">Failed to load device sensors: ' + esc(e.message) + '</div>';
+            el.innerHTML = '<div style="color:var(--color-danger);">Failed to load device sensors: ' + escHtml(e.message) + '</div>';
         }
     }
 
