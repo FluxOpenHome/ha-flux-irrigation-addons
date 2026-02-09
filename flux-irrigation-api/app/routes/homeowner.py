@@ -919,3 +919,69 @@ async def homeowner_delete_zone_heads(entity_id: str, request: Request):
     return {"success": True, "message": f"Head details removed for {entity_id}"}
 
 
+# --- Pump Settings ---
+
+
+class SavePumpSettingsRequest(BaseModel):
+    pump_entity_id: str = ""
+    voltage: float = 240
+    hp: float = 0
+    kw: float = 0
+    brand: str = ""
+    year_installed: str = ""
+    cost_per_kwh: float = 0.12
+    peak_rate_per_kwh: float = 0.0
+
+
+@router.get("/pump_settings", summary="Get pump settings")
+async def homeowner_get_pump_settings():
+    """Get the pump configuration (HP/kW, voltage, brand, electricity rates)."""
+    _require_homeowner_mode()
+    import pump_data
+    return pump_data.get_pump_settings()
+
+
+@router.put("/pump_settings", summary="Save pump settings")
+async def homeowner_save_pump_settings(body: SavePumpSettingsRequest, request: Request):
+    """Save pump settings. HP and kW are auto-synced (1 HP = 0.7457 kW)."""
+    _require_homeowner_mode()
+    import pump_data
+    old = pump_data.get_pump_settings()
+    result = pump_data.save_pump_settings(body.dict())
+
+    # Log changes
+    changes = []
+    for key in ("voltage", "hp", "kw", "brand", "year_installed", "cost_per_kwh", "peak_rate_per_kwh"):
+        old_val = old.get(key)
+        new_val = result.get(key)
+        if str(old_val) != str(new_val):
+            changes.append(f"{key}: {old_val} → {new_val}")
+    if changes:
+        log_change(get_actor(request), "Pump Settings", "; ".join(changes), result)
+
+    return result
+
+
+@router.get("/pump_stats", summary="Get pump usage statistics")
+async def homeowner_get_pump_stats(
+    hours: int = Query(720, ge=1, le=8760, description="Hours of history (max 1 year)"),
+):
+    """Get pump usage statistics (cycles, run hours, kWh, estimated cost)."""
+    _require_homeowner_mode()
+    import pump_data
+    settings = pump_data.get_pump_settings()
+    eid = settings.get("pump_entity_id", "")
+    if not eid:
+        return {
+            "pump_entity_id": "",
+            "cycles": 0,
+            "run_hours": 0,
+            "total_seconds": 0,
+            "total_kwh": 0,
+            "estimated_cost": 0,
+            "power_kw": 0,
+            "hours": hours,
+        }
+    return pump_data.get_pump_stats(hours=hours, pump_entity_id=eid, settings=settings)
+
+

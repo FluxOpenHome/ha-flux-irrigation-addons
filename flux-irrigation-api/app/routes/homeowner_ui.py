@@ -137,6 +137,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tile-state.on { color: var(--color-success); font-weight: 500; }
 .tile-actions { display: flex; gap: 6px; }
 
+/* Card Row — side-by-side cards */
+.card-row { display: flex; gap: 20px; margin-bottom: 20px; }
+.card-row > .card { flex: 1; min-width: 0; margin-bottom: 0; }
+@media (max-width: 768px) { .card-row { flex-direction: column; } .card-row > .card { margin-bottom: 20px; } }
+
 /* Schedule (entity-based) */
 .schedule-section { margin-bottom: 20px; }
 .schedule-section-label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
@@ -268,22 +273,44 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         </div>
     </div>
 
-    <!-- Estimated Gallons Card -->
-    <div class="card" id="estGallonsCard" style="display:none;">
-        <div class="card-header">
-            <h2>Estimated Gallons</h2>
-            <div style="display:flex;gap:6px;align-items:center;">
-                <select id="gallonsRange" onchange="loadEstGallons()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;">
-                    <option value="24">Last 24 hours</option>
-                    <option value="168">Last 7 days</option>
-                    <option value="720">Last 30 days</option>
-                    <option value="2160">Last 90 days</option>
-                    <option value="8760">Last year</option>
-                </select>
+    <!-- Gallons + Pump Row (side-by-side when pump detected, full-width otherwise) -->
+    <div class="card-row" id="gallonsPumpRow" style="display:block;">
+        <!-- Estimated Gallons Card -->
+        <div class="card" id="estGallonsCard" style="display:none;">
+            <div class="card-header">
+                <h2>Estimated Gallons</h2>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <select id="gallonsRange" onchange="loadEstGallons()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
+                        <option value="24">Last 24 hours</option>
+                        <option value="168">Last 7 days</option>
+                        <option value="720">Last 30 days</option>
+                        <option value="2160">Last 90 days</option>
+                        <option value="8760">Last year</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body" id="estGallonsBody">
+                <div class="loading">Loading...</div>
             </div>
         </div>
-        <div class="card-body" id="estGallonsBody">
-            <div class="loading">Loading...</div>
+
+        <!-- Pump Monitor Card -->
+        <div class="card" id="pumpMonitorCard" style="display:none;">
+            <div class="card-header">
+                <h2>&#9889; Pump Monitor</h2>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <select id="pumpRange" onchange="loadPumpMonitor()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
+                        <option value="24">Last 24 hours</option>
+                        <option value="720" selected>Last 30 days</option>
+                        <option value="2160">Last 90 days</option>
+                        <option value="8760">Last year</option>
+                    </select>
+                    <button class="btn btn-secondary btn-sm" onclick="showPumpSettingsModal()" title="Pump settings">&#9881;&#65039;</button>
+                </div>
+            </div>
+            <div class="card-body" id="pumpMonitorBody">
+                <div class="loading">Loading...</div>
+            </div>
         </div>
     </div>
 
@@ -1027,6 +1054,7 @@ async function loadDashboard() {
     if (!_initialLoadDone) _initialLoadDone = true;
     loadHistory();
     loadEstGallons();
+    loadPumpMonitor();
     loadActiveIssues();
 }
 
@@ -1422,6 +1450,20 @@ async function loadControls() {
             const num = extractZoneNumber(zm.entity_id, 'zone');
             if (num) window._zoneModes[num] = { state: zm.state, entity: zm };
         }
+
+        // Detect pump start relay zone
+        window._pumpZoneEntity = null;
+        for (const num in window._zoneModes) {
+            const mode = (window._zoneModes[num].state || '').toLowerCase();
+            if (/pump.*relay|pump\\s*start/i.test(mode)) {
+                // Derive switch entity from mode entity:
+                // select.irrigation_xxx_zone_N_mode -> switch.irrigation_xxx_zone_N
+                const modeEid = window._zoneModes[num].entity.entity_id;
+                window._pumpZoneEntity = modeEid.replace('select.', 'switch.').replace(/_mode$/, '');
+                break;
+            }
+        }
+        loadPumpMonitor();
 
         // Extract rain and expansion control entities into their own cards
         const rainControls = controlEntities.filter(e => isRainEntity(e.entity_id));
@@ -2269,6 +2311,131 @@ async function loadEstGallons() {
     } catch (e) {
         card.style.display = '';
         el.innerHTML = '<div style="color:var(--color-danger);">Failed to load water usage: ' + esc(e.message) + '</div>';
+    }
+}
+
+// --- Pump Monitor ---
+
+function _pumpStatTile(label, value, unit) {
+    return '<div style="text-align:center;background:var(--bg-tile);border-radius:8px;padding:12px 8px;">' +
+        '<div style="font-size:22px;font-weight:700;color:var(--text-primary);">' + value +
+        (unit ? '<span style="font-size:13px;font-weight:400;color:var(--text-muted);"> ' + unit + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + label + '</div></div>';
+}
+
+async function loadPumpMonitor() {
+    var card = document.getElementById('pumpMonitorCard');
+    var row = document.getElementById('gallonsPumpRow');
+    if (!card || !row) return;
+    if (!window._pumpZoneEntity) {
+        card.style.display = 'none';
+        row.style.display = 'block';
+        return;
+    }
+    card.style.display = '';
+    row.style.display = 'flex';
+
+    // Auto-save pump entity if not yet configured
+    try {
+        var settings = await api('/pump_settings?t=' + Date.now());
+        if (!settings.pump_entity_id || settings.pump_entity_id !== window._pumpZoneEntity) {
+            settings.pump_entity_id = window._pumpZoneEntity;
+            await api('/pump_settings', { method: 'PUT', body: JSON.stringify(settings) });
+        }
+    } catch(e) {}
+
+    var el = document.getElementById('pumpMonitorBody');
+    if (!el) return;
+    try {
+        var hours = document.getElementById('pumpRange') ? document.getElementById('pumpRange').value : '720';
+        var stats = await api('/pump_stats?hours=' + hours + '&t=' + Date.now());
+        var pSettings = await api('/pump_settings?t=' + Date.now());
+
+        var html = '';
+        // 2x2 stat grid
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">';
+        html += _pumpStatTile('Total Cycles', stats.cycles || 0, '');
+        html += _pumpStatTile('Run Hours', (stats.run_hours || 0).toFixed(1), 'hrs');
+        html += _pumpStatTile('Power Used', (stats.total_kwh || 0).toFixed(1), 'kWh');
+        html += _pumpStatTile('Est. Cost', '$' + (stats.estimated_cost || 0).toFixed(2), '');
+        html += '</div>';
+
+        // Pump info line
+        var brand = pSettings.brand || 'Unknown';
+        var hp = pSettings.hp ? pSettings.hp + ' HP' : (pSettings.kw ? pSettings.kw + ' kW' : 'Not configured');
+        html += '<div style="font-size:12px;color:var(--text-muted);text-align:center;">';
+        html += esc(brand) + ' &bull; ' + esc(String(hp)) + ' &bull; ' + (pSettings.voltage || 240) + 'V';
+        if (pSettings.year_installed) {
+            var pumpAge = new Date().getFullYear() - parseInt(pSettings.year_installed);
+            if (pumpAge >= 0) html += ' &bull; ' + pumpAge + (pumpAge === 1 ? ' year old' : ' years old');
+        }
+        html += '</div>';
+
+        el.innerHTML = html;
+    } catch(e) {
+        el.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px;">Configure pump settings with the \\u2699\\ufe0f button</div>';
+    }
+}
+
+async function showPumpSettingsModal() {
+    var pSettings = {};
+    try { pSettings = await api('/pump_settings?t=' + Date.now()); } catch(e) {}
+
+    var body = '<div style="display:flex;flex-direction:column;gap:12px;">';
+
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Brand</label>' +
+        '<input type="text" id="pumpBrand" value="' + esc(pSettings.brand || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. Pentair, Hayward"></div>';
+
+    body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Horsepower (HP)</label>' +
+        '<input type="number" id="pumpHP" value="' + (pSettings.hp || '') + '" step="0.25" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 1.5" oninput="var v=parseFloat(this.value)||0;document.getElementById(\\'pumpKW\\').value=v>0?(v*0.7457).toFixed(4):\\'\\'"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Kilowatts (kW)</label>' +
+        '<input type="number" id="pumpKW" value="' + (pSettings.kw || '') + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 1.12" oninput="var v=parseFloat(this.value)||0;document.getElementById(\\'pumpHP\\').value=v>0?(v/0.7457).toFixed(4):\\'\\'"></div>';
+    body += '</div>';
+
+    body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Voltage</label>' +
+        '<input type="number" id="pumpVoltage" value="' + (pSettings.voltage || 240) + '" step="1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="240"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Year Installed</label>' +
+        '<input type="text" id="pumpYear" value="' + esc(pSettings.year_installed || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 2020"></div>';
+    body += '</div>';
+
+    body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Electricity Cost ($/kWh)</label>' +
+        '<input type="number" id="pumpCostKwh" value="' + (pSettings.cost_per_kwh || 0.12) + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="0.12"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Peak Rate ($/kWh)</label>' +
+        '<input type="number" id="pumpPeakRate" value="' + (pSettings.peak_rate_per_kwh || 0) + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="0.00"></div>';
+    body += '</div>';
+
+    body += '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
+        '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
+        '<button class="btn btn-primary" onclick="savePumpSettings()">Save</button>' +
+        '</div>';
+
+    body += '</div>';
+
+    showModal('\\u26a1 Pump Settings', body, '480px');
+}
+
+async function savePumpSettings() {
+    var payload = {
+        pump_entity_id: window._pumpZoneEntity || '',
+        brand: document.getElementById('pumpBrand').value.trim(),
+        hp: parseFloat(document.getElementById('pumpHP').value) || 0,
+        kw: parseFloat(document.getElementById('pumpKW').value) || 0,
+        voltage: parseFloat(document.getElementById('pumpVoltage').value) || 240,
+        year_installed: document.getElementById('pumpYear').value.trim(),
+        cost_per_kwh: parseFloat(document.getElementById('pumpCostKwh').value) || 0.12,
+        peak_rate_per_kwh: parseFloat(document.getElementById('pumpPeakRate').value) || 0
+    };
+    try {
+        await api('/pump_settings', { method: 'PUT', body: JSON.stringify(payload) });
+        closeDynamicModal();
+        showToast('Pump settings saved');
+        loadPumpMonitor();
+    } catch(e) {
+        showToast('Failed to save: ' + e.message, true);
     }
 }
 

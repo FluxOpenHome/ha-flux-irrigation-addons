@@ -1475,3 +1475,66 @@ async def get_customer_report_pdf(
             status_code=500,
             content={"error": f"Failed to generate PDF report: {str(e)}"},
         )
+
+
+# ----------  Pump Settings & Stats  ----------
+
+@router.get(
+    "/api/customers/{customer_id}/pump_settings",
+    summary="Get customer pump settings",
+)
+async def get_customer_pump_settings(customer_id: str):
+    """Get pump configuration for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/pump_settings"
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/pump_settings",
+    summary="Save customer pump settings",
+)
+async def save_customer_pump_settings(customer_id: str, request: Request):
+    """Save pump configuration for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", "/admin/api/homeowner/pump_settings",
+        json_body=body,
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/pump_stats",
+    summary="Get customer pump usage statistics",
+)
+async def get_customer_pump_stats(
+    customer_id: str,
+    hours: int = Query(720, ge=1, le=8760),
+):
+    """Get pump usage statistics for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/pump_stats",
+        params={"hours": hours},
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
