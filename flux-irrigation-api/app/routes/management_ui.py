@@ -719,8 +719,30 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
+<div id="jsErrorBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99999;background:#e74c3c;color:white;padding:12px 16px;font-family:monospace;font-size:13px;max-height:200px;overflow-y:auto;">
+    <strong>⚠️ JavaScript Error Detected</strong>
+</div>
 
 <script>
+// --- Global Error Handlers for Debugging ---
+window.onerror = function(msg, src, line, col, err) {
+    console.error('[MGMT-DEBUG] JS Error:', msg, 'at', src, 'line', line, 'col', col, err);
+    var banner = document.getElementById('jsErrorBanner');
+    if (banner) {
+        banner.style.display = 'block';
+        banner.innerHTML += '<div style="margin-top:4px;font-size:12px;"><strong>Error:</strong> ' + msg + ' (line ' + line + ', col ' + col + ')</div>';
+    }
+};
+window.addEventListener('unhandledrejection', function(e) {
+    console.error('[MGMT-DEBUG] Unhandled Promise Rejection:', e.reason);
+    var banner = document.getElementById('jsErrorBanner');
+    if (banner) {
+        banner.style.display = 'block';
+        banner.innerHTML += '<div style="margin-top:4px;font-size:12px;"><strong>Promise Error:</strong> ' + (e.reason ? e.reason.message || e.reason : 'Unknown') + '</div>';
+    }
+});
+console.log('[MGMT-DEBUG] Script block started executing');
+
 function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
     localStorage.setItem('flux_dark_mode_management', isDark);
@@ -732,6 +754,8 @@ function toggleDarkMode() {
 })();
 
 const BASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api';
+console.log('[MGMT-DEBUG] BASE URL:', BASE);
+console.log('[MGMT-DEBUG] pathname:', window.location.pathname);
 let currentCustomerId = null;
 let detailRefreshTimer = null;
 let listRefreshTimer = null;
@@ -751,6 +775,7 @@ function showToast(msg, type = 'success') {
 
 // --- API Helper ---
 async function api(path, options = {}) {
+    console.log('[MGMT-DEBUG] api() fetch:', BASE + path);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
@@ -781,8 +806,10 @@ async function api(path, options = {}) {
 
 // --- Customer List ---
 async function loadCustomers() {
+    console.log('[MGMT-DEBUG] loadCustomers() called, fetching', BASE + '/customers');
     try {
         const data = await api('/customers');
+        console.log('[MGMT-DEBUG] loadCustomers() got data:', data ? 'ok' : 'null');
         allCustomers = data.customers || [];
         populateStateFilter(allCustomers);
         populateCityFilter(allCustomers);
@@ -791,6 +818,7 @@ async function loadCustomers() {
         updateAlertBadge(allCustomers);
         checkForNewIssues(allCustomers);
     } catch (e) {
+        console.error('[MGMT-DEBUG] loadCustomers() error:', e);
         document.getElementById('customerGrid').innerHTML =
             '<div class="empty-state"><h3>Error loading properties</h3><p>' + e.message + '</p></div>';
     }
@@ -3978,11 +4006,15 @@ document.getElementById('helpModal').addEventListener('click', function(e) {
 });
 
 // --- Init ---
+console.log('[MGMT-DEBUG] Registering DOMContentLoaded handler');
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('[MGMT-DEBUG] DOMContentLoaded fired');
+    try {
     // Fix docs link for ingress — page is served at /admin, strip it to get ingress base
     const ingressBase = window.location.pathname.replace(/\\/admin\\/?$/, '');
     document.getElementById('docsLink').href = ingressBase + '/api/docs';
     document.getElementById('mgmtTimezone').textContent = '';
+    console.log('[MGMT-DEBUG] Calling loadCustomers()...');
     loadCustomers();
     listRefreshTimer = setInterval(loadCustomers, 60000);
     // Close modals on backdrop click or Escape
@@ -4016,6 +4048,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('notifPrefsModal').addEventListener('click', function(e) {
         if (e.target === this) closeNotifPrefs();
     });
+    console.log('[MGMT-DEBUG] DOMContentLoaded setup complete');
+    } catch (initErr) {
+        console.error('[MGMT-DEBUG] Init error:', initErr);
+        var banner = document.getElementById('jsErrorBanner');
+        if (banner) {
+            banner.style.display = 'block';
+            banner.innerHTML += '<div style="margin-top:4px;font-size:12px;"><strong>Init Error:</strong> ' + initErr.message + '</div>';
+        }
+    }
 });
 </script>
 </body>
