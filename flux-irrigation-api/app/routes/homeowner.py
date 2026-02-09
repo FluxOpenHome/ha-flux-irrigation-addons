@@ -11,6 +11,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Any
 from config import get_config
@@ -1020,5 +1021,111 @@ async def homeowner_save_water_settings(body: SaveWaterSettingsRequest, request:
         log_change(get_actor(request), "Water Settings", "; ".join(changes), result)
 
     return result
+
+
+# --- Report Settings ---
+
+
+class SaveReportSettingsRequest(BaseModel):
+    company_name: str = ""
+    custom_footer: str = ""
+    accent_color: str = "#1a7a4c"
+    hidden_sections: list = []
+
+
+@router.get("/report_settings", summary="Get PDF report settings")
+async def homeowner_get_report_settings():
+    """Get the current PDF report branding/settings."""
+    _require_homeowner_mode()
+    import report_settings
+    return report_settings.get_report_settings()
+
+
+@router.put("/report_settings", summary="Save PDF report settings")
+async def homeowner_save_report_settings(body: SaveReportSettingsRequest, request: Request):
+    """Save PDF report branding settings (company name, accent color, sections, footer)."""
+    _require_homeowner_mode()
+    import report_settings
+    old = report_settings.get_report_settings()
+    result = report_settings.save_report_settings(body.dict())
+
+    # Log changes
+    changes = []
+    for key in ("company_name", "custom_footer", "accent_color"):
+        old_val = old.get(key, "")
+        new_val = result.get(key, "")
+        if str(old_val) != str(new_val):
+            label = key.replace("_", " ").title()
+            changes.append(f"{label}: {old_val or '(empty)'} \u2192 {new_val or '(empty)'}")
+    old_hidden = set(old.get("hidden_sections", []))
+    new_hidden = set(result.get("hidden_sections", []))
+    if old_hidden != new_hidden:
+        changes.append(f"Hidden sections: {sorted(new_hidden) if new_hidden else '(none)'}")
+    if changes:
+        log_change(get_actor(request), "Report Settings", "; ".join(changes))
+
+    return result
+
+
+@router.post("/report_settings/logo", summary="Upload custom report logo")
+async def upload_report_logo(request: Request):
+    """Upload a custom logo image for the PDF report cover page (max 2MB)."""
+    _require_homeowner_mode()
+    import report_settings
+    form = await request.form()
+    file = form.get("logo")
+    if not file:
+        raise HTTPException(400, "No logo file provided")
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(400, "Logo file too large (max 2MB)")
+    report_settings.save_logo(contents)
+    log_change(get_actor(request), "Report Settings", "Custom logo uploaded")
+    return {"success": True, "message": "Logo uploaded"}
+
+
+@router.post("/report_settings/logo_base64", summary="Upload custom report logo (base64)")
+async def upload_report_logo_base64(request: Request):
+    """Upload a custom logo as base64-encoded JSON (for management proxy compatibility)."""
+    _require_homeowner_mode()
+    import report_settings
+    import base64
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+    b64_data = body.get("logo_base64", "")
+    if not b64_data:
+        raise HTTPException(400, "No logo_base64 field provided")
+    try:
+        contents = base64.b64decode(b64_data)
+    except Exception:
+        raise HTTPException(400, "Invalid base64 data")
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(400, "Logo file too large (max 2MB)")
+    report_settings.save_logo(contents)
+    log_change(get_actor(request), "Report Settings", "Custom logo uploaded")
+    return {"success": True, "message": "Logo uploaded"}
+
+
+@router.delete("/report_settings/logo", summary="Remove custom report logo")
+async def delete_report_logo(request: Request):
+    """Remove the custom logo, reverting to default Flux Open Home logo."""
+    _require_homeowner_mode()
+    import report_settings
+    report_settings.delete_logo()
+    log_change(get_actor(request), "Report Settings", "Custom logo removed")
+    return {"success": True, "message": "Logo removed"}
+
+
+@router.get("/report_settings/logo", summary="Get custom report logo")
+async def get_report_logo():
+    """Serve the custom logo image, or 404 if none uploaded."""
+    _require_homeowner_mode()
+    import report_settings
+    path = report_settings.get_logo_path()
+    if not path:
+        raise HTTPException(404, "No custom logo")
+    return FileResponse(path, media_type="image/png")
 
 

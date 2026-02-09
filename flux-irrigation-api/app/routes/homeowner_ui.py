@@ -227,14 +227,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <div id="dashTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <select id="reportHours" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;">
-                <option value="24">24 Hours</option>
-                <option value="168">7 Days</option>
-                <option value="720" selected>30 Days</option>
-                <option value="2160">90 Days</option>
-                <option value="8760">1 Year</option>
-            </select>
-            <button class="btn btn-secondary btn-sm" onclick="generateReport()" title="Generate a PDF system report">PDF Report</button>
             <button class="btn btn-secondary btn-sm" onclick="cloneToDashboard()" title="Create a native HA dashboard from current config">Clone to HA Dashboard</button>
             <button class="btn btn-secondary btn-sm" onclick="refreshDashboard()">Refresh</button>
             <button class="btn btn-danger btn-sm" onclick="stopAllZones()">Emergency Stop All</button>
@@ -1115,6 +1107,24 @@ async function loadStatus() {
             <div class="tile"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
             <div class="tile"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
+        </div>`;
+        // Report mini-card — below status tiles
+        el.innerHTML += `
+        <div style="margin-top:12px;padding:10px 14px;background:var(--bg-tile,var(--card-bg));border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:16px;">&#128196;</span>
+                <span style="font-size:13px;font-weight:600;color:var(--text);">PDF System Report</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <select id="reportHours" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;">
+                    <option value="24">24 Hours</option>
+                    <option value="168">7 Days</option>
+                    <option value="720" selected>30 Days</option>
+                    <option value="2160">90 Days</option>
+                    <option value="8760">1 Year</option>
+                </select>
+                <button class="btn btn-primary btn-sm" onclick="generateReport()">Generate</button>
+            </div>
         </div>`;
     } catch (e) {
         el.innerHTML = '<div style="color:var(--color-danger);">Failed to load status: ' + esc(e.message) + '</div>';
@@ -4238,10 +4248,10 @@ const HELP_CONTENT = `
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The pump relay zone is auto-detected from your controller&rsquo;s zone mode settings. If no pump relay is configured, the Estimated Gallons card stays full-width. The pump info line shows brand, power rating, voltage, and pump age (current year minus year installed).</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">PDF System Report</h4>
-<p style="margin-bottom:10px;">Click the <strong>PDF Report</strong> button in the header to generate a comprehensive, professionally branded PDF document covering your entire irrigation system. The report includes:</p>
+<p style="margin-bottom:10px;">The <strong>PDF System Report</strong> card appears below the status tiles. Select a time range and click <strong>Generate</strong> to create a comprehensive, professionally branded PDF document covering your entire irrigation system. The report includes:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>System Status</strong> &mdash; Online/offline, paused/active, weather multiplier, moisture status</li><li style="margin-bottom:4px;"><strong>Active Issues</strong> &mdash; Any reported issues with severity, description, and status</li><li style="margin-bottom:4px;"><strong>Zones Overview</strong> &mdash; All zones with name, state, GPM, and head count</li><li style="margin-bottom:4px;"><strong>Zone Head Details</strong> &mdash; Complete sprinkler head inventory per zone (type, brand, model, GPM, arc, radius, PSI)</li><li style="margin-bottom:4px;"><strong>Weather Settings</strong> &mdash; Current conditions, multiplier, and active adjustment rules</li><li style="margin-bottom:4px;"><strong>Moisture Probes</strong> &mdash; Probe configuration, mapped zones, and thresholds</li><li style="margin-bottom:4px;"><strong>Sensors</strong> &mdash; All sensor readings with values and units</li><li style="margin-bottom:4px;"><strong>Estimated Water Usage</strong> &mdash; Total gallons, per-zone breakdown, water source type, and estimated cost (when configured)</li><li style="margin-bottom:4px;"><strong>Run History</strong> &mdash; Recent zone run events with durations and sources</li></ul>
-<p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> next to the button to select the period for history and water usage data: 24 Hours, 7 Days, 30 Days (default), 90 Days, or 1 Year. The PDF opens in a new tab for viewing or downloading.</p>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The report is generated server-side and branded with Flux Open Home and Gophr logos. Water usage estimates are calculated from zone run durations and configured GPM values.</div>
+<p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> to select the period for history and water usage data: 24 Hours, 7 Days, 30 Days (default), 90 Days, or 1 Year. The PDF opens in a new tab for viewing or downloading.</p>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The report is generated server-side and branded with Flux Open Home and Gophr logos. Your management company can customize the report with their own logo, company name, accent color, section visibility, and footer text.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Expansion Boards</h4>
 <p style="margin-bottom:10px;">If your controller supports I2C expansion boards for additional zones, the Expansion Boards card shows:</p>

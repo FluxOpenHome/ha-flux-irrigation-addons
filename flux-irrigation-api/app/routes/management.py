@@ -1463,12 +1463,37 @@ async def get_customer_report_pdf(
         except Exception:
             pass
 
+        # Fetch report branding settings
+        report_settings = {}
+        try:
+            _, rs_resp = await management_client.proxy_request(
+                conn, "GET", "/admin/api/homeowner/report_settings"
+            )
+            if isinstance(rs_resp, dict):
+                report_settings = rs_resp
+        except Exception:
+            pass
+
+        # Fetch custom logo bytes if one exists
+        custom_logo_bytes = None
+        if report_settings.get("has_custom_logo"):
+            try:
+                logo_status, logo_bytes = await management_client.proxy_request_raw(
+                    conn, "GET", "/admin/api/homeowner/report_settings/logo"
+                )
+                if logo_status == 200 and logo_bytes:
+                    custom_logo_bytes = logo_bytes
+            except Exception:
+                pass
+
         # Build PDF using shared builder
         pdf = build_report(
             status_data, zones_data, aliases_data, zone_heads_data,
             sensors_data, weather_data, moisture_data, issues_data,
             history_data, hours,
             water_settings=water_settings,
+            report_settings=report_settings,
+            custom_logo_bytes=custom_logo_bytes,
         )
 
         pdf_bytes = bytes(pdf.output())
@@ -1593,3 +1618,119 @@ async def save_customer_water_settings(customer_id: str, request: Request):
     if status_code != 200:
         raise _proxy_error(status_code, data)
     return data
+
+
+# --- Report Settings (proxy) ---
+
+
+@router.get(
+    "/api/customers/{customer_id}/report_settings",
+    summary="Get customer report settings",
+)
+async def get_customer_report_settings(customer_id: str):
+    """Get PDF report branding settings for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/report_settings"
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/report_settings",
+    summary="Save customer report settings",
+)
+async def save_customer_report_settings(customer_id: str, request: Request):
+    """Save PDF report branding settings for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", "/admin/api/homeowner/report_settings",
+        json_body=body,
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/report_settings/logo",
+    summary="Upload customer report logo",
+)
+async def upload_customer_report_logo(customer_id: str, request: Request):
+    """Upload a custom logo for a customer's PDF report.
+
+    Accepts multipart form with 'logo' file field. Forwards to homeowner
+    as base64 JSON for Nabu Casa compatibility.
+    """
+    import base64
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+
+    form = await request.form()
+    file = form.get("logo")
+    if not file:
+        raise HTTPException(400, "No logo file provided")
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(400, "Logo file too large (max 2MB)")
+
+    # Forward as base64 JSON (works through Nabu Casa rest_command proxy)
+    b64 = base64.b64encode(contents).decode("ascii")
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", "/admin/api/homeowner/report_settings/logo_base64",
+        json_body={"logo_base64": b64},
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.delete(
+    "/api/customers/{customer_id}/report_settings/logo",
+    summary="Remove customer report logo",
+)
+async def delete_customer_report_logo(customer_id: str):
+    """Remove the custom logo for a customer's PDF report."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "DELETE", "/admin/api/homeowner/report_settings/logo",
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/report_settings/logo",
+    summary="Get customer report logo",
+)
+async def get_customer_report_logo(customer_id: str):
+    """Serve the custom logo image for a customer, or 404 if none."""
+    from fastapi.responses import Response as FastResponse
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, raw_bytes = await management_client.proxy_request_raw(
+        conn, "GET", "/admin/api/homeowner/report_settings/logo"
+    )
+    if status_code == 404:
+        raise HTTPException(404, "No custom logo")
+    if status_code != 200:
+        raise HTTPException(status_code, "Failed to fetch logo")
+    return FastResponse(content=raw_bytes, media_type="image/png")

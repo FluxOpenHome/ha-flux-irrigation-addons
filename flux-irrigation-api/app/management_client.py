@@ -283,6 +283,47 @@ async def _proxy_via_nabu_casa(
         }
 
 
+async def proxy_request_raw(
+    connection: ConnectionKeyData,
+    method: str,
+    path: str,
+    json_body: Optional[dict] = None,
+    params: Optional[dict] = None,
+    extra_headers: Optional[dict] = None,
+) -> tuple[int, bytes]:
+    """
+    Send a request and return raw bytes (not JSON-parsed).
+    Only works in direct mode — Nabu Casa mode falls back to proxy_request.
+    Returns (status_code, raw_bytes).
+    """
+    url = (connection.url or "").strip()
+    if not url or not url.startswith("http"):
+        return 400, b""
+
+    if connection.mode == "nabu_casa":
+        # Nabu Casa can't return raw binary through rest_command proxy.
+        # Fall back to JSON proxy (caller should handle).
+        status, data = await _proxy_via_nabu_casa(connection, method, path, json_body, params, extra_headers)
+        if isinstance(data, dict) and "raw" in data:
+            return status, data["raw"].encode() if isinstance(data["raw"], str) else b""
+        return status, b""
+
+    client = _get_client()
+    full_url = f"{url.rstrip('/')}{path}"
+    headers = {"X-API-Key": connection.key}
+    if extra_headers:
+        headers.update(extra_headers)
+    try:
+        response = await client.request(
+            method=method, url=full_url, headers=headers,
+            json=json_body, params=params,
+        )
+        return response.status_code, response.content
+    except Exception as e:
+        print(f"[MGMT_CLIENT] proxy_request_raw error: {e}")
+        return 502, b""
+
+
 def _error_to_string(err) -> str:
     """Convert an error value (str, dict, or other) to a readable string."""
     if isinstance(err, str):

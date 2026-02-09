@@ -397,14 +397,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                 <div id="mgmtTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <select id="mgmtReportHours" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;">
-                    <option value="24">24 Hours</option>
-                    <option value="168">7 Days</option>
-                    <option value="720" selected>30 Days</option>
-                    <option value="2160">90 Days</option>
-                    <option value="8760">1 Year</option>
-                </select>
-                <button class="btn btn-secondary btn-sm" onclick="mgmtGenerateReport()" title="Generate a PDF system report">PDF Report</button>
                 <button class="btn btn-secondary btn-sm" onclick="mgmtShowChangelog()" title="Change Log">&#128203; Log</button>
                 <button class="btn btn-secondary btn-sm" onclick="refreshDetail()">Refresh</button>
                 <button class="btn btn-danger btn-sm" onclick="stopAllZones()">Emergency Stop All</button>
@@ -1600,6 +1592,159 @@ function mgmtGenerateReport() {
     if (!currentCustomerId) { showToast('Select a customer first', 'error'); return; }
     var hours = document.getElementById('mgmtReportHours').value || '720';
     window.open(BASE + '/customers/' + currentCustomerId + '/report/pdf?hours=' + hours + '&t=' + Date.now(), '_blank');
+}
+
+// --- Report Settings Modal ---
+var _mgmtReportSettings = null;
+
+async function mgmtShowReportSettingsModal() {
+    if (!currentCustomerId) { showToast('Select a customer first', 'error'); return; }
+    try {
+        _mgmtReportSettings = await api('/customers/' + currentCustomerId + '/report_settings?t=' + Date.now());
+    } catch (e) {
+        _mgmtReportSettings = { company_name: '', custom_footer: '', accent_color: '#1a7a4c', has_custom_logo: false, hidden_sections: [] };
+    }
+    var rs = _mgmtReportSettings;
+    var hidden = rs.hidden_sections || [];
+    var sections = [
+        { key: 'system_status', label: 'System Status' },
+        { key: 'issues', label: 'Issues' },
+        { key: 'zones', label: 'Zones' },
+        { key: 'zone_heads', label: 'Zone Head Details' },
+        { key: 'weather', label: 'Weather-Based Control' },
+        { key: 'moisture', label: 'Moisture Probes' },
+        { key: 'sensors', label: 'Sensors' },
+        { key: 'water_usage', label: 'Estimated Water Usage' },
+        { key: 'run_history', label: 'Run History' }
+    ];
+    var sectionHtml = '';
+    for (var i = 0; i < sections.length; i++) {
+        var s = sections[i];
+        var checked = hidden.indexOf(s.key) === -1 ? ' checked' : '';
+        sectionHtml += '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px;color:var(--text);"><input type="checkbox" id="rptSec_' + s.key + '"' + checked + ' style="accent-color:var(--color-primary);"> ' + esc(s.label) + '</label>';
+    }
+    var logoPreview = '';
+    if (rs.has_custom_logo) {
+        logoPreview = '<div id="rptLogoPreview" style="margin-top:8px;"><img src="' + BASE + '/customers/' + currentCustomerId + '/report_settings/logo?t=' + Date.now() + '" style="max-width:200px;max-height:80px;border-radius:6px;border:1px solid var(--border);" onerror="this.parentElement.innerHTML=\\'<span style=color:var(--text-muted);font-size:12px>Failed to load preview</span>\\'"><br><button class="btn btn-danger btn-sm" onclick="mgmtRemoveReportLogo()" style="margin-top:6px;">Remove Logo</button></div>';
+    } else {
+        logoPreview = '<div id="rptLogoPreview" style="margin-top:8px;font-size:12px;color:var(--text-muted);font-style:italic;">Using default Flux Open Home logo</div>';
+    }
+    var html = '<div style="max-height:70vh;overflow-y:auto;padding-right:6px;">';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Company Branding</h4>';
+    html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Company Name</label>';
+    html += '<input type="text" id="rptCompanyName" value="' + esc(rs.company_name || '') + '" placeholder="Your Company Name" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:13px;box-sizing:border-box;">';
+    html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin:10px 0 4px;">Company Logo</label>';
+    html += '<div style="display:flex;align-items:center;gap:10px;">';
+    html += '<input type="file" id="rptLogoFile" accept="image/*" style="font-size:12px;" onchange="mgmtPreviewReportLogo(this)">';
+    html += '<button class="btn btn-primary btn-sm" onclick="mgmtUploadReportLogo()">Upload</button>';
+    html += '</div>';
+    html += logoPreview;
+    html += '</div>';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Accent Color</h4>';
+    html += '<div style="display:flex;align-items:center;gap:10px;">';
+    html += '<input type="color" id="rptAccentColor" value="' + esc(rs.accent_color || '#1a7a4c') + '" style="width:40px;height:32px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px;">';
+    html += '<span style="font-size:12px;color:var(--text-muted);">Used on cover page, section headers, and table headers</span>';
+    html += '</div></div>';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Report Sections</h4>';
+    html += '<div style="display:flex;flex-direction:column;gap:2px;">' + sectionHtml + '</div></div>';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Footer Text</h4>';
+    html += '<input type="text" id="rptCustomFooter" value="' + esc(rs.custom_footer || '') + '" placeholder="Powered by Flux Open Home &amp; Gophr" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:13px;box-sizing:border-box;">';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">';
+    html += '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>';
+    html += '<button class="btn btn-primary" onclick="mgmtSaveReportSettings()">Save Settings</button>';
+    html += '</div></div>';
+    showModal('Report Settings', html);
+}
+
+function mgmtPreviewReportLogo(input) {
+    if (!input.files || !input.files[0]) return;
+    var file = input.files[0];
+    if (file.size > 2 * 1024 * 1024) {
+        showToast('Logo file too large (max 2MB)', 'error');
+        input.value = '';
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var preview = document.getElementById('rptLogoPreview');
+        if (preview) {
+            preview.innerHTML = '<img src="' + e.target.result + '" style="max-width:200px;max-height:80px;border-radius:6px;border:1px solid var(--border);"><br><span style="font-size:11px;color:var(--text-muted);">Click Upload to save</span>';
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+async function mgmtUploadReportLogo() {
+    if (!currentCustomerId) return;
+    var input = document.getElementById('rptLogoFile');
+    if (!input || !input.files || !input.files[0]) {
+        showToast('Select an image file first', 'error');
+        return;
+    }
+    var formData = new FormData();
+    formData.append('logo', input.files[0]);
+    try {
+        var resp = await fetch(BASE + '/customers/' + currentCustomerId + '/report_settings/logo', {
+            method: 'POST',
+            body: formData
+        });
+        if (!resp.ok) {
+            var err = await resp.json().catch(function() { return { error: 'Upload failed' }; });
+            throw new Error(err.error || err.detail || 'Upload failed');
+        }
+        showToast('Logo uploaded successfully');
+        // Refresh the preview
+        var preview = document.getElementById('rptLogoPreview');
+        if (preview) {
+            preview.innerHTML = '<img src="' + BASE + '/customers/' + currentCustomerId + '/report_settings/logo?t=' + Date.now() + '" style="max-width:200px;max-height:80px;border-radius:6px;border:1px solid var(--border);"><br><button class="btn btn-danger btn-sm" onclick="mgmtRemoveReportLogo()" style="margin-top:6px;">Remove Logo</button>';
+        }
+        if (_mgmtReportSettings) _mgmtReportSettings.has_custom_logo = true;
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function mgmtRemoveReportLogo() {
+    if (!currentCustomerId) return;
+    if (!confirm('Remove the custom logo? The default Flux Open Home logo will be used.')) return;
+    try {
+        await api('/customers/' + currentCustomerId + '/report_settings/logo', { method: 'DELETE' });
+        showToast('Logo removed');
+        var preview = document.getElementById('rptLogoPreview');
+        if (preview) {
+            preview.innerHTML = '<span style="font-size:12px;color:var(--text-muted);font-style:italic;">Using default Flux Open Home logo</span>';
+        }
+        if (_mgmtReportSettings) _mgmtReportSettings.has_custom_logo = false;
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function mgmtSaveReportSettings() {
+    if (!currentCustomerId) return;
+    var sectionKeys = ['system_status', 'issues', 'zones', 'zone_heads', 'weather', 'moisture', 'sensors', 'water_usage', 'run_history'];
+    var hiddenSections = [];
+    for (var i = 0; i < sectionKeys.length; i++) {
+        var cb = document.getElementById('rptSec_' + sectionKeys[i]);
+        if (cb && !cb.checked) hiddenSections.push(sectionKeys[i]);
+    }
+    var payload = {
+        company_name: (document.getElementById('rptCompanyName').value || '').trim(),
+        custom_footer: (document.getElementById('rptCustomFooter').value || '').trim(),
+        accent_color: document.getElementById('rptAccentColor').value || '#1a7a4c',
+        hidden_sections: hiddenSections
+    };
+    try {
+        await api('/customers/' + currentCustomerId + '/report_settings', {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+        showToast('Report settings saved');
+        closeDynamicModal();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
 }
 
 // --- Location Map ---
@@ -2902,6 +3047,25 @@ async function loadDetailStatus(id) {
             <div class="tile"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
             <div class="tile"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
+        </div>`;
+        // Report mini-card — below status tiles (with settings gear for management)
+        el.innerHTML += `
+        <div style="margin-top:12px;padding:10px 14px;background:var(--bg-tile,var(--card-bg));border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:16px;">&#128196;</span>
+                <span style="font-size:13px;font-weight:600;color:var(--text);">PDF System Report</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <select id="mgmtReportHours" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;">
+                    <option value="24">24 Hours</option>
+                    <option value="168">7 Days</option>
+                    <option value="720" selected>30 Days</option>
+                    <option value="2160">90 Days</option>
+                    <option value="8760">1 Year</option>
+                </select>
+                <button class="btn btn-primary btn-sm" onclick="mgmtGenerateReport()">Generate</button>
+                <button class="btn btn-secondary btn-sm" onclick="mgmtShowReportSettingsModal()" title="Report branding &amp; settings" style="padding:4px 8px;font-size:14px;">&#9881;&#65039;</button>
+            </div>
         </div>`;
     } catch (e) {
         el.innerHTML = '<div style="color:var(--color-danger);">Failed to load status: ' + esc(e.message) + '</div>';
@@ -5006,10 +5170,14 @@ const HELP_CONTENT = `
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The pump relay zone is auto-detected from the controller&rsquo;s zone mode settings. Properties without a pump relay show only the Estimated Gallons card at full width. Pump settings are stored on the customer&rsquo;s system and persist across sessions.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">PDF System Report</h4>
-<p style="margin-bottom:10px;">Click the <strong>PDF Report</strong> button in the property detail header to generate a comprehensive, professionally branded PDF document for the selected customer&rsquo;s system. The report includes:</p>
+<p style="margin-bottom:10px;">The <strong>PDF System Report</strong> card appears below the status tiles. Select a time range and click <strong>Generate</strong> to create a comprehensive PDF document for the selected customer&rsquo;s system. The report includes:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>System Status</strong> &mdash; Online/offline, paused/active, weather multiplier, moisture status</li><li style="margin-bottom:4px;"><strong>Active Issues</strong> &mdash; Reported issues with severity, description, and current status</li><li style="margin-bottom:4px;"><strong>Zones Overview</strong> &mdash; All zones with name, state, GPM, and head count</li><li style="margin-bottom:4px;"><strong>Zone Head Details</strong> &mdash; Sprinkler head inventory per zone (type, brand, model, GPM, arc, radius, PSI)</li><li style="margin-bottom:4px;"><strong>Weather Settings</strong> &mdash; Current conditions, multiplier, and active adjustment rules</li><li style="margin-bottom:4px;"><strong>Moisture Probes</strong> &mdash; Probe configuration, mapped zones, and thresholds</li><li style="margin-bottom:4px;"><strong>Sensors</strong> &mdash; All sensor readings with values and units</li><li style="margin-bottom:4px;"><strong>Estimated Water Usage</strong> &mdash; Total gallons, per-zone breakdown, water source type, and estimated cost (when configured)</li><li style="margin-bottom:4px;"><strong>Run History</strong> &mdash; Recent zone run events with durations and sources</li></ul>
-<p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> next to the button to select the history period: 24 Hours, 7 Days, 30 Days (default), 90 Days, or 1 Year. The PDF opens in a new tab for viewing or downloading.</p>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The report is generated server-side and includes all data from the customer&rsquo;s system. Branded with Flux Open Home and Gophr logos &mdash; ideal for customer reports, service documentation, or property records.</div>
+<p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> to select the history period: 24 Hours, 7 Days, 30 Days (default), 90 Days, or 1 Year. The PDF opens in a new tab for viewing or downloading.</p>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Report Branding &amp; Settings</h4>
+<p style="margin-bottom:10px;">Click the <strong>&#9881;&#65039;</strong> gear icon next to the Generate button to customize the PDF report for each customer:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Company Logo</strong> &mdash; Upload your company logo to replace the Flux Open Home logo on the cover page. The Flux logo moves to a smaller &ldquo;Powered by&rdquo; placement below. Max 2MB, any common image format.</li><li style="margin-bottom:4px;"><strong>Company Name</strong> &mdash; Shown on the cover page and in page headers (replaces &ldquo;Flux Open Home&rdquo;)</li><li style="margin-bottom:4px;"><strong>Accent Color</strong> &mdash; Change the green theme color used on the cover page, section headers, and table headers to match your company branding</li><li style="margin-bottom:4px;"><strong>Report Sections</strong> &mdash; Toggle individual sections on/off to customize what appears in the generated report</li><li style="margin-bottom:4px;"><strong>Footer Text</strong> &mdash; Replace the default &ldquo;Powered by Flux Open Home &amp; Gophr&rdquo; footer with your own text</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; Report settings are stored on the customer&rsquo;s system and persist across sessions. Only management can configure branding &mdash; homeowners see the branded report but cannot change settings. With no settings configured, the report uses the default Flux Open Home branding.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Notes &amp; Zone Aliases</h4>
 <p style="margin-bottom:10px;">Customize how properties and zones appear in your dashboard:</p>
