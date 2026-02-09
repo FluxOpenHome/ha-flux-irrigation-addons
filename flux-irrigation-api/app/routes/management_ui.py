@@ -2062,6 +2062,10 @@ async function loadDetailMoisture(id) {
     const card = document.getElementById('detailMoistureCard');
     const body = document.getElementById('detailMoistureBody');
     const badge = document.getElementById('detailMoistureBadge');
+    // Skip rebuild if user is actively editing an input inside the moisture card
+    if (body && body.contains(document.activeElement) && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
     try {
         const data = await api('/customers/' + id + '/moisture/probes');
         const settings = await api('/customers/' + id + '/moisture/settings');
@@ -3329,6 +3333,10 @@ function mgmtRenderExpansionCard(custId) {
 
 function renderScheduleCard(custId, sched, durData, multData) {
     const el = document.getElementById('detailSchedule');
+    // Skip full rebuild if user is actively editing an input inside the schedule card
+    if (el.contains(document.activeElement) && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
     const { schedule_enable, day_switches, start_times, run_durations, repeat_cycles, zone_enables, zone_modes, system_controls } = sched;
     const adjDurations = (durData && durData.adjusted_durations) || {};
     const baseDurations = (durData && durData.base_durations) || {};

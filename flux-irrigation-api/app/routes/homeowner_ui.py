@@ -1644,6 +1644,11 @@ function renderExpansionCard() {
 
 function renderScheduleCard(sched, durData, multData) {
     const el = document.getElementById('detailSchedule');
+    // Skip full rebuild if user is actively editing an input inside the schedule card
+    // (prevents cursor being kicked out mid-typing on the 30s refresh cycle)
+    if (el.contains(document.activeElement) && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
     const { schedule_enable, day_switches, start_times, run_durations, repeat_cycles, zone_enables, zone_modes, system_controls } = sched;
     const adjDurations = (durData && durData.adjusted_durations) || {};
     const baseDurations = (durData && durData.base_durations) || {};
@@ -2579,6 +2584,10 @@ async function loadMoisture() {
     const card = document.getElementById('moistureCard');
     const body = document.getElementById('moistureCardBody');
     const badge = document.getElementById('moistureStatusBadge');
+    // Skip rebuild if user is actively editing an input inside the moisture card
+    if (body && body.contains(document.activeElement) && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+        return;
+    }
     try {
         const data = await mapi('/probes');
         const settings = await mapi('/settings');
