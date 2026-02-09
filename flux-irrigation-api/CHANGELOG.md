@@ -12,10 +12,19 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Probe card header** — Reduced font size and gaps so the device name and zone badges fit on one line without wrapping.
 - **Zone badges always visible** — Zones mapped to a probe now always show a badge, even when the moisture multiplier is exactly 1.00x (shown with a neutral border style). Previously, only non-1.0 multipliers showed badges.
 - **Schedule card probe indicator** — Zones with a mapped moisture probe now show a 💧 indicator badge in the schedule card even when the combined multiplier is 1.0x, so users can immediately see which zones are probe-monitored.
+- **Wake schedule always visible** — The probe card now always shows the "Wake Schedule" section with probe wake times and mapped zone run times, instead of hiding them behind a collapsed toggle. Each entry shows when the probe will wake and which zone it will monitor, with the next upcoming wake highlighted. When no zones are mapped or no schedule is calculated yet, a helpful message is shown instead.
+- **Root Zone = Mid Sensor clarification** — All threshold labels, settings inputs, help text tables, and README now explicitly state that "Root Zone" refers to the **mid sensor** (where grass roots live). Threshold labels show "(mid)" and descriptions explain the mid sensor is the primary decision driver for all watering decisions.
+- **Solar charging indicator** — Probe cards now show the solar charging state (☀️ Charging / 🌙 No Solar) alongside WiFi, battery, and sleep status when a solar charging entity is detected on the device.
+
+### Added
+
+- **Solar charging autodetect** — The probe autodetect now detects `binary_sensor.*_solar_charging` entities and stores them in `extra_sensors.solar_charging`. The solar charging state is shown on probe cards on both dashboards. The autodetect summary shows a "Solar" badge when the entity is found.
 
 ### Fixed
 
 - **Sleep disabled autodetect** — The probe autodetect now matches both `sleep_disabled` and `disable_sleep` entity name patterns. Previously, ESPHome devices with `disable_sleep` in the entity name (e.g., `switch.*_disable_sleep`) were not detected, preventing the Disable Sleep button from appearing on the probe card.
+- **Autodetect entity prefix fallback** — If the HA entity registry reports a different device_id for control entities (switches, numbers, lights) than for sensor entities on the same physical device, the autodetect now falls back to matching by entity name prefix. This ensures the disable_sleep switch, status LED, sleep duration control, and solar charging entity are always detected when they share the same entity naming pattern as the device's moisture sensors.
+- **Autodetect summary badges** — The probe setup screen now shows detection badges for Sleep Toggle, Status LED, Sleep Control, and Solar entities in addition to WiFi, Battery, and Sleep, so users can verify all device entities were detected before adding the probe.
 
 ---
 

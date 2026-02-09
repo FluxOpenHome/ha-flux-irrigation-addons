@@ -2671,6 +2671,11 @@ async function loadMoisture() {
                         const bColor = bv == null ? 'var(--text-muted)' : bv > 50 ? 'var(--text-success-dark)' : bv > 20 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
                         html += '<span style="color:' + bColor + ';" title="Battery">' + bIcon + ' ' + (bv != null ? bv.toFixed(0) + '%' : '—') + '</span>';
                     }
+                    if (devSensors.solar_charging) {
+                        const scVal = (devSensors.solar_charging.live_raw_state || devSensors.solar_charging.value || '').toLowerCase();
+                        const isCharging = scVal === 'on';
+                        html += '<span style="color:' + (isCharging ? 'var(--color-warning)' : 'var(--text-muted)') + ';" title="Solar Charging: ' + (isCharging ? 'Active' : 'Inactive') + '">' + (isCharging ? '☀️ Charging' : '🌙 No Solar') + '</span>';
+                    }
                     // Probe Awake/Sleeping status + schedule prep info
                     if (devSensors.sleep_duration) {
                         const isAwake = probe.is_awake === true;
@@ -2727,39 +2732,45 @@ async function loadMoisture() {
                     html += '</div>';
                 }
 
-                // "Wake Times" toggle button + collapsible list
+                // Wake schedule — always visible
                 var _ppWake = (timelineData.probe_prep || {})[pid];
-                if (_ppWake && _ppWake.prep_entries && _ppWake.prep_entries.length > 0 && (probe.zone_mappings || []).length > 0) {
-                    var _wakeId = 'hoWakeTimes_' + pid.replace(/[^a-zA-Z0-9]/g, '_');
-                    html += '<div style="margin-top:4px;">';
-                    html += '<a href="#" onclick="var el=document.getElementById(\\'' + _wakeId + '\\');el.style.display=el.style.display===\\'none\\'?\\'block\\':\\'none\\';this.querySelector(\\'span\\').textContent=el.style.display===\\'none\\'?\\'▸\\':\\'▾\\';return false;" style="font-size:11px;color:var(--color-warning);text-decoration:none;"><span>▸</span> ⏰ Wake Times (' + _ppWake.prep_entries.length + ')</a>';
-                    html += '<div id="' + _wakeId + '" style="display:none;margin-top:4px;font-size:11px;">';
-                    var _nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-                    var _nextIdx = 0;
-                    for (var _ni = 0; _ni < _ppWake.prep_entries.length; _ni++) {
-                        if (_ppWake.prep_entries[_ni].target_wake_minutes > _nowMin) { _nextIdx = _ni; break; }
+                var _hasZones = (probe.zone_mappings || []).length > 0;
+                if (_hasZones) {
+                    html += '<div style="margin-top:6px;padding:6px 8px;background:var(--bg-tile);border:1px solid var(--border-light);border-radius:6px;">';
+                    html += '<div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Wake Schedule</div>';
+                    if (_ppWake && _ppWake.prep_entries && _ppWake.prep_entries.length > 0) {
+                        var _nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+                        var _nextIdx = -1;
+                        for (var _ni = 0; _ni < _ppWake.prep_entries.length; _ni++) {
+                            if (_ppWake.prep_entries[_ni].target_wake_minutes > _nowMin) { _nextIdx = _ni; break; }
+                        }
+                        for (var _wi = 0; _wi < _ppWake.prep_entries.length; _wi++) {
+                            var _we = _ppWake.prep_entries[_wi];
+                            var _twm = _we.target_wake_minutes;
+                            var _twH = Math.floor(_twm / 60) % 24;
+                            var _twM = Math.round(_twm % 60);
+                            var _twAmPm = _twH >= 12 ? 'PM' : 'AM';
+                            var _twH12 = _twH % 12 || 12;
+                            var _wakeTimeStr = _twH12 + ':' + (_twM < 10 ? '0' : '') + _twM + ' ' + _twAmPm;
+                            var _zsm = _we.zone_start_minutes || 0;
+                            var _zsH = Math.floor(_zsm / 60) % 24;
+                            var _zsM = Math.round(_zsm % 60);
+                            var _zsAmPm = _zsH >= 12 ? 'PM' : 'AM';
+                            var _zsH12 = _zsH % 12 || 12;
+                            var _zoneTimeStr = _zsH12 + ':' + (_zsM < 10 ? '0' : '') + _zsM + ' ' + _zsAmPm;
+                            var _isNext = (_wi === _nextIdx);
+                            html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;' + (_isNext ? 'color:var(--color-warning);font-weight:600;' : 'color:var(--text-secondary);') + 'font-size:11px;">';
+                            html += '<span>⏰</span>';
+                            html += '<span>Wake <strong>' + _wakeTimeStr + '</strong></span>';
+                            html += '<span style="color:var(--text-muted);">→</span>';
+                            html += '<span>Zone ' + _we.zone_num + ' runs ' + _zoneTimeStr + '</span>';
+                            if (_isNext) html += '<span style="font-size:9px;background:var(--color-warning);color:#fff;padding:1px 4px;border-radius:3px;margin-left:auto;">NEXT</span>';
+                            html += '</div>';
+                        }
+                    } else {
+                        html += '<div style="font-size:11px;color:var(--text-muted);font-style:italic;">No schedule calculated yet — configure schedule start times and zone durations</div>';
                     }
-                    for (var _wi = 0; _wi < _ppWake.prep_entries.length; _wi++) {
-                        var _we = _ppWake.prep_entries[_wi];
-                        // Probe wake time
-                        var _twm = _we.target_wake_minutes;
-                        var _twH = Math.floor(_twm / 60) % 24;
-                        var _twM = _twm % 60;
-                        var _twAmPm = _twH >= 12 ? 'PM' : 'AM';
-                        var _twH12 = _twH % 12 || 12;
-                        var _wakeTimeStr = _twH12 + ':' + (_twM < 10 ? '0' : '') + _twM + ' ' + _twAmPm;
-                        // Zone expected start time (schedule start + cumulative preceding durations)
-                        var _zsm = _we.zone_start_minutes || 0;
-                        var _zsH = Math.floor(_zsm / 60) % 24;
-                        var _zsM = Math.round(_zsm % 60);
-                        var _zsAmPm = _zsH >= 12 ? 'PM' : 'AM';
-                        var _zsH12 = _zsH % 12 || 12;
-                        var _zoneTimeStr = _zsH12 + ':' + (_zsM < 10 ? '0' : '') + _zsM + ' ' + _zsAmPm;
-                        var _isNext = (_wi === _nextIdx);
-                        var _lineColor = _isNext ? 'var(--color-warning)' : 'var(--text-muted)';
-                        html += '<div style="padding:3px 6px;color:' + _lineColor + ';' + (_isNext ? 'background:var(--bg-tile);border-radius:4px;' : '') + '">⏰ ' + (_isNext ? '<strong>' : '') + _wakeTimeStr + (_isNext ? '</strong>' : '') + ' — Zone ' + _we.zone_num + ' at ' + _zoneTimeStr + (_isNext ? ' ← next' : '') + '</div>';
-                    }
-                    html += '</div></div>';
+                    html += '</div>';
                 }
 
                 // Zone summary + edit toggle
@@ -2817,14 +2828,14 @@ async function loadMoisture() {
         // Root Zone Thresholds (gradient-based algorithm)
         const dt = settings.default_thresholds || {};
         html += '<div style="margin-bottom:12px;">';
-        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Root Zone Thresholds (%)</label>';
-        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">The mid sensor (root zone) drives watering decisions. Shallow detects rain; deep guards against over-irrigation.</div>';
+        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Root Zone Thresholds — Mid Sensor (%)</label>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">The <strong>mid sensor</strong> (root zone — where grass roots live) drives all watering decisions. Shallow detects rain; deep guards against over-irrigation.</div>';
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
         for (const [key, label, hint] of [
-            ['root_zone_skip','Skip (saturated)','Skip watering entirely'],
-            ['root_zone_wet','Wet','Reduce watering'],
-            ['root_zone_optimal','Optimal','Normal watering (1.0x)'],
-            ['root_zone_dry','Dry','Increase watering']
+            ['root_zone_skip','Skip — Saturated (mid)','Mid sensor ≥ this → skip watering entirely'],
+            ['root_zone_wet','Wet (mid)','Mid sensor ≥ this → reduce watering'],
+            ['root_zone_optimal','Optimal (mid)','Mid sensor around this → normal watering (1.0x)'],
+            ['root_zone_dry','Dry (mid)','Mid sensor ≤ this → increase watering']
         ]) {
             html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">' + label + '</label>';
             html += '<input type="number" id="moistureThresh_' + key + '" value="' + (dt[key] != null ? dt[key] : '') + '" min="0" max="100" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;" title="' + hint + '"></div>';
@@ -3111,6 +3122,10 @@ async function onHoMoistureDeviceChange() {
         if (extraSensors.wifi) extras.push('WiFi');
         if (extraSensors.battery) extras.push('Batt');
         if (extraSensors.sleep_duration) extras.push('Sleep');
+        if (extraSensors.sleep_disabled) extras.push('Sleep Toggle');
+        if (extraSensors.status_led) extras.push('Status LED');
+        if (extraSensors.sleep_duration_number) extras.push('Sleep Control');
+        if (extraSensors.solar_charging) extras.push('Solar');
 
         if (detected.length > 0 || extras.length > 0) {
             html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Auto-detected sensors</div>';
@@ -3342,14 +3357,14 @@ const HELP_CONTENT = `
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Mid sensor (root zone)</strong> — The PRIMARY decision driver. This is where grass roots live and is the most important reading for determining watering needs.</li><li style="margin-bottom:4px;"><strong>Shallow sensor (surface)</strong> — Used for rain detection. If the surface is significantly wetter than the root zone and rain is forecasted, the system infers recent rainfall and reduces or skips watering.</li><li style="margin-bottom:4px;"><strong>Deep sensor (reserve)</strong> — Guards against over-irrigation. If deep soil is saturated while the root zone looks normal, it suggests water is pooling below and watering is reduced.</li></ul>
 
 <p style="margin-bottom:6px;font-weight:600;font-size:13px;">Moisture Multiplier Formula</p>
-<p style="margin-bottom:6px;font-size:13px;">The base multiplier is calculated from the <strong>mid (root zone)</strong> sensor reading against four configurable thresholds (defaults shown):</p>
+<p style="margin-bottom:6px;font-size:13px;">The base multiplier is calculated from the <strong>mid sensor (root zone &mdash; where grass roots live)</strong> reading against four configurable thresholds (defaults shown):</p>
 <table style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:8px;">
-<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 6px;">Root Zone Reading</th><th style="text-align:left;padding:4px 6px;">Multiplier</th><th style="text-align:left;padding:4px 6px;">Behavior</th></tr>
-<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">&ge; Skip (80%)</td><td style="padding:4px 6px;font-weight:600;color:var(--color-danger);">0.0x &mdash; Skip</td><td style="padding:4px 6px;">Soil saturated, no watering</td></tr>
-<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Wet (65%) &ndash; Skip (80%)</td><td style="padding:4px 6px;">0.50x &rarr; 0.0x</td><td style="padding:4px 6px;">Linear reduction as moisture increases</td></tr>
-<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Optimal (45%) &ndash; Wet (65%)</td><td style="padding:4px 6px;">1.0x &rarr; 0.50x</td><td style="padding:4px 6px;">Gradual reduction approaching wet</td></tr>
-<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Dry (30%) &ndash; Optimal (45%)</td><td style="padding:4px 6px;">1.25x &rarr; 1.0x</td><td style="padding:4px 6px;">Slight increase as soil dries</td></tr>
-<tr><td style="padding:4px 6px;">&lt; Dry (30%)</td><td style="padding:4px 6px;font-weight:600;color:var(--color-danger);">1.50x</td><td style="padding:4px 6px;">Critically dry, maximum increase</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 6px;">Mid Sensor (Root Zone) Reading</th><th style="text-align:left;padding:4px 6px;">Multiplier</th><th style="text-align:left;padding:4px 6px;">Behavior</th></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Mid &ge; Skip (80%)</td><td style="padding:4px 6px;font-weight:600;color:var(--color-danger);">0.0x &mdash; Skip</td><td style="padding:4px 6px;">Soil saturated, no watering</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Mid Wet (65%) &ndash; Skip (80%)</td><td style="padding:4px 6px;">0.50x &rarr; 0.0x</td><td style="padding:4px 6px;">Linear reduction as moisture increases</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Mid Optimal (45%) &ndash; Wet (65%)</td><td style="padding:4px 6px;">1.0x &rarr; 0.50x</td><td style="padding:4px 6px;">Gradual reduction approaching wet</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Mid Dry (30%) &ndash; Optimal (45%)</td><td style="padding:4px 6px;">1.25x &rarr; 1.0x</td><td style="padding:4px 6px;">Slight increase as soil dries</td></tr>
+<tr><td style="padding:4px 6px;">Mid &lt; Dry (30%)</td><td style="padding:4px 6px;font-weight:600;color:var(--color-danger);">1.50x</td><td style="padding:4px 6px;">Critically dry, maximum increase</td></tr>
 </table>
 <p style="margin-bottom:6px;font-weight:600;font-size:13px;">Shallow Sensor (Rain Detection)</p>
 <p style="margin-bottom:6px;font-size:13px;">The shallow sensor detects recent rainfall by comparing surface moisture to root zone moisture. It does not directly set the multiplier but applies reductions after the base multiplier:</p>
@@ -3374,7 +3389,7 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;font-size:13px;"><strong>Combined watering factor</strong> = Weather Multiplier &times; Moisture Multiplier. This combined factor is applied per-zone to run durations. Only zones with mapped probes are affected by moisture &mdash; unmapped zones use weather-only.</p>
 
 <p style="margin-bottom:10px;">The moisture card also shows:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, and sleep duration are shown below the moisture readings when available (auto-detected from the Gophr device)</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, solar charging state, and sleep duration are shown below the moisture readings when available (auto-detected from the Gophr device)</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. The algorithm integrates weather forecast data for rain detection — if the shallow sensor shows a wetting front and rain is forecasted, watering is automatically reduced or skipped. Gophr devices sleep between readings — while the device is asleep, the system uses the last known good sensor values so the moisture multiplier stays active. If the cached readings become older than the Stale Reading Threshold, they are treated as stale and the multiplier reverts to neutral (1.0x).</div>
 
 <p style="margin-bottom:6px;font-weight:600;font-size:13px;">Probe-Aware Irrigation (Schedule Timeline)</p>

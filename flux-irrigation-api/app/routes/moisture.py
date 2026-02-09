@@ -1229,7 +1229,7 @@ def _analyze_probe_gradient(
         # Soil is saturated at the root zone — skip entirely
         multiplier = 0.0
         skip = True
-        reasons.append(f"Root zone {primary_val:.0f}% ≥ skip threshold {root_skip}%")
+        reasons.append(f"Root zone (mid) {primary_val:.0f}% ≥ skip threshold {root_skip}%")
 
     elif primary_val >= root_wet:
         # Root zone is adequately moist — reduce watering
@@ -1240,7 +1240,7 @@ def _analyze_probe_gradient(
             multiplier = (1 - max_decrease) * (1 - fraction)
         else:
             multiplier = 1 - max_decrease
-        reasons.append(f"Root zone {primary_val:.0f}% ≥ wet threshold {root_wet}%")
+        reasons.append(f"Root zone (mid) {primary_val:.0f}% ≥ wet threshold {root_wet}%")
 
     elif primary_val >= root_optimal:
         # Root zone is in the optimal-to-wet range — slight reduction
@@ -1251,9 +1251,9 @@ def _analyze_probe_gradient(
         else:
             multiplier = 1.0
         if multiplier < 1.0:
-            reasons.append(f"Root zone {primary_val:.0f}% approaching wet threshold")
+            reasons.append(f"Root zone (mid) {primary_val:.0f}% approaching wet threshold")
         else:
-            reasons.append(f"Root zone {primary_val:.0f}% in optimal range")
+            reasons.append(f"Root zone (mid) {primary_val:.0f}% in optimal range")
 
     elif primary_val >= root_dry:
         # Root zone between dry and optimal — increase slightly
@@ -1263,12 +1263,12 @@ def _analyze_probe_gradient(
             multiplier = 1.0 + (max_increase * fraction * 0.5)  # Up to half max increase
         else:
             multiplier = 1.0
-        reasons.append(f"Root zone {primary_val:.0f}% below optimal, slightly increasing")
+        reasons.append(f"Root zone (mid) {primary_val:.0f}% below optimal, slightly increasing")
 
     else:
         # Root zone is critically dry — maximum increase
         multiplier = 1 + max_increase
-        reasons.append(f"Root zone {primary_val:.0f}% < dry threshold {root_dry}%, max increase")
+        reasons.append(f"Root zone (mid) {primary_val:.0f}% < dry threshold {root_dry}%, max increase")
 
     # --- Rain Detection Adjustment ---
     # If we detected recent rain and the root zone is already being watered at root_wet,
@@ -1288,7 +1288,7 @@ def _analyze_probe_gradient(
         if mid_ok and mid_val >= root_wet - 5 and rain_confidence == "high":
             multiplier = 0.0
             skip = True
-            reasons.append(f"Root zone {mid_val:.0f}% near wet threshold + rain → skipping")
+            reasons.append(f"Root zone (mid) {mid_val:.0f}% near wet threshold + rain → skipping")
 
     # --- Deep Sensor Guard ---
     # If deep sensor is very wet, the soil is saturated below the root zone
@@ -2387,20 +2387,43 @@ async def api_autodetect_device_sensors(device_id: str):
             depth_map["mid"] = unmatched_moisture[1]["entity_id"]
             depth_map["shallow"] = unmatched_moisture[2]["entity_id"]
 
-    # --- Detect Gophr sleep/schedule entities (text, switch, number domains) ---
-    # These are NOT sensor entities, so we scan the full entity registry for this device.
+    # --- Detect Gophr sleep/schedule/control entities ---
+    # These are NOT in the sensor domain, so we scan the full entity registry for this device.
     schedule_times = []
     sleep_disabled_switch = None
     sleep_duration_number = None
     min_awake_entity = None
     max_awake_entity = None
     status_led_entity = None
+    solar_charging_entity = None
 
     entity_registry = await ha_client.get_entity_registry()
+
+    # Build device prefix from known sensor entities for fallback matching.
+    # E.g., if we found sensor.moisture_sensor_device_2ac860_moisture_1_percentage,
+    # the device prefix is "moisture_sensor_device_2ac860_".
+    device_prefix = ""
+    if sensors:
+        # Extract common prefix from sensor entity IDs (strip domain)
+        sensor_names = [s["entity_id"].split(".", 1)[1] for s in sensors if "." in s["entity_id"]]
+        if sensor_names:
+            # Find longest common prefix
+            prefix = sensor_names[0]
+            for sn in sensor_names[1:]:
+                while not sn.startswith(prefix) and prefix:
+                    # Trim to last underscore
+                    idx = prefix.rfind("_")
+                    prefix = prefix[:idx + 1] if idx > 0 else ""
+            device_prefix = prefix
+            print(f"[MOISTURE]   Device entity prefix: '{device_prefix}'")
+
+    registry_match_count = 0
     for entity in entity_registry:
         if entity.get("device_id") != device_id:
             continue
+        registry_match_count += 1
         if entity.get("disabled_by"):
+            print(f"[MOISTURE]   SKIP disabled: {entity.get('entity_id', '')} (disabled_by={entity.get('disabled_by')})")
             continue
         eid = entity.get("entity_id", "")
         eid_lower = eid.lower()
@@ -2421,6 +2444,11 @@ async def api_autodetect_device_sensors(device_id: str):
             status_led_entity = eid
             print(f"[MOISTURE]   MATCH status_led: {eid}")
 
+        # Solar charging binary sensor (binary_sensor.*_solar_charging)
+        if domain == "binary_sensor" and "solar_charging" in eid_lower:
+            solar_charging_entity = eid
+            print(f"[MOISTURE]   MATCH solar_charging: {eid}")
+
         # Min/max awake minutes (number.gophr_*_min_awake_minutes, etc.)
         # Writable sleep duration (number.gophr_*_sleep_duration)
         if domain == "number":
@@ -2433,6 +2461,50 @@ async def api_autodetect_device_sensors(device_id: str):
             elif "sleep_duration" in eid_lower:
                 sleep_duration_number = eid
                 print(f"[MOISTURE]   MATCH sleep_duration_number: {eid}")
+
+    print(f"[MOISTURE]   Registry scan: {registry_match_count} entities matched device_id={device_id}")
+
+    # --- Fallback: prefix-based entity search ---
+    # If we missed key entities (sleep_disabled, status_led, sleep_duration_number, solar_charging),
+    # search by entity name prefix. This handles cases where HA's entity registry
+    # has a different device_id than expected (e.g., re-adopted ESPHome devices).
+    if device_prefix and (not sleep_disabled_switch or not status_led_entity or not sleep_duration_number or not solar_charging_entity):
+        print(f"[MOISTURE]   Fallback prefix scan for missing entities (prefix='{device_prefix}')")
+        for entity in entity_registry:
+            if entity.get("disabled_by"):
+                continue
+            eid = entity.get("entity_id", "")
+            eid_lower = eid.lower()
+            domain = eid.split(".")[0] if "." in eid else ""
+            name_part = eid.split(".", 1)[1] if "." in eid else ""
+
+            # Must share the device prefix
+            if not name_part.startswith(device_prefix):
+                continue
+
+            if not sleep_disabled_switch and domain == "switch" and ("sleep_disabled" in eid_lower or "disable_sleep" in eid_lower):
+                sleep_disabled_switch = eid
+                print(f"[MOISTURE]   FALLBACK MATCH sleep_disabled: {eid}")
+
+            if not status_led_entity and domain == "light" and "status_led" in eid_lower:
+                status_led_entity = eid
+                print(f"[MOISTURE]   FALLBACK MATCH status_led: {eid}")
+
+            if not sleep_duration_number and domain == "number" and "sleep_duration" in eid_lower:
+                sleep_duration_number = eid
+                print(f"[MOISTURE]   FALLBACK MATCH sleep_duration_number: {eid}")
+
+            if not min_awake_entity and domain == "number" and "min_awake" in eid_lower:
+                min_awake_entity = eid
+                print(f"[MOISTURE]   FALLBACK MATCH min_awake: {eid}")
+
+            if not max_awake_entity and domain == "number" and "max_awake" in eid_lower:
+                max_awake_entity = eid
+                print(f"[MOISTURE]   FALLBACK MATCH max_awake: {eid}")
+
+            if not solar_charging_entity and domain == "binary_sensor" and "solar_charging" in eid_lower:
+                solar_charging_entity = eid
+                print(f"[MOISTURE]   FALLBACK MATCH solar_charging: {eid}")
 
     # Sort schedule times by number suffix (schedule_time_1, _2, _3, _4)
     schedule_times.sort(key=lambda e: int(re.search(r'(\d+)$', e).group(1)) if re.search(r'(\d+)$', e) else 99)
@@ -2449,6 +2521,8 @@ async def api_autodetect_device_sensors(device_id: str):
         extra_map["max_awake_minutes"] = max_awake_entity
     if sleep_duration_number:
         extra_map["sleep_duration_number"] = sleep_duration_number
+    if solar_charging_entity:
+        extra_map["solar_charging"] = solar_charging_entity
 
     print(f"[MOISTURE] autodetect result: depths={depth_map}, extras={extra_map}")
 
@@ -2609,7 +2683,7 @@ async def api_get_probes():
                 })
             device_sensors["schedule_times"] = sched_list
 
-        for skey in ("sleep_disabled", "min_awake_minutes", "max_awake_minutes"):
+        for skey in ("sleep_disabled", "min_awake_minutes", "max_awake_minutes", "solar_charging"):
             s_eid = extra.get(skey)
             if not s_eid:
                 continue
