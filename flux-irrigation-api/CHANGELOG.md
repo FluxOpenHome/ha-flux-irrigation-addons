@@ -16,6 +16,7 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 - **Zone display names** — Zones without an alias now show "Zone N" instead of the HA entity friendly name (which was often unwieldy, e.g., "Irrigation System Zone 1")
 - **Auto Advance placement** — Moved from Schedule card System Controls section to Zone card header on both homeowner and management dashboards
+- **Schedule Card Factor Preview** — The schedule card now always shows the projected adjusted duration next to each zone's run duration input, even when "Apply Factors to Schedule" is not enabled. The badge shows what the duration would be given the current combined watering factor (weather × moisture). When factors are actively applied, the badge shows the applied value as before. The "Apply Factors" toggle also now shows the current combined factor breakdown (e.g., "Current factor: 0.64x (W:0.80 × M:0.80)").
 
 ---
 

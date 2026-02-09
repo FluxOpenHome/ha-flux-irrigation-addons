@@ -2677,9 +2677,10 @@ async function loadDetailControls(id) {
     const controlsEl = document.getElementById('detailControls');
     const scheduleEl = document.getElementById('detailSchedule');
     try {
-        const [data, durData] = await Promise.all([
+        const [data, durData, multData] = await Promise.all([
             api('/customers/' + id + '/entities'),
             api('/customers/' + id + '/moisture/durations').catch(() => ({})),
+            api('/customers/' + id + '/moisture/multiplier').catch(() => ({ combined_multiplier: 1.0, weather_multiplier: 1.0, moisture_multiplier: 1.0 })),
         ]);
         const allEntities = Array.isArray(data) ? data : (data.entities || []);
 
@@ -2789,7 +2790,7 @@ async function loadDetailControls(id) {
         }
 
         // Render Schedule card from classified entities
-        renderScheduleCard(id, scheduleByCategory, durData);
+        renderScheduleCard(id, scheduleByCategory, durData, multData);
 
     } catch (e) {
         controlsEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load controls: ' + esc(e.message) + '</div>';
@@ -3019,12 +3020,15 @@ function mgmtRenderExpansionCard(custId) {
     body.innerHTML = html;
 }
 
-function renderScheduleCard(custId, sched, durData) {
+function renderScheduleCard(custId, sched, durData, multData) {
     const el = document.getElementById('detailSchedule');
     const { schedule_enable, day_switches, start_times, run_durations, repeat_cycles, zone_enables, zone_modes, system_controls } = sched;
     const adjDurations = (durData && durData.adjusted_durations) || {};
     const baseDurations = (durData && durData.base_durations) || {};
     const factorsActive = durData && durData.duration_adjustment_active;
+    const liveCombinedMult = (multData && multData.combined_multiplier != null) ? multData.combined_multiplier : 1.0;
+    const liveWeatherMult = (multData && multData.weather_multiplier != null) ? multData.weather_multiplier : 1.0;
+    const liveMoistureMult = (multData && multData.moisture_multiplier != null) ? multData.moisture_multiplier : 1.0;
     const total = schedule_enable.length + day_switches.length + start_times.length + run_durations.length +
         repeat_cycles.length + zone_enables.length + zone_modes.length + system_controls.length;
 
@@ -3054,11 +3058,22 @@ function renderScheduleCard(custId, sched, durData) {
 
     // --- Apply Factors Toggle (rendered inline from durData) ---
     const afOn = durData && durData.duration_adjustment_active;
+    var factorSummary = 'Automatically adjust run durations by the combined watering factor';
+    if (liveCombinedMult !== 1.0 || liveWeatherMult !== 1.0 || liveMoistureMult !== 1.0) {
+        factorSummary = 'Current factor: ' + liveCombinedMult.toFixed(2) + 'x';
+        if (liveMoistureMult !== 1.0 && liveWeatherMult !== 1.0) {
+            factorSummary += ' (W:' + liveWeatherMult.toFixed(2) + ' × M:' + liveMoistureMult.toFixed(2) + ')';
+        } else if (liveMoistureMult !== 1.0) {
+            factorSummary += ' (Moisture: ' + liveMoistureMult.toFixed(2) + 'x)';
+        } else if (liveWeatherMult !== 1.0) {
+            factorSummary += ' (Weather: ' + liveWeatherMult.toFixed(2) + 'x)';
+        }
+    }
     html += '<div style="display:flex;align-items:center;justify-content:space-between;' +
         'padding:12px 16px;border-radius:8px;margin-bottom:16px;background:' + (afOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
         '<div><div style="font-size:14px;font-weight:600;color:' + (afOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
         'Apply Factors to Schedule</div>' +
-        '<div style="font-size:12px;color:var(--text-muted);">Automatically adjust run durations by the combined watering factor</div></div>' +
+        '<div style="font-size:12px;color:var(--text-muted);">' + factorSummary + '</div></div>' +
         '<button class="btn ' + (afOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
         'onclick="mgmtToggleApplyFactors(' + !afOn + ')">' +
         (afOn ? 'Disable' : 'Enable') + '</button></div>';
@@ -3181,16 +3196,29 @@ function renderScheduleCard(custId, sched, durData) {
                 const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
                 const adj = factorsActive ? adjDurations[eid] : null;
                 const baseVal = adj ? String(adj.original) : duration.state;
+                // Compute projected adjusted duration using live multiplier (shown even when factors not applied)
+                var factorBadge = '';
+                if (adj) {
+                    // Factors are actively applied — show applied adjusted value
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
+                        adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)</span>';
+                } else if (Math.abs(liveCombinedMult - 1.0) >= 0.005) {
+                    // Factors not applied but multiplier differs from 1.0 — show preview
+                    var curVal = parseFloat(duration.state) || 0;
+                    var projVal = Math.max(1, Math.round(curVal * liveCombinedMult));
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-tile);color:var(--color-warning);opacity:0.8;" title="Projected duration if Apply Factors is enabled (W:' +
+                        liveWeatherMult.toFixed(2) + ' × M:' + liveMoistureMult.toFixed(2) + ')">' +
+                        projVal + ' ' + esc(unit) + ' (' + liveCombinedMult.toFixed(2) + 'x)</span>';
+                }
                 html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
                     'style="width:70px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);"> ' +
                     esc(unit) + ' ' +
                     '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + custId + '\\',\\'' + eid +
                     '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button>' +
-                    (adj ? ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                    'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
-                    adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)</span>' : '') +
-                    '</td>';
+                    factorBadge + '</td>';
             } else {
                 html += '<td style="color:var(--text-disabled);">-</td>';
             }
@@ -3874,7 +3902,7 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Start Times</strong> — Set one or more daily start times</li>
 <li style="margin-bottom:4px;"><strong>Zone Durations</strong> — Configure how long each zone runs (in minutes)</li>
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle the schedule on or off without deleting it</li>
-<li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). The input field shows the base duration (what the user sets), and a badge next to it shows the adjusted duration and factor (e.g. &quot;24 min (0.80x)&quot;). The base is what you control; the adjusted value is what the controller actually runs. Durations update automatically as conditions change and restore to originals when disabled.</li>
+<li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). The input field shows the base duration (what the user sets), and a badge next to it shows the adjusted duration and factor (e.g. &quot;24 min (0.80x)&quot;). The base is what you control; the adjusted value is what the controller actually runs. Durations update automatically as conditions change and restore to originals when disabled. Even when this toggle is OFF, a preview badge shows what the projected duration would be given the current combined factor.</li>
 </ul>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Rules</h4>
