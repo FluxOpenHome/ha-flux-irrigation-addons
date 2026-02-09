@@ -704,10 +704,10 @@ def build_report(
             for probe_id, probe_data in probes.items():
                 label = probe_id.replace("_", " ").title()
                 pdf.sub_header(f"Probe: {label}")
-                mappings = probe_data.get("zone_mappings", {})
+                mappings = probe_data.get("zone_mappings", [])
                 if mappings:
                     mapped_names = []
-                    for eid in mappings.keys():
+                    for eid in mappings:
                         mapped_names.append(_friendly_zone_name(eid, zone_aliases, zones))
                     pdf.info_line(f"Mapped zones: {', '.join(mapped_names)}", indent=6)
                 thresholds = probe_data.get("thresholds", {})
