@@ -2383,7 +2383,6 @@ ADMIN_HTML = """<!DOCTYPE html>
                 for (const [pid, probe] of Object.entries(probes)) {
                     const ss = probe.sensors || {};
                     const es = probe.extra_sensors || {};
-                    const zones = probe.zone_mappings || [];
                     const depthLabels = {shallow: 'Shallow', mid: 'Mid', deep: 'Deep'};
 
                     html += '<div style="background:var(--bg-tile);border-radius:10px;padding:14px;border:1px solid var(--border-light);">';
@@ -2393,7 +2392,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                     html += '<button class="btn btn-danger btn-sm" onclick="removeMoistureProbe(\\'' + escHtml(pid) + '\\')">Remove</button>';
                     html += '</div>';
 
-                    // Sensor pills
+                    // Depth sensor pills
                     html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
                     for (const depth of ['shallow', 'mid', 'deep']) {
                         if (ss[depth]) {
@@ -2402,14 +2401,19 @@ ADMIN_HTML = """<!DOCTYPE html>
                             html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-disabled);color:var(--text-muted);">' + depthLabels[depth] + ': —</span>';
                         }
                     }
-                    if (es.wifi) html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tile);border:1px solid var(--border-light);color:var(--text-muted);">📶</span>';
-                    if (es.battery) html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tile);border:1px solid var(--border-light);color:var(--text-muted);">🔋</span>';
-                    if (es.sleep_duration) html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tile);border:1px solid var(--border-light);color:var(--text-muted);">💤</span>';
                     html += '</div>';
-
-                    // Zone count (view-only on config page)
-                    const zoneCount = zones.length;
-                    html += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">' + zoneCount + ' zone' + (zoneCount !== 1 ? 's' : '') + ' mapped</div>';
+                    // Device sensor pills
+                    const extraLabels = [];
+                    if (es.wifi) extraLabels.push('WiFi');
+                    if (es.battery) extraLabels.push('Batt');
+                    if (es.sleep_duration) extraLabels.push('Sleep');
+                    if (extraLabels.length > 0) {
+                        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">';
+                        for (const lbl of extraLabels) {
+                            html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">' + lbl + '</span>';
+                        }
+                        html += '</div>';
+                    }
 
                     html += '</div>';
                 }
@@ -2470,9 +2474,21 @@ ADMIN_HTML = """<!DOCTYPE html>
         try {
             const all = showAll !== undefined ? showAll : moistureShowingAllDevices;
             const data = await mcfg('/devices' + (all ? '?show_all=true' : ''));
-            const devices = data.devices || [];
+            let devices = data.devices || [];
             const totalCount = data.total_count || devices.length;
             const filtered = data.filtered !== false;
+
+            // Exclude devices that already have a probe configured
+            try {
+                const probeData = await mcfg('/probes');
+                const existingDeviceIds = new Set();
+                for (const p of Object.values(probeData.probes || {})) {
+                    if (p.device_id) existingDeviceIds.add(p.device_id);
+                }
+                if (existingDeviceIds.size > 0) {
+                    devices = devices.filter(function(d) { return !existingDeviceIds.has(d.id); });
+                }
+            } catch (_) {}
 
             select.innerHTML = '<option value="">-- Select a Gophr device --</option>';
             for (const device of devices) {
@@ -2545,19 +2561,25 @@ ADMIN_HTML = """<!DOCTYPE html>
             if (depthSensors.deep) detected.push('Deep');
             const extras = [];
             if (extraSensors.wifi) extras.push('WiFi');
-            if (extraSensors.battery) extras.push('Battery');
+            if (extraSensors.battery) extras.push('Batt');
             if (extraSensors.sleep_duration) extras.push('Sleep');
 
             if (detected.length > 0 || extras.length > 0) {
                 html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Auto-detected sensors</div>';
-                html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
-                for (const d of detected) {
-                    html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">✓ ' + d + '</span>';
+                if (detected.length > 0) {
+                    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">';
+                    for (const d of detected) {
+                        html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">✓ ' + d + '</span>';
+                    }
+                    html += '</div>';
                 }
-                for (const e of extras) {
-                    html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-tile);border:1px solid var(--border-light);color:var(--text-muted);">✓ ' + e + '</span>';
+                if (extras.length > 0) {
+                    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
+                    for (const e of extras) {
+                        html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">✓ ' + e + '</span>';
+                    }
+                    html += '</div>';
                 }
-                html += '</div>';
             }
 
             if (detected.length === 0) {
@@ -2600,20 +2622,15 @@ ADMIN_HTML = """<!DOCTYPE html>
             const displayName = nameInput ? nameInput.value.trim() : 'Gophr Probe';
             const probeId = 'probe_' + displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-            // Get all zone entities to map by default
-            const zonesRes = await fetch(BASE + '/homeowner/zones');
-            const zonesData = await zonesRes.json();
-            const allZones = (Array.isArray(zonesData) ? zonesData : zonesData.zones || []).map(function(z) { return z.entity_id; });
-
             await mcfg('/probes', 'POST', {
                 probe_id: probeId,
                 display_name: displayName,
                 device_id: deviceId,
                 sensors: sensors,
                 extra_sensors: extraSensors,
-                zone_mappings: allZones,
+                zone_mappings: [],
             });
-            showToast('Probe "' + displayName + '" added and mapped to all ' + allZones.length + ' zones');
+            showToast('Probe "' + displayName + '" added — assign zones from the dashboard');
             loadMoistureConfig();
         } catch (e) { showToast(e.message, 'error'); }
     }
@@ -2677,7 +2694,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle moisture-aware irrigation on or off</li>
 <li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your Gophr device from the dropdown. Only devices with "gophr" in the name are shown. Click "Show all devices" if your device doesn't appear.</li>
 <li style="margin-bottom:4px;"><strong>Map Sensors</strong> — After selecting a device, map its sensor entities to shallow, mid, and deep depth readings. Sensors with matching depth names are auto-selected.</li>
-<li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. New probes are mapped to all irrigation zones by default. The Gophr device ID is stored with the probe so that device-level sensors (WiFi, battery, sleep duration) are automatically shown on the dashboard.</li>
+<li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. Zone assignments are done from the Homeowner Dashboard or Management Dashboard, not from this page.</li>
 <li style="margin-bottom:4px;"><strong>Edit Zones</strong> — Click "Edit Zones" on any probe card to assign or unassign zones. Changes can also be made from the management dashboard.</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Configure stale data threshold, root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li>
 <li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings, device status, and zone multipliers</li>

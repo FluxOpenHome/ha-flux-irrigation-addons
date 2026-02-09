@@ -2628,11 +2628,19 @@ async function loadMoisture() {
                         html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-disabled,#eee);color:var(--text-muted);">' + depthLabels[depth] + ': —</span>';
                     }
                 }
-                // Extra sensor pills
-                if (es.wifi) html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tile);color:var(--text-muted);">📶 WiFi</span>';
-                if (es.battery) html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tile);color:var(--text-muted);">🔋 Battery</span>';
-                if (es.sleep_duration) html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tile);color:var(--text-muted);">💤 Sleep</span>';
                 html += '</div>';
+                // Device sensor pills
+                const _extraLabels = [];
+                if (es.wifi) _extraLabels.push('WiFi');
+                if (es.battery) _extraLabels.push('Batt');
+                if (es.sleep_duration) _extraLabels.push('Sleep');
+                if (_extraLabels.length > 0) {
+                    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">';
+                    for (const lbl of _extraLabels) {
+                        html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">' + lbl + '</span>';
+                    }
+                    html += '</div>';
+                }
                 // Zone count
                 const zc = (probe.zone_mappings || []).length;
                 html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">' + zc + ' zone' + (zc !== 1 ? 's' : '') + ' mapped</div>';
@@ -2787,9 +2795,21 @@ async function loadHoMoistureDevices(showAll) {
     try {
         const all = showAll !== undefined ? showAll : _hoMoistureShowAll;
         const data = await mapi('/devices' + (all ? '?show_all=true' : ''));
-        const devices = data.devices || [];
+        let devices = data.devices || [];
         const totalCount = data.total_count || devices.length;
         const filtered = data.filtered !== false;
+
+        // Exclude devices that already have a probe configured
+        try {
+            const probeData = await mapi('/probes');
+            const existingDeviceIds = new Set();
+            for (const p of Object.values(probeData.probes || {})) {
+                if (p.device_id) existingDeviceIds.add(p.device_id);
+            }
+            if (existingDeviceIds.size > 0) {
+                devices = devices.filter(function(d) { return !existingDeviceIds.has(d.id); });
+            }
+        } catch (_) {}
 
         select.innerHTML = '<option value="">-- Select a Gophr device --</option>';
         for (const d of devices) {
@@ -2842,19 +2862,25 @@ async function onHoMoistureDeviceChange() {
         if (depthSensors.deep) detected.push('Deep');
         const extras = [];
         if (extraSensors.wifi) extras.push('WiFi');
-        if (extraSensors.battery) extras.push('Battery');
+        if (extraSensors.battery) extras.push('Batt');
         if (extraSensors.sleep_duration) extras.push('Sleep');
 
         if (detected.length > 0 || extras.length > 0) {
             html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Auto-detected sensors</div>';
-            html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
-            for (const d of detected) {
-                html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">✓ ' + d + '</span>';
+            if (detected.length > 0) {
+                html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">';
+                for (const d of detected) {
+                    html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">✓ ' + d + '</span>';
+                }
+                html += '</div>';
             }
-            for (const e of extras) {
-                html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-tile);color:var(--text-muted);">✓ ' + e + '</span>';
+            if (extras.length > 0) {
+                html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
+                for (const e of extras) {
+                    html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">✓ ' + e + '</span>';
+                }
+                html += '</div>';
             }
-            html += '</div>';
         } else {
             html += '<div style="color:var(--text-warning);font-size:12px;margin-bottom:8px;">Could not auto-detect sensors. This device has ' + allSensors.length + ' sensor entities.</div>';
         }
@@ -2892,11 +2918,7 @@ async function addHoProbeFromDevice() {
     const displayName = nameInput ? nameInput.value.trim() : 'Gophr Probe';
     const probeId = 'probe_' + displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-    // Map to all zones by default
     try {
-        const zonesData = await api('/zones');
-        const allZones = (Array.isArray(zonesData) ? zonesData : zonesData.zones || []).map(function(z) { return z.entity_id; });
-
         // Clean sensors — remove null values
         const cleanSensors = {};
         for (const [k, v] of Object.entries(sensors)) { if (v) cleanSensors[k] = v; }
@@ -2907,9 +2929,9 @@ async function addHoProbeFromDevice() {
             device_id: deviceId,
             sensors: cleanSensors,
             extra_sensors: extraSensors,
-            zone_mappings: allZones,
+            zone_mappings: [],
         });
-        showToast('Probe "' + displayName + '" added and mapped to all ' + allZones.length + ' zones');
+        showToast('Probe "' + displayName + '" added — use Edit Zones to assign zones');
         _moistureDataCache = null;
         loadMoisture();
     } catch (e) { showToast(e.message || 'Failed to add probe', 'error'); }
