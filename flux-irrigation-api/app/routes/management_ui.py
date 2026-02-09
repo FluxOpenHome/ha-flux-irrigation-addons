@@ -2400,6 +2400,18 @@ async function loadDetailZones(id) {
             });
         }
         if (zones.length === 0) { el.innerHTML = '<div class="empty-state"><p>No zones found</p></div>'; return; }
+        // Sort: normal zones first (by zone number), then Pump Start Relay / Master Valve at the end
+        zones.sort(function(a, b) {
+            var modes = window._zoneModes || {};
+            var aNum = extractZoneNumber(a.entity_id, 'zone') || '0';
+            var bNum = extractZoneNumber(b.entity_id, 'zone') || '0';
+            var aMode = (modes[aNum] && modes[aNum].state || '').toLowerCase();
+            var bMode = (modes[bNum] && modes[bNum].state || '').toLowerCase();
+            var aSpecial = /pump|master|relay/.test(aMode) ? 1 : 0;
+            var bSpecial = /pump|master|relay/.test(bMode) ? 1 : 0;
+            if (aSpecial !== bSpecial) return aSpecial - bSpecial;
+            return parseInt(aNum) - parseInt(bNum);
+        });
         el.innerHTML = '<div class="tile-grid">' + zones.map(z => {
             const zId = z.name || z.entity_id;
             const isOn = z.state === 'on';
@@ -3143,7 +3155,15 @@ function renderScheduleCard(custId, sched, durData, multData) {
                 zoneMap[num].mode = zm;
             }
         }
-        var sortedZones = Object.keys(zoneMap).sort((a, b) => parseInt(a) - parseInt(b));
+        var sortedZones = Object.keys(zoneMap).sort(function(a, b) {
+            // Normal zones first, Pump Start Relay / Master Valve last
+            var aMode = (zoneMap[a].mode && zoneMap[a].mode.state || '').toLowerCase();
+            var bMode = (zoneMap[b].mode && zoneMap[b].mode.state || '').toLowerCase();
+            var aSpecial = /pump|master|relay/.test(aMode) ? 1 : 0;
+            var bSpecial = /pump|master|relay/.test(bMode) ? 1 : 0;
+            if (aSpecial !== bSpecial) return aSpecial - bSpecial;
+            return parseInt(a) - parseInt(b);
+        });
         // Filter by detected zone count (expansion board limit)
         const maxZones = window._mgmtDetectedZoneCount || 0;
         if (maxZones > 0) {

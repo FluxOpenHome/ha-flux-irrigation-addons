@@ -1061,6 +1061,18 @@ async function loadZones() {
             });
         }
         if (zones.length === 0) { el.innerHTML = '<div class="empty-state"><p>No zones found</p></div>'; return; }
+        // Sort: normal zones first (by zone number), then Pump Start Relay / Master Valve at the end
+        zones.sort(function(a, b) {
+            var modes = window._zoneModes || {};
+            var aNum = extractZoneNumber(a.entity_id, 'zone') || '0';
+            var bNum = extractZoneNumber(b.entity_id, 'zone') || '0';
+            var aMode = (modes[aNum] && modes[aNum].state || '').toLowerCase();
+            var bMode = (modes[bNum] && modes[bNum].state || '').toLowerCase();
+            var aSpecial = /pump|master|relay/.test(aMode) ? 1 : 0;
+            var bSpecial = /pump|master|relay/.test(bMode) ? 1 : 0;
+            if (aSpecial !== bSpecial) return aSpecial - bSpecial;
+            return parseInt(aNum) - parseInt(bNum);
+        });
         el.innerHTML = '<div class="tile-grid">' + zones.map(z => {
             const zId = z.name || z.entity_id;
             const isOn = z.state === 'on';
@@ -1733,7 +1745,15 @@ function renderScheduleCard(sched, durData, multData) {
                 zoneMap[num].mode = zm;
             }
         }
-        var sortedZones = Object.keys(zoneMap).sort((a, b) => parseInt(a) - parseInt(b));
+        var sortedZones = Object.keys(zoneMap).sort(function(a, b) {
+            // Normal zones first, Pump Start Relay / Master Valve last
+            var aMode = (zoneMap[a].mode && zoneMap[a].mode.state || '').toLowerCase();
+            var bMode = (zoneMap[b].mode && zoneMap[b].mode.state || '').toLowerCase();
+            var aSpecial = /pump|master|relay/.test(aMode) ? 1 : 0;
+            var bSpecial = /pump|master|relay/.test(bMode) ? 1 : 0;
+            if (aSpecial !== bSpecial) return aSpecial - bSpecial;
+            return parseInt(a) - parseInt(b);
+        });
         // Filter by detected zone count (expansion board limit)
         const maxZones = window._detectedZoneCount || 0;
         if (maxZones > 0) {
@@ -2614,18 +2634,26 @@ async function loadMoisture() {
         // Zone multiplier summary
         if (probeCount > 0 && settings.enabled) {
             try {
-                const config = await api('/zones');
-                if (config && config.length > 0) {
+                var zoneList = await api('/zones');
+                if (zoneList && zoneList.length > 0) {
+                    // Filter by detected zone count (expansion board limit)
+                    var maxZn = window._detectedZoneCount || 0;
+                    if (maxZn > 0) {
+                        zoneList = zoneList.filter(function(z) {
+                            var zm = z.entity_id.match(/zone[_]?(\\d+)/i);
+                            return zm ? parseInt(zm[1]) <= maxZn : true;
+                        });
+                    }
                     html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Zone Multipliers</div>';
                     html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
-                    for (const zone of config) {
+                    for (const zone of zoneList) {
                         try {
                             const mult = await mapi('/zones/' + encodeURIComponent(zone.entity_id) + '/multiplier', 'POST');
                             const m = mult.combined_multiplier != null ? mult.combined_multiplier : 1.0;
                             const mColor = m === 0 ? 'var(--color-danger)' : m < 1 ? 'var(--text-warning)' : m > 1 ? 'var(--text-danger-dark)' : 'var(--text-success-dark)';
                             const mBg = m === 0 ? 'var(--bg-danger-light)' : m < 1 ? 'var(--bg-warning)' : m > 1 ? 'var(--bg-danger-light)' : 'var(--bg-success-light)';
                             const label = mult.moisture_skip ? 'SKIP' : m.toFixed(2) + 'x';
-                            const alias = (window._currentZoneAliases || {})[zone.entity_id] || zone.friendly_name || zone.name;
+                            const alias = getZoneDisplayName(zone);
                             html += '<div style="background:' + mBg + ';color:' + mColor + ';padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;">';
                             html += esc(alias) + ': ' + label + '</div>';
                         } catch (e) { /* skip zone */ }

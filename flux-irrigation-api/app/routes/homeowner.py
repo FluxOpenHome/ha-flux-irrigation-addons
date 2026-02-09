@@ -8,6 +8,7 @@ These run behind HA ingress (already authenticated) and only work in homeowner m
 import asyncio
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -16,6 +17,15 @@ from config import get_config
 import ha_client
 import run_log
 from config_changelog import log_change, get_actor, friendly_entity_name
+
+
+_ZONE_NUMBER_RE = re.compile(r'zone[_]?(\d+)', re.IGNORECASE)
+
+
+def _extract_zone_number(entity_id: str) -> int:
+    """Extract the numeric zone number from an entity_id (e.g., 'switch.xxx_zone_3' → 3)."""
+    m = _ZONE_NUMBER_RE.search(entity_id)
+    return int(m.group(1)) if m else 0
 
 
 router = APIRouter(prefix="/admin/api/homeowner", tags=["Homeowner Dashboard"])
@@ -205,7 +215,13 @@ async def homeowner_zones():
 
     entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
     zones = []
+    max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
     for entity in entities:
+        # Filter zones beyond the detected expansion board zone count
+        if max_zones > 0:
+            zn = _extract_zone_number(entity["entity_id"])
+            if zn > max_zones:
+                continue
         attrs = entity.get("attributes", {})
         zones.append({
             "entity_id": entity["entity_id"],
