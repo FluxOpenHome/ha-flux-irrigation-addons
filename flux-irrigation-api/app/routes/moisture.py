@@ -2924,7 +2924,7 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
         _save_data(data)
 
         if body.apply_factors_to_schedule != was_enabled:
-            changes.append(f"Apply Factors to Schedule: {'Disabled' if was_enabled else 'Enabled'} -> {'Enabled' if body.apply_factors_to_schedule else 'Disabled'}")
+            changes.append(f"Apply Factors to Schedule: {'Enabled' if was_enabled else 'Disabled'} -> {'Enabled' if body.apply_factors_to_schedule else 'Disabled'}")
 
         if changes:
             actor = get_actor(request)
