@@ -189,7 +189,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Run history** — JSONL-based local storage of zone run events with weather conditions captured at run time; CSV export
 - **Zone aliases** — Give zones friendly display names on the dashboard
 - **Location map** — Leaflet map on the dashboard shows property location with re-center button
-- **Gophr Moisture Probes** — Select Gophr devices from a filtered device picker and map sensors to irrigation zones (many-to-many); moisture multiplier adjusts both API timed runs and ESPHome scheduled durations; combined weather × moisture multiplier; Gophr logo displayed on all dashboard Moisture Probes card headers with dark/light mode support
+- **Gophr Moisture Probes** — Select Gophr devices from a filtered device picker and map sensors to irrigation zones (many-to-many); moisture multiplier adjusts both API timed runs and ESPHome scheduled durations; combined weather × moisture multiplier; probe cards show WiFi signal, battery level, and sleep duration alongside moisture readings; Gophr logo displayed on all dashboard Moisture Probes card headers with dark/light mode support
 - **Rain Sensor Card** — Dedicated card for rain sensor hardware entities showing sensor state (Dry/Rain Detected), enable/disable, sensor type (NC/NO), rain delay controls, and delay duration; auto-detected from controller entities
 - **Expansion Board Card** — Dedicated card for I2C expansion board status showing detected zone count, board I2C addresses with zone ranges, and rescan button; shows "No expansion boards connected" when none detected
 - **Issue Reporting** — Report issues to your management company with three severity levels (Clarification, Annoyance, Severe Issue); track issue status (Submitted, Acknowledged, Service Scheduled) and see management notes
@@ -210,7 +210,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Customer local time** — Property detail view shows the customer's local time and timezone abbreviation (e.g., "2:30 PM EST"), derived from the customer's state address
 - **Remote zone control** — Start, stop, and emergency-stop zones on any connected property
 - **Remote weather management** — View and configure weather rules on customer systems
-- **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data, and manage duration adjustments on customer systems
+- **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data with device status (WiFi, battery, sleep), assign zones to probes, and manage duration adjustments on customer systems
 - **Remote rain sensor management** — View and control rain sensor settings (enable/disable, sensor type, rain delay) on customer systems
 - **Remote expansion board status** — View detected zones, expansion board I2C addresses, and trigger rescans on customer controllers
 - **Issue Management** — View and manage homeowner-reported issues across all properties; color-coded alerts on property cards; dedicated alerts panel with all active issues; acknowledge issues with notes and schedule service dates; browser notifications and HA push notifications (mobile app, SMS, etc.) when new issues are reported

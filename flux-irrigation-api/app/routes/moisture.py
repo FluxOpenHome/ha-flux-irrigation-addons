@@ -1077,6 +1077,7 @@ async def run_moisture_evaluation() -> dict:
 class ProbeCreateRequest(BaseModel):
     probe_id: str = Field(..., description="Unique identifier for the probe")
     display_name: str = Field("", description="Human-readable display name")
+    device_id: Optional[str] = Field(None, description="HA device ID for fetching device-level sensors (WiFi, battery, etc.)")
     sensors: dict = Field(
         default_factory=dict,
         description='Sensor entity IDs by depth: {"shallow": "sensor.xxx", "mid": "sensor.yyy", "deep": "sensor.zzz"}',
@@ -1093,6 +1094,7 @@ class ProbeCreateRequest(BaseModel):
 
 class ProbeUpdateRequest(BaseModel):
     display_name: Optional[str] = None
+    device_id: Optional[str] = None
     sensors: Optional[dict] = None
     zone_mappings: Optional[list[str]] = None
     thresholds: Optional[dict] = None
@@ -1135,6 +1137,69 @@ async def api_get_device_sensors(device_id: str):
     return {"device_id": device_id, "sensors": sensors, "total": len(sensors)}
 
 
+async def _get_device_status_sensors(device_id: str) -> dict:
+    """Fetch device-level status sensors (WiFi, battery, sleep) for a Gophr device.
+
+    Returns dict with keys: wifi, battery, sleep_duration — each has value + unit.
+    """
+    if not device_id:
+        return {}
+
+    try:
+        entity_registry = await ha_client.get_entity_registry()
+        all_states = await ha_client.get_all_states()
+        state_lookup = {s.get("entity_id", ""): s for s in all_states}
+
+        # Find all sensor entities on this device
+        device_sensors = []
+        for entity in entity_registry:
+            if entity.get("device_id") != device_id:
+                continue
+            if entity.get("disabled_by"):
+                continue
+            eid = entity.get("entity_id", "")
+            if not eid.startswith("sensor."):
+                continue
+            device_sensors.append(eid)
+
+        result = {}
+        for eid in device_sensors:
+            eid_lower = eid.lower()
+            state_data = state_lookup.get(eid, {})
+            attrs = state_data.get("attributes", {})
+            raw_state = state_data.get("state", "unknown")
+            friendly = attrs.get("friendly_name", eid)
+            unit = attrs.get("unit_of_measurement", "")
+            device_class = attrs.get("device_class", "")
+
+            try:
+                val = float(raw_state)
+            except (ValueError, TypeError):
+                val = None
+
+            # WiFi signal: entity_id contains wifi/signal/rssi, or device_class is signal_strength
+            if device_class == "signal_strength" or any(
+                kw in eid_lower for kw in ("wifi", "signal", "rssi")
+            ):
+                if "wifi" not in result:
+                    result["wifi"] = {"value": val, "unit": unit or "dBm", "entity_id": eid, "friendly_name": friendly}
+
+            # Battery: device_class is battery, or entity_id contains battery
+            elif device_class == "battery" or "battery" in eid_lower:
+                if "battery" not in result:
+                    result["battery"] = {"value": val, "unit": unit or "%", "entity_id": eid, "friendly_name": friendly}
+
+            # Sleep duration: entity_id contains sleep
+            elif "sleep" in eid_lower:
+                if "sleep_duration" not in result:
+                    result["sleep_duration"] = {"value": val, "unit": unit or "s", "entity_id": eid, "friendly_name": friendly}
+
+        return result
+    except Exception as e:
+        print(f"[MOISTURE] Failed to fetch device status sensors for {device_id}: {e}")
+        return {}
+
+
 @router.get("/probes", summary="Get probe configuration and live readings")
 async def api_get_probes():
     """Get all configured probes with their current sensor readings."""
@@ -1150,6 +1215,18 @@ async def api_get_probes():
 
     sensor_states = await _get_probe_sensor_states(probes)
     stale_threshold = data.get("stale_reading_threshold_minutes", 120)
+
+    # Collect unique device IDs for device-level sensor lookup
+    device_ids = set()
+    for probe in probes.values():
+        did = probe.get("device_id")
+        if did:
+            device_ids.add(did)
+
+    # Fetch device-level sensors (WiFi, battery, sleep) for all devices
+    device_status = {}
+    for did in device_ids:
+        device_status[did] = await _get_device_status_sensors(did)
 
     # Enrich probe data with live readings
     enriched = {}
@@ -1169,6 +1246,7 @@ async def api_get_probes():
         enriched[probe_id] = {
             **probe,
             "sensors_live": sensors_with_readings,
+            "device_sensors": device_status.get(probe.get("device_id"), {}),
         }
 
     return {
@@ -1201,6 +1279,7 @@ async def api_add_probe(body: ProbeCreateRequest, request: Request):
     probe = {
         "probe_id": body.probe_id,
         "display_name": body.display_name or body.probe_id,
+        "device_id": body.device_id,
         "sensors": body.sensors,
         "zone_mappings": body.zone_mappings,
         "thresholds": body.thresholds,
@@ -1231,6 +1310,8 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Req
             changes.append(f"Name: {probe.get('display_name', '')} -> {body.display_name}")
         probe["display_name"] = body.display_name
         display = body.display_name
+    if body.device_id is not None:
+        probe["device_id"] = body.device_id
     if body.sensors is not None:
         old_sensors = probe.get("sensors", {})
         if old_sensors != body.sensors:

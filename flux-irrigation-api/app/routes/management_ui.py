@@ -2042,11 +2042,15 @@ async function loadDetailMoisture(id) {
         let html = '';
 
         if (probeCount > 0) {
-            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">';
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
             for (const [pid, probe] of Object.entries(probes)) {
                 const sensors = probe.sensors_live || {};
-                html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
-                html += '<div style="font-weight:600;font-size:14px;margin-bottom:8px;">' + esc(probe.display_name || pid) + '</div>';
+                const devSensors = probe.device_sensors || {};
+                const zones = probe.zone_mappings || [];
+                html += '<div style="background:var(--bg-tile);border-radius:10px;padding:14px;border:1px solid var(--border-light);">';
+                // Header
+                html += '<div style="font-weight:600;font-size:14px;margin-bottom:10px;">' + esc(probe.display_name || pid) + '</div>';
+                // Moisture bars
                 for (const depth of ['shallow', 'mid', 'deep']) {
                     const s = sensors[depth];
                     if (!s) continue;
@@ -2063,12 +2067,52 @@ async function loadDetailMoisture(id) {
                     html += '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.3s;"></div>';
                     html += '</div></div>';
                 }
-                const zones = probe.zone_mappings || [];
-                if (zones.length > 0) {
-                    html += '<div style="margin-top:6px;font-size:11px;color:var(--text-muted);">Zones: ';
-                    html += zones.map(z => '<span style="background:var(--bg-secondary-btn);padding:1px 6px;border-radius:4px;font-size:10px;">' + esc(z.split('.').pop()) + '</span>').join(' ');
+                // Device status row: WiFi, Battery, Sleep
+                const hasDeviceInfo = devSensors.wifi || devSensors.battery || devSensors.sleep_duration;
+                if (hasDeviceInfo) {
+                    html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-muted);">';
+                    if (devSensors.wifi) {
+                        const wv = devSensors.wifi.value;
+                        const wColor = wv == null ? 'var(--text-muted)' : wv > -50 ? 'var(--text-success-dark)' : wv > -70 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+                        html += '<span style="color:' + wColor + ';" title="WiFi Signal">📶 ' + (wv != null ? wv.toFixed(0) + ' ' + esc(devSensors.wifi.unit) : '—') + '</span>';
+                    }
+                    if (devSensors.battery) {
+                        const bv = devSensors.battery.value;
+                        const bIcon = bv == null ? '🔋' : bv > 50 ? '🔋' : bv > 20 ? '🪫' : '🪫';
+                        const bColor = bv == null ? 'var(--text-muted)' : bv > 50 ? 'var(--text-success-dark)' : bv > 20 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+                        html += '<span style="color:' + bColor + ';" title="Battery">' + bIcon + ' ' + (bv != null ? bv.toFixed(0) + '%' : '—') + '</span>';
+                    }
+                    if (devSensors.sleep_duration) {
+                        const sv = devSensors.sleep_duration.value;
+                        let sleepLabel = '—';
+                        if (sv != null) {
+                            const unit = (devSensors.sleep_duration.unit || 's').toLowerCase();
+                            if (unit === 'min' || unit === 'minutes') sleepLabel = sv.toFixed(0) + ' min';
+                            else if (unit === 'h' || unit === 'hours') sleepLabel = sv.toFixed(1) + ' hr';
+                            else sleepLabel = sv.toFixed(0) + ' ' + esc(devSensors.sleep_duration.unit);
+                        }
+                        html += '<span title="Sleep Duration">💤 ' + sleepLabel + '</span>';
+                    }
                     html += '</div>';
                 }
+                // Zone summary + edit toggle
+                html += '<div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">';
+                if (zones.length > 0) {
+                    html += '<span style="font-size:12px;color:var(--text-secondary-alt);"><strong>' + zones.length + '</strong> zone' + (zones.length !== 1 ? 's' : '') + ' mapped</span>';
+                } else {
+                    html += '<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No zones mapped</span>';
+                }
+                html += '<a href="#" onclick="mgmtToggleProbeZones(\'' + esc(pid) + '\');return false;" style="font-size:12px;">Edit Zones</a>';
+                html += '</div>';
+                // Collapsible zone assignment
+                html += '<div id="mgmtProbeZones_' + esc(pid) + '" style="display:none;margin-top:10px;border-top:1px solid var(--border-light);padding-top:10px;">';
+                html += '<div style="display:flex;gap:6px;margin-bottom:8px;">';
+                html += '<button class="btn btn-secondary btn-sm" onclick="mgmtProbeZonesSelectAll(\'' + esc(pid) + '\',true)">Select All</button>';
+                html += '<button class="btn btn-secondary btn-sm" onclick="mgmtProbeZonesSelectAll(\'' + esc(pid) + '\',false)">Select None</button>';
+                html += '</div>';
+                html += '<div id="mgmtProbeZoneCbs_' + esc(pid) + '" style="font-size:12px;">Loading zones...</div>';
+                html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="mgmtSaveProbeZones(\'' + esc(pid) + '\')">Save Zone Mapping</button>';
+                html += '</div>';
                 html += '</div>';
             }
             html += '</div>';
@@ -2170,6 +2214,84 @@ async function mgmtToggleApplyFactors(enable) {
         const isError = result.success === false;
         showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'), isError ? 'error' : undefined);
         loadDetailControls(currentCustomerId);
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+// --- Probe Zone Assignment (Management) ---
+let _mgmtProbeZoneCache = {};
+
+async function mgmtToggleProbeZones(probeId) {
+    const el = document.getElementById('mgmtProbeZones_' + probeId);
+    if (!el) return;
+    const isVisible = el.style.display !== 'none';
+    if (isVisible) {
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = 'block';
+    const cbContainer = document.getElementById('mgmtProbeZoneCbs_' + probeId);
+    cbContainer.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Loading zones...</div>';
+    try {
+        // Fetch current probe data via proxy
+        const probesData = await api('/customers/' + currentCustomerId + '/moisture/probes');
+        const probes = probesData.probes || {};
+        const probe = probes[probeId];
+        const currentMappings = probe ? (probe.zone_mappings || []) : [];
+        _mgmtProbeZoneCache[probeId] = currentMappings;
+
+        // Fetch all zones for this customer
+        const zonesData = await api('/customers/' + currentCustomerId + '/zones');
+        const allZones = Array.isArray(zonesData) ? zonesData : (zonesData.zones || []);
+
+        if (allZones.length === 0) {
+            cbContainer.innerHTML = '<div style="color:var(--text-muted);">No zones found on this controller.</div>';
+            return;
+        }
+
+        // Use zone aliases already loaded with customer detail
+        const aliases = window._currentZoneAliases || {};
+
+        let cbHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px;">';
+        for (const z of allZones) {
+            const eid = z.entity_id;
+            const checked = currentMappings.includes(eid) ? ' checked' : '';
+            let label = aliases[eid] || z.friendly_name || z.name || eid;
+            const m = eid.match(/zone[_]?(\d+)/i);
+            if (label === eid && m) label = 'Zone ' + m[1];
+            cbHtml += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 4px;border-radius:4px;' + (checked ? 'background:var(--bg-success-light);' : '') + '">';
+            cbHtml += '<input type="checkbox" data-probe="' + esc(probeId) + '" data-zone="' + esc(eid) + '"' + checked + ' style="accent-color:var(--color-primary);">';
+            cbHtml += '<span>' + esc(label) + '</span></label>';
+        }
+        cbHtml += '</div>';
+        cbContainer.innerHTML = cbHtml;
+    } catch (e) {
+        cbContainer.innerHTML = '<div style="color:var(--color-danger);">Failed to load zones: ' + esc(e.message || 'Unknown error') + '</div>';
+    }
+}
+
+function mgmtProbeZonesSelectAll(probeId, selectAll) {
+    const container = document.getElementById('mgmtProbeZoneCbs_' + probeId);
+    if (!container) return;
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(function(cb) { cb.checked = selectAll; });
+}
+
+async function mgmtSaveProbeZones(probeId) {
+    const container = document.getElementById('mgmtProbeZoneCbs_' + probeId);
+    if (!container) return;
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    const selectedZones = [];
+    checkboxes.forEach(function(cb) {
+        if (cb.checked) selectedZones.push(cb.getAttribute('data-zone'));
+    });
+    try {
+        await api('/customers/' + currentCustomerId + '/moisture/probes/' + encodeURIComponent(probeId), {
+            method: 'PUT',
+            body: JSON.stringify({ zone_mappings: selectedZones }),
+        });
+        showToast('Zone mapping updated (' + selectedZones.length + ' zones)');
+        _mgmtMoistureDataCache = null;
+        loadDetailMoisture(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -3715,9 +3837,11 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Mid sensor (root zone)</strong> — PRIMARY decision driver for watering needs</li>
 <li style="margin-bottom:4px;"><strong>Shallow sensor</strong> — Rain detection: wet surface + rain forecast = recent rainfall, reduces/skips watering</li>
 <li style="margin-bottom:4px;"><strong>Deep sensor</strong> — Over-irrigation guard: saturated deep soil triggers reduction</li>
+<li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery level, and sleep duration are shown below the moisture bars when available</li>
+<li style="margin-bottom:4px;"><strong>Zone assignment</strong> — Click "Edit Zones" on a probe card to assign or reassign zones to the probe</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease, and rain detection sensitivity</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Probe device selection and sensor mapping are configured from the homeowner's Configuration page. The management dashboard controls settings, thresholds, and duration adjustments.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Probe device selection and sensor mapping are configured from the homeowner's Configuration page. The management dashboard controls settings, thresholds, zone assignments, and duration adjustments. Because Gophr probes sleep between readings, stale values are shown with a ⏳ indicator until the device wakes and reports new data.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>
 <p style="margin-bottom:10px;">If the customer's irrigation controller has a rain sensor connected, a dedicated Rain Sensor card appears in the detail view showing:</p>

@@ -2379,18 +2379,72 @@ ADMIN_HTML = """<!DOCTYPE html>
 
             // Existing probes
             if (probeCount > 0) {
-                html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px;">';
+                html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-bottom:16px;">';
                 for (const [pid, probe] of Object.entries(probes)) {
                     const ss = probe.sensors || {};
                     const zones = probe.zone_mappings || [];
-                    html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
-                    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-                    html += '<strong style="font-size:14px;">' + escHtml(probe.display_name || pid) + '</strong>';
+                    const depthLabels = {shallow: 'Shallow', mid: 'Mid', deep: 'Deep'};
+                    // Clean sensor name: strip common device prefix, keep just the meaningful part
+                    const cleanSensor = function(eid) {
+                        const parts = eid.replace('sensor.', '').split('_');
+                        // Find 'moisture' or 'sensor' keyword and take from there
+                        for (let i = 0; i < parts.length; i++) {
+                            if (parts[i] === 'moisture' || parts[i] === 'sensor') {
+                                return parts.slice(i).join(' ').replace(/_/g, ' ');
+                            }
+                        }
+                        // Fallback: last 3 parts
+                        return parts.slice(-3).join(' ');
+                    };
+                    // Clean zone name: extract zone number or short name
+                    const cleanZone = function(eid) {
+                        const name = eid.split('.').pop();
+                        const m = name.match(/zone[_]?(\\d+)/i);
+                        return m ? 'Zone ' + m[1] : name.replace(/_/g, ' ');
+                    };
+
+                    html += '<div style="background:var(--bg-tile);border-radius:10px;padding:14px;border:1px solid var(--border-light);">';
+                    // Header row
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+                    html += '<strong style="font-size:15px;">' + escHtml(probe.display_name || pid) + '</strong>';
                     html += '<button class="btn btn-danger btn-sm" onclick="removeMoistureProbe(\\'' + escHtml(pid) + '\\')">Remove</button>';
                     html += '</div>';
-                    html += '<div style="font-size:12px;color:var(--text-muted);">ID: ' + escHtml(pid) + '</div>';
-                    html += '<div style="font-size:12px;margin-top:4px;"><strong>Sensors:</strong> ' + Object.entries(ss).map(function(e){return e[0] + ' = ' + e[1];}).join(', ') + '</div>';
-                    html += '<div style="font-size:12px;margin-top:2px;"><strong>Zones:</strong> ' + (zones.length > 0 ? zones.map(function(z){return z.split(".").pop();}).join(', ') : '<em>None mapped</em>') + '</div>';
+
+                    // Sensor depth pills
+                    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">';
+                    for (const depth of ['shallow', 'mid', 'deep']) {
+                        const eid = ss[depth];
+                        if (eid) {
+                            html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-success-light);color:var(--text-success-dark);">' + depthLabels[depth] + '</span>';
+                        } else {
+                            html += '<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:var(--bg-disabled);color:var(--text-muted);">' + depthLabels[depth] + ': —</span>';
+                        }
+                    }
+                    html += '</div>';
+
+                    // Zone summary with edit toggle
+                    const zoneCount = zones.length;
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+                    html += '<span style="font-size:13px;color:var(--text-secondary-alt);">';
+                    if (zoneCount > 0) {
+                        html += '<strong>' + zoneCount + '</strong> zone' + (zoneCount !== 1 ? 's' : '') + ' mapped';
+                    } else {
+                        html += '<em style="color:var(--text-muted);">No zones mapped</em>';
+                    }
+                    html += '</span>';
+                    html += '<a href="#" onclick="toggleProbeZones(\\'' + escHtml(pid) + '\\');return false;" style="font-size:12px;">Edit Zones</a>';
+                    html += '</div>';
+
+                    // Collapsible zone assignment (hidden by default)
+                    html += '<div id="probeZones_' + escHtml(pid) + '" style="display:none;margin-top:10px;border-top:1px solid var(--border-light);padding-top:10px;">';
+                    html += '<div style="display:flex;gap:6px;margin-bottom:8px;">';
+                    html += '<button class="btn btn-secondary btn-sm" onclick="probeZonesSelectAll(\\'' + escHtml(pid) + '\\',true)">Select All</button>';
+                    html += '<button class="btn btn-secondary btn-sm" onclick="probeZonesSelectAll(\\'' + escHtml(pid) + '\\',false)">Select None</button>';
+                    html += '</div>';
+                    html += '<div id="probeZoneCheckboxes_' + escHtml(pid) + '" style="font-size:12px;">Loading zones...</div>';
+                    html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="saveProbeZones(\\'' + escHtml(pid) + '\\')">Save Zone Mapping</button>';
+                    html += '</div>';
+
                     html += '</div>';
                 }
                 html += '</div>';
@@ -2580,9 +2634,14 @@ ADMIN_HTML = """<!DOCTYPE html>
             const zonesData = await zonesRes.json();
             const allZones = (Array.isArray(zonesData) ? zonesData : zonesData.zones || []).map(function(z) { return z.entity_id; });
 
+            // Get selected device ID for device-level sensors (WiFi, battery, sleep)
+            const deviceSelect = document.getElementById('cfgMoistureDeviceSelect');
+            const deviceId = deviceSelect ? deviceSelect.value : null;
+
             await mcfg('/probes', 'POST', {
                 probe_id: probeId,
                 display_name: displayName,
+                device_id: deviceId,
                 sensors: sensors,
                 zone_mappings: allZones,
             });
@@ -2596,6 +2655,88 @@ ADMIN_HTML = """<!DOCTYPE html>
         try {
             await mcfg('/probes/' + encodeURIComponent(probeId), 'DELETE');
             showToast('Probe removed');
+            loadMoistureConfig();
+        } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    // --- Probe Zone Assignment ---
+    let _probeZoneCache = {};  // pid -> current zone_mappings
+
+    async function toggleProbeZones(probeId) {
+        const el = document.getElementById('probeZones_' + probeId);
+        if (!el) return;
+        const isVisible = el.style.display !== 'none';
+        if (isVisible) {
+            el.style.display = 'none';
+            return;
+        }
+        el.style.display = 'block';
+        const cbContainer = document.getElementById('probeZoneCheckboxes_' + probeId);
+        cbContainer.innerHTML = '<div class="loading" style="font-size:12px;">Loading zones...</div>';
+        try {
+            // Fetch current probe data and all zones
+            const probesData = await mcfg('/probes');
+            const probes = probesData.probes || {};
+            const probe = probes[probeId];
+            const currentMappings = probe ? (probe.zone_mappings || []) : [];
+            _probeZoneCache[probeId] = currentMappings;
+
+            const zonesRes = await fetch(BASE + '/homeowner/zones');
+            const zonesData = await zonesRes.json();
+            const allZones = Array.isArray(zonesData) ? zonesData : (zonesData.zones || []);
+
+            if (allZones.length === 0) {
+                cbContainer.innerHTML = '<div style="color:var(--text-muted);">No zones found on this controller.</div>';
+                return;
+            }
+
+            // Fetch zone aliases for friendly names
+            let aliases = {};
+            try {
+                const aliasRes = await fetch(BASE + '/homeowner/zone_aliases');
+                aliases = await aliasRes.json();
+                if (aliases.aliases) aliases = aliases.aliases;
+            } catch(_) {}
+
+            let cbHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px;">';
+            for (const z of allZones) {
+                const eid = z.entity_id;
+                const checked = currentMappings.includes(eid) ? ' checked' : '';
+                // Determine display name: alias > friendly_name > zone number
+                let label = aliases[eid] || z.friendly_name || z.name || eid;
+                const m = eid.match(/zone[_]?(\\d+)/i);
+                if (label === eid && m) label = 'Zone ' + m[1];
+                cbHtml += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 4px;border-radius:4px;' + (checked ? 'background:var(--bg-success-light);' : '') + '">';
+                cbHtml += '<input type="checkbox" data-probe="' + escHtml(probeId) + '" data-zone="' + escHtml(eid) + '"' + checked + ' style="accent-color:var(--color-primary);">';
+                cbHtml += '<span>' + escHtml(label) + '</span></label>';
+            }
+            cbHtml += '</div>';
+            cbContainer.innerHTML = cbHtml;
+        } catch (e) {
+            cbContainer.innerHTML = '<div style="color:var(--color-danger);">Failed to load zones: ' + (e.message || 'Unknown error').replace(/</g, '&lt;') + '</div>';
+        }
+    }
+
+    function probeZonesSelectAll(probeId, selectAll) {
+        const container = document.getElementById('probeZoneCheckboxes_' + probeId);
+        if (!container) return;
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(function(cb) { cb.checked = selectAll; });
+    }
+
+    async function saveProbeZones(probeId) {
+        const container = document.getElementById('probeZoneCheckboxes_' + probeId);
+        if (!container) return;
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+        const selectedZones = [];
+        checkboxes.forEach(function(cb) {
+            if (cb.checked) selectedZones.push(cb.getAttribute('data-zone'));
+        });
+        try {
+            await mcfg('/probes/' + encodeURIComponent(probeId), 'PUT', {
+                zone_mappings: selectedZones,
+            });
+            showToast('Zone mapping updated (' + selectedZones.length + ' zones)');
             loadMoistureConfig();
         } catch (e) { showToast(e.message, 'error'); }
     }
@@ -2650,11 +2791,12 @@ ADMIN_HTML = """<!DOCTYPE html>
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle moisture-aware irrigation on or off</li>
 <li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your Gophr device from the dropdown. The list is filtered to show devices matching "gophr", "moisture", "soil", or "probe". Click "Show all devices" if your device doesn't appear.</li>
 <li style="margin-bottom:4px;"><strong>Map Sensors</strong> — After selecting a device, map its sensor entities to shallow, mid, and deep depth readings. Sensors with matching depth names are auto-selected.</li>
-<li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. New probes are mapped to all irrigation zones by default.</li>
+<li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. New probes are mapped to all irrigation zones by default. The Gophr device ID is stored with the probe so that device-level sensors (WiFi, battery, sleep duration) are automatically shown on the dashboard.</li>
+<li style="margin-bottom:4px;"><strong>Edit Zones</strong> — Click "Edit Zones" on any probe card to assign or unassign zones. Changes can also be made from the management dashboard.</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Configure stale data threshold, root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li>
-<li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings and zone multipliers</li>
+<li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings, device status, and zone multipliers</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The combined weather &times; moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled durations automatically.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The combined weather &times; moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled durations automatically. Because Gophr probes sleep between readings, stale values are still shown with a ⏳ indicator until the device wakes and reports new data.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Revoking Access</h4>
 <p style="margin-bottom:10px;">If you need to disconnect a management company, use the <strong>Revoke Access</strong> button. This immediately invalidates the current API key and connection key, preventing any further remote access.</p>

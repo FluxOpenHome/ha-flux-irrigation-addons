@@ -2448,11 +2448,12 @@ async function loadMoisture() {
 
         // Probe tiles
         if (probeCount > 0) {
-            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">';
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">';
             for (const [pid, probe] of Object.entries(probes)) {
                 const sensors = probe.sensors_live || {};
+                const devSensors = probe.device_sensors || {};
                 html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
-                html += '<div style="font-weight:600;font-size:14px;margin-bottom:8px;">' + esc(probe.display_name || pid) + '</div>';
+                html += '<div style="font-weight:600;font-size:14px;margin-bottom:10px;">' + esc(probe.display_name || pid) + '</div>';
 
                 // Depth readings as horizontal bars
                 for (const depth of ['shallow', 'mid', 'deep']) {
@@ -2472,12 +2473,40 @@ async function loadMoisture() {
                     html += '</div></div>';
                 }
 
-                // Mapped zones
+                // Device status row: WiFi, Battery, Sleep
+                const hasDeviceInfo = devSensors.wifi || devSensors.battery || devSensors.sleep_duration;
+                if (hasDeviceInfo) {
+                    html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-muted);">';
+                    if (devSensors.wifi) {
+                        const wv = devSensors.wifi.value;
+                        const wIcon = wv == null ? '📶' : wv > -50 ? '📶' : wv > -70 ? '📶' : '📶';
+                        const wColor = wv == null ? 'var(--text-muted)' : wv > -50 ? 'var(--text-success-dark)' : wv > -70 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+                        html += '<span style="color:' + wColor + ';" title="WiFi Signal">' + wIcon + ' ' + (wv != null ? wv.toFixed(0) + ' ' + esc(devSensors.wifi.unit) : '—') + '</span>';
+                    }
+                    if (devSensors.battery) {
+                        const bv = devSensors.battery.value;
+                        const bIcon = bv == null ? '🔋' : bv > 50 ? '🔋' : bv > 20 ? '🪫' : '🪫';
+                        const bColor = bv == null ? 'var(--text-muted)' : bv > 50 ? 'var(--text-success-dark)' : bv > 20 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+                        html += '<span style="color:' + bColor + ';" title="Battery">' + bIcon + ' ' + (bv != null ? bv.toFixed(0) + '%' : '—') + '</span>';
+                    }
+                    if (devSensors.sleep_duration) {
+                        const sv = devSensors.sleep_duration.value;
+                        let sleepLabel = '—';
+                        if (sv != null) {
+                            const unit = (devSensors.sleep_duration.unit || 's').toLowerCase();
+                            if (unit === 'min' || unit === 'minutes') sleepLabel = sv.toFixed(0) + ' min';
+                            else if (unit === 'h' || unit === 'hours') sleepLabel = sv.toFixed(1) + ' hr';
+                            else sleepLabel = sv.toFixed(0) + ' ' + esc(devSensors.sleep_duration.unit);
+                        }
+                        html += '<span title="Sleep Duration">💤 ' + sleepLabel + '</span>';
+                    }
+                    html += '</div>';
+                }
+
+                // Mapped zones summary
                 const zones = probe.zone_mappings || [];
                 if (zones.length > 0) {
-                    html += '<div style="margin-top:6px;font-size:11px;color:var(--text-muted);">Zones: ';
-                    html += zones.map(z => '<span style="background:var(--bg-secondary-btn);padding:1px 6px;border-radius:4px;font-size:10px;">' + esc(z.split('.').pop()) + '</span>').join(' ');
-                    html += '</div>';
+                    html += '<div style="margin-top:8px;font-size:11px;color:var(--text-secondary-alt);"><strong>' + zones.length + '</strong> zone' + (zones.length !== 1 ? 's' : '') + ' mapped</div>';
                 }
                 html += '</div>';
             }
@@ -2813,7 +2842,7 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">When Gophr moisture probes are connected to Home Assistant, the moisture card shows live soil moisture readings at three depths (shallow, mid, deep). The algorithm uses a <strong>gradient-based approach</strong> that treats each depth as a distinct signal:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Mid sensor (root zone)</strong> — The PRIMARY decision driver. This is where grass roots live and is the most important reading for determining watering needs.</li><li style="margin-bottom:4px;"><strong>Shallow sensor (surface)</strong> — Used for rain detection. If the surface is significantly wetter than the root zone and rain is forecasted, the system infers recent rainfall and reduces or skips watering.</li><li style="margin-bottom:4px;"><strong>Deep sensor (reserve)</strong> — Guards against over-irrigation. If deep soil is saturated while the root zone looks normal, it suggests water is pooling below and watering is reduced.</li></ul>
 <p style="margin-bottom:10px;">The moisture card also shows:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Zone multipliers</strong> — Combined weather &times; moisture multiplier for each mapped zone</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Discover probes from HA sensors, add/remove probes, assign to zones</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, and sleep duration are shown below the moisture readings when available (auto-detected from the Gophr device)</li><li style="margin-bottom:4px;"><strong>Zone multipliers</strong> — Combined weather &times; moisture multiplier for each mapped zone</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Discover probes from HA sensors, add/remove probes, assign to zones</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. The algorithm integrates weather forecast data for rain detection — if the shallow sensor shows a wetting front and rain is forecasted, watering is automatically reduced or skipped.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
