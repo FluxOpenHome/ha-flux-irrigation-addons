@@ -2730,46 +2730,39 @@ async function loadMoisture() {
                     html += '</div>';
                 }
 
-                // Schedule Timeline — show when mapped zones will run + probe wake time
-                var probePrep2 = (timelineData.probe_prep || {})[pid];
-                var probeMapped = probe.zone_mappings || [];
-                if (probePrep2 && probePrep2.prep_entries && probePrep2.prep_entries.length > 0 && probeMapped.length > 0) {
-                    html += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border-light);font-size:11px;">';
-                    html += '<span style="font-weight:600;color:var(--text-secondary);">Schedule Timeline</span>';
-                    for (var pe = 0; pe < probePrep2.prep_entries.length; pe++) {
-                        var entry = probePrep2.prep_entries[pe];
-                        // Find zone in the schedule timeline to get full info
-                        var schedInfo = null;
-                        var schedules2 = timelineData.schedules || [];
-                        for (var s2 = 0; s2 < schedules2.length; s2++) {
-                            if (schedules2[s2].start_time === entry.schedule_start_time) {
-                                schedInfo = schedules2[s2];
-                                break;
-                            }
-                        }
-                        html += '<div style="margin-top:4px;padding:4px 6px;background:var(--bg-card);border-radius:4px;border:1px solid var(--border-light);">';
-                        html += '<div style="font-weight:500;color:var(--text-primary);">🕐 ' + esc(entry.schedule_start_time) + ' schedule</div>';
-                        // Show mapped zone expected time
-                        var zoneTime = '';
-                        if (schedInfo) {
-                            for (var zz = 0; zz < schedInfo.zones.length; zz++) {
-                                var zt = schedInfo.zones[zz];
-                                if (zt.zone_entity_id === entry.zone_entity_id) {
-                                    zoneTime = zt.expected_start_time + ' — ' + zt.expected_end_time;
-                                    break;
-                                }
-                            }
-                        }
-                        html += '<div style="color:var(--text-muted);">Zone ' + entry.zone_num + ' expected: <strong style="color:var(--text-primary);">' + (zoneTime || '?') + '</strong></div>';
-                        // Calculate and show probe wake time
-                        var targetWakeMins = entry.target_wake_minutes;
-                        var wakeH = Math.floor(targetWakeMins / 60) % 24;
-                        var wakeM = targetWakeMins % 60;
-                        var wakeStr = (wakeH < 10 ? '0' : '') + wakeH + ':' + (wakeM < 10 ? '0' : '') + wakeM;
-                        html += '<div style="color:var(--color-warning);">⏰ Probe wake target: <strong>' + wakeStr + '</strong></div>';
-                        html += '</div>';
+                // "Wake Times" toggle button + collapsible list
+                var _ppWake = (timelineData.probe_prep || {})[pid];
+                if (_ppWake && _ppWake.prep_entries && _ppWake.prep_entries.length > 0 && (probe.zone_mappings || []).length > 0) {
+                    var _wakeId = 'hoWakeTimes_' + pid.replace(/[^a-zA-Z0-9]/g, '_');
+                    html += '<div style="margin-top:4px;">';
+                    html += '<a href="#" onclick="var el=document.getElementById(\\'' + _wakeId + '\\');el.style.display=el.style.display===\\'none\\'?\\'block\\':\\'none\\';this.querySelector(\\'span\\').textContent=el.style.display===\\'none\\'?\\'▸\\':\\'▾\\';return false;" style="font-size:11px;color:var(--color-warning);text-decoration:none;"><span>▸</span> ⏰ Wake Times (' + _ppWake.prep_entries.length + ')</a>';
+                    html += '<div id="' + _wakeId + '" style="display:none;margin-top:4px;font-size:11px;">';
+                    var _nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+                    var _nextIdx = 0;
+                    for (var _ni = 0; _ni < _ppWake.prep_entries.length; _ni++) {
+                        if (_ppWake.prep_entries[_ni].target_wake_minutes > _nowMin) { _nextIdx = _ni; break; }
                     }
-                    html += '</div>';
+                    for (var _wi = 0; _wi < _ppWake.prep_entries.length; _wi++) {
+                        var _we = _ppWake.prep_entries[_wi];
+                        // Probe wake time
+                        var _twm = _we.target_wake_minutes;
+                        var _twH = Math.floor(_twm / 60) % 24;
+                        var _twM = _twm % 60;
+                        var _twAmPm = _twH >= 12 ? 'PM' : 'AM';
+                        var _twH12 = _twH % 12 || 12;
+                        var _wakeTimeStr = _twH12 + ':' + (_twM < 10 ? '0' : '') + _twM + ' ' + _twAmPm;
+                        // Zone expected start time (schedule start + cumulative preceding durations)
+                        var _zsm = _we.zone_start_minutes || 0;
+                        var _zsH = Math.floor(_zsm / 60) % 24;
+                        var _zsM = Math.round(_zsm % 60);
+                        var _zsAmPm = _zsH >= 12 ? 'PM' : 'AM';
+                        var _zsH12 = _zsH % 12 || 12;
+                        var _zoneTimeStr = _zsH12 + ':' + (_zsM < 10 ? '0' : '') + _zsM + ' ' + _zsAmPm;
+                        var _isNext = (_wi === _nextIdx);
+                        var _lineColor = _isNext ? 'var(--color-warning)' : 'var(--text-muted)';
+                        html += '<div style="padding:3px 6px;color:' + _lineColor + ';' + (_isNext ? 'background:var(--bg-tile);border-radius:4px;' : '') + '">⏰ ' + (_isNext ? '<strong>' : '') + _wakeTimeStr + (_isNext ? '</strong>' : '') + ' — Zone ' + _we.zone_num + ' at ' + _zoneTimeStr + (_isNext ? ' ← next' : '') + '</div>';
+                    }
+                    html += '</div></div>';
                 }
 
                 // Zone summary + edit toggle
