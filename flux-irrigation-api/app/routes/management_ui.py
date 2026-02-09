@@ -2842,7 +2842,7 @@ async function loadDetailZones(id) {
     try {
         // Fetch zone head GPM data in parallel with zones
         try {
-            var allHeads = await api('/customers/' + id + '/zone_heads');
+            var allHeads = await api('/customers/' + id + '/zone_heads?t=' + Date.now());
             window._mgmtZoneGpmMap = {};
             window._mgmtZoneGpmShow = {};
             window._mgmtZoneHeadCountShow = {};
@@ -4939,25 +4939,20 @@ async function mgmtSaveZoneHeads() {
     var notes = (document.getElementById('mgmtZoneNotes') || {}).value || '';
     var showGpm = document.getElementById('mgmtShowGpmOnCard') ? document.getElementById('mgmtShowGpmOnCard').checked : false;
     var showCount = document.getElementById('mgmtShowHeadCountOnCard') ? document.getElementById('mgmtShowHeadCountOnCard').checked : false;
-    console.log('[ZONE_SAVE] showGpm=' + showGpm + ', showCount=' + showCount);
-    var saveBody = { heads: heads, notes: notes, show_gpm_on_card: showGpm, show_head_count_on_card: showCount };
-    console.log('[ZONE_SAVE] PUT body:', JSON.stringify(saveBody));
     var statusEl = document.getElementById('mgmtZoneSaveStatus');
     try {
         statusEl.textContent = 'Saving...';
         statusEl.style.color = 'var(--text-secondary)';
-        var saveResp = await api('/customers/' + custId + '/zone_heads/' + entityId, {
+        await api('/customers/' + custId + '/zone_heads/' + entityId, {
             method: 'PUT',
-            body: JSON.stringify(saveBody),
+            body: JSON.stringify({ heads: heads, notes: notes, show_gpm_on_card: showGpm, show_head_count_on_card: showCount }),
         });
-        console.log('[ZONE_SAVE] PUT response:', JSON.stringify(saveResp));
         statusEl.textContent = '\\u2713 Saved!';
         statusEl.style.color = 'var(--color-success)';
         showToast('Zone head details saved');
         // Refresh zone card GPM display
         try {
-            var allHeads = await api('/customers/' + custId + '/zone_heads');
-            console.log('[ZONE_SAVE] GET all zone_heads after save:', JSON.stringify(allHeads));
+            var allHeads = await api('/customers/' + custId + '/zone_heads?t=' + Date.now());
             window._mgmtZoneGpmMap = {};
             window._mgmtZoneGpmShow = {};
             window._mgmtZoneHeadCountShow = {};
@@ -4968,9 +4963,8 @@ async function mgmtSaveZoneHeads() {
                 if (allHeads[eid].show_head_count_on_card) window._mgmtZoneHeadCountShow[eid] = true;
                 if (allHeads[eid].heads && allHeads[eid].heads.length > 0) window._mgmtZoneHeadCount[eid] = allHeads[eid].heads.length;
             }
-            console.log('[ZONE_SAVE] Maps after refresh: gpmShow=', window._mgmtZoneGpmShow, 'headCountShow=', window._mgmtZoneHeadCountShow, 'gpmMap=', window._mgmtZoneGpmMap, 'headCount=', window._mgmtZoneHeadCount);
             loadDetailZones(custId);
-        } catch(e2) { console.error('[ZONE_SAVE] Refresh error:', e2); }
+        } catch(e2) {}
     } catch(e) {
         statusEl.textContent = 'Error: ' + e.message;
         statusEl.style.color = 'var(--color-danger)';

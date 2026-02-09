@@ -1075,7 +1075,7 @@ async function loadZones() {
     try {
         // Fetch zone head GPM data in parallel with zones
         try {
-            var allHeads = await api('/zone_heads');
+            var allHeads = await api('/zone_heads?t=' + Date.now());
             window._hoZoneGpmMap = {};
             window._hoZoneGpmShow = {};
             window._hoZoneHeadCountShow = {};
@@ -3883,10 +3883,10 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
         try { _hoNozzleRef = await api('/zone_heads/reference'); } catch(e) { _hoNozzleRef = {nozzle_types:[],brands:[],standard_arcs:[],models:[]}; }
     }
     // Load existing zone head data
-    var zoneData = {heads:[], notes:''};
+    var zoneData = {heads:[], notes:'', show_gpm_on_card:false, show_head_count_on_card:false};
     try {
-        var resp = await api('/zone_heads/' + entityId);
-        if (resp && resp.heads) zoneData = resp;
+        var resp = await api('/zone_heads/' + entityId + '?t=' + Date.now());
+        if (resp) zoneData = resp;
     } catch(e) {}
 
     var body = '<div style="margin-bottom:10px;">';
@@ -4190,7 +4190,7 @@ async function hoSaveZoneHeads() {
         showToast('Zone head details saved');
         // Refresh zone card GPM display
         try {
-            var allHeads = await api('/zone_heads');
+            var allHeads = await api('/zone_heads?t=' + Date.now());
             window._hoZoneGpmMap = {};
             window._hoZoneGpmShow = {};
             window._hoZoneHeadCountShow = {};
