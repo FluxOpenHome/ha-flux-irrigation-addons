@@ -2487,11 +2487,11 @@ ADMIN_HTML = """<!DOCTYPE html>
 
             const toggleEl = document.getElementById('moistureDeviceFilterToggle');
             if (filtered && devices.length < totalCount) {
-                toggleEl.innerHTML = 'Showing ' + devices.length + ' moisture device' + (devices.length !== 1 ? 's' : '') +
+                toggleEl.innerHTML = 'Showing ' + devices.length + ' Gophr device' + (devices.length !== 1 ? 's' : '') +
                     ' of ' + totalCount + ' total. <a href="#" onclick="showAllMoistureDevices(event)">Show all devices</a>';
                 toggleEl.style.display = '';
             } else if (!filtered && totalCount > 0) {
-                toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="showFilteredMoistureDevices(event)">Show only moisture devices</a>';
+                toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="showFilteredMoistureDevices(event)">Show only Gophr devices</a>';
                 toggleEl.style.display = '';
             } else {
                 toggleEl.style.display = 'none';
@@ -2675,7 +2675,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <p style="margin-bottom:10px;">Integrate Gophr moisture probes with your irrigation system for data-driven watering adjustments. Expand the Moisture Probes card to configure:</p>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle moisture-aware irrigation on or off</li>
-<li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your Gophr device from the dropdown. The list is filtered to show devices matching "gophr", "moisture", "soil", or "probe". Click "Show all devices" if your device doesn't appear.</li>
+<li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your Gophr device from the dropdown. Only devices with "gophr" in the name are shown. Click "Show all devices" if your device doesn't appear.</li>
 <li style="margin-bottom:4px;"><strong>Map Sensors</strong> — After selecting a device, map its sensor entities to shallow, mid, and deep depth readings. Sensors with matching depth names are auto-selected.</li>
 <li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. New probes are mapped to all irrigation zones by default. The Gophr device ID is stored with the probe so that device-level sensors (WiFi, battery, sleep duration) are automatically shown on the dashboard.</li>
 <li style="margin-bottom:4px;"><strong>Edit Zones</strong> — Click "Edit Zones" on any probe card to assign or unassign zones. Changes can also be made from the management dashboard.</li>

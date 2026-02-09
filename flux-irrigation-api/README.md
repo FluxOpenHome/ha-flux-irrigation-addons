@@ -229,7 +229,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Audit logging** — Every API action is logged with timestamp, API key, action, and details
 - **Rate limiting** — Configurable request limits to protect the homeowner's HA instance
 - **Entity auto-refresh** — Background task runs every 5 minutes to detect newly enabled or disabled entities in Home Assistant without requiring an add-on restart
-- **Moisture probe integration** — Gophr probes are added via a device picker (filtered for moisture/probe devices); weighted three-depth algorithm produces a moisture multiplier that combines with the weather multiplier for precise watering control; crash recovery restores base durations on add-on restart
+- **Moisture probe integration** — Gophr probes are added via a device picker (filtered for Gophr devices only); auto-detection maps percentage sensors to shallow/mid/deep depths and detects WiFi, battery, and sleep duration; weighted three-depth algorithm produces a moisture multiplier that combines with the weather multiplier for precise watering control; crash recovery restores base durations on add-on restart
 - **Configuration change log** — Every configuration change is logged with old → new values, who made the change, when, and what category; rolling 1000-entry buffer with CSV export; available on all dashboards
 - **Weather event logging** — All weather rule evaluations and actions are logged with CSV export and clearing from both dashboards
 - **Dark mode** — All pages (homeowner dashboard, configuration, management dashboard) support dark mode with a 🌙/☀️ toggle; preferences are saved per-device in localStorage

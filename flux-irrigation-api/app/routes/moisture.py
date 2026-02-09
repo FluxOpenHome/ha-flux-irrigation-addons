@@ -129,12 +129,12 @@ async def discover_moisture_probes() -> list[dict]:
     return candidates
 
 
-# Keywords for filtering HA devices to likely moisture probes
-DEVICE_KEYWORDS = ["gophr", "moisture", "soil", "probe"]
+# Keywords for filtering HA devices — only show Gophr devices
+DEVICE_KEYWORDS = ["gophr"]
 
 
 async def list_moisture_devices(show_all: bool = False) -> dict:
-    """List HA devices, optionally filtered to likely moisture probe devices.
+    """List HA devices, filtered to Gophr devices by default.
 
     Returns devices in the same format as admin device listing.
     """
@@ -160,7 +160,7 @@ async def list_moisture_devices(show_all: bool = False) -> dict:
     if show_all:
         result = all_devices
     else:
-        # Filter to moisture/probe-related devices
+        # Filter to Gophr devices only
         def _is_moisture_device(name: str, manufacturer: str, model: str) -> bool:
             searchable = f"{name} {manufacturer} {model}".lower()
             return any(kw in searchable for kw in DEVICE_KEYWORDS)
@@ -1125,9 +1125,9 @@ async def api_discover_probes():
 
 @router.get("/devices", summary="List devices for moisture probe selection")
 async def api_list_devices(show_all: bool = False):
-    """List HA devices, optionally filtered to likely moisture probe devices.
+    """List HA devices, filtered to Gophr devices by default.
 
-    By default filters to devices matching keywords: gophr, moisture, soil, probe.
+    By default filters to devices with 'gophr' in the name.
     Pass ?show_all=true to return every device.
     """
     return await list_moisture_devices(show_all=show_all)
@@ -1147,24 +1147,50 @@ async def api_get_device_sensors(device_id: str):
 async def api_autodetect_device_sensors(device_id: str):
     """Auto-detect moisture depth sensors and device status sensors from entity names.
 
-    Uses naming conventions:
-      - moisture_sensor_3 / sensor 3 → shallow (shallowest depth)
-      - moisture_sensor_2 / sensor 2 → mid (root zone)
-      - moisture_sensor_1 / sensor 1 → deep (deepest)
-      - Also matches 'shallow', 'mid'/'middle', 'deep'/'bottom' keywords
-      - WiFi: entity contains 'wifi', 'signal', 'rssi', or has device_class signal_strength
-      - Battery: entity contains 'battery' or has device_class battery
-      - Sleep: entity contains 'sleep'
+    Gophr ESPHome devices expose both raw voltage and percentage entities for
+    each moisture channel and for battery. We ONLY use percentage entities
+    (raw voltages are skipped entirely).
+
+    Mapping:
+      - moisture_3_percentage → shallow (shallowest depth)
+      - moisture_2_percentage → mid (root zone)
+      - moisture_1_percentage → deep (deepest)
+      - battery_percentage → battery (NOT battery_voltage)
+      - wifi_signal_strength → wifi
+      - sleep_duration → sleep_duration
+      - AHT20 humidity/temperature sensors are excluded from moisture detection
     """
     sensors = await get_device_sensors(device_id)
 
     depth_map = {"shallow": None, "mid": None, "deep": None}
     extra_map = {"wifi": None, "battery": None, "sleep_duration": None}
 
+    print(f"[MOISTURE] autodetect: {len(sensors)} sensors on device {device_id}")
+    for s in sensors:
+        print(f"[MOISTURE]   entity={s['entity_id']}  friendly={s.get('friendly_name','')}  class={s.get('device_class','')}  unit={s.get('unit_of_measurement','')}")
+
+    # --- Pre-filter: skip raw voltage entities entirely ---
+    # Gophr devices have both _raw_voltage (V) and _percentage (%) entities.
+    # We only want the percentage versions.
+    filtered_sensors = []
     for s in sensors:
         eid = s["entity_id"].lower()
+        unit = s.get("unit_of_measurement", "")
+        # Skip any raw voltage entity (unit V or entity name contains raw_voltage)
+        if "raw_voltage" in eid or (unit == "V" and "voltage" in eid):
+            print(f"[MOISTURE]   SKIP voltage: {s['entity_id']}")
+            continue
+        # Skip solar voltage
+        if "solar" in eid and "voltage" in eid:
+            print(f"[MOISTURE]   SKIP solar: {s['entity_id']}")
+            continue
+        filtered_sensors.append(s)
+
+    for s in filtered_sensors:
+        eid = s["entity_id"].lower()
         fname = (s.get("friendly_name") or "").lower()
-        searchable = f"{eid} {fname}"
+        oname = (s.get("original_name") or "").lower()
+        searchable = f"{eid} {fname} {oname}"
         device_class = s.get("device_class", "")
 
         # WiFi signal detection
@@ -1173,45 +1199,112 @@ async def api_autodetect_device_sensors(device_id: str):
         ):
             if not extra_map["wifi"]:
                 extra_map["wifi"] = s["entity_id"]
+                print(f"[MOISTURE]   MATCH wifi: {s['entity_id']}")
             continue
 
-        # Battery detection
+        # Battery detection — prefer _percentage over _voltage
         if device_class == "battery" or "battery" in searchable:
-            if not extra_map["battery"]:
-                extra_map["battery"] = s["entity_id"]
+            # Only accept percentage entities for battery
+            if "percentage" in eid or "percent" in eid or s.get("unit_of_measurement") == "%":
+                if not extra_map["battery"]:
+                    extra_map["battery"] = s["entity_id"]
+                    print(f"[MOISTURE]   MATCH battery: {s['entity_id']}")
             continue
 
         # Sleep duration detection
         if "sleep" in searchable:
             if not extra_map["sleep_duration"]:
                 extra_map["sleep_duration"] = s["entity_id"]
+                print(f"[MOISTURE]   MATCH sleep: {s['entity_id']}")
+            continue
+
+        # Skip non-moisture environmental sensors (AHT20 temperature, humidity, etc.)
+        # These are ambient sensors, not soil moisture sensors.
+        if any(kw in searchable for kw in ("temperature", "humidity", "aht")):
+            if "moisture" not in searchable:
+                print(f"[MOISTURE]   SKIP ambient: {s['entity_id']}")
+                continue
+
+        # Skip uptime, time_awake, minutes_to_next_wake — not moisture sensors
+        if any(kw in searchable for kw in ("uptime", "time_awake", "minutes_to_next", "next_wake")):
+            print(f"[MOISTURE]   SKIP timing: {s['entity_id']}")
             continue
 
         # Moisture depth detection
         # Priority 1: numbered sensors (sensor_3=shallow, sensor_2=mid, sensor_1=deep)
-        num_match = re.search(r'(?:moisture_)?sensor[_\s]?(\d+)', searchable)
+        # Matches: moisture_1_percentage, moisture_sensor_1, moisture_1, etc.
+        num_match = re.search(r'(?:moisture|sensor|channel|probe)[_\s]*(\d+)', searchable)
         if num_match:
             num = int(num_match.group(1))
             if num == 3 and not depth_map["shallow"]:
                 depth_map["shallow"] = s["entity_id"]
+                print(f"[MOISTURE]   MATCH shallow (num 3): {s['entity_id']}")
                 continue
             elif num == 2 and not depth_map["mid"]:
                 depth_map["mid"] = s["entity_id"]
+                print(f"[MOISTURE]   MATCH mid (num 2): {s['entity_id']}")
                 continue
             elif num == 1 and not depth_map["deep"]:
                 depth_map["deep"] = s["entity_id"]
+                print(f"[MOISTURE]   MATCH deep (num 1): {s['entity_id']}")
                 continue
 
         # Priority 2: keyword matching
         if any(kw in searchable for kw in ("shallow", "surface", "top")):
             if not depth_map["shallow"]:
                 depth_map["shallow"] = s["entity_id"]
+                print(f"[MOISTURE]   MATCH shallow (keyword): {s['entity_id']}")
         elif any(kw in searchable for kw in ("mid", "middle", "root")):
             if not depth_map["mid"]:
                 depth_map["mid"] = s["entity_id"]
+                print(f"[MOISTURE]   MATCH mid (keyword): {s['entity_id']}")
         elif any(kw in searchable for kw in ("deep", "bottom", "reserve")):
             if not depth_map["deep"]:
                 depth_map["deep"] = s["entity_id"]
+                print(f"[MOISTURE]   MATCH deep (keyword): {s['entity_id']}")
+
+    # Priority 3: If we still have unmatched moisture sensors, try remaining
+    # percentage sensors that contain 'moisture' in name
+    if not all(depth_map.values()):
+        unmatched_moisture = []
+        matched_eids = set(v for v in list(depth_map.values()) + list(extra_map.values()) if v)
+        for s in filtered_sensors:
+            if s["entity_id"] in matched_eids:
+                continue
+            eid_lower = s["entity_id"].lower()
+            fname_lower = (s.get("friendly_name") or "").lower()
+            unit = s.get("unit_of_measurement", "")
+            dc = s.get("device_class", "")
+            # Must contain 'moisture' in name AND be a percentage entity
+            # Excludes AHT20 humidity which doesn't contain 'moisture'
+            if "moisture" in eid_lower or "moisture" in fname_lower:
+                if unit == "%" or dc in ("humidity", "moisture"):
+                    unmatched_moisture.append(s)
+
+        # Try to extract numbers from unmatched moisture sensors
+        for s in unmatched_moisture:
+            eid_lower = s["entity_id"].lower()
+            fname_lower = (s.get("friendly_name") or "").lower()
+            combined = f"{eid_lower} {fname_lower}"
+            # Look for any number after 'moisture'
+            num_match = re.search(r'(\d+)', combined.split("moisture")[-1] if "moisture" in combined else "")
+            if num_match:
+                num = int(num_match.group(1))
+                if num == 3 and not depth_map["shallow"]:
+                    depth_map["shallow"] = s["entity_id"]
+                elif num == 2 and not depth_map["mid"]:
+                    depth_map["mid"] = s["entity_id"]
+                elif num == 1 and not depth_map["deep"]:
+                    depth_map["deep"] = s["entity_id"]
+
+        # Last resort: if we found exactly 3 unmatched moisture sensors and
+        # none were assigned, assign in order (1=deep, 2=mid, 3=shallow)
+        if not any(depth_map.values()) and len(unmatched_moisture) == 3:
+            depth_map["deep"] = unmatched_moisture[0]["entity_id"]
+            depth_map["mid"] = unmatched_moisture[1]["entity_id"]
+            depth_map["shallow"] = unmatched_moisture[2]["entity_id"]
+
+    print(f"[MOISTURE] autodetect result: depths={depth_map}, extras={extra_map}")
 
     return {
         "device_id": device_id,
