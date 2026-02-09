@@ -995,7 +995,7 @@ async function loadDashboard() {
     loadWeather();
     loadMoisture();
     loadZones();
-    loadSensors();
+    await loadSensors();   // Must complete before loadControls — sets _expansionSensors / _detectedZoneCount
     loadControls();
     if (!_initialLoadDone) _initialLoadDone = true;
     loadHistory();
@@ -2707,8 +2707,33 @@ async function loadMoisture() {
                     // Probe Awake/Sleeping status + schedule prep info
                     if (devSensors.sleep_duration) {
                         const isAwake = probe.is_awake === true;
+                        var sleepLabel = '😴 Sleeping';
+                        if (!isAwake && devSensors.status_led && devSensors.status_led.last_changed && devSensors.sleep_duration.value) {
+                            try {
+                                var sleepStart = new Date(devSensors.status_led.last_changed);
+                                var durMin = parseFloat(devSensors.sleep_duration.value);
+                                if (!isNaN(sleepStart.getTime()) && durMin > 0) {
+                                    var wakeAt = new Date(sleepStart.getTime() + durMin * 60000);
+                                    var now = new Date();
+                                    if (wakeAt > now) {
+                                        var diffMs = wakeAt - now;
+                                        var diffMin = Math.round(diffMs / 60000);
+                                        var timeStr = wakeAt.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+                                        if (diffMin < 1) {
+                                            sleepLabel = '😴 Waking soon';
+                                        } else if (diffMin <= 60) {
+                                            sleepLabel = '😴 Wake in ' + diffMin + ' min';
+                                        } else {
+                                            sleepLabel = '😴 Wake at ' + timeStr;
+                                        }
+                                    } else {
+                                        sleepLabel = '😴 Waking soon';
+                                    }
+                                }
+                            } catch(e) {}
+                        }
                         html += '<span style="font-weight:600;color:' + (isAwake ? 'var(--color-success)' : 'var(--text-muted)') + ';">' +
-                            (isAwake ? '☀️ Awake' : '😴 Sleeping') + '</span>';
+                            (isAwake ? '☀️ Awake' : sleepLabel) + '</span>';
                         // Show schedule prep state if timeline has data for this probe
                         var probePrep = (timelineData.probe_prep || {})[pid];
                         if (probePrep && probePrep.state !== 'idle') {
@@ -3711,7 +3736,7 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;font-size:13px;"><strong>Combined watering factor</strong> = Weather Multiplier &times; Moisture Multiplier. This combined factor is applied per-zone to run durations. Only zones with mapped probes are affected by moisture &mdash; unmapped zones use weather-only.</p>
 
 <p style="margin-bottom:10px;">The moisture card also shows:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, solar charging state, and sleep duration are shown below the moisture readings when available (auto-detected from the Gophr device)</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, solar charging state, sleep duration, and estimated next wake time are shown below the moisture readings when available (auto-detected from the Gophr device). When sleeping, the badge shows "Wake in X min" or "Wake at HH:MM" based on when the probe fell asleep plus the sleep duration.</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. The algorithm integrates weather forecast data for rain detection — if the shallow sensor shows a wetting front and rain is forecasted, watering is automatically reduced or skipped. Gophr devices sleep between readings — while the device is asleep, the system uses the last known good sensor values so the moisture multiplier stays active. If the cached readings become older than the Stale Reading Threshold, they are treated as stale and the multiplier reverts to neutral (1.0x).</div>
 
 <p style="margin-bottom:6px;font-weight:600;font-size:13px;">Probe-Aware Irrigation (Schedule Timeline)</p>

@@ -2026,13 +2026,18 @@ async def apply_adjusted_durations() -> dict:
         data = _load_data()  # Reload after capture
         base_durations = data.get("base_durations", {})
 
-    # Check if any zones are currently running — skip if so
+    # Check if any zones are currently running — defer if so
+    global _deferred_factor_apply
     zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
     running = [z for z in zones if z.get("state") in ("on", "open")]
     if running:
+        _deferred_factor_apply = True
+        print(f"[MOISTURE] {len(running)} zone(s) running — deferring factor re-application "
+              f"until all zones stop")
         return {
             "success": False,
-            "reason": f"{len(running)} zone(s) currently running. Wait for them to finish.",
+            "deferred": True,
+            "reason": f"{len(running)} zone(s) currently running. Factors will be applied when all zones stop.",
         }
 
     sensor_states = await _get_probe_sensor_states(data.get("probes", {}))
@@ -2155,6 +2160,9 @@ async def apply_adjusted_durations() -> dict:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     _save_data(data)
+
+    # Clear deferred flag — we just successfully applied factors
+    _deferred_factor_apply = False
 
     result = {
         "success": applied_count > 0,
@@ -2896,6 +2904,26 @@ async def api_get_probes():
             awake = await _check_probe_awake(probe_id)
         else:
             awake = _probe_awake_cache[probe_id]
+
+        # Add status_led data to device_sensors for next-wake calculation.
+        # The UI uses last_changed (when the LED flipped OFF = fell asleep)
+        # plus sleep_duration to project the next wake time.
+        if status_led_eid:
+            # Find the raw HA state object for last_changed
+            led_ha_state = None
+            for s in all_states:
+                if s.get("entity_id") == status_led_eid:
+                    led_ha_state = s
+                    break
+            led_entry = {
+                "entity_id": status_led_eid,
+                "value": live_raw_states.get(status_led_eid, "unknown"),
+                "friendly_name": (led_ha_state or {}).get("attributes", {}).get("friendly_name", status_led_eid),
+            }
+            if led_ha_state:
+                led_entry["last_changed"] = led_ha_state.get("last_changed", "")
+                led_entry["last_updated"] = led_ha_state.get("last_updated", "")
+            device_sensors["status_led"] = led_entry
 
         enriched[probe_id] = {
             **probe,
@@ -3769,6 +3797,11 @@ _active_moisture_monitors: dict[str, asyncio.Task] = {}
 # Track original sleep durations for restoration after last mapped zone
 _original_sleep_durations: dict[str, int] = {}  # probe_id -> original minutes
 
+# Deferred factor re-application: set when apply_adjusted_durations() is blocked
+# by running zones.  When the last zone turns off, on_zone_state_change() picks
+# this up and re-applies.
+_deferred_factor_apply: bool = False
+
 
 async def sync_schedule_times_to_probes() -> dict:
     """Sync irrigation controller start times to Gophr schedule_time entities.
@@ -4195,6 +4228,26 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
                     await set_probe_sleep_disabled(probe_id, False)
                     print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
                           f"{probe_id}")
+
+    # Deferred factor re-application: if apply_adjusted_durations() was blocked
+    # by running zones (e.g. weather factor changed mid-run), check whether
+    # ALL zones are now off after this zone-off event and re-apply.
+    if is_off and _deferred_factor_apply:
+        try:
+            config = get_config()
+            all_zones = await ha_client.get_entities_by_ids(
+                config.allowed_zone_entities
+            )
+            still_running = [
+                z for z in all_zones
+                if z.get("state") in ("on", "open")
+            ]
+            if not still_running:
+                print("[MOISTURE] All zones stopped — applying deferred "
+                      "factor re-evaluation")
+                await apply_adjusted_durations()
+        except Exception as e:
+            print(f"[MOISTURE] Deferred factor re-apply error: {e}")
 
 
 async def check_skip_factor_transition(entity_id: str, new_state: str, old_state: str) -> bool:

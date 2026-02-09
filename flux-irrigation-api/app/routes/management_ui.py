@@ -1619,7 +1619,7 @@ async function loadDetailData(id) {
     loadDetailWeather(id);
     loadDetailMoisture(id);
     loadDetailZones(id);
-    loadDetailSensors(id);
+    await loadDetailSensors(id);   // Must complete before loadDetailControls — sets _expansionSensors / _mgmtDetectedZoneCount
     loadDetailControls(id);
     loadDetailHistory(id);
     loadDetailIssues(id);
@@ -2174,8 +2174,33 @@ async function loadDetailMoisture(id) {
                     // Probe Awake/Sleeping status + schedule prep info
                     if (devSensors.sleep_duration) {
                         const isAwake = probe.is_awake === true;
+                        var sleepLabel = '😴 Sleeping';
+                        if (!isAwake && devSensors.status_led && devSensors.status_led.last_changed && devSensors.sleep_duration.value) {
+                            try {
+                                var sleepStart = new Date(devSensors.status_led.last_changed);
+                                var durMin = parseFloat(devSensors.sleep_duration.value);
+                                if (!isNaN(sleepStart.getTime()) && durMin > 0) {
+                                    var wakeAt = new Date(sleepStart.getTime() + durMin * 60000);
+                                    var now = new Date();
+                                    if (wakeAt > now) {
+                                        var diffMs = wakeAt - now;
+                                        var diffMin = Math.round(diffMs / 60000);
+                                        var timeStr = wakeAt.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+                                        if (diffMin < 1) {
+                                            sleepLabel = '😴 Waking soon';
+                                        } else if (diffMin <= 60) {
+                                            sleepLabel = '😴 Wake in ' + diffMin + ' min';
+                                        } else {
+                                            sleepLabel = '😴 Wake at ' + timeStr;
+                                        }
+                                    } else {
+                                        sleepLabel = '😴 Waking soon';
+                                    }
+                                }
+                            } catch(e) {}
+                        }
                         html += '<span style="font-weight:600;color:' + (isAwake ? 'var(--color-success)' : 'var(--text-muted)') + ';">' +
-                            (isAwake ? '☀️ Awake' : '😴 Sleeping') + '</span>';
+                            (isAwake ? '☀️ Awake' : sleepLabel) + '</span>';
                         // Show schedule prep state if timeline has data for this probe
                         var probePrep = (timelineData.probe_prep || {})[pid];
                         if (probePrep && probePrep.state !== 'idle') {
@@ -4422,7 +4447,7 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Mid sensor (root zone)</strong> — PRIMARY decision driver for watering needs</li>
 <li style="margin-bottom:4px;"><strong>Shallow sensor</strong> — Rain detection: wet surface + rain forecast = recent rainfall, reduces/skips watering</li>
 <li style="margin-bottom:4px;"><strong>Deep sensor</strong> — Over-irrigation guard: saturated deep soil triggers reduction</li>
-<li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery level, solar charging state, and sleep duration are shown below the moisture bars when available</li>
+<li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery level, solar charging state, sleep duration, and estimated next wake time are shown below the moisture bars when available. When sleeping, the badge shows "Wake in X min" or "Wake at HH:MM".</li>
 <li style="margin-bottom:4px;"><strong>Zone assignment</strong> — Click "Edit Zones" on a probe card to assign or reassign zones to the probe</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease, and rain detection sensitivity</li>
 </ul>
