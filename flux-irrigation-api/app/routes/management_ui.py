@@ -3944,7 +3944,7 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Zone assignment</strong> — Click "Edit Zones" on a probe card to assign or reassign zones to the probe</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease, and rain detection sensitivity</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Probe device selection and sensor mapping are configured from the homeowner's Configuration page. The management dashboard controls settings, thresholds, zone assignments, and duration adjustments. Because Gophr probes sleep between readings, stale values are shown with a ⏳ indicator until the device wakes and reports new data.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Probe device selection and sensor mapping are configured from the homeowner's Configuration page. The management dashboard controls settings, thresholds, zone assignments, and duration adjustments. Gophr devices sleep between readings — while asleep, the system uses the last known good sensor values so the moisture multiplier stays active. If cached readings become older than the Stale Reading Threshold, they are treated as stale and the multiplier reverts to neutral (1.0x).</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>
 <p style="margin-bottom:10px;">If the customer's irrigation controller has a rain sensor connected, a dedicated Rain Sensor card appears in the detail view showing:</p>
