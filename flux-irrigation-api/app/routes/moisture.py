@@ -552,6 +552,9 @@ async def calculate_irrigation_timeline() -> dict:
     data = _load_data()
     probes = data.get("probes", {})
 
+    print(f"[MOISTURE] Timeline calc: {len(probes)} probe(s), "
+          f"{len(config.allowed_control_entities)} control entities")
+
     # 1. Find start time entities
     start_time_eids = [
         eid for eid in config.allowed_control_entities
@@ -561,6 +564,15 @@ async def calculate_irrigation_timeline() -> dict:
         key=lambda e: int(m.group(1))
         if (m := re.search(r'(\d+)', e.split("start_time")[-1])) else 99
     )
+
+    if not start_time_eids:
+        # Debug: show all text.* entities to understand what's available
+        text_eids = [e for e in config.allowed_control_entities if e.startswith("text.")]
+        print(f"[MOISTURE] Timeline: NO start_time entities found! "
+              f"text.* entities in controls: {text_eids}")
+    else:
+        print(f"[MOISTURE] Timeline: found {len(start_time_eids)} start_time entities: "
+              f"{start_time_eids}")
 
     # 2. Fetch start time values
     start_times = []
@@ -579,10 +591,15 @@ async def calculate_irrigation_timeline() -> dict:
                         "start_minutes": mins,
                     })
                 except (ValueError, IndexError):
-                    pass
+                    print(f"[MOISTURE] Timeline: could not parse start time '{val}' for {eid}")
+            else:
+                print(f"[MOISTURE] Timeline: start time entity {eid} has no value (state='{val}')")
+
+    print(f"[MOISTURE] Timeline: {len(start_times)} valid start time(s)")
 
     # 3. Get ordered enabled zones (with durations)
     ordered_zones = await _get_ordered_enabled_zones()
+    print(f"[MOISTURE] Timeline: {len(ordered_zones)} enabled zone(s)")
 
     # 4. Build zone-to-probes mapping
     zone_probe_map = {}  # zone_entity_id -> [probe_id, ...]
@@ -626,7 +643,9 @@ async def calculate_irrigation_timeline() -> dict:
     for pid, probe in probes.items():
         mapped_zones = set(probe.get("zone_mappings", []))
         if not mapped_zones:
+            print(f"[MOISTURE] Timeline: probe {pid} has no zone_mappings, skipping")
             continue
+        print(f"[MOISTURE] Timeline: probe {pid} mapped to {len(mapped_zones)} zone(s): {mapped_zones}")
 
         # Read current sleep duration from sensor (or use cached/default)
         extra = probe.get("extra_sensors") or {}

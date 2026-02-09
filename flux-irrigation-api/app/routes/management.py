@@ -848,6 +848,41 @@ async def sync_customer_probe_schedules(customer_id: str):
     return data
 
 
+@router.get(
+    "/api/customers/{customer_id}/moisture/schedule-timeline",
+    summary="Get customer schedule timeline",
+)
+async def get_customer_schedule_timeline(customer_id: str):
+    """Return the calculated irrigation schedule timeline for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/moisture/schedule-timeline",
+    )
+    if status_code != 200:
+        return {"success": False, "schedules": [], "probe_prep": {}}
+    return data
+
+
+@router.post(
+    "/api/customers/{customer_id}/moisture/schedule-timeline/recalculate",
+    summary="Force recalculate customer schedule timeline",
+)
+async def recalculate_customer_schedule_timeline(customer_id: str):
+    """Force a recalculation of the irrigation schedule timeline for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", "/admin/api/homeowner/moisture/schedule-timeline/recalculate",
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to recalculate timeline"}
+    return data
+
+
 @router.put(
     "/api/customers/{customer_id}/moisture/probes/{probe_id}/sleep-duration",
     summary="Set probe sleep duration",
