@@ -2062,10 +2062,6 @@ async function loadDetailMoisture(id) {
     const card = document.getElementById('detailMoistureCard');
     const body = document.getElementById('detailMoistureBody');
     const badge = document.getElementById('detailMoistureBadge');
-    // Skip rebuild if user is actively editing an input inside the moisture card
-    if (body && body.contains(document.activeElement) && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
-        return;
-    }
     try {
         const data = await api('/customers/' + id + '/moisture/probes');
         const settings = await api('/customers/' + id + '/moisture/settings');
