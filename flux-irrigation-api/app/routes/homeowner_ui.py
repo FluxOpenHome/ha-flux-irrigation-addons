@@ -2631,7 +2631,10 @@ async function loadMoisture() {
                         probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-tile);color:var(--text-muted);border:1px solid var(--border-light);">Z' + pzNum + ' ' + mmVal + 'x</span>';
                     }
                 }
-                html += '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-weight:600;font-size:13px;margin-bottom:10px;">' + esc(probe.display_name || pid) + probeSkipBadges + '</div>';
+                html += '<div style="font-weight:600;font-size:13px;margin-bottom:' + (probeSkipBadges ? '2' : '10') + 'px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(probe.display_name || pid) + '</div>';
+                if (probeSkipBadges) {
+                    html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">' + probeSkipBadges + '</div>';
+                }
 
                 // Depth readings as horizontal bars
                 for (const depth of ['shallow', 'mid', 'deep']) {

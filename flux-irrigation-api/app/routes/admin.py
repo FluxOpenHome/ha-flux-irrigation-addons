@@ -778,7 +778,7 @@ async def admin_geocode(q: str = Query(..., min_length=3, description="Address t
             resp = await client.get(
                 "https://nominatim.openstreetmap.org/search",
                 params={"format": "json", "limit": "1", "q": q},
-                headers={"User-Agent": "FluxIrrigationAPI/1.1.8"},
+                headers={"User-Agent": "FluxIrrigationAPI/1.1.11"},
             )
             resp.raise_for_status()
             results = resp.json()
