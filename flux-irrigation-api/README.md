@@ -203,6 +203,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - ▶ **Auto Advance** — Toggle at the top of the zone card. To manually run zones with auto advance: start the first zone (timed), then enable Auto Advance — each zone will automatically advance to the next enabled zone when its timer expires
 - ⏸️ **System pause/resume** — Emergency pause that stops all active zones and suspends ESPHome schedule programs
 - 🌙 **Dark mode** — Toggle between light and dark themes; preference is saved per-device and applied instantly
+- 📄 **PDF System Report** — Generate a comprehensive, professionally branded PDF report covering your entire system: status, zones, zone head/nozzle details, schedule, weather settings & active adjustments, moisture probes, sensors, estimated water usage (gallons), and run history. Select a time range (24h, 7d, 30d, 90d, or 1yr) for history and usage data. Branded with Flux Open Home and Gophr logos
 - ❓ **In-app help** — Button on every page opens a condensed, page-specific help modal covering the features and controls visible on that screen. For the complete documentation, see this README
 
 ### Management
@@ -224,6 +225,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - 📍 **Clickable Addresses** — Click any property address on cards or detail views to open it in Apple Maps or Google Maps for easy navigation to the property
 - 📅 **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
 - 📚 **Run history and CSV export** — View and export zone run history and weather logs for each property
+- 📄 **PDF System Report** — Generate a branded PDF system report for any customer property: system status, zones with head details, schedule, weather, moisture, sensors, estimated gallons, and run history with selectable time range (24h–1yr)
 - 📖 **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration
 - 🌙 **Dark mode** — Toggle between light and dark themes; preference is saved per-device independently from the homeowner dashboard
 - ❓ **In-app help** — Button opens a condensed help modal covering all management features on that page. For full documentation and setup guides, see this README
@@ -240,6 +242,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - ⏰ **Probe-aware irrigation (Schedule Timeline)** — The system calculates when each zone will run based on schedule start times and zone durations, then automatically reprograms probe sleep duration so the probe wakes ~10 minutes before its mapped zone. On wake, if the soil is saturated the zone is skipped (disabled before it starts) and the system advances to the next zone. If not saturated, sleep is disabled to keep the probe awake for continuous mid-run monitoring. After the last mapped zone finishes, the original sleep duration is restored and any skipped zones are re-enabled. The timeline recalculates automatically when schedule start times, zone durations, zone enable states, or probe mappings change. Uses factored durations when "Apply Factors to Schedule" is active.
 - 📋 **Configuration change log** — Every configuration change is logged with old → new values, who made the change, when, and what category; rolling 1000-entry buffer with CSV export; available on all dashboards
 - ☀️ **Weather event logging** — All weather rule evaluations and actions are logged with CSV export and clearing from both dashboards
+- 📄 **PDF system reports** — Server-side PDF generation using fpdf2 (pure Python, zero system dependencies); produces a professional, branded report with cover page, section headers, alternating-row tables, and page numbering; works on all architectures (amd64, aarch64, armv7)
 - 🌙 **Dark mode** — All pages (homeowner dashboard, configuration, management dashboard) support dark mode with a 🌙/☀️ toggle; preferences are saved per-device in localStorage
 - ❓ **In-app help** — Every page has a ❓ help button that opens a condensed, page-specific help modal. The in-app help covers only the features and controls on the current page, while this README serves as the full reference documentation with setup guides, integration details, and architecture information
 

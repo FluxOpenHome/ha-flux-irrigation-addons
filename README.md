@@ -8,7 +8,7 @@ Custom Home Assistant add-on repository for [Flux Open Home](https://www.fluxope
 
 ### Flux Irrigation Management API
 
-A secure, scoped REST API that lets irrigation management companies monitor and control your Flux Open Home irrigation system — without accessing any other devices in your Home Assistant. Includes a homeowner dashboard, weather-based smart irrigation control, and a management company dashboard for multi-property oversight.
+A secure, scoped REST API that lets irrigation management companies monitor and control your Flux Open Home irrigation system — without accessing any other devices in your Home Assistant. Includes a homeowner dashboard, weather-based smart irrigation control, a management company dashboard for multi-property oversight, and PDF system report generation.
 
 ## Installation
 

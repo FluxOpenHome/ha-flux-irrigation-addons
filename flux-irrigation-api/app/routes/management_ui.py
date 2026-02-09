@@ -1573,7 +1573,7 @@ async function refreshDetail() {
 function mgmtGenerateReport() {
     if (!currentCustomerId) { showToast('Select a customer first', 'error'); return; }
     var hours = document.getElementById('mgmtReportHours').value || '720';
-    window.open('/admin/api/customers/' + currentCustomerId + '/report/pdf?hours=' + hours + '&t=' + Date.now(), '_blank');
+    window.open(BASE + '/customers/' + currentCustomerId + '/report/pdf?hours=' + hours + '&t=' + Date.now(), '_blank');
 }
 
 // --- Location Map ---
@@ -4685,6 +4685,12 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>CSV Export</strong> — Download the run history as a spreadsheet (includes probe sensor readings and profile columns)</li>
 <li style="margin-bottom:4px;"><strong>Clear History</strong> — Remove old entries (this cannot be undone)</li>
 </ul>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">PDF System Report</h4>
+<p style="margin-bottom:10px;">Click the <strong>PDF Report</strong> button in the property detail header to generate a comprehensive, professionally branded PDF document for the selected customer&rsquo;s system. The report includes:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>System Status</strong> &mdash; Online/offline, paused/active, weather multiplier, moisture status</li><li style="margin-bottom:4px;"><strong>Active Issues</strong> &mdash; Reported issues with severity, description, and current status</li><li style="margin-bottom:4px;"><strong>Zones Overview</strong> &mdash; All zones with name, state, GPM, and head count</li><li style="margin-bottom:4px;"><strong>Zone Head Details</strong> &mdash; Sprinkler head inventory per zone (type, brand, model, GPM, arc, radius, PSI)</li><li style="margin-bottom:4px;"><strong>Weather Settings</strong> &mdash; Current conditions, multiplier, and active adjustment rules</li><li style="margin-bottom:4px;"><strong>Moisture Probes</strong> &mdash; Probe configuration, mapped zones, and thresholds</li><li style="margin-bottom:4px;"><strong>Sensors</strong> &mdash; All sensor readings with values and units</li><li style="margin-bottom:4px;"><strong>Estimated Water Usage</strong> &mdash; Total gallons and per-zone breakdown for the selected time range</li><li style="margin-bottom:4px;"><strong>Run History</strong> &mdash; Recent zone run events with durations and sources</li></ul>
+<p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> next to the button to select the history period: 24 Hours, 7 Days, 30 Days (default), 90 Days, or 1 Year. The PDF opens in a new tab for viewing or downloading.</p>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The report is generated server-side and includes all data from the customer&rsquo;s system. Branded with Flux Open Home and Gophr logos &mdash; ideal for customer reports, service documentation, or property records.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Notes &amp; Zone Aliases</h4>
 <p style="margin-bottom:10px;">Customize how properties and zones appear in your dashboard:</p>
