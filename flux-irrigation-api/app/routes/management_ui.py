@@ -3911,7 +3911,7 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a specific zone</li>
 <li style="margin-bottom:4px;"><strong>🛑 Stop All Zones</strong> — Emergency stop for all zones at once</li>
 <li style="margin-bottom:4px;"><strong>⏸ Pause / ▶ Resume</strong> — Pause or resume the entire irrigation system</li>
-<li style="margin-bottom:4px;"><strong>Auto Advance</strong> — Toggle in the zone card header. When enabled, manually running zones will automatically advance to the next zone when the current one finishes its timed run</li>
+<li style="margin-bottom:4px;"><strong>Auto Advance</strong> — Toggle at the top of the zone card. To run all enabled zones sequentially: start the first zone with a timed run, then click Auto Advance to enable it. Each zone will automatically advance to the next enabled zone when its timer expires. Turn Auto Advance off at any time to stop the sequence after the current zone finishes.</li>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 When the system is paused, any zone that turns on (even from an ESPHome schedule) will be immediately shut off. If expansion boards are detected, only the physically connected zones are shown — extra pre-created entities are automatically hidden.</div>
 

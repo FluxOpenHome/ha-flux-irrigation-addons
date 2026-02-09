@@ -181,7 +181,7 @@ The management dashboard automatically checks connectivity to all properties eve
 
 ### Homeowner
 
-- **Homeowner Dashboard** — Full local control with zone start/stop (timed or manual), sensor monitoring, schedule management, run history, and weather conditions
+- **Homeowner Dashboard** — Full local control with zone start/stop (timed or manual), auto advance, sensor monitoring, schedule management, run history, and weather conditions
 - **Weather-Based Control** — 9 configurable weather rules that automatically pause, reduce, or increase irrigation based on real-time conditions and forecasts
 - **Connection keys** — Simple encoded key shares the API URL and credentials for easy setup (send via copy, email, or QR code)
 - **Connection key regeneration lock** — The Generate button is locked when an active key exists, requiring an explicit unlock to prevent accidental invalidation
@@ -195,6 +195,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Issue Reporting** — Report issues to your management company with three severity levels (Clarification, Annoyance, Severe Issue); track issue status (Submitted, Acknowledged, Service Scheduled) and see management notes
 - **Upcoming Service** — When your management company schedules a service visit, a green banner appears at the top of the dashboard showing the date and any notes from management; tap the banner to add the appointment directly to your device's calendar app
 - **Clickable Address** — Tap your property address to open it in Apple Maps (iOS/Mac) or Google Maps (Android/other) for directions
+- **Auto Advance** — Toggle at the top of the zone card. To manually run zones with auto advance: start the first zone (timed), then enable Auto Advance — each zone will automatically advance to the next enabled zone when its timer expires
 - **System pause/resume** — Emergency pause that stops all active zones and suspends ESPHome schedule programs
 - **Dark mode** — Toggle between light and dark themes; preference is saved per-device and applied instantly
 - **In-app help** — ❓ button on every page opens a scrollable help modal explaining all features and controls for that screen
@@ -208,7 +209,7 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Customer notes** — Add and edit notes on property cards
 - **Live contact sync** — Homeowner name, phone, and address are synced automatically on every health check, even if added after the connection key was generated
 - **Customer local time** — Property detail view shows the customer's local time and timezone abbreviation (e.g., "2:30 PM EST"), derived from the customer's state address
-- **Remote zone control** — Start, stop, and emergency-stop zones on any connected property
+- **Remote zone control** — Start, stop, and emergency-stop zones on any connected property; Auto Advance toggle at the top of the zone card lets you start the first zone and have it automatically advance through all enabled zones
 - **Remote weather management** — View and configure weather rules on customer systems
 - **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data with device status (WiFi, battery, sleep), assign zones to probes, and manage duration adjustments on customer systems
 - **Remote rain sensor management** — View and control rain sensor settings (enable/disable, sensor type, rain delay) on customer systems

@@ -2631,38 +2631,6 @@ async function loadMoisture() {
             html += '<div style="text-align:center;padding:16px;color:var(--text-muted);">No moisture probes configured. Click <strong>Manage Probes</strong> below to discover and add probes.</div>';
         }
 
-        // Zone multiplier summary
-        if (probeCount > 0 && settings.enabled) {
-            try {
-                var zoneList = await api('/zones');
-                if (zoneList && zoneList.length > 0) {
-                    // Filter by detected zone count (expansion board limit)
-                    var maxZn = window._detectedZoneCount || 0;
-                    if (maxZn > 0) {
-                        zoneList = zoneList.filter(function(z) {
-                            var zm = z.entity_id.match(/zone[_]?(\\d+)/i);
-                            return zm ? parseInt(zm[1]) <= maxZn : true;
-                        });
-                    }
-                    html += '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Zone Multipliers</div>';
-                    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
-                    for (const zone of zoneList) {
-                        try {
-                            const mult = await mapi('/zones/' + encodeURIComponent(zone.entity_id) + '/multiplier', 'POST');
-                            const m = mult.combined_multiplier != null ? mult.combined_multiplier : 1.0;
-                            const mColor = m === 0 ? 'var(--color-danger)' : m < 1 ? 'var(--text-warning)' : m > 1 ? 'var(--text-danger-dark)' : 'var(--text-success-dark)';
-                            const mBg = m === 0 ? 'var(--bg-danger-light)' : m < 1 ? 'var(--bg-warning)' : m > 1 ? 'var(--bg-danger-light)' : 'var(--bg-success-light)';
-                            const label = mult.moisture_skip ? 'SKIP' : m.toFixed(2) + 'x';
-                            const alias = getZoneDisplayName(zone);
-                            html += '<div style="background:' + mBg + ';color:' + mColor + ';padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;">';
-                            html += esc(alias) + ': ' + label + '</div>';
-                        } catch (e) { /* skip zone */ }
-                    }
-                    html += '</div></div>';
-                }
-            } catch (e) { /* no zones */ }
-        }
-
         // Expandable sections
         // Settings
         html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:12px;">';
@@ -3132,7 +3100,7 @@ const HELP_CONTENT = `
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Zone Control</h4>
 <p style="margin-bottom:10px;">Each zone tile shows the current state (running or off). Zones are displayed as "Zone 1", "Zone 2", etc. by default — use aliases to give them friendly names. You can:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Start</strong> — Turn a zone on immediately with no time limit</li><li style="margin-bottom:4px;"><strong>Timed Start</strong> — Enter a duration in minutes and click <strong>Timed</strong> to run the zone for a set period, then auto-shutoff</li><li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a running zone immediately</li><li style="margin-bottom:4px;"><strong>Emergency Stop All</strong> — Instantly stops every active zone on the system</li><li style="margin-bottom:4px;"><strong>Auto Advance</strong> — Toggle in the zone card header. When enabled, manually running zones will automatically advance to the next zone when the current one finishes its timed run</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Start</strong> — Turn a zone on immediately with no time limit</li><li style="margin-bottom:4px;"><strong>Timed Start</strong> — Enter a duration in minutes and click <strong>Timed</strong> to run the zone for a set period, then auto-shutoff</li><li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a running zone immediately</li><li style="margin-bottom:4px;"><strong>Emergency Stop All</strong> — Instantly stops every active zone on the system</li><li style="margin-bottom:4px;"><strong>Auto Advance</strong> — Toggle at the top of the zone card. To run all enabled zones sequentially: start the first zone with a timed run, then click Auto Advance to enable it. Each zone will automatically advance to the next enabled zone when its timer expires. Turn Auto Advance off at any time to stop the sequence after the current zone finishes.</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Green-highlighted tiles indicate zones that are currently running. If your controller has expansion boards, only the physically connected zones are shown — extra pre-created entities are automatically hidden.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>
@@ -3157,7 +3125,7 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">When Gophr moisture probes are connected to Home Assistant, the moisture card shows live soil moisture readings at three depths (shallow, mid, deep). The algorithm uses a <strong>gradient-based approach</strong> that treats each depth as a distinct signal:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Mid sensor (root zone)</strong> — The PRIMARY decision driver. This is where grass roots live and is the most important reading for determining watering needs.</li><li style="margin-bottom:4px;"><strong>Shallow sensor (surface)</strong> — Used for rain detection. If the surface is significantly wetter than the root zone and rain is forecasted, the system infers recent rainfall and reduces or skips watering.</li><li style="margin-bottom:4px;"><strong>Deep sensor (reserve)</strong> — Guards against over-irrigation. If deep soil is saturated while the root zone looks normal, it suggests water is pooling below and watering is reduced.</li></ul>
 <p style="margin-bottom:10px;">The moisture card also shows:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, and sleep duration are shown below the moisture readings when available (auto-detected from the Gophr device)</li><li style="margin-bottom:4px;"><strong>Zone multipliers</strong> — Combined weather &times; moisture multiplier for each mapped zone</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, and sleep duration are shown below the moisture readings when available (auto-detected from the Gophr device)</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. The algorithm integrates weather forecast data for rain detection — if the shallow sensor shows a wetting front and rain is forecasted, watering is automatically reduced or skipped.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
