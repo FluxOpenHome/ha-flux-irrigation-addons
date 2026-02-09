@@ -2581,9 +2581,9 @@ async function loadMoisture() {
                     html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-muted);">';
                     if (devSensors.wifi) {
                         const wv = devSensors.wifi.value;
-                        const wIcon = wv == null ? '📶' : wv > -50 ? '📶' : wv > -70 ? '📶' : '📶';
-                        const wColor = wv == null ? 'var(--text-muted)' : wv > -50 ? 'var(--text-success-dark)' : wv > -70 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
-                        html += '<span style="color:' + wColor + ';" title="WiFi Signal">' + wIcon + ' ' + (wv != null ? wv.toFixed(0) + ' ' + esc(devSensors.wifi.unit) : '—') + '</span>';
+                        const wLabel = wv == null ? '—' : wv > -50 ? 'Great' : wv > -60 ? 'Good' : wv > -70 ? 'Fair' : 'Poor';
+                        const wColor = wv == null ? 'var(--text-muted)' : wv > -50 ? 'var(--text-success-dark)' : wv > -60 ? 'var(--text-success-dark)' : wv > -70 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+                        html += '<span style="color:' + wColor + ';" title="WiFi Signal: ' + (wv != null ? wv.toFixed(0) + ' dBm' : 'unknown') + '">📶 ' + wLabel + '</span>';
                     }
                     if (devSensors.battery) {
                         const bv = devSensors.battery.value;
