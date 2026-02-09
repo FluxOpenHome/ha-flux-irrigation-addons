@@ -1651,10 +1651,10 @@ async function mgmtShowReportSettingsModal() {
     html += '<input type="text" id="rptCustomFooter" value="' + esc(rs.custom_footer || '') + '" placeholder="Powered by Flux Open Home &amp; Gophr" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:13px;box-sizing:border-box;">';
     html += '</div>';
     html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">';
-    html += '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>';
+    html += '<button class="btn btn-secondary" onclick="closeMgmtDynamicModal()">Cancel</button>';
     html += '<button class="btn btn-primary" onclick="mgmtSaveReportSettings()">Save Settings</button>';
     html += '</div></div>';
-    showModal('Report Settings', html);
+    mgmtShowModal('Report Settings', html, '520px');
 }
 
 function mgmtPreviewReportLogo(input) {
@@ -1741,7 +1741,7 @@ async function mgmtSaveReportSettings() {
             body: JSON.stringify(payload)
         });
         showToast('Report settings saved');
-        closeDynamicModal();
+        closeMgmtDynamicModal();
     } catch (e) {
         showToast(e.message, 'error');
     }
