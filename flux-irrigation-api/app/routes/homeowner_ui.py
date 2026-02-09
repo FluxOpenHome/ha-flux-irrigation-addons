@@ -2609,7 +2609,7 @@ async function loadMoisture() {
 
         // Probe tiles
         if (probeCount > 0) {
-            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">';
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
             for (const [pid, probe] of Object.entries(probes)) {
                 const sensors = probe.sensors_live || {};
                 const devSensors = probe.device_sensors || {};
