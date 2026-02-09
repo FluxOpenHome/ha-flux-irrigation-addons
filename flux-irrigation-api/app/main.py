@@ -79,6 +79,100 @@ async def _check_rest_command_service(config):
         print(f"[MAIN] Could not check rest_command service: {e}")
 
 
+def _ensure_packages_include():
+    """Ensure configuration.yaml includes the packages directory.
+
+    Checks for 'homeassistant:' with 'packages: !include_dir_named packages'
+    and adds it if missing. This eliminates the manual setup step for users.
+    """
+    config_file = "/config/configuration.yaml"
+    if not os.path.exists(config_file):
+        print("[MAIN] WARNING: /config/configuration.yaml not found — cannot auto-configure packages include")
+        return
+
+    try:
+        with open(config_file, "r") as f:
+            content = f.read()
+        lines = content.split("\n")
+
+        # Check if packages include already exists correctly (indented under homeassistant:)
+        has_correct_include = False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped == "packages: !include_dir_named packages":
+                # Check if it's indented (i.e. under homeassistant:)
+                if line.startswith(" ") or line.startswith("\t"):
+                    has_correct_include = True
+                    break
+
+        if has_correct_include:
+            print("[MAIN] ✓ configuration.yaml already has packages include")
+            return
+
+        # Check if 'packages:' exists at the wrong indentation (top-level)
+        has_toplevel_packages = False
+        toplevel_packages_idx = -1
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped == "packages: !include_dir_named packages" and not line.startswith(" ") and not line.startswith("\t"):
+                has_toplevel_packages = True
+                toplevel_packages_idx = i
+                break
+
+        # Find homeassistant: line
+        ha_line_idx = -1
+        for i, line in enumerate(lines):
+            if line.rstrip() == "homeassistant:" or line.strip() == "homeassistant:":
+                if not line.startswith(" ") and not line.startswith("\t"):
+                    ha_line_idx = i
+                    break
+
+        modified = False
+
+        if has_toplevel_packages and ha_line_idx >= 0:
+            # Fix: packages is at the top level but homeassistant: exists
+            # Remove the top-level packages line and add it indented under homeassistant:
+            lines.pop(toplevel_packages_idx)
+            # Recalculate ha_line_idx if it was after the removed line
+            if ha_line_idx > toplevel_packages_idx:
+                ha_line_idx -= 1
+            lines.insert(ha_line_idx + 1, "  packages: !include_dir_named packages")
+            modified = True
+            print("[MAIN] ✓ Fixed packages include — moved under homeassistant: with proper indentation")
+
+        elif has_toplevel_packages and ha_line_idx < 0:
+            # Fix: packages exists at top level but no homeassistant: section
+            # Replace the top-level packages line with both lines
+            lines[toplevel_packages_idx] = "homeassistant:\n  packages: !include_dir_named packages"
+            modified = True
+            print("[MAIN] ✓ Added homeassistant: section and indented packages include")
+
+        elif ha_line_idx >= 0:
+            # homeassistant: exists but no packages line at all — add it
+            lines.insert(ha_line_idx + 1, "  packages: !include_dir_named packages")
+            modified = True
+            print("[MAIN] ✓ Added packages include under existing homeassistant: section")
+
+        else:
+            # Neither exists — add both at the top of the file
+            lines.insert(0, "homeassistant:")
+            lines.insert(1, "  packages: !include_dir_named packages")
+            lines.insert(2, "")
+            modified = True
+            print("[MAIN] ✓ Added homeassistant: section with packages include to configuration.yaml")
+
+        if modified:
+            new_content = "\n".join(lines)
+            with open(config_file, "w") as f:
+                f.write(new_content)
+            print("[MAIN] IMPORTANT: Home Assistant must be restarted for packages to take effect")
+
+    except PermissionError as e:
+        print(f"[MAIN] ✗ PERMISSION ERROR reading/writing {config_file}: {e}")
+    except Exception as e:
+        print(f"[MAIN] ✗ Failed to update configuration.yaml: {type(e).__name__}: {e}")
+
+
 def _setup_rest_command_proxy():
     """
     Write a HA packages file that creates the rest_command.irrigation_proxy
@@ -423,6 +517,9 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     config = await async_initialize()
     print(f"[MAIN] Flux Open Home Irrigation Control starting in {config.mode.upper()} mode...")
+
+    # Ensure configuration.yaml has the packages include — eliminates manual setup step
+    _ensure_packages_include()
 
     # Always set up the rest_command proxy file — needed for Nabu Casa
     # connectivity regardless of current mode (user may switch modes later)
