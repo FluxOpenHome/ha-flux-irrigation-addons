@@ -3945,6 +3945,23 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Zone assignment</strong> — Click "Edit Zones" on a probe card to assign or reassign zones to the probe</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease, and rain detection sensitivity</li>
 </ul>
+
+<p style="margin-bottom:6px;font-weight:600;font-size:13px;">Moisture Multiplier Formula</p>
+<p style="margin-bottom:6px;font-size:13px;">The base multiplier is calculated from the <strong>mid (root zone)</strong> sensor reading against four configurable thresholds (defaults shown):</p>
+<table style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:8px;">
+<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 6px;">Root Zone Reading</th><th style="text-align:left;padding:4px 6px;">Multiplier</th><th style="text-align:left;padding:4px 6px;">Behavior</th></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">&ge; Skip (80%)</td><td style="padding:4px 6px;font-weight:600;color:var(--color-danger);">0.0x &mdash; Skip</td><td style="padding:4px 6px;">Soil saturated, no watering</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Wet (65%) &ndash; Skip (80%)</td><td style="padding:4px 6px;">0.50x &rarr; 0.0x</td><td style="padding:4px 6px;">Linear reduction as moisture increases</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Optimal (45%) &ndash; Wet (65%)</td><td style="padding:4px 6px;">1.0x &rarr; 0.50x</td><td style="padding:4px 6px;">Gradual reduction approaching wet</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Dry (30%) &ndash; Optimal (45%)</td><td style="padding:4px 6px;">1.25x &rarr; 1.0x</td><td style="padding:4px 6px;">Slight increase as soil dries</td></tr>
+<tr><td style="padding:4px 6px;">&lt; Dry (30%)</td><td style="padding:4px 6px;font-weight:600;color:var(--color-danger);">1.50x</td><td style="padding:4px 6px;">Critically dry, maximum increase</td></tr>
+</table>
+<p style="margin-bottom:6px;font-size:13px;"><strong>Adjustments applied after the base multiplier:</strong></p>
+<ul style="margin:4px 0 8px 20px;font-size:12px;">
+<li style="margin-bottom:3px;"><strong>Rain detection</strong> &mdash; If shallow is &ge; 15% wetter than mid and rain is forecast (&ge; 50%), multiplier is reduced by 40%. Moderate confidence (lower forecast) reduces by 20%. If root zone is near the wet threshold with high-confidence rain, watering is skipped entirely.</li>
+<li style="margin-bottom:3px;"><strong>Deep sensor guard</strong> &mdash; If deep &ge; Skip threshold, multiplier is capped at 0.50x. If deep is &gt; 15% wetter than mid, an additional 15% reduction is applied.</li>
+</ul>
+<p style="margin-bottom:10px;font-size:13px;"><strong>Combined watering factor</strong> = Weather Multiplier &times; Moisture Multiplier. This combined factor is applied to all zone run durations.</p>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Probe device selection and sensor mapping are configured from the homeowner's Configuration page. The management dashboard controls settings, thresholds, zone assignments, and duration adjustments. Gophr devices sleep between readings — while asleep, the system uses the last known good sensor values so the moisture multiplier stays active. If cached readings become older than the Stale Reading Threshold, they are treated as stale and the multiplier reverts to neutral (1.0x).</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>
