@@ -2918,12 +2918,49 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Req
     else:
         log_change(actor, "Moisture Probes", f"Updated probe: {display}")
 
-    # Recalculate schedule timeline immediately when zone mappings change
+    # When zone mappings change: recalculate timeline + re-apply durations
     if zone_mappings_changed:
         try:
             await calculate_irrigation_timeline()
         except Exception as e:
             print(f"[MOISTURE] Timeline recalc after zone mapping change failed: {e}")
+
+        # Re-apply adjusted durations so stale skip/factor badges clear immediately.
+        # If apply_factors is enabled, this recalculates everything from current mappings.
+        # If not enabled, clean up stale adjusted_durations entries for unmapped zones.
+        try:
+            if data.get("apply_factors_to_schedule"):
+                await apply_adjusted_durations()
+            else:
+                # Clear stale adjusted_durations entries for zones no longer mapped
+                # to ANY probe (not just this one — another probe may still map them)
+                all_mapped = set()
+                for p in data.get("probes", {}).values():
+                    for z in p.get("zone_mappings", []):
+                        all_mapped.add(z)
+                adj = data.get("adjusted_durations", {})
+                stale_keys = []
+                for dur_eid, adj_entry in adj.items():
+                    # Match duration entity to zone entity
+                    zm = re.search(r'zone[_]?(\d+)', dur_eid)
+                    if zm:
+                        zn = int(zm.group(1))
+                        # Check if any zone entity with this number is still mapped
+                        still_mapped = any(
+                            re.search(r'zone[_]?(\d+)', z) and
+                            int(re.search(r'zone[_]?(\d+)', z).group(1)) == zn
+                            for z in all_mapped
+                        )
+                        if not still_mapped:
+                            stale_keys.append(dur_eid)
+                if stale_keys:
+                    for k in stale_keys:
+                        del adj[k]
+                    data["adjusted_durations"] = adj
+                    _save_data(data)
+                    print(f"[MOISTURE] Cleared stale adjusted_durations for unmapped zones: {stale_keys}")
+        except Exception as e:
+            print(f"[MOISTURE] Duration re-apply after zone mapping change failed: {e}")
 
     return {"success": True, "probe": probe}
 
@@ -3006,12 +3043,42 @@ async def api_delete_probe(probe_id: str, request: Request):
     log_change(get_actor(request), "Moisture Probes",
                f"Removed probe: {display_name}")
 
-    # Recalculate schedule timeline immediately (removed probe's mappings are gone)
+    # Recalculate schedule timeline and re-apply durations (removed probe's mappings are gone)
     if had_mappings:
         try:
             await calculate_irrigation_timeline()
         except Exception as e:
             print(f"[MOISTURE] Timeline recalc after probe delete failed: {e}")
+        try:
+            if data.get("apply_factors_to_schedule"):
+                await apply_adjusted_durations()
+            else:
+                # Clear stale adjusted_durations entries for zones no longer mapped
+                all_mapped = set()
+                for p in data.get("probes", {}).values():
+                    for z in p.get("zone_mappings", []):
+                        all_mapped.add(z)
+                adj = data.get("adjusted_durations", {})
+                stale_keys = []
+                for dur_eid, adj_entry in adj.items():
+                    zm = re.search(r'zone[_]?(\d+)', dur_eid)
+                    if zm:
+                        zn = int(zm.group(1))
+                        still_mapped = any(
+                            re.search(r'zone[_]?(\d+)', z) and
+                            int(re.search(r'zone[_]?(\d+)', z).group(1)) == zn
+                            for z in all_mapped
+                        )
+                        if not still_mapped:
+                            stale_keys.append(dur_eid)
+                if stale_keys:
+                    for k in stale_keys:
+                        del adj[k]
+                    data["adjusted_durations"] = adj
+                    _save_data(data)
+                    print(f"[MOISTURE] Cleared stale adjusted_durations for unmapped zones: {stale_keys}")
+        except Exception as e:
+            print(f"[MOISTURE] Duration cleanup after probe delete failed: {e}")
 
     return {"success": True, "message": f"Probe '{probe_id}' removed"}
 
