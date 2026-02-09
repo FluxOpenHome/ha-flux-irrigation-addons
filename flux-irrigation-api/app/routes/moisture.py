@@ -83,11 +83,49 @@ def _save_sensor_cache():
         pass
 
 
+async def _find_status_led(probe_id: str, probe: dict) -> Optional[str]:
+    """Find the status LED entity for a probe by scanning the entity registry.
+
+    If the status_led key is missing from extra_sensors (e.g. probe was set up
+    before the feature was added), this function searches for a light.*status_led
+    entity belonging to the same device_id and persists the result.
+    """
+    device_id = probe.get("device_id")
+    if not device_id:
+        return None
+
+    try:
+        entity_registry = await ha_client.get_entity_registry()
+        for entity in entity_registry:
+            if entity.get("device_id") != device_id:
+                continue
+            if entity.get("disabled_by"):
+                continue
+            eid = entity.get("entity_id", "")
+            if eid.startswith("light.") and "status_led" in eid.lower():
+                # Found it — persist so we don't scan every time
+                data = _load_data()
+                p = data.get("probes", {}).get(probe_id)
+                if p:
+                    extra = p.get("extra_sensors") or {}
+                    extra["status_led"] = eid
+                    p["extra_sensors"] = extra
+                    _save_data(data)
+                    print(f"[MOISTURE] Auto-discovered status_led for {probe_id}: {eid}")
+                return eid
+    except Exception as e:
+        print(f"[MOISTURE] Error scanning for status_led: {e}")
+    return None
+
+
 async def _check_probe_awake(probe_id: str) -> bool:
     """Determine if a Gophr probe is awake by reading its status LED entity.
 
     The Gophr device exposes a light.*_status_led entity.
     ON = awake, OFF = sleeping.  Result is cached in _probe_awake_cache.
+
+    If the status_led entity isn't in extra_sensors yet, auto-discovers it
+    by scanning the entity registry for the probe's device_id.
     """
     data = _load_data()
     probe = data.get("probes", {}).get(probe_id)
@@ -96,9 +134,11 @@ async def _check_probe_awake(probe_id: str) -> bool:
 
     status_led_eid = (probe.get("extra_sensors") or {}).get("status_led")
     if not status_led_eid:
-        # No status LED entity — assume awake (can't determine)
-        print(f"[MOISTURE] _check_probe_awake({probe_id}): no status_led entity, assuming awake")
-        return True
+        # Try to auto-discover from entity registry
+        status_led_eid = await _find_status_led(probe_id, probe)
+        if not status_led_eid:
+            # No status LED entity found — assume awake (can't determine)
+            return True
 
     state = await ha_client.get_entity_state(status_led_eid)
     if not state:
@@ -129,9 +169,6 @@ async def _awake_poll_loop():
                 continue
             probes = data.get("probes", {})
             for probe_id, probe in probes.items():
-                status_led_eid = (probe.get("extra_sensors") or {}).get("status_led")
-                if not status_led_eid:
-                    continue
                 was_awake = _probe_awake_cache.get(probe_id, False)
                 now_awake = await _check_probe_awake(probe_id)
 

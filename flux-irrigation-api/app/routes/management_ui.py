@@ -1605,6 +1605,7 @@ async function loadDetailData(id) {
 let _mgmtWeatherDataCache = null;
 let _mgmtWeatherRulesCache = null;
 let _mgmtMoistureDataCache = null;
+const _mgmtUserSleepDurValues = {};  // probe_id -> user-typed value (NOT tied to entity)
 let _mgmtLastMultiplierKey = null;  // Track multiplier changes to auto-refresh schedule
 let _mgmtWeatherCardBuilt = false;
 
@@ -2170,11 +2171,15 @@ async function loadDetailMoisture(id) {
                         // Device value is in minutes
                         const deviceMin = sv != null ? Math.round(sv) : null;
                         const pendingSleep = probe.pending_sleep_duration;
+                        // Input value priority: user-typed > pending > device
+                        const userVal = _mgmtUserSleepDurValues[pid];
+                        const inputVal = userVal != null ? userVal : (pendingSleep != null ? pendingSleep : (deviceMin || ''));
+                        const hasPendingOrUser = userVal != null || pendingSleep != null;
                         html += '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;">';
                         // Actual device value (read-only)
                         html += '<span style="font-size:11px;" title="Current value on device">💤 ' + (deviceMin != null ? deviceMin + ' min' : '—') + '</span>';
-                        // Separate input for setting new value
-                        html += '<input type="number" id="mgmtSleepDur_' + esc(pid) + '" value="' + (pendingSleep != null ? pendingSleep : (deviceMin || '')) + '" min="0.5" max="120" step="0.5" placeholder="min" style="width:50px;padding:1px 4px;border:1px solid ' + (pendingSleep != null ? 'var(--color-warning)' : 'var(--border-light)') + ';border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
+                        // Separate input — NOT tied to entity, retains user-typed value
+                        html += '<input type="number" id="mgmtSleepDur_' + esc(pid) + '" value="' + inputVal + '" min="0.5" max="120" step="0.5" placeholder="min" oninput="_mgmtUserSleepDurValues[\\'' + esc(pid) + '\\']=this.value" style="width:50px;padding:1px 4px;border:1px solid ' + (hasPendingOrUser ? 'var(--color-warning)' : 'var(--border-light)') + ';border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
                         html += '<span style="font-size:10px;">min</span>';
                         html += '<button onclick="mgmtSetSleepDuration(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);">Set</button>';
                         if (pendingSleep != null) {
@@ -2327,6 +2332,8 @@ async function mgmtSetSleepDuration(probeId) {
         showToast('Sleep duration must be 0.5-120 minutes', 'error');
         return;
     }
+    // Store user value so it survives DOM rebuilds
+    _mgmtUserSleepDurValues[probeId] = input.value;
     try {
         const result = await api('/customers/' + currentCustomerId + '/moisture/probes/' + encodeURIComponent(probeId) + '/sleep-duration', {
             method: 'PUT',
@@ -2334,23 +2341,13 @@ async function mgmtSetSleepDuration(probeId) {
         });
         if (result.status === 'pending') {
             showToast('Sleep ' + minutes + ' min queued — will apply when probe wakes', 'warning');
-            // Show pending indicator without rebuilding the DOM
-            input.style.borderColor = 'var(--color-warning)';
-            let pendingSpan = input.parentElement.querySelector('.sleep-pending-tag');
-            if (!pendingSpan) {
-                pendingSpan = document.createElement('span');
-                pendingSpan.className = 'sleep-pending-tag';
-                pendingSpan.style.cssText = 'color:var(--color-warning);font-size:10px;';
-                input.parentElement.appendChild(pendingSpan);
-            }
-            pendingSpan.textContent = '⏳ Pending: ' + minutes + ' min';
         } else {
             showToast('Sleep duration set to ' + minutes + ' min');
-            // Clear pending indicator
-            input.style.borderColor = 'var(--border-light)';
-            const pendingSpan = input.parentElement.querySelector('.sleep-pending-tag');
-            if (pendingSpan) pendingSpan.remove();
+            // Value was applied — clear user override so input shows device value
+            delete _mgmtUserSleepDurValues[probeId];
         }
+        _mgmtMoistureDataCache = null;
+        loadDetailMoisture(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
