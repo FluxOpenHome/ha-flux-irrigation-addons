@@ -683,6 +683,10 @@ async def ingress_root_path_middleware(request: Request, call_next):
     if ingress_path:
         request.scope["root_path"] = ingress_path.rstrip("/")
     response = await call_next(request)
+    # Prevent caching of API responses so UI always gets fresh data
+    if "/api/" in request.url.path:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
     return response
 
 
