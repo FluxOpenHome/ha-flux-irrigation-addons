@@ -4,6 +4,21 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ---
 
+## [1.1.11] — 2026-02-09
+
+### Changed
+
+- **Probe card cleanup** — Removed verbose per-zone factor detail lines (e.g., "Z3: Weather 1.00x × Moisture 1.50x = 1.50x ✓ Applied") from probe cards on both dashboards. The compact zone badges (e.g., "Z3 1.50x") remain and are sufficient.
+- **Probe card header** — Reduced font size and gaps so the device name and zone badges fit on one line without wrapping.
+- **Zone badges always visible** — Zones mapped to a probe now always show a badge, even when the moisture multiplier is exactly 1.00x (shown with a neutral border style). Previously, only non-1.0 multipliers showed badges.
+- **Schedule card probe indicator** — Zones with a mapped moisture probe now show a 💧 indicator badge in the schedule card even when the combined multiplier is 1.0x, so users can immediately see which zones are probe-monitored.
+
+### Fixed
+
+- **Sleep disabled autodetect** — The probe autodetect now matches both `sleep_disabled` and `disable_sleep` entity name patterns. Previously, ESPHome devices with `disable_sleep` in the entity name (e.g., `switch.*_disable_sleep`) were not detected, preventing the Disable Sleep button from appearing on the probe card.
+
+---
+
 ## [1.1.10] — 2026-02-09
 
 ### Added

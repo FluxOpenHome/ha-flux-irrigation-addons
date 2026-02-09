@@ -2411,8 +2411,8 @@ async def api_autodetect_device_sensors(device_id: str):
             schedule_times.append(eid)
             print(f"[MOISTURE]   MATCH schedule_time: {eid}")
 
-        # Sleep disabled switch (switch.gophr_*_sleep_disabled)
-        if domain == "switch" and "sleep_disabled" in eid_lower:
+        # Sleep disabled switch (switch.gophr_*_sleep_disabled or *_disable_sleep)
+        if domain == "switch" and ("sleep_disabled" in eid_lower or "disable_sleep" in eid_lower):
             sleep_disabled_switch = eid
             print(f"[MOISTURE]   MATCH sleep_disabled: {eid}")
 

@@ -2100,34 +2100,20 @@ async function loadDetailMoisture(id) {
                 // Header with per-zone skip/multiplier badges
                 var probeZones = zones;
                 var probeSkipBadges = '';
-                var probeFactorLines = '';
-                var liveWMult = (multData && multData.weather_multiplier != null) ? multData.weather_multiplier : 1.0;
-                var afEnabled = settings.apply_factors_to_schedule;
                 for (var pzi = 0; pzi < probeZones.length; pzi++) {
                     var pzEid = probeZones[pzi];
                     var pzInfo = perZone[pzEid];
-                    if (pzInfo) {
-                        var pzNum = (pzEid.match(/zone[_]?(\\d+)/i) || [])[1] || '?';
-                        if (pzInfo.skip) {
-                            probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-danger-light);color:var(--color-danger);">Z' + pzNum + ' Skip</span>';
-                        } else if (pzInfo.moisture_multiplier != null && pzInfo.moisture_multiplier !== 1.0) {
-                            probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-warning);color:var(--text-warning);">Z' + pzNum + ' ' + pzInfo.moisture_multiplier.toFixed(2) + 'x</span>';
-                        }
-                        // Factor detail line per zone
-                        if (pzInfo.skip) {
-                            probeFactorLines += '<div style="font-size:10px;color:var(--color-danger);">Z' + pzNum + ': Skip watering (soil saturated)</div>';
-                        } else {
-                            var cmult = pzInfo.combined != null ? pzInfo.combined : liveWMult;
-                            if (afEnabled || Math.abs(cmult - 1.0) >= 0.005) {
-                                probeFactorLines += '<div style="font-size:10px;color:var(--text-muted);">Z' + pzNum + ': Weather ' + liveWMult.toFixed(2) + 'x \\u00d7 Moisture ' + (pzInfo.moisture_multiplier != null ? pzInfo.moisture_multiplier.toFixed(2) : '1.00') + 'x = <strong>' + cmult.toFixed(2) + 'x</strong>' + (afEnabled ? ' \\u2713 Applied' : '') + '</div>';
-                            }
-                        }
+                    var pzNum = (pzEid.match(/zone[_]?(\\d+)/i) || [])[1] || '?';
+                    if (pzInfo && pzInfo.skip) {
+                        probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-danger-light);color:var(--color-danger);">Z' + pzNum + ' Skip</span>';
+                    } else if (pzInfo && pzInfo.moisture_multiplier != null && pzInfo.moisture_multiplier !== 1.0) {
+                        probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-warning);color:var(--text-warning);">Z' + pzNum + ' ' + pzInfo.moisture_multiplier.toFixed(2) + 'x</span>';
+                    } else {
+                        var mmVal = pzInfo ? (pzInfo.moisture_multiplier != null ? pzInfo.moisture_multiplier.toFixed(2) : '1.00') : '1.00';
+                        probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-tile);color:var(--text-muted);border:1px solid var(--border-light);">Z' + pzNum + ' ' + mmVal + 'x</span>';
                     }
                 }
-                html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:600;font-size:14px;margin-bottom:' + (probeFactorLines ? '4' : '10') + 'px;">' + esc(probe.display_name || pid) + probeSkipBadges + '</div>';
-                if (probeFactorLines) {
-                    html += '<div style="margin-bottom:8px;">' + probeFactorLines + '</div>';
-                }
+                html += '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-weight:600;font-size:13px;margin-bottom:10px;">' + esc(probe.display_name || pid) + probeSkipBadges + '</div>';
                 // Moisture bars
                 for (const depth of ['shallow', 'mid', 'deep']) {
                     const s = sensors[depth];
@@ -3412,7 +3398,9 @@ function renderScheduleCard(custId, sched, durData, multData) {
                     html += '<td style="color:var(--text-disabled);">-</td>';
                 }
             }
-            if (enable) {
+            if (isPumpOrMaster) {
+                html += '<td style="color:var(--text-disabled);font-style:italic;">Firmware controlled</td>';
+            } else if (enable) {
                 const isOn = enable.state === 'on';
                 html += '<td><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
                     'onclick="setEntityValue(\\'' + custId + '\\',\\'' + enable.entity_id + '\\',\\'switch\\',' +
@@ -3471,6 +3459,11 @@ function renderScheduleCard(custId, sched, durData, multData) {
                         'background:var(--bg-tile);color:var(--color-warning);opacity:0.8;" title="Projected duration if Apply Factors is enabled (' +
                         tooltipParts + ')">' +
                         projVal + ' ' + esc(unit) + ' (' + zoneCombined.toFixed(2) + 'x)</span>';
+                } else if (zoneHasMoisture) {
+                    // Zone has moisture probe but multiplier is 1.0 — show probe-monitored indicator
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-tile);color:var(--text-muted);border:1px solid var(--border-light);" title="Moisture probe monitoring this zone (M:' + zoneMoistMult.toFixed(2) + 'x)">' +
+                        zoneMoistMult.toFixed(2) + 'x \\ud83d\\udca7</span>';
                 }
                 html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
