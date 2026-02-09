@@ -83,6 +83,7 @@ DEFAULT_DATA = {
     "version": 2,
     "enabled": False,
     "apply_factors_to_schedule": False,
+    "schedule_sync_enabled": True,
     "stale_reading_threshold_minutes": 120,
     # Legacy depth_weights kept for migration — no longer used in algorithm
     "depth_weights": {"shallow": 0.2, "mid": 0.5, "deep": 0.3},
@@ -992,6 +993,228 @@ def _find_zone_entity(zone_num: int, config) -> str:
     return ""
 
 
+async def _get_ordered_enabled_zones() -> list[dict]:
+    """Get the ordered list of enabled zones matching ESPHome execution order.
+
+    Returns a list of dicts, each containing:
+        zone_num: int           - zone number (1-based)
+        zone_entity_id: str     - e.g., "switch.zone_3"
+        duration_entity_id: str - e.g., "number.irrigator_zone_3_run_duration"
+        duration_minutes: float - current run duration in minutes
+        mode: str               - zone mode (e.g., "Standard", "Pump Start Relay")
+        is_special: bool        - True if mode is pump/master/relay
+
+    Sort order: normal zones by zone_num ascending, special zones last.
+    Only includes zones where enable_zone switch is ON.
+    """
+    config = get_config()
+
+    # 1. Find all enable_zone switches
+    enable_entities = [
+        eid for eid in config.allowed_control_entities
+        if eid.startswith("switch.") and "enable_zone" in eid.lower()
+    ]
+
+    # 2. Find all zone mode selects
+    mode_entities = [
+        eid for eid in config.allowed_control_entities
+        if eid.startswith("select.") and re.search(r'zone_\d+_mode', eid.lower())
+    ]
+
+    # 3. Find all duration entities
+    duration_entities = _find_duration_entities(config.allowed_control_entities)
+
+    # 4. Batch-fetch all states
+    all_eids = enable_entities + mode_entities + duration_entities
+    if not all_eids:
+        return []
+    states = await ha_client.get_entities_by_ids(all_eids)
+    state_map = {s["entity_id"]: s for s in states}
+
+    # 5. Build zone info by zone number
+    zone_info: dict[int, dict] = {}
+
+    for eid in enable_entities:
+        m = _ZONE_NUMBER_RE.search(eid)
+        if not m:
+            continue
+        zn = int(m.group(1))
+        if zn not in zone_info:
+            zone_info[zn] = {}
+        zone_info[zn]["enable_state"] = state_map.get(eid, {}).get("state", "off")
+
+    for eid in mode_entities:
+        m = _ZONE_NUMBER_RE.search(eid)
+        if not m:
+            continue
+        zn = int(m.group(1))
+        if zn not in zone_info:
+            zone_info[zn] = {}
+        zone_info[zn]["mode"] = state_map.get(eid, {}).get("state", "Standard")
+
+    for eid in duration_entities:
+        zn = _extract_zone_num_from_duration(eid)
+        if not zn:
+            continue
+        try:
+            dur = float(state_map.get(eid, {}).get("state", "0"))
+        except (ValueError, TypeError):
+            dur = 0.0
+        if zn not in zone_info:
+            zone_info[zn] = {}
+        zone_info[zn]["duration_eid"] = eid
+        zone_info[zn]["duration_minutes"] = dur
+
+    # 6. Filter expansion board zone count
+    max_zones = config.detected_zone_count if hasattr(config, "detected_zone_count") else 0
+
+    # 7. Filter to enabled zones only, build result list
+    result = []
+    for zn, info in zone_info.items():
+        if info.get("enable_state") != "on":
+            continue
+        if max_zones > 0 and zn > max_zones:
+            continue
+        mode = info.get("mode", "Standard")
+        is_special = bool(re.search(r'pump|master|relay', mode, re.IGNORECASE))
+        zone_eid = _find_zone_entity(zn, config)
+        if not zone_eid:
+            continue
+
+        result.append({
+            "zone_num": zn,
+            "zone_entity_id": zone_eid,
+            "duration_entity_id": info.get("duration_eid", ""),
+            "duration_minutes": info.get("duration_minutes", 0.0),
+            "mode": mode,
+            "is_special": is_special,
+        })
+
+    # 8. Sort: normal zones by zone_num ascending, special zones last
+    result.sort(key=lambda z: (1 if z["is_special"] else 0, z["zone_num"]))
+    return result
+
+
+async def _calculate_sleep_until_next_mapped_zone(
+    probe_id: str,
+    current_zone_entity_id: str,
+) -> Optional[dict]:
+    """Calculate how long a probe should sleep until the next mapped zone starts.
+
+    After a mapped zone finishes, determine if there are more mapped zones
+    remaining in this schedule cycle. If so, calculate the time gap by summing
+    the adjusted durations of all enabled zones between them.
+
+    Args:
+        probe_id: The probe identifier
+        current_zone_entity_id: The zone that just finished (turned OFF)
+
+    Returns:
+        dict with:
+            next_zone_entity_id: str - the next mapped zone to wake for
+            sleep_seconds: int       - how long to sleep (0 = keep awake)
+            gap_minutes: float       - minutes gap between zones
+        or None if there are no more mapped zones in this cycle.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        return None
+
+    mapped_zones = set(probe.get("zone_mappings", []))
+    if len(mapped_zones) <= 1:
+        # Only one mapped zone (or none) — no mid-run sleep needed
+        return None
+
+    # Get the ordered zone execution sequence
+    ordered_zones = await _get_ordered_enabled_zones()
+    if not ordered_zones:
+        return None
+
+    # Find the current zone's position in the sequence
+    current_idx = None
+    for i, z in enumerate(ordered_zones):
+        if z["zone_entity_id"] == current_zone_entity_id:
+            current_idx = i
+            break
+
+    if current_idx is None:
+        print(f"[MOISTURE] _calculate_sleep: current zone {current_zone_entity_id} "
+              f"not found in ordered zone list")
+        return None
+
+    # Look FORWARD from the current zone for the next mapped zone
+    next_mapped_idx = None
+    for i in range(current_idx + 1, len(ordered_zones)):
+        if ordered_zones[i]["zone_entity_id"] in mapped_zones:
+            next_mapped_idx = i
+            break
+
+    if next_mapped_idx is None:
+        # No more mapped zones after this one in the cycle
+        return None
+
+    # Calculate gap: sum durations of all zones BETWEEN current and next mapped
+    gap_minutes = 0.0
+    for i in range(current_idx + 1, next_mapped_idx):
+        gap_minutes += ordered_zones[i]["duration_minutes"]
+
+    # Convert to seconds, subtract a 30s buffer so the probe wakes slightly
+    # before the next mapped zone starts
+    sleep_seconds = max(0, int(gap_minutes * 60) - 30)
+
+    # If the gap is very short (< 2 minutes), don't bother sleeping
+    if sleep_seconds < 120:
+        return {
+            "next_zone_entity_id": ordered_zones[next_mapped_idx]["zone_entity_id"],
+            "sleep_seconds": 0,  # Signal: keep awake
+            "gap_minutes": gap_minutes,
+        }
+
+    return {
+        "next_zone_entity_id": ordered_zones[next_mapped_idx]["zone_entity_id"],
+        "sleep_seconds": sleep_seconds,
+        "gap_minutes": gap_minutes,
+    }
+
+
+async def _set_probe_sleep_duration(probe_id: str, seconds: int) -> bool:
+    """Write a sleep duration (in seconds) to the Gophr's writable number entity.
+
+    Args:
+        probe_id: The probe identifier
+        seconds: Sleep duration in seconds
+
+    Returns True if the service call succeeded.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        print(f"[MOISTURE] _set_probe_sleep_duration: probe {probe_id} not found")
+        return False
+
+    extra = probe.get("extra_sensors") or {}
+    # Prefer the writable number entity
+    sleep_number_eid = extra.get("sleep_duration_number")
+    if not sleep_number_eid:
+        # Fallback: derive from the sensor entity name
+        sleep_sensor_eid = extra.get("sleep_duration", "")
+        if sleep_sensor_eid:
+            sleep_number_eid = sleep_sensor_eid.replace("sensor.", "number.", 1)
+        else:
+            print(f"[MOISTURE] _set_probe_sleep_duration: no sleep_duration entity "
+                  f"for {probe_id}")
+            return False
+
+    success = await ha_client.call_service("number", "set_value", {
+        "entity_id": sleep_number_eid,
+        "value": seconds,
+    })
+    print(f"[MOISTURE] Set sleep duration for {probe_id}: {seconds}s via "
+          f"{sleep_number_eid}: {'OK' if success else 'FAILED'}")
+    return success
+
+
 async def apply_adjusted_durations() -> dict:
     """Compute and write adjusted durations to HA number entities.
 
@@ -1195,6 +1418,7 @@ class ProbeUpdateRequest(BaseModel):
 class MoistureSettingsRequest(BaseModel):
     enabled: Optional[bool] = None
     apply_factors_to_schedule: Optional[bool] = None
+    schedule_sync_enabled: Optional[bool] = None
     stale_reading_threshold_minutes: Optional[int] = Field(None, ge=5, le=1440)
     depth_weights: Optional[dict] = None
     default_thresholds: Optional[dict] = None
@@ -1394,6 +1618,7 @@ async def api_autodetect_device_sensors(device_id: str):
     # These are NOT sensor entities, so we scan the full entity registry for this device.
     schedule_times = []
     sleep_disabled_switch = None
+    sleep_duration_number = None
     min_awake_entity = None
     max_awake_entity = None
 
@@ -1418,6 +1643,7 @@ async def api_autodetect_device_sensors(device_id: str):
             print(f"[MOISTURE]   MATCH sleep_disabled: {eid}")
 
         # Min/max awake minutes (number.gophr_*_min_awake_minutes, etc.)
+        # Writable sleep duration (number.gophr_*_sleep_duration)
         if domain == "number":
             if "min_awake" in eid_lower:
                 min_awake_entity = eid
@@ -1425,6 +1651,9 @@ async def api_autodetect_device_sensors(device_id: str):
             elif "max_awake" in eid_lower:
                 max_awake_entity = eid
                 print(f"[MOISTURE]   MATCH max_awake: {eid}")
+            elif "sleep_duration" in eid_lower:
+                sleep_duration_number = eid
+                print(f"[MOISTURE]   MATCH sleep_duration_number: {eid}")
 
     # Sort schedule times by number suffix (schedule_time_1, _2, _3, _4)
     schedule_times.sort(key=lambda e: int(re.search(r'(\d+)$', e).group(1)) if re.search(r'(\d+)$', e) else 99)
@@ -1437,6 +1666,8 @@ async def api_autodetect_device_sensors(device_id: str):
         extra_map["min_awake_minutes"] = min_awake_entity
     if max_awake_entity:
         extra_map["max_awake_minutes"] = max_awake_entity
+    if sleep_duration_number:
+        extra_map["sleep_duration_number"] = sleep_duration_number
 
     print(f"[MOISTURE] autodetect result: depths={depth_map}, extras={extra_map}")
 
@@ -1681,6 +1912,7 @@ async def api_get_settings():
     return {
         "enabled": data.get("enabled", False),
         "apply_factors_to_schedule": data.get("apply_factors_to_schedule", False),
+        "schedule_sync_enabled": data.get("schedule_sync_enabled", True),
         "stale_reading_threshold_minutes": data.get("stale_reading_threshold_minutes", 120),
         "depth_weights": data.get("depth_weights", DEFAULT_DATA["depth_weights"]),
         "default_thresholds": data.get("default_thresholds", DEFAULT_DATA["default_thresholds"]),
@@ -1793,6 +2025,15 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
                 "message": f"Original durations restored for {restored} zone(s)",
                 "restored": restored,
             }
+
+    # Handle schedule_sync_enabled toggle
+    if body.schedule_sync_enabled is not None:
+        old_sync = data.get("schedule_sync_enabled", True)
+        data["schedule_sync_enabled"] = body.schedule_sync_enabled
+        if old_sync != body.schedule_sync_enabled:
+            changes.append(
+                f"Schedule sync: {'Enabled' if body.schedule_sync_enabled else 'Disabled'}"
+            )
 
     _save_data(data)
     if changes:
@@ -2036,6 +2277,9 @@ async def api_get_durations():
 # Track active mid-run moisture monitoring tasks
 _active_moisture_monitors: dict[str, asyncio.Task] = {}
 
+# Track original sleep durations for restoration after last mapped zone
+_original_sleep_durations: dict[str, int] = {}  # probe_id -> original seconds
+
 
 async def sync_schedule_times_to_probes() -> dict:
     """Sync irrigation controller start times to Gophr schedule_time entities.
@@ -2046,8 +2290,12 @@ async def sync_schedule_times_to_probes() -> dict:
 
     Returns summary of sync operations.
     """
-    config = get_config()
     data = _load_data()
+
+    if not data.get("schedule_sync_enabled", True):
+        return {"success": True, "synced": 0, "reason": "Schedule sync disabled"}
+
+    config = get_config()
     probes = data.get("probes", {})
 
     if not probes:
@@ -2220,21 +2468,38 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
     finally:
         # Clean up from active monitors dict
         _active_moisture_monitors.pop(zone_entity_id, None)
-        # Re-enable sleep on the probe
-        await set_probe_sleep_disabled(probe_id, False)
+        # NOTE: Sleep re-enable is handled by on_zone_state_change()
+        # which runs the dynamic mid-run sleep calculation
         print(f"[MOISTURE] Mid-run monitor ended: {zone_entity_id}")
 
 
 async def on_zone_state_change(zone_entity_id: str, new_state: str):
     """Called by run_log when a zone state changes.
 
-    If a zone turns ON and has a mapped probe with sleep control,
-    disables probe sleep and starts moisture monitoring.
-    If a zone turns OFF, re-enables sleep and cancels monitoring.
+    Handles two concerns for mapped Gophr probes:
+    1. Sleep control: disable sleep when a mapped zone runs, re-enable after
+    2. Dynamic mid-run scheduling: when a mapped zone finishes, calculate
+       sleep duration to the NEXT mapped zone and program the Gophr
+
+    Zone ON:
+        - Disable sleep on mapped probes (keep awake for moisture readings)
+        - Save original sleep duration on first mapped zone activation
+        - Start mid-run moisture monitoring task
+
+    Zone OFF:
+        - Cancel moisture monitoring task
+        - If schedule_sync_enabled:
+            - Calculate gap to next mapped zone
+            - Write precise sleep duration to Gophr
+            - Or keep awake if gap is short
+            - Or restore original sleep if no more mapped zones
+        - If sync disabled: simple sleep re-enable
     """
     data = _load_data()
     if not data.get("enabled"):
         return
+
+    sync_enabled = data.get("schedule_sync_enabled", True)
 
     is_on = new_state in ("on", "open")
     is_off = new_state in ("off", "closed")
@@ -2254,6 +2519,24 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
             # Zone turned on — disable sleep and start monitoring
             await set_probe_sleep_disabled(probe_id, True)
 
+            # Save original sleep duration on FIRST mapped zone activation
+            if probe_id not in _original_sleep_durations and sync_enabled:
+                extra = probe.get("extra_sensors") or {}
+                sleep_sensor_eid = extra.get("sleep_duration")
+                if sleep_sensor_eid:
+                    try:
+                        states = await ha_client.get_entities_by_ids(
+                            [sleep_sensor_eid]
+                        )
+                        if states:
+                            raw = states[0].get("state", "0")
+                            orig_val = int(float(raw))
+                            _original_sleep_durations[probe_id] = orig_val
+                            print(f"[MOISTURE] Saved original sleep duration "
+                                  f"for {probe_id}: {orig_val}s")
+                    except (ValueError, TypeError):
+                        pass
+
             # Start mid-run moisture monitoring
             if zone_entity_id not in _active_moisture_monitors:
                 task = asyncio.create_task(
@@ -2264,15 +2547,61 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
                       f"{zone_entity_id} → {probe_id}")
 
         elif is_off:
-            # Zone turned off — cancel monitoring (sleep re-enabled in monitor's finally)
+            # Zone turned off — cancel monitoring
             task = _active_moisture_monitors.get(zone_entity_id)
             if task and not task.done():
                 task.cancel()
-                print(f"[MOISTURE] Zone OFF → cancelling monitor: {zone_entity_id}")
+                print(f"[MOISTURE] Zone OFF → cancelling monitor: "
+                      f"{zone_entity_id}")
+
+            if sync_enabled:
+                # Dynamic mid-run: calculate sleep to next mapped zone
+                sleep_info = await _calculate_sleep_until_next_mapped_zone(
+                    probe_id, zone_entity_id
+                )
+
+                if sleep_info and sleep_info["sleep_seconds"] > 0:
+                    # There IS a next mapped zone, gap warrants sleeping
+                    await _set_probe_sleep_duration(
+                        probe_id, sleep_info["sleep_seconds"]
+                    )
+                    await set_probe_sleep_disabled(probe_id, False)
+                    print(
+                        f"[MOISTURE] Zone OFF → mid-run sleep: {probe_id} "
+                        f"will sleep {sleep_info['sleep_seconds']}s until "
+                        f"{sleep_info['next_zone_entity_id']} "
+                        f"(gap={sleep_info['gap_minutes']:.1f} min)"
+                    )
+
+                elif sleep_info and sleep_info["sleep_seconds"] == 0:
+                    # Gap is too short — keep awake, don't cycle sleep
+                    print(
+                        f"[MOISTURE] Zone OFF → gap too short "
+                        f"({sleep_info['gap_minutes']:.1f} min), "
+                        f"keeping {probe_id} awake for "
+                        f"{sleep_info['next_zone_entity_id']}"
+                    )
+                    # sleep_disabled stays ON (probe stays awake)
+
+                else:
+                    # No more mapped zones — restore original sleep duration
+                    original = _original_sleep_durations.pop(probe_id, None)
+                    if original is not None:
+                        await _set_probe_sleep_duration(probe_id, original)
+                        print(
+                            f"[MOISTURE] Zone OFF → last mapped zone, "
+                            f"restored sleep duration: {probe_id} = "
+                            f"{original}s"
+                        )
+                    await set_probe_sleep_disabled(probe_id, False)
+                    print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
+                          f"{probe_id}")
             else:
-                # No active monitor, just re-enable sleep
-                await set_probe_sleep_disabled(probe_id, False)
-                print(f"[MOISTURE] Zone OFF → sleep re-enabled: {probe_id}")
+                # Sync disabled — simple behavior: just re-enable sleep
+                if not task or task.done():
+                    await set_probe_sleep_disabled(probe_id, False)
+                    print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
+                          f"{probe_id}")
 
 
 @router.post("/probes/sync-schedules", summary="Sync irrigation schedules to moisture probes")

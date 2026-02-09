@@ -2624,7 +2624,32 @@ async function loadMoisture() {
                         }
                         html += '<span title="Sleep Duration">💤 ' + sleepLabel + '</span>';
                     }
+                    if (devSensors.sleep_disabled) {
+                        const sdVal = (devSensors.sleep_disabled.value || '').toLowerCase();
+                        const isDisabled = sdVal === 'on';
+                        html += '<span style="color:' + (isDisabled ? 'var(--color-warning)' : 'var(--text-success-dark)') + ';" title="Sleep ' + (isDisabled ? 'disabled (staying awake)' : 'enabled') + '">' +
+                            (isDisabled ? '⏰ Awake' : '😴 Sleep OK') + '</span>';
+                    }
                     html += '</div>';
+                }
+
+                // Gophr schedule time sync status
+                if (devSensors.schedule_times && devSensors.schedule_times.length > 0) {
+                    html += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border-light);font-size:11px;">';
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+                    html += '<span style="font-weight:600;color:var(--text-secondary);">Schedule Sync</span>';
+                    html += '<button class="btn btn-primary btn-sm" style="font-size:10px;padding:2px 8px;" ' +
+                        'onclick="syncProbeSchedules()">Sync Now</button>';
+                    html += '</div>';
+                    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+                    for (var si = 0; si < devSensors.schedule_times.length; si++) {
+                        var st = devSensors.schedule_times[si];
+                        var stVal = st.value || '—';
+                        var stNum = si + 1;
+                        var stColor = stVal === '00:00' || stVal === '—' || stVal === 'unknown' ? 'var(--text-muted)' : 'var(--text-success-dark)';
+                        html += '<span style="color:' + stColor + ';" title="' + esc(st.entity_id) + '">⏱ ' + stNum + ': ' + esc(stVal) + '</span>';
+                    }
+                    html += '</div></div>';
                 }
 
                 // Zone summary + edit toggle
@@ -2665,6 +2690,11 @@ async function loadMoisture() {
         // Enable toggle
         html += '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px;">';
         html += '<input type="checkbox" id="moistureEnabled" ' + (settings.enabled ? 'checked' : '') + '> Enable Moisture Control</label>';
+
+        // Schedule sync toggle
+        html += '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px;">';
+        html += '<input type="checkbox" id="moistureScheduleSync" ' + (settings.schedule_sync_enabled !== false ? 'checked' : '') + '> Sync Schedules to Gophr Probes</label>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;margin-top:-8px;">Syncs wake times to probes and dynamically manages sleep between mapped zones during runs.</div>';
 
         // Stale threshold
         html += '<div style="margin-bottom:12px;">';
@@ -2799,6 +2829,7 @@ async function saveMoistureSettings() {
     try {
         const payload = {
             enabled: document.getElementById('moistureEnabled').checked,
+            schedule_sync_enabled: document.getElementById('moistureScheduleSync').checked,
             stale_reading_threshold_minutes: parseInt(document.getElementById('moistureStaleMin').value) || 120,
             default_thresholds: {
                 root_zone_skip: parseInt(document.getElementById('moistureThresh_root_zone_skip').value) || 80,
@@ -3053,6 +3084,15 @@ async function toggleApplyFactors(enable) {
         const isError = result.success === false;
         showToast(result.message || (enable ? 'Factors applied' : 'Factors disabled'), isError ? 'error' : undefined);
         loadControls();
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function syncProbeSchedules() {
+    try {
+        const result = await mapi('/probes/sync-schedules', 'POST');
+        showToast(result.synced > 0 ? 'Synced ' + result.synced + ' schedule time(s)' : (result.reason || 'Nothing to sync'));
+        _moistureDataCache = null;
+        loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
 }
 

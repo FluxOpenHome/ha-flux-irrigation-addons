@@ -830,6 +830,24 @@ async def delete_customer_moisture_probe(customer_id: str, probe_id: str):
 
 
 @router.post(
+    "/api/customers/{customer_id}/moisture/probes/sync-schedules",
+    summary="Sync irrigation schedules to customer moisture probes",
+)
+async def sync_customer_probe_schedules(customer_id: str):
+    """Sync irrigation controller start times to Gophr probe schedule_time entities."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "POST", "/admin/api/homeowner/moisture/probes/sync-schedules",
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        return {"success": False, "error": "Failed to sync schedules", "synced": 0}
+    return data
+
+
+@router.post(
     "/api/customers/{customer_id}/moisture/zones/{zone_id}/multiplier",
     summary="Preview zone moisture multiplier",
 )

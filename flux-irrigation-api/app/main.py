@@ -323,15 +323,23 @@ async def _periodic_weather_check():
 
 
 async def _periodic_moisture_evaluation():
-    """Periodically evaluate moisture probes and adjust run durations."""
+    """Periodically evaluate moisture probes, adjust run durations, and sync Gophr schedules."""
     while True:
         try:
             config = get_config()
             if config.mode == "homeowner":
-                from routes.moisture import run_moisture_evaluation
+                from routes.moisture import run_moisture_evaluation, sync_schedule_times_to_probes
                 result = await run_moisture_evaluation()
                 if not result.get("skipped"):
                     print(f"[MAIN] Moisture evaluation: {result.get('applied', 0)} zone(s) adjusted")
+
+                # Sync irrigation schedule times to Gophr probes
+                try:
+                    sync_result = await sync_schedule_times_to_probes()
+                    if sync_result.get("synced", 0) > 0:
+                        print(f"[MAIN] Gophr schedule sync: {sync_result['synced']} time(s) synced")
+                except Exception as sync_err:
+                    print(f"[MAIN] Gophr schedule sync error: {sync_err}")
         except Exception as e:
             print(f"[MAIN] Moisture evaluation error: {e}")
 
