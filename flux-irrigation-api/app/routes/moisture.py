@@ -833,6 +833,7 @@ DEFAULT_DATA = {
     "enabled": False,
     "apply_factors_to_schedule": False,
     "schedule_sync_enabled": True,
+    "multi_probe_mode": "conservative",  # "conservative", "average", "optimistic"
     "skip_disabled_zones": [],  # Zone enable switch entities disabled by moisture skip
     "stale_reading_threshold_minutes": 120,
     # Legacy depth_weights kept for migration — no longer used in algorithm
@@ -1531,14 +1532,48 @@ def calculate_zone_moisture_multiplier(
             "reason": "All probe readings are stale or unavailable",
         }
 
-    # For multiple probes: use the MINIMUM multiplier (most conservative)
-    # If any probe says skip, we skip
-    if any_skip:
-        final_multiplier = 0.0
-        skip = True
+    # Multi-probe aggregation mode
+    multi_probe_mode = data.get("multi_probe_mode", "conservative")
+
+    if multi_probe_mode == "optimistic":
+        # Only skip if ALL non-stale probes say skip; use MAX multiplier (driest reading wins)
+        non_stale_details = [pd for pd in probe_details if not pd.get("all_stale")]
+        all_skip = non_stale_details and all(
+            pd.get("profile") == "saturated" for pd in non_stale_details
+        )
+        if any_skip and all_skip:
+            final_multiplier = 0.0
+            skip = True
+        elif probe_multipliers:
+            final_multiplier = max(probe_multipliers)
+            skip = False
+        else:
+            final_multiplier = 0.0
+            skip = True
+    elif multi_probe_mode == "average":
+        # Skip if majority of non-stale probes say skip; use AVERAGE multiplier
+        skip_count = sum(
+            1 for pd in probe_details
+            if pd.get("profile") == "saturated" and not pd.get("all_stale")
+        )
+        valid_count = sum(1 for pd in probe_details if not pd.get("all_stale"))
+        if valid_count > 0 and skip_count > valid_count / 2:
+            final_multiplier = 0.0
+            skip = True
+        elif probe_multipliers:
+            final_multiplier = sum(probe_multipliers) / len(probe_multipliers)
+            skip = False
+        else:
+            final_multiplier = 0.0
+            skip = True
     else:
-        final_multiplier = min(probe_multipliers)
-        skip = False
+        # Conservative (default): ANY probe skip → skip; use MIN multiplier
+        if any_skip:
+            final_multiplier = 0.0
+            skip = True
+        else:
+            final_multiplier = min(probe_multipliers)
+            skip = False
 
     # Display moisture: use mid sensor average across probes
     mid_values = [
@@ -1555,6 +1590,7 @@ def calculate_zone_moisture_multiplier(
         "probe_count": len(mapped_probes),
         "probe_details": probe_details,
         "reason": "; ".join(all_reasons),
+        "multi_probe_mode": multi_probe_mode,
     }
 
 
@@ -2278,6 +2314,7 @@ class MoistureSettingsRequest(BaseModel):
     enabled: Optional[bool] = None
     apply_factors_to_schedule: Optional[bool] = None
     schedule_sync_enabled: Optional[bool] = None
+    multi_probe_mode: Optional[str] = None  # "conservative", "average", "optimistic"
     stale_reading_threshold_minutes: Optional[int] = Field(None, ge=5, le=1440)
     depth_weights: Optional[dict] = None
     default_thresholds: Optional[dict] = None
@@ -3430,6 +3467,7 @@ async def api_get_settings():
         "enabled": data.get("enabled", False),
         "apply_factors_to_schedule": data.get("apply_factors_to_schedule", False),
         "schedule_sync_enabled": data.get("schedule_sync_enabled", True),
+        "multi_probe_mode": data.get("multi_probe_mode", "conservative"),
         "stale_reading_threshold_minutes": data.get("stale_reading_threshold_minutes", 120),
         "depth_weights": data.get("depth_weights", DEFAULT_DATA["depth_weights"]),
         "default_thresholds": data.get("default_thresholds", DEFAULT_DATA["default_thresholds"]),
@@ -3542,6 +3580,23 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
                 "message": f"Original durations restored for {restored} zone(s)",
                 "restored": restored,
             }
+
+    # Handle multi_probe_mode
+    VALID_MULTI_PROBE_MODES = ("conservative", "average", "optimistic")
+    if body.multi_probe_mode is not None:
+        mode = body.multi_probe_mode.lower().strip()
+        if mode in VALID_MULTI_PROBE_MODES:
+            old_mode = data.get("multi_probe_mode", "conservative")
+            if old_mode != mode:
+                labels = {
+                    "conservative": "Conservative (wettest)",
+                    "average": "Average",
+                    "optimistic": "Optimistic (driest)",
+                }
+                changes.append(
+                    f"Multi-probe mode: {labels.get(old_mode, old_mode)} -> {labels.get(mode, mode)}"
+                )
+            data["multi_probe_mode"] = mode
 
     # Handle schedule_sync_enabled toggle
     if body.schedule_sync_enabled is not None:

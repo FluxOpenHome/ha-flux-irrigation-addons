@@ -758,7 +758,7 @@ def build_report(
             probes = {}
         if probes:
             for probe_id, probe_data in probes.items():
-                label = probe_id.replace("_", " ").title()
+                label = probe_data.get("display_name") or probe_id.replace("_", " ").title()
                 pdf.sub_header(f"Probe: {label}")
                 mappings = probe_data.get("zone_mappings", [])
                 if mappings:

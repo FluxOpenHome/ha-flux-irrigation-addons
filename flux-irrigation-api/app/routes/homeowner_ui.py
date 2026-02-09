@@ -3081,7 +3081,10 @@ async function loadMoisture() {
                         probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-tile);color:var(--text-muted);border:1px solid var(--border-light);">Z' + pzNum + ' ' + mmVal + 'x</span>';
                     }
                 }
-                html += '<div style="font-weight:600;font-size:13px;margin-bottom:' + (probeSkipBadges ? '2' : '10') + 'px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(probe.display_name || pid) + '</div>';
+                html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:' + (probeSkipBadges ? '2' : '10') + 'px;">';
+                html += '<span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(probe.display_name || pid) + '</span>';
+                html += '<a href="#" onclick="renameProbe(\\'' + esc(pid) + '\\');return false;" title="Rename probe" style="font-size:12px;color:var(--text-muted);text-decoration:none;flex-shrink:0;">&#9998;</a>';
+                html += '</div>';
                 if (probeSkipBadges) {
                     html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">' + probeSkipBadges + '</div>';
                 }
@@ -3287,6 +3290,17 @@ async function loadMoisture() {
         html += '<span style="font-size:12px;color:var(--text-muted);">minutes — readings older than this are ignored</span>';
         html += '</div></div>';
 
+        // Multi-Probe Mode
+        var mpm = settings.multi_probe_mode || 'conservative';
+        html += '<div style="margin-bottom:12px;">';
+        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Multi-Probe Mode</label>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">How to combine readings when multiple probes are mapped to the same zone</div>';
+        html += '<select id="moistureMultiProbeMode" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border-input);background:var(--bg-input);color:var(--text-primary);font-size:13px;">';
+        html += '<option value="conservative"' + (mpm === 'conservative' ? ' selected' : '') + '>Conservative \\u2014 use wettest probe (skip if any probe is saturated)</option>';
+        html += '<option value="average"' + (mpm === 'average' ? ' selected' : '') + '>Average \\u2014 blend all probe readings (skip if majority saturated)</option>';
+        html += '<option value="optimistic"' + (mpm === 'optimistic' ? ' selected' : '') + '>Optimistic \\u2014 use driest probe (skip only if all probes saturated)</option>';
+        html += '</select></div>';
+
         // Root Zone Thresholds (gradient-based algorithm)
         const dt = settings.default_thresholds || {};
         html += '<div style="margin-bottom:12px;">';
@@ -3329,7 +3343,10 @@ async function loadMoisture() {
                 const depthLabels = {shallow: 'Shallow', mid: 'Mid', deep: 'Deep'};
                 html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--border-light);">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+                html += '<div style="display:flex;align-items:center;gap:6px;">';
                 html += '<strong style="font-size:14px;">' + esc(probe.display_name || pid) + '</strong>';
+                html += '<a href="#" onclick="renameProbe(\\'' + esc(pid) + '\\');return false;" title="Rename probe" style="font-size:12px;color:var(--text-muted);text-decoration:none;">&#9998;</a>';
+                html += '</div>';
                 html += '<div style="display:flex;gap:6px;">';
                 html += '<button class="btn btn-secondary btn-sm" onclick="updateProbeEntities(\\'' + esc(pid) + '\\')">Update Entities</button>';
                 html += '<button class="btn btn-danger btn-sm" onclick="deleteMoistureProbe(\\'' + esc(pid) + '\\')">Remove</button>';
@@ -3426,6 +3443,7 @@ async function saveMoistureSettings() {
         const payload = {
             enabled: document.getElementById('moistureEnabled').checked,
             schedule_sync_enabled: document.getElementById('moistureScheduleSync').checked,
+            multi_probe_mode: document.getElementById('moistureMultiProbeMode').value,
             stale_reading_threshold_minutes: parseInt(document.getElementById('moistureStaleMin').value) || 120,
             default_thresholds: {
                 root_zone_skip: parseInt(document.getElementById('moistureThresh_root_zone_skip').value) || 80,
@@ -3720,6 +3738,24 @@ async function deleteMoistureProbe(probeId) {
         showToast('Probe removed');
         _moistureDataCache = null;
         _moistureExpanded.management = true;
+        loadMoisture();
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function renameProbe(probeId) {
+    // Get current name from cached data
+    var currentName = probeId;
+    try {
+        var data = await mapi('/probes');
+        var probe = (data.probes || {})[probeId];
+        if (probe) currentName = probe.display_name || probeId;
+    } catch(e) {}
+    var newName = prompt('Rename probe:', currentName);
+    if (!newName || newName.trim() === '' || newName.trim() === currentName) return;
+    try {
+        await mapi('/probes/' + encodeURIComponent(probeId), 'PUT', { display_name: newName.trim() });
+        showToast('Probe renamed to "' + newName.trim() + '"');
+        _moistureDataCache = null;
         loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
 }
@@ -4158,8 +4194,17 @@ const HELP_CONTENT = `
 </table>
 
 <p style="margin-bottom:6px;font-weight:600;font-size:13px;">Combined Formula</p>
-<p style="margin-bottom:6px;font-size:13px;">The final multiplier is calculated as: <strong>Base (root zone) &times; Rain adjustment &times; Deep guard</strong>. For zones with multiple probes, the most conservative (lowest) multiplier is used. If any probe triggers skip, the zone is skipped.</p>
+<p style="margin-bottom:6px;font-size:13px;">The final multiplier is calculated as: <strong>Base (root zone) &times; Rain adjustment &times; Deep guard</strong>. For zones with multiple probes, the <strong>Multi-Probe Mode</strong> setting controls how readings are combined (see below).</p>
 <p style="margin-bottom:10px;font-size:13px;"><strong>Combined watering factor</strong> = Weather Multiplier &times; Moisture Multiplier. This combined factor is applied per-zone to run durations. Only zones with mapped probes are affected by moisture &mdash; unmapped zones use weather-only.</p>
+
+<p style="margin-bottom:6px;font-weight:600;font-size:13px;">Multi-Probe Mode</p>
+<p style="margin-bottom:6px;font-size:13px;">When multiple probes are mapped to the same zone, this setting (in Settings) controls how their readings are combined:</p>
+<ul style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:4px;"><strong>Conservative</strong> (default) &mdash; Uses the wettest probe reading (lowest multiplier). If ANY probe detects saturated soil, the zone is skipped. Best for preventing over-watering.</li>
+<li style="margin-bottom:4px;"><strong>Average</strong> &mdash; Averages all probe readings. Skips the zone only if a majority of probes detect saturated soil. Good for zones with variable soil conditions.</li>
+<li style="margin-bottom:4px;"><strong>Optimistic</strong> &mdash; Uses the driest probe reading (highest multiplier). Skips the zone only if ALL probes detect saturated soil. Best for preventing under-watering in zones with dry spots.</li>
+</ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:0 0 12px 0;font-size:13px;">💡 For zones with only one probe, the Multi-Probe Mode setting has no effect.</div>
 
 <p style="margin-bottom:10px;">The moisture card also shows:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, solar charging state, sleep duration, and estimated next wake time are shown below the moisture readings when available (auto-detected from the Gophr device). When sleeping, the badge shows "Wake in X min" or "Wake at HH:MM" based on when the probe fell asleep plus the sleep duration.</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
