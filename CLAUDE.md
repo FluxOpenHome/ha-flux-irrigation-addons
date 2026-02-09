@@ -36,7 +36,7 @@ Similarly, `\d` in a Python triple-quoted string is an invalid escape sequence (
 **Rules:**
 1. **Every API endpoint** that returns sensor values must use the sensor cache as a fallback when HA returns `"unavailable"` or `"unknown"`. This includes the probe detail endpoint (`GET /probes`), the multiplier calculation, and any other endpoint that reads sensor states.
 2. **The UI must always show the last known value** with a `(retained)` indicator when the value is from cache. Bars should display at the retained percentage, not zero.
-3. **The Awake/Sleeping status** uses a **write-probe** approach, NOT sensor state checks. HA retains ESPHome entity values long after the device sleeps, so checking `live_raw_state` is unreliable. Instead, the system attempts a harmless write to `min_awake_minutes` (toggleing between 1.0 and 1.5). If the write succeeds → awake. If HA returns an error → sleeping. A background poller (`_awake_poll_loop`) runs every 5 seconds to keep `_probe_awake_cache` fresh. The `is_awake` field in the probe API response comes from this cache.
+3. **The Awake/Sleeping status** uses the **status LED entity** (`light.*_status_led`). When the light is `on` the device is awake; when `off` it is sleeping. The system reads this entity's state via `ha_client.get_entity_state()` — no writes required. A background poller (`_awake_poll_loop`) reads all probes' status LEDs every 5 seconds to keep `_probe_awake_cache` fresh and detect wake transitions for pending writes. The `is_awake` field in the probe API response comes from this cache. The status LED entity is auto-detected during probe setup and stored in `extra_sensors["status_led"]`.
 4. **The sensor cache must be updated** whenever a good reading comes in (numeric value, not unavailable/unknown) and persisted to disk so it survives add-on restarts.
 5. **Never reset multipliers to 1.0x** during sleep cycles. The cached readings ensure the moisture algorithm continues to use the last valid data.
 
@@ -58,8 +58,9 @@ else:
 - `_set_probe_sleep_duration(probe_id, minutes)` — writes minutes to the HA number entity
 - `pending_sleep_duration` — stored in minutes
 - `_original_sleep_durations` — stored in minutes (read from sensor which reports minutes)
-- UI input — min 1, max 120, step 1, labeled "min"
-- API endpoint `PUT /probes/{probe_id}/sleep-duration` — accepts `{ "minutes": N }`
+- UI input — min 0.5, max 120, step 0.5, labeled "min" (supports decimals like 1.5)
+- API endpoint `PUT /probes/{probe_id}/sleep-duration` — accepts `{ "minutes": N }` (float, e.g. 1.5)
+- **The sleep duration input is NOT tied to the entity.** After clicking Set, the DOM is NOT rebuilt. The input retains whatever the user typed. Only the pending indicator updates inline. The value is stored as `pending_sleep_duration` and applied when the probe wakes up.
 
 ### Enable Zone Switch for Skip Zones
 

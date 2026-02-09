@@ -61,6 +61,46 @@ async def _ws_command(command: str) -> list[dict]:
         return msg.get("result", [])
 
 
+async def _ws_command_with_data(command: str, data: dict = None):
+    """Like _ws_command but supports additional fields in the WebSocket message.
+
+    Used for Lovelace dashboard API calls which require extra payload fields
+    (url_path, title, config, etc.) beyond just the command type.
+    """
+    config = get_config()
+    token = config.supervisor_token
+
+    extra_headers = {"Authorization": f"Bearer {token}"}
+
+    async with websockets.connect(
+        HA_WS_URL,
+        additional_headers=extra_headers,
+        open_timeout=10,
+        close_timeout=5,
+    ) as ws:
+        # Step 1: Receive auth_required
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+        if msg.get("type") != "auth_required":
+            raise ConnectionError(f"Unexpected WS message: {msg}")
+
+        # Step 2: Authenticate
+        await ws.send(json.dumps({"type": "auth", "access_token": token}))
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+        if msg.get("type") != "auth_ok":
+            raise PermissionError(f"WS authentication failed: {msg}")
+
+        # Step 3: Send command with extra data fields
+        payload = {"id": 1, "type": command}
+        if data:
+            payload.update(data)
+        await ws.send(json.dumps(payload))
+        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
+        if not msg.get("success"):
+            raise RuntimeError(f"WS command '{command}' failed: {msg}")
+
+        return msg.get("result")
+
+
 async def get_device_registry() -> list[dict]:
     """Get all registered devices from Home Assistant.
 

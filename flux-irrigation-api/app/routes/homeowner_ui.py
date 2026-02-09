@@ -221,7 +221,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <div id="dashAddress" onclick="openAddressInMaps()" style="font-size:14px;color:var(--color-link);margin-top:4px;display:none;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" title="Open in Maps"></div>
             <div id="dashTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="cloneToDashboard()" title="Create a native HA dashboard from current config">Clone to HA Dashboard</button>
             <button class="btn btn-secondary btn-sm" onclick="refreshDashboard()">Refresh</button>
             <button class="btn btn-danger btn-sm" onclick="stopAllZones()">Emergency Stop All</button>
         </div>
@@ -987,6 +988,21 @@ async function loadDashboard() {
 
 async function refreshDashboard() {
     loadDashboard();
+}
+
+async function cloneToDashboard() {
+    if (!confirm('Create (or update) a native Home Assistant dashboard called "Flux Irrigation" from your current system configuration?')) return;
+    try {
+        const resp = await fetch(HBASE + '/dashboard/clone-to-ha', { method: 'POST' });
+        const result = await resp.json();
+        if (resp.ok && result.success) {
+            showToast(result.message);
+        } else {
+            showToast('Failed: ' + (result.detail || result.error || 'Unknown error'), 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
 }
 
 // --- Status ---
@@ -2682,7 +2698,7 @@ async function loadMoisture() {
                         // Actual device value (read-only)
                         html += '<span style="font-size:11px;" title="Current value on device">💤 ' + (deviceMin != null ? deviceMin + ' min' : '—') + '</span>';
                         // Separate input for setting new value
-                        html += '<input type="number" id="sleepDur_' + esc(pid) + '" value="' + (pendingSleep != null ? pendingSleep : (deviceMin || '')) + '" min="1" max="120" step="1" placeholder="min" style="width:50px;padding:1px 4px;border:1px solid ' + (pendingSleep != null ? 'var(--color-warning)' : 'var(--border-light)') + ';border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
+                        html += '<input type="number" id="sleepDur_' + esc(pid) + '" value="' + (pendingSleep != null ? pendingSleep : (deviceMin || '')) + '" min="0.5" max="120" step="0.5" placeholder="min" style="width:50px;padding:1px 4px;border:1px solid ' + (pendingSleep != null ? 'var(--color-warning)' : 'var(--border-light)') + ';border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
                         html += '<span style="font-size:10px;">min</span>';
                         html += '<button onclick="hoSetSleepDuration(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);">Set</button>';
                         if (pendingSleep != null) {
@@ -3147,20 +3163,32 @@ async function deleteMoistureProbe(probeId) {
 async function hoSetSleepDuration(probeId) {
     const input = document.getElementById('sleepDur_' + probeId);
     if (!input) return;
-    const minutes = parseInt(input.value);
-    if (isNaN(minutes) || minutes < 1 || minutes > 120) {
-        showToast('Sleep duration must be 1-120 minutes', 'error');
+    const minutes = parseFloat(input.value);
+    if (isNaN(minutes) || minutes < 0.5 || minutes > 120) {
+        showToast('Sleep duration must be 0.5-120 minutes', 'error');
         return;
     }
     try {
         const result = await mapi('/probes/' + encodeURIComponent(probeId) + '/sleep-duration', 'PUT', { minutes: minutes });
         if (result.status === 'pending') {
             showToast('Sleep ' + minutes + ' min queued — will apply when probe wakes', 'warning');
+            // Show pending indicator without rebuilding the DOM
+            input.style.borderColor = 'var(--color-warning)';
+            let pendingSpan = input.parentElement.querySelector('.sleep-pending-tag');
+            if (!pendingSpan) {
+                pendingSpan = document.createElement('span');
+                pendingSpan.className = 'sleep-pending-tag';
+                pendingSpan.style.cssText = 'color:var(--color-warning);font-size:10px;';
+                input.parentElement.appendChild(pendingSpan);
+            }
+            pendingSpan.textContent = '⏳ Pending: ' + minutes + ' min';
         } else {
             showToast('Sleep duration set to ' + minutes + ' min');
+            // Clear pending indicator
+            input.style.borderColor = 'var(--border-light)';
+            const pendingSpan = input.parentElement.querySelector('.sleep-pending-tag');
+            if (pendingSpan) pendingSpan.remove();
         }
-        _moistureDataCache = null;
-        loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
 }
 
