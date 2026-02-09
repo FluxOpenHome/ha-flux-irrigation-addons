@@ -842,30 +842,40 @@ async def generate_report_pdf(
     hours: int = Query(720, ge=1, le=8760, description="Hours of history (max 1 year)"),
 ):
     """Generate a comprehensive system report as a downloadable PDF."""
-    # Gather all data
-    status = await _get_status()
-    zones = await _get_zones()
-    zone_aliases = _get_zone_aliases()
-    zone_heads = _get_all_zone_heads()
-    sensors = await _get_sensors()
-    weather = await _get_weather()
-    moisture = _get_moisture()
-    issues = _get_issues()
-    history = run_log.get_run_history(hours=hours)
+    import traceback
+    try:
+        # Gather all data
+        status = await _get_status()
+        zones = await _get_zones()
+        zone_aliases = _get_zone_aliases()
+        zone_heads = _get_all_zone_heads()
+        sensors = await _get_sensors()
+        weather = await _get_weather()
+        moisture = _get_moisture()
+        issues = _get_issues()
+        history = run_log.get_run_history(hours=hours)
 
-    # Build PDF
-    pdf = build_report(
-        status, zones, zone_aliases, zone_heads,
-        sensors, weather, moisture, issues, history, hours
-    )
+        # Build PDF
+        pdf = build_report(
+            status, zones, zone_aliases, zone_heads,
+            sensors, weather, moisture, issues, history, hours
+        )
 
-    # Return as downloadable PDF
-    pdf_bytes = pdf.output()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="flux_system_report_{timestamp}.pdf"',
-        },
-    )
+        # Return as downloadable PDF
+        pdf_bytes = pdf.output()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="flux_system_report_{timestamp}.pdf"',
+            },
+        )
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(f"[REPORT PDF] Error generating report: {e}\n{tb}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to generate PDF report: {str(e)}"},
+        )
