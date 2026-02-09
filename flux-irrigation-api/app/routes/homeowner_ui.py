@@ -2613,6 +2613,7 @@ async function loadMoisture() {
             for (const [pid, probe] of Object.entries(probes)) {
                 const sensors = probe.sensors_live || {};
                 const devSensors = probe.device_sensors || {};
+                const es = probe.extra_sensors || {};
                 html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
                 // Probe header with per-zone skip/multiplier badges
                 var probeZones = probe.zone_mappings || [];

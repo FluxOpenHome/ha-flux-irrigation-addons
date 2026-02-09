@@ -2095,6 +2095,7 @@ async function loadDetailMoisture(id) {
             for (const [pid, probe] of Object.entries(probes)) {
                 const sensors = probe.sensors_live || {};
                 const devSensors = probe.device_sensors || {};
+                const es = probe.extra_sensors || {};
                 const zones = probe.zone_mappings || [];
                 html += '<div style="background:var(--bg-tile);border-radius:10px;padding:14px;border:1px solid var(--border-light);">';
                 // Header with per-zone skip/multiplier badges

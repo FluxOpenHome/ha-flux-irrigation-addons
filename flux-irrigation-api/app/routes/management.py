@@ -926,6 +926,24 @@ async def set_customer_probe_sleep_disabled(customer_id: str, probe_id: str, req
 
 
 @router.post(
+    "/api/customers/{customer_id}/moisture/probes/{probe_id}/sleep-now",
+    summary="Force probe to sleep immediately",
+)
+async def press_customer_probe_sleep_now(customer_id: str, probe_id: str):
+    """Press the sleep_now button on a customer's Gophr probe to force it to sleep immediately."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "POST",
+        f"/admin/api/homeowner/moisture/probes/{probe_id}/sleep-now",
+    )
+    if status_code != 200:
+        return {"success": False, "error": data.get("detail", "Failed to press sleep now") if isinstance(data, dict) else "Failed to press sleep now"}
+    return data
+
+
+@router.post(
     "/api/customers/{customer_id}/moisture/zones/{zone_id}/multiplier",
     summary="Preview zone moisture multiplier",
 )
