@@ -5,6 +5,7 @@ Customer CRUD and proxy endpoints for management companies
 to monitor and control remote homeowner irrigation systems.
 """
 
+import json
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -844,6 +845,27 @@ async def sync_customer_probe_schedules(customer_id: str):
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to sync schedules", "synced": 0}
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/moisture/probes/{probe_id}/sleep-duration",
+    summary="Set probe sleep duration",
+)
+async def set_customer_probe_sleep_duration(customer_id: str, probe_id: str, request: Request):
+    """Set sleep duration for a customer's Gophr probe (applies immediately or queues for wake)."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    body = await request.body()
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT",
+        f"/admin/api/homeowner/moisture/probes/{probe_id}/sleep-duration",
+        json_body=json.loads(body) if body else None,
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        return {"success": False, "error": data.get("detail", "Failed to set sleep duration") if isinstance(data, dict) else "Failed to set sleep duration"}
     return data
 
 

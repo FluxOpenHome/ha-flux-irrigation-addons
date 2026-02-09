@@ -792,9 +792,36 @@ async function loadCustomers() {
         filterCustomers();
         updateAlertBadge(allCustomers);
         checkForNewIssues(allCustomers);
+        // Verify "running" cards with live status (cached status can be stale)
+        refreshRunningStatuses();
     } catch (e) {
         document.getElementById('customerGrid').innerHTML =
             '<div class="empty-state"><h3>Error loading properties</h3><p>' + e.message + '</p></div>';
+    }
+}
+
+async function refreshRunningStatuses() {
+    // For each customer currently showing as "running", fetch live status
+    // to verify they are still running (cached last_status can be up to 5 min stale)
+    const running = allCustomers.filter(c => getSystemStatus(c) === 'running');
+    for (const c of running) {
+        try {
+            const live = await api('/customers/' + c.id + '/status');
+            if (live && live.system_status) {
+                const liveActive = live.system_status.active_zones || 0;
+                const cachedActive = (c.last_status && c.last_status.system_status)
+                    ? c.last_status.system_status.active_zones : 0;
+                if (liveActive !== cachedActive) {
+                    // Update the cached status and re-render
+                    if (!c.last_status) c.last_status = {};
+                    c.last_status.system_status = live.system_status;
+                    filterCustomers();  // Re-render grid with updated status
+                    return;  // Only need to re-render once
+                }
+            }
+        } catch(_) {
+            // Silently skip — live check failed, keep cached status
+        }
     }
 }
 
@@ -2110,14 +2137,20 @@ async function loadDetailMoisture(id) {
                     }
                     if (devSensors.sleep_duration) {
                         const sv = devSensors.sleep_duration.value;
-                        let sleepLabel = '—';
-                        if (sv != null) {
-                            const unit = (devSensors.sleep_duration.unit || 's').toLowerCase();
-                            if (unit === 'min' || unit === 'minutes') sleepLabel = sv.toFixed(0) + ' min';
-                            else if (unit === 'h' || unit === 'hours') sleepLabel = sv.toFixed(1) + ' hr';
-                            else sleepLabel = sv.toFixed(0) + ' ' + esc(devSensors.sleep_duration.unit);
+                        let sleepSec = sv != null ? sv : '';
+                        const unit = (devSensors.sleep_duration.unit || 's').toLowerCase();
+                        if (unit === 'min' || unit === 'minutes') sleepSec = sv != null ? Math.round(sv * 60) : '';
+                        else if (unit === 'h' || unit === 'hours') sleepSec = sv != null ? Math.round(sv * 3600) : '';
+                        else sleepSec = sv != null ? Math.round(sv) : '';
+                        const pendingSleep = probe.pending_sleep_duration;
+                        html += '<span style="display:inline-flex;align-items:center;gap:4px;" title="Sleep Duration">';
+                        html += '💤 <input type="number" id="mgmtSleepDur_' + esc(pid) + '" value="' + sleepSec + '" min="30" max="7200" step="30" style="width:60px;padding:1px 4px;border:1px solid var(--border-light);border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
+                        html += '<span style="font-size:10px;">sec</span>';
+                        html += '<button onclick="mgmtSetSleepDuration(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);">Set</button>';
+                        if (pendingSleep != null) {
+                            html += '<span style="color:var(--color-warning);font-size:10px;" title="Pending: will apply when probe wakes">⏳ ' + pendingSleep + 's</span>';
                         }
-                        html += '<span title="Sleep Duration">💤 ' + sleepLabel + '</span>';
+                        html += '</span>';
                     }
                     if (devSensors.sleep_disabled) {
                         const sdVal = (devSensors.sleep_disabled.value || '').toLowerCase();
@@ -2258,6 +2291,30 @@ async function mgmtSaveMoistureSettings() {
         _mgmtMoistureDataCache = null;
         loadDetailMoisture(currentCustomerId);
         loadDetailStatus(currentCustomerId);
+        loadDetailControls(currentCustomerId);  // Refresh schedule card (factors may have changed)
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function mgmtSetSleepDuration(probeId) {
+    const input = document.getElementById('mgmtSleepDur_' + probeId);
+    if (!input) return;
+    const seconds = parseInt(input.value);
+    if (isNaN(seconds) || seconds < 30 || seconds > 7200) {
+        showToast('Sleep duration must be 30-7200 seconds', 'error');
+        return;
+    }
+    try {
+        const result = await api('/customers/' + currentCustomerId + '/moisture/probes/' + encodeURIComponent(probeId) + '/sleep-duration', {
+            method: 'PUT',
+            body: JSON.stringify({ seconds: seconds }),
+        });
+        if (result.status === 'pending') {
+            showToast('Sleep ' + seconds + 's queued — will apply when probe wakes', 'warning');
+        } else {
+            showToast('Sleep duration set to ' + seconds + 's');
+        }
+        _mgmtMoistureDataCache = null;
+        loadDetailMoisture(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -2304,16 +2361,17 @@ async function mgmtToggleProbeZones(probeId) {
             return;
         }
 
-        // Use zone aliases already loaded with customer detail
-        const aliases = window._currentZoneAliases || {};
+        // Refresh zone aliases from the customer to ensure they're current
+        try {
+            const freshCustomer = await api('/customers/' + currentCustomerId);
+            window._currentZoneAliases = freshCustomer.zone_aliases || {};
+        } catch(_) {}
 
         let cbHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px;">';
         for (const z of allZones) {
             const eid = z.entity_id;
             const checked = currentMappings.includes(eid) ? ' checked' : '';
-            let label = aliases[eid] || z.friendly_name || z.name || eid;
-            const m = eid.match(/zone[_]?(\\d+)/i);
-            if (label === eid && m) label = 'Zone ' + m[1];
+            let label = resolveZoneName(eid, z.friendly_name || z.name || eid);
             cbHtml += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 4px;border-radius:4px;' + (checked ? 'background:var(--bg-success-light);' : '') + '">';
             cbHtml += '<input type="checkbox" data-probe="' + esc(probeId) + '" data-zone="' + esc(eid) + '"' + checked + ' style="accent-color:var(--color-primary);">';
             cbHtml += '<span>' + esc(label) + '</span></label>';
@@ -2348,6 +2406,7 @@ async function mgmtSaveProbeZones(probeId) {
         showToast('Zone mapping updated (' + selectedZones.length + ' zones)');
         _mgmtMoistureDataCache = null;
         loadDetailMoisture(currentCustomerId);
+        loadDetailControls(currentCustomerId);  // Refresh schedule card (zone mappings affect factors)
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -3474,8 +3533,7 @@ async function loadDetailHistory(id) {
         const hasProbeData = events.some(e => e.moisture && e.moisture.moisture_multiplier != null);
 
         el.innerHTML = weatherSummary +
-            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);color:var(--text-muted);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Watering Factor</th>' +
-            (hasProbeData ? '<th style="padding:6px;">Probe Factor</th>' : '') +
+            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);color:var(--text-muted);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Moisture Factor</th>' +
             '<th style="padding:6px;">Weather</th></tr></thead><tbody>' +
             events.slice(0, 100).map(e => {
                 const wx = e.weather || {};
@@ -3492,23 +3550,20 @@ async function loadDetailHistory(id) {
                         wxCell += '<div style="font-size:10px;color:var(--text-warning);margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
                     }
                 }
-                // Watering Factor column — weather multiplier for schedule-triggered events
-                let wFactorCell = '<span style="color:var(--text-disabled);">—</span>';
-                if (e.source === 'schedule') {
-                    const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : null;
-                    if (wMult != null) {
-                        const fc = wMult === 1.0 ? 'var(--color-success)' : wMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
-                        wFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + wMult + 'x</span>';
-                    }
-                }
-                // Probe Factor column — moisture multiplier + sensor readings
-                let pFactorCell = '<span style="color:var(--text-disabled);">—</span>';
-                if (e.source === 'schedule') {
+                // Moisture Factor column — moisture probe value for schedule-triggered events
+                let mFactorCell = '<span style="color:var(--text-disabled);">—</span>';
+                if (e.source === 'schedule' || e.source === 'moisture_cutoff') {
                     const mo = e.moisture || {};
                     const mMult = mo.moisture_multiplier != null ? mo.moisture_multiplier : null;
-                    if (mMult != null) {
-                        const fc = mMult === 1.0 ? 'var(--color-success)' : mMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
-                        pFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + mMult + 'x</span>';
+                    if (e.state === 'skip') {
+                        mFactorCell = '<span style="color:var(--color-danger);font-weight:600;">Skip</span>';
+                    } else if (mMult != null) {
+                        if (mMult === 0) {
+                            mFactorCell = '<span style="color:var(--color-danger);font-weight:600;">Skip</span>';
+                        } else {
+                            const fc = mMult === 1.0 ? 'var(--color-success)' : mMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+                            mFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + mMult + 'x</span>';
+                        }
                         // Show sensor readings (T/M/B) if available
                         const sr = mo.sensor_readings || {};
                         const parts = [];
@@ -3516,19 +3571,35 @@ async function loadDetailHistory(id) {
                         if (sr.M != null) parts.push('M:' + sr.M + '%');
                         if (sr.B != null) parts.push('B:' + sr.B + '%');
                         if (parts.length > 0) {
-                            pFactorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">' + parts.join(' ') + '</div>';
+                            mFactorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">' + parts.join(' ') + '</div>';
+                        }
+                    } else {
+                        // No probe data — show weather factor as fallback
+                        const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : null;
+                        if (wMult != null) {
+                            const fc = wMult === 1.0 ? 'var(--color-success)' : wMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+                            mFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + wMult + 'x</span>';
+                            mFactorCell += '<div style="font-size:10px;color:var(--text-muted);">weather</div>';
                         }
                     }
                 }
-                const srcLabel = e.source ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
-                return `<tr style="border-bottom:1px solid var(--border-row);">
+                const srcLabel = e.source && e.source !== 'schedule' ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
+                // State display: handle skip events
+                let stateCell;
+                if (e.state === 'skip') {
+                    stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span><br><span style="color:var(--text-disabled);font-size:11px;">OFF</span>';
+                } else if (e.state === 'on' || e.state === 'open') {
+                    stateCell = '<span style="color:var(--color-success);">ON</span>';
+                } else {
+                    stateCell = '<span style="color:var(--text-disabled);">OFF</span>';
+                }
+                return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' ? 'opacity:0.7;' : ''}">
                 <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}${srcLabel}</td>
-                <td style="padding:6px;">${e.state === 'on' || e.state === 'open' ? '<span style="color:var(--color-success);">ON</span>' : '<span style="color:var(--text-disabled);">OFF</span>'}</td>
+                <td style="padding:6px;">${stateCell}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
-                <td style="padding:6px;font-size:12px;">${wFactorCell}</td>` +
-                (hasProbeData ? `<td style="padding:6px;font-size:12px;">${pFactorCell}</td>` : '') +
-                `<td style="padding:6px;font-size:12px;">${wxCell}</td>
+                <td style="padding:6px;font-size:12px;">${mFactorCell}</td>
+                <td style="padding:6px;font-size:12px;">${wxCell}</td>
             </tr>`;
             }).join('') + '</tbody></table>';
     } catch (e) {

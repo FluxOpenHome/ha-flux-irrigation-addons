@@ -274,12 +274,67 @@ async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
             print(f"[RUN_LOG] Moisture zone state hook error: {e}")
 
 
+def _get_probe_sensor_entities() -> set:
+    """Get the set of moisture probe sensor entity IDs to watch for skip↔factor transitions."""
+    try:
+        from routes.moisture import _load_data as _load_moisture_data
+        data = _load_moisture_data()
+        if not data.get("enabled") or not data.get("apply_factors_to_schedule"):
+            return set()
+        entities = set()
+        for probe_id, probe in data.get("probes", {}).items():
+            for depth in ("shallow", "mid", "deep"):
+                sensor_eid = probe.get("sensors", {}).get(depth)
+                if sensor_eid:
+                    entities.add(sensor_eid)
+            # Also watch sleep_duration for wake detection
+            sleep_eid = probe.get("extra_sensors", {}).get("sleep_duration")
+            if sleep_eid:
+                entities.add(sleep_eid)
+        return entities
+    except Exception:
+        return set()
+
+
+async def _handle_probe_sensor_change(entity_id: str, new_state: str, old_state: str):
+    """Handle a moisture probe sensor state change.
+
+    Checks if the reading change would cause a skip↔factor transition for
+    any mapped zone. If so, triggers an immediate factor re-evaluation.
+    Also handles probe wake detection for pending sleep duration writes.
+    """
+    # Wake detection: unavailable → real value means probe woke up
+    if old_state in ("unavailable", "unknown") and new_state not in ("unavailable", "unknown"):
+        try:
+            from routes.moisture import on_probe_wake
+            await on_probe_wake(entity_id)
+        except Exception as e:
+            print(f"[RUN_LOG] Probe wake hook error: {e}")
+
+    # Skip↔factor transition detection: only for moisture sensors (not sleep_duration etc.)
+    try:
+        from routes.moisture import check_skip_factor_transition
+        needs_reeval = await check_skip_factor_transition(entity_id, new_state, old_state)
+        if needs_reeval:
+            print(f"[RUN_LOG] Probe sensor {entity_id} triggered skip↔factor transition — "
+                  f"re-evaluating factors")
+            from routes.moisture import apply_adjusted_durations
+            result = await apply_adjusted_durations()
+            applied = result.get("applied", 0)
+            print(f"[RUN_LOG] Auto factor re-evaluation complete: {applied} zone(s) updated")
+    except Exception as e:
+        print(f"[RUN_LOG] Probe sensor transition check error: {e}")
+
+
 async def _watch_via_websocket(allowed_entities: set):
     """Subscribe to HA state_changed events via WebSocket for real-time logging.
 
     This gives sub-second event delivery — HA pushes state changes the instant
     they happen, so pump relay on/off timing is captured accurately relative
     to zone valve changes.
+
+    Also monitors moisture probe sensors for skip↔factor transitions to
+    automatically re-apply schedule adjustments.
     """
     import websockets
     from config import get_config
@@ -287,6 +342,13 @@ async def _watch_via_websocket(allowed_entities: set):
     config = get_config()
     token = config.supervisor_token
     ws_url = "ws://supervisor/core/websocket"
+
+    # Build combined watch set: zone entities + probe sensor entities
+    probe_entities = _get_probe_sensor_entities()
+    all_watched = allowed_entities | probe_entities
+    if probe_entities:
+        print(f"[RUN_LOG] Also watching {len(probe_entities)} probe sensor entities "
+              f"for skip↔factor transitions")
 
     extra_headers = {"Authorization": f"Bearer {token}"}
 
@@ -312,8 +374,8 @@ async def _watch_via_websocket(allowed_entities: set):
         if not msg.get("success"):
             raise RuntimeError(f"WS subscribe failed: {msg}")
 
-        print(f"[RUN_LOG] WebSocket connected — real-time zone monitoring active "
-              f"({len(allowed_entities)} entities)")
+        print(f"[RUN_LOG] WebSocket connected — real-time monitoring active "
+              f"({len(allowed_entities)} zone + {len(probe_entities)} probe entities)")
 
         # Step 4: Listen for events
         async for raw_msg in ws:
@@ -324,7 +386,7 @@ async def _watch_via_websocket(allowed_entities: set):
                 event_data = msg.get("event", {}).get("data", {})
                 entity_id = event_data.get("entity_id", "")
 
-                if entity_id not in allowed_entities:
+                if entity_id not in all_watched:
                     continue
 
                 new_state_obj = event_data.get("new_state", {})
@@ -335,10 +397,13 @@ async def _watch_via_websocket(allowed_entities: set):
                 if new_state == old_state:
                     continue
 
-                attrs = new_state_obj.get("attributes", {}) if new_state_obj else {}
-                zone_name = attrs.get("friendly_name", entity_id)
-
-                await _handle_state_change(entity_id, new_state, old_state, zone_name)
+                # Route to appropriate handler
+                if entity_id in allowed_entities:
+                    attrs = new_state_obj.get("attributes", {}) if new_state_obj else {}
+                    zone_name = attrs.get("friendly_name", entity_id)
+                    await _handle_state_change(entity_id, new_state, old_state, zone_name)
+                elif entity_id in probe_entities:
+                    await _handle_probe_sensor_change(entity_id, new_state, old_state)
 
             except json.JSONDecodeError:
                 continue

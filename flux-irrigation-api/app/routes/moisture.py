@@ -1372,9 +1372,34 @@ async def apply_adjusted_durations() -> dict:
             if zone_result.get("avg_moisture") is not None:
                 adj_entry["profile"] = zone_result.get("profile", "unknown")
                 adj_entry["reason"] = zone_result.get("reason", "")
+                # Capture sensor readings for run log display
+                for detail in zone_result.get("probe_details", []):
+                    readings = detail.get("depth_readings", {})
+                    if readings:
+                        sr = {}
+                        if "shallow" in readings:
+                            sr["T"] = round(readings["shallow"].get("value", 0), 1)
+                        if "mid" in readings:
+                            sr["M"] = round(readings["mid"].get("value", 0), 1)
+                        if "deep" in readings:
+                            sr["B"] = round(readings["deep"].get("value", 0), 1)
+                        if sr:
+                            adj_entry["sensor_readings"] = sr
+                        break  # Use first probe's readings
             elif zone_result.get("probe_count", 0) == 0:
                 adj_entry["reason"] = "No probes mapped — weather only"
             adjusted[dur_eid] = adj_entry
+
+            # Log synthetic skip event to run history
+            if skip and zone_entity_id:
+                import run_log
+                run_log.log_zone_event(
+                    entity_id=zone_entity_id,
+                    state="skip",
+                    source="moisture_skip",
+                    zone_name=zone_entity_id,
+                    duration_seconds=0,
+                )
         else:
             failed.append(dur_eid)
             print(f"[MOISTURE] FAILED to set {dur_eid} to {adjusted_value}")
@@ -1988,6 +2013,67 @@ async def api_delete_probe(probe_id: str, request: Request):
                f"Removed probe: {display_name}")
 
     return {"success": True, "message": f"Probe '{probe_id}' removed"}
+
+
+class SleepDurationRequest(BaseModel):
+    seconds: int = Field(..., ge=30, le=7200, description="Sleep duration in seconds (30-7200)")
+
+
+@router.put("/probes/{probe_id}/sleep-duration", summary="Set probe sleep duration")
+async def api_set_sleep_duration(probe_id: str, body: SleepDurationRequest, request: Request):
+    """Set the sleep duration for a Gophr probe.
+
+    If the probe is currently awake, the value is written immediately.
+    If the probe is asleep (unavailable), the value is stored as pending
+    and will be applied automatically when the probe next wakes up.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
+
+    display_name = probe.get("display_name", probe_id)
+
+    # Check if probe is currently awake by reading its sleep_duration sensor
+    sleep_eid = probe.get("extra_sensors", {}).get("sleep_duration")
+    is_awake = False
+    if sleep_eid:
+        try:
+            states = await ha_client.get_entities_by_ids([sleep_eid])
+            if states and states[0].get("state") not in ("unavailable", "unknown", None):
+                is_awake = True
+        except Exception:
+            pass
+
+    if is_awake:
+        # Write immediately
+        success = await _set_probe_sleep_duration(probe_id, body.seconds)
+        if success:
+            # Clear any pending value
+            probe["pending_sleep_duration"] = None
+            _save_data(data)
+            log_change(get_actor(request), "Moisture Probes",
+                       f"Set sleep duration for {display_name}: {body.seconds}s (applied immediately)")
+            return {
+                "success": True,
+                "status": "applied",
+                "message": f"Sleep duration set to {body.seconds}s",
+                "seconds": body.seconds,
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to write sleep duration to device")
+    else:
+        # Store as pending
+        probe["pending_sleep_duration"] = body.seconds
+        _save_data(data)
+        log_change(get_actor(request), "Moisture Probes",
+                   f"Queued sleep duration for {display_name}: {body.seconds}s (pending wake)")
+        return {
+            "success": True,
+            "status": "pending",
+            "message": f"Sleep duration {body.seconds}s queued — will apply when probe wakes",
+            "seconds": body.seconds,
+        }
 
 
 @router.get("/settings", summary="Get moisture probe settings")
@@ -2687,6 +2773,97 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
                     await set_probe_sleep_disabled(probe_id, False)
                     print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
                           f"{probe_id}")
+
+
+async def check_skip_factor_transition(entity_id: str, new_state: str, old_state: str) -> bool:
+    """Check if a probe sensor reading change causes a skip↔factor transition.
+
+    Called by run_log when a moisture probe sensor state changes.
+    Returns True if factors need to be re-evaluated (a zone went from
+    skip → non-skip or non-skip → skip).
+    """
+    data = _load_data()
+    if not data.get("enabled") or not data.get("apply_factors_to_schedule"):
+        return False
+
+    # Don't evaluate on unavailable/unknown transitions (probe sleep/wake)
+    if new_state in ("unavailable", "unknown") or old_state in ("unavailable", "unknown"):
+        return False
+
+    # Try to parse as numeric — moisture sensor values
+    try:
+        float(new_state)
+    except (ValueError, TypeError):
+        return False
+
+    # Find which probe(s) own this sensor entity
+    probes = data.get("probes", {})
+    affected_zones = set()
+    for probe_id, probe in probes.items():
+        for depth in ("shallow", "mid", "deep"):
+            if probe.get("sensors", {}).get(depth) == entity_id:
+                # This probe's sensor changed — check all mapped zones
+                for zone_eid in probe.get("zone_mappings", []):
+                    affected_zones.add(zone_eid)
+                break
+
+    if not affected_zones:
+        return False
+
+    # Compare current vs new factor state for affected zones
+    # Check if any zone's skip status would change
+    adjusted = data.get("adjusted_durations", {})
+    sensor_states = await _get_probe_sensor_states(probes)
+
+    for zone_eid in affected_zones:
+        # Get new factor with current sensor readings
+        zone_result = calculate_zone_moisture_multiplier(
+            zone_eid, data, sensor_states,
+        )
+        new_skip = zone_result.get("skip", False)
+
+        # Check what the current applied state is
+        was_skip = False
+        for dur_eid, adj_data in adjusted.items():
+            if adj_data.get("zone_entity_id") == zone_eid:
+                was_skip = adj_data.get("skip", False)
+                break
+
+        if new_skip != was_skip:
+            print(f"[MOISTURE] Skip↔factor transition detected: {zone_eid} "
+                  f"was_skip={was_skip} → new_skip={new_skip} "
+                  f"(triggered by {entity_id}: {old_state} → {new_state})")
+            return True
+
+    return False
+
+
+async def on_probe_wake(entity_id: str):
+    """Called when a probe entity transitions from unavailable to a real value.
+
+    Checks for pending sleep duration writes and applies them immediately
+    since the probe is now awake and reachable.
+    """
+    data = _load_data()
+    probes = data.get("probes", {})
+
+    for probe_id, probe in probes.items():
+        sleep_eid = probe.get("extra_sensors", {}).get("sleep_duration")
+        if sleep_eid == entity_id:
+            pending = probe.get("pending_sleep_duration")
+            if pending is not None:
+                print(f"[MOISTURE] Probe {probe.get('display_name', probe_id)} woke up — "
+                      f"applying pending sleep duration: {pending}s")
+                success = await _set_probe_sleep_duration(probe_id, pending)
+                if success:
+                    probe["pending_sleep_duration"] = None
+                    _save_data(data)
+                    print(f"[MOISTURE] Pending sleep duration applied successfully")
+                else:
+                    print(f"[MOISTURE] Failed to apply pending sleep duration")
+            else:
+                print(f"[MOISTURE] Probe {probe.get('display_name', probe_id)} woke up (no pending writes)")
+            return
 
 
 @router.post("/probes/sync-schedules", summary="Sync irrigation schedules to moisture probes")
