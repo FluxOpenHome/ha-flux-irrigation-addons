@@ -2256,7 +2256,7 @@ async function mgmtToggleProbeZones(probeId) {
             const eid = z.entity_id;
             const checked = currentMappings.includes(eid) ? ' checked' : '';
             let label = aliases[eid] || z.friendly_name || z.name || eid;
-            const m = eid.match(/zone[_]?(\d+)/i);
+            const m = eid.match(/zone[_]?(\\d+)/i);
             if (label === eid && m) label = 'Zone ' + m[1];
             cbHtml += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 4px;border-radius:4px;' + (checked ? 'background:var(--bg-success-light);' : '') + '">';
             cbHtml += '<input type="checkbox" data-probe="' + esc(probeId) + '" data-zone="' + esc(eid) + '"' + checked + ' style="accent-color:var(--color-primary);">';
