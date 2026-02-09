@@ -1459,7 +1459,7 @@ async def get_customer_report_pdf(
             history_data, hours
         )
 
-        pdf_bytes = pdf.output()
+        pdf_bytes = bytes(pdf.output())
         timestamp = dt.now().strftime("%Y%m%d_%H%M")
         return FastResponse(
             content=pdf_bytes,

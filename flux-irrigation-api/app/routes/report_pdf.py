@@ -601,6 +601,9 @@ def build_report(
         pdf.spacer(5)
 
     # ── Zones Overview ────────────────────────────────────────────
+    # Defensive: ensure zone_heads is a dict (not a list)
+    if not isinstance(zone_heads, dict):
+        zone_heads = {}
     pdf.section_header(f"Zones ({len(zones)})")
     cols = [("Zone", 55), ("State", 22), ("GPM", 22), ("Heads", 20), ("Notes", 66)]
     widths = [c[1] for c in cols]
@@ -686,6 +689,8 @@ def build_report(
 
         # Rules summary
         rules = weather.get("rules", {})
+        if not isinstance(rules, dict):
+            rules = {}
         enabled_rules = [(k, v) for k, v in rules.items()
                          if isinstance(v, dict) and v.get("enabled")]
         if enabled_rules:
@@ -700,6 +705,8 @@ def build_report(
     if moisture.get("enabled"):
         pdf.section_header("Moisture Probes")
         probes = moisture.get("probes", {})
+        if not isinstance(probes, dict):
+            probes = {}
         if probes:
             for probe_id, probe_data in probes.items():
                 label = probe_id.replace("_", " ").title()
@@ -862,7 +869,7 @@ async def generate_report_pdf(
         )
 
         # Return as downloadable PDF
-        pdf_bytes = pdf.output()
+        pdf_bytes = bytes(pdf.output())
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         return Response(
             content=pdf_bytes,
@@ -874,8 +881,15 @@ async def generate_report_pdf(
     except Exception as e:
         tb = traceback.format_exc()
         print(f"[REPORT PDF] Error generating report: {e}\n{tb}")
+        # Extract last line number from traceback for easier debugging
+        tb_lines = [l.strip() for l in tb.strip().split("\n") if l.strip()]
+        location = ""
+        for tl in reversed(tb_lines):
+            if tl.startswith("File "):
+                location = f" [{tl}]"
+                break
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=500,
-            content={"error": f"Failed to generate PDF report: {str(e)}"},
+            content={"error": f"Failed to generate PDF report: {str(e)}{location}"},
         )
