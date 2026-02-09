@@ -985,3 +985,40 @@ async def homeowner_get_pump_stats(
     return pump_data.get_pump_stats(hours=hours, pump_entity_id=eid, settings=settings)
 
 
+# --- Water Source Settings ---
+
+
+class SaveWaterSettingsRequest(BaseModel):
+    water_source: str = ""
+    cost_per_1000_gal: float = 0.0
+
+
+@router.get("/water_settings", summary="Get water source settings")
+async def homeowner_get_water_settings():
+    """Get the water source configuration (city/reclaimed/well, cost per 1,000 gal)."""
+    _require_homeowner_mode()
+    import water_data
+    return water_data.get_water_settings()
+
+
+@router.put("/water_settings", summary="Save water source settings")
+async def homeowner_save_water_settings(body: SaveWaterSettingsRequest, request: Request):
+    """Save water source settings. Well water auto-zeros cost."""
+    _require_homeowner_mode()
+    import water_data
+    old = water_data.get_water_settings()
+    result = water_data.save_water_settings(body.dict())
+
+    # Log changes
+    changes = []
+    for key in ("water_source", "cost_per_1000_gal"):
+        old_val = old.get(key)
+        new_val = result.get(key)
+        if str(old_val) != str(new_val):
+            changes.append(f"{key}: {old_val} \u2192 {new_val}")
+    if changes:
+        log_change(get_actor(request), "Water Settings", "; ".join(changes), result)
+
+    return result
+
+

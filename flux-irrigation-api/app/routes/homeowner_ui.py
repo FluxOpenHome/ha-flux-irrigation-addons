@@ -287,6 +287,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
                         <option value="2160">Last 90 days</option>
                         <option value="8760">Last year</option>
                     </select>
+                    <button class="btn btn-secondary btn-sm" onclick="showWaterSettingsModal()" title="Water source settings">&#9881;&#65039;</button>
                 </div>
             </div>
             <div class="card-body" id="estGallonsBody">
@@ -1463,6 +1464,17 @@ async function loadControls() {
                 break;
             }
         }
+        // Auto-default to well water if pump relay detected and no water source set
+        if (window._pumpZoneEntity) {
+            try {
+                var ws = await api('/water_settings?t=' + Date.now());
+                if (!ws.water_source) {
+                    ws.water_source = 'well';
+                    ws.cost_per_1000_gal = 0;
+                    await api('/water_settings', { method: 'PUT', body: JSON.stringify(ws) });
+                }
+            } catch(e) {}
+        }
         loadPumpMonitor();
 
         // Extract rain and expansion control entities into their own cards
@@ -2297,10 +2309,25 @@ async function loadEstGallons() {
         const totalGal = Object.values(zoneGallons).reduce((a, b) => a + b, 0);
         // Sort zones by gallons desc
         const sorted = Object.keys(zoneGallons).sort((a, b) => zoneGallons[b] - zoneGallons[a]);
+        // Fetch water settings for cost display
+        var waterSettings = null;
+        try { waterSettings = await api('/water_settings?t=' + Date.now()); } catch(e) {}
         let html = '<div style="text-align:center;margin-bottom:12px;">' +
             '<div style="font-size:32px;font-weight:700;color:var(--text-primary);">' + totalGal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</div>' +
-            '<div style="font-size:13px;color:var(--text-muted);">estimated gallons</div>' +
-            '</div>';
+            '<div style="font-size:13px;color:var(--text-muted);">estimated gallons</div>';
+        // Water cost line (city/reclaimed with cost configured)
+        if (waterSettings && waterSettings.cost_per_1000_gal > 0 &&
+            (waterSettings.water_source === 'city' || waterSettings.water_source === 'reclaimed')) {
+            var waterCost = (totalGal / 1000) * waterSettings.cost_per_1000_gal;
+            html += '<div style="font-size:15px;color:var(--color-success);font-weight:600;margin-top:4px;">$' +
+                waterCost.toFixed(2) + ' est. water cost</div>';
+        }
+        // Water source badge
+        if (waterSettings && waterSettings.water_source) {
+            var srcLabel = {city:'City Water', reclaimed:'Reclaimed Water', well:'Well Water'}[waterSettings.water_source] || '';
+            if (srcLabel) html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + esc(srcLabel) + '</div>';
+        }
+        html += '</div>';
         html += '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
             '<thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:4px 6px;">Zone</th><th style="padding:4px 6px;text-align:right;">Time</th><th style="padding:4px 6px;text-align:right;">Gallons</th><th style="padding:4px 6px;text-align:right;">GPM</th></tr></thead><tbody>';
         sorted.forEach(eid => {
@@ -2441,6 +2468,62 @@ async function savePumpSettings() {
         closeDynamicModal();
         showToast('Pump settings saved');
         loadPumpMonitor();
+    } catch(e) {
+        showToast('Failed to save: ' + e.message, true);
+    }
+}
+
+// --- Water Source Settings ---
+
+async function showWaterSettingsModal() {
+    var ws = {};
+    try { ws = await api('/water_settings?t=' + Date.now()); } catch(e) {}
+
+    var body = '<div style="display:flex;flex-direction:column;gap:12px;">';
+
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Water Source</label>' +
+        '<select id="waterSourceType" onchange="toggleWaterCostField()" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;">' +
+        '<option value="">-- Select --</option>' +
+        '<option value="city"' + (ws.water_source==='city' ? ' selected' : '') + '>City Water</option>' +
+        '<option value="reclaimed"' + (ws.water_source==='reclaimed' ? ' selected' : '') + '>Reclaimed Water</option>' +
+        '<option value="well"' + (ws.water_source==='well' ? ' selected' : '') + '>Well Water</option>' +
+        '</select></div>';
+
+    var showCost = (ws.water_source === 'city' || ws.water_source === 'reclaimed');
+    body += '<div id="waterCostRow" style="' + (showCost ? '' : 'display:none;') + '">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Cost per 1,000 Gallons ($)</label>' +
+        '<input type="number" id="waterCostPer1000" value="' + (ws.cost_per_1000_gal || '') + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 5.50">' +
+        '</div>';
+
+    body += '<div id="wellWaterNote" style="' + (ws.water_source==='well' ? '' : 'display:none;') +
+        'background:var(--bg-tile);border-radius:6px;padding:8px 12px;font-size:13px;color:var(--text-muted);">' +
+        'Well water has no utility cost. Pump electricity costs are tracked in the Pump Monitor card.</div>';
+
+    body += '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
+        '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
+        '<button class="btn btn-primary" onclick="saveWaterSettings()">Save</button>' +
+        '</div>';
+    body += '</div>';
+
+    showModal('\\u{1F4A7} Water Source Settings', body, '420px');
+}
+
+function toggleWaterCostField() {
+    var src = document.getElementById('waterSourceType').value;
+    document.getElementById('waterCostRow').style.display = (src === 'city' || src === 'reclaimed') ? '' : 'none';
+    document.getElementById('wellWaterNote').style.display = (src === 'well') ? '' : 'none';
+}
+
+async function saveWaterSettings() {
+    var payload = {
+        water_source: document.getElementById('waterSourceType').value,
+        cost_per_1000_gal: parseFloat(document.getElementById('waterCostPer1000').value) || 0
+    };
+    try {
+        await api('/water_settings', { method: 'PUT', body: JSON.stringify(payload) });
+        closeDynamicModal();
+        showToast('Water settings saved');
+        loadEstGallons();
     } catch(e) {
         showToast('Failed to save: ' + e.message, true);
     }
@@ -4095,6 +4178,12 @@ const HELP_CONTENT = `
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone name</strong> and source (API, schedule, weather pause, etc.)</li><li style="margin-bottom:4px;"><strong>State</strong> — ON (green) or OFF</li><li style="margin-bottom:4px;"><strong>Time</strong> and <strong>duration</strong> of each run</li><li style="margin-bottom:4px;"><strong>Watering Factor</strong> — The weather-based multiplier applied to schedule-triggered runs (green at 1.0x, yellow below, red above)</li><li style="margin-bottom:4px;"><strong>Probe Factor</strong> — The moisture probe multiplier (only shown when probes are enabled); includes sensor readings at each depth (T=Top/shallow, M=Middle/root zone, B=Bottom/deep) as percentages</li><li style="margin-bottom:4px;"><strong>Weather</strong> — Conditions at the time of the event with any triggered rules</li></ul>
 <p style="margin-bottom:10px;">Use the time range dropdown to view the last 24 hours, 7 days, 30 days, 90 days, or full year. Click <strong>Export CSV</strong> to download history as a spreadsheet. The CSV includes additional columns for probe sensor readings (top, mid, bottom percentages) and moisture profile.</p>
 
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">&#128167; Estimated Gallons &amp; Water Source</h4>
+<p style="margin-bottom:10px;">The Estimated Gallons card shows total water usage calculated from zone run times and configured GPM (gallons per minute) values from your Zone Head Details. Click the <strong>&#9881;&#65039; gear</strong> button to configure your water source:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>City Water</strong> &mdash; Municipal water supply; enter your cost per 1,000 gallons to see estimated water costs</li><li style="margin-bottom:4px;"><strong>Reclaimed Water</strong> &mdash; Recycled/reclaimed water; enter your cost per 1,000 gallons</li><li style="margin-bottom:4px;"><strong>Well Water</strong> &mdash; Private well (auto-detected when a Pump Start Relay is configured); no water utility cost &mdash; electricity costs are tracked in the Pump Monitor card</li></ul>
+<p style="margin-bottom:10px;">When a cost is configured, the estimated water cost appears below the total gallons on the card and in PDF reports.</p>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; If your controller has a Pump Start Relay zone, the water source automatically defaults to Well Water. You can change this at any time.</div>
+
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">&#9889; Pump Monitor</h4>
 <p style="margin-bottom:10px;">If one of your zones is configured as a <strong>Pump Start Relay</strong>, a dedicated Pump Monitor card appears alongside the Estimated Gallons card. The card shows real-time pump usage statistics:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Total Cycles</strong> &mdash; Number of completed pump on/off cycles in the selected time range</li><li style="margin-bottom:4px;"><strong>Run Hours</strong> &mdash; Total hours the pump has been running</li><li style="margin-bottom:4px;"><strong>Power Used</strong> &mdash; Total electricity consumption in kilowatt-hours (kWh), calculated from pump HP/kW rating and run time</li><li style="margin-bottom:4px;"><strong>Estimated Cost</strong> &mdash; Electricity cost based on your configured rate ($/kWh)</li></ul>
@@ -4105,7 +4194,7 @@ const HELP_CONTENT = `
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">PDF System Report</h4>
 <p style="margin-bottom:10px;">Click the <strong>PDF Report</strong> button in the header to generate a comprehensive, professionally branded PDF document covering your entire irrigation system. The report includes:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>System Status</strong> &mdash; Online/offline, paused/active, weather multiplier, moisture status</li><li style="margin-bottom:4px;"><strong>Active Issues</strong> &mdash; Any reported issues with severity, description, and status</li><li style="margin-bottom:4px;"><strong>Zones Overview</strong> &mdash; All zones with name, state, GPM, and head count</li><li style="margin-bottom:4px;"><strong>Zone Head Details</strong> &mdash; Complete sprinkler head inventory per zone (type, brand, model, GPM, arc, radius, PSI)</li><li style="margin-bottom:4px;"><strong>Weather Settings</strong> &mdash; Current conditions, multiplier, and active adjustment rules</li><li style="margin-bottom:4px;"><strong>Moisture Probes</strong> &mdash; Probe configuration, mapped zones, and thresholds</li><li style="margin-bottom:4px;"><strong>Sensors</strong> &mdash; All sensor readings with values and units</li><li style="margin-bottom:4px;"><strong>Estimated Water Usage</strong> &mdash; Total gallons and per-zone breakdown for the selected time range</li><li style="margin-bottom:4px;"><strong>Run History</strong> &mdash; Recent zone run events with durations and sources</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>System Status</strong> &mdash; Online/offline, paused/active, weather multiplier, moisture status</li><li style="margin-bottom:4px;"><strong>Active Issues</strong> &mdash; Any reported issues with severity, description, and status</li><li style="margin-bottom:4px;"><strong>Zones Overview</strong> &mdash; All zones with name, state, GPM, and head count</li><li style="margin-bottom:4px;"><strong>Zone Head Details</strong> &mdash; Complete sprinkler head inventory per zone (type, brand, model, GPM, arc, radius, PSI)</li><li style="margin-bottom:4px;"><strong>Weather Settings</strong> &mdash; Current conditions, multiplier, and active adjustment rules</li><li style="margin-bottom:4px;"><strong>Moisture Probes</strong> &mdash; Probe configuration, mapped zones, and thresholds</li><li style="margin-bottom:4px;"><strong>Sensors</strong> &mdash; All sensor readings with values and units</li><li style="margin-bottom:4px;"><strong>Estimated Water Usage</strong> &mdash; Total gallons, per-zone breakdown, water source type, and estimated cost (when configured)</li><li style="margin-bottom:4px;"><strong>Run History</strong> &mdash; Recent zone run events with durations and sources</li></ul>
 <p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> next to the button to select the period for history and water usage data: 24 Hours, 7 Days, 30 Days (default), 90 Days, or 1 Year. The PDF opens in a new tab for viewing or downloading.</p>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The report is generated server-side and branded with Flux Open Home and Gophr logos. Water usage estimates are calculated from zone run durations and configured GPM values.</div>
 

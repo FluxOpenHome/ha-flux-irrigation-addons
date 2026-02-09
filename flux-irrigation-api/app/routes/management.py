@@ -1452,11 +1452,23 @@ async def get_customer_report_pdf(
         if not isinstance(history_data, list):
             history_data = history_data.get("events", []) if isinstance(history_data, dict) else []
 
+        # Fetch water source settings
+        water_settings = {}
+        try:
+            _, ws_resp = await management_client.proxy_request(
+                conn, "GET", "/admin/api/homeowner/water_settings"
+            )
+            if isinstance(ws_resp, dict):
+                water_settings = ws_resp
+        except Exception:
+            pass
+
         # Build PDF using shared builder
         pdf = build_report(
             status_data, zones_data, aliases_data, zone_heads_data,
             sensors_data, weather_data, moisture_data, issues_data,
-            history_data, hours
+            history_data, hours,
+            water_settings=water_settings,
         )
 
         pdf_bytes = bytes(pdf.output())
@@ -1534,6 +1546,49 @@ async def get_customer_pump_stats(
     status_code, data = await management_client.proxy_request(
         conn, "GET", "/admin/api/homeowner/pump_stats",
         params={"hours": hours},
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+# --- Water Source Settings (proxy) ---
+
+
+@router.get(
+    "/api/customers/{customer_id}/water_settings",
+    summary="Get customer water source settings",
+)
+async def get_customer_water_settings(customer_id: str):
+    """Get water source configuration for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/water_settings"
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/water_settings",
+    summary="Save customer water source settings",
+)
+async def save_customer_water_settings(customer_id: str, request: Request):
+    """Save water source configuration for a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", "/admin/api/homeowner/water_settings",
+        json_body=body,
+        extra_headers={"X-Actor": "Management"},
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)

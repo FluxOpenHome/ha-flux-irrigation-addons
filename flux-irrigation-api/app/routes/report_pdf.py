@@ -466,6 +466,7 @@ def build_report(
     issues: list,
     history: list,
     hours: int,
+    water_settings: dict = None,
 ) -> FPDF:
     """Build the complete professional system report PDF."""
     # Defensive type checks
@@ -822,6 +823,27 @@ def build_report(
             pdf.set_text_color(*TEXT_MUTED)
             pdf.cell(_CW, 5, f"Total run time: {_format_duration(total_minutes * 60)}",
                      new_x="LMARGIN", new_y="NEXT", align="C")
+
+            # Water source info
+            ws = water_settings or {}
+            ws_label = {"city": "City Water", "reclaimed": "Reclaimed Water", "well": "Well Water"}.get(
+                ws.get("water_source", ""), "")
+            if ws_label:
+                pdf.set_font("Helvetica", "", 9)
+                pdf.set_text_color(*TEXT_MUTED)
+                pdf.cell(_CW, 5, f"Source: {ws_label}", new_x="LMARGIN", new_y="NEXT", align="C")
+
+            # Water cost (city/reclaimed only)
+            cost_per_1k = float(ws.get("cost_per_1000_gal", 0) or 0)
+            if cost_per_1k > 0 and ws.get("water_source") in ("city", "reclaimed"):
+                water_cost = (total_gallons / 1000) * cost_per_1k
+                pdf.set_font("Helvetica", "B", 14)
+                pdf.set_text_color(*GREEN_PRIMARY)
+                pdf.cell(_CW, 7, f"Estimated Water Cost: ${water_cost:,.2f}", new_x="LMARGIN", new_y="NEXT", align="C")
+                pdf.set_font("Helvetica", "", 8)
+                pdf.set_text_color(*TEXT_MUTED)
+                pdf.cell(_CW, 4, f"(${cost_per_1k:.2f} per 1,000 gallons)", new_x="LMARGIN", new_y="NEXT", align="C")
+
             pdf.set_text_color(*TEXT_DARK)
             pdf.spacer(3)
 
@@ -907,10 +929,18 @@ async def generate_report_pdf(
         issues = _get_issues()
         history = run_log.get_run_history(hours=hours)
 
+        # Water source settings
+        try:
+            import water_data
+            water_settings = water_data.get_water_settings()
+        except Exception:
+            water_settings = {}
+
         # Build PDF
         pdf = build_report(
             status, zones, zone_aliases, zone_heads,
-            sensors, weather, moisture, issues, history, hours
+            sensors, weather, moisture, issues, history, hours,
+            water_settings=water_settings,
         )
 
         # Return as downloadable PDF
