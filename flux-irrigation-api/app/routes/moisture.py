@@ -925,30 +925,34 @@ async def list_moisture_devices(show_all: bool = False) -> dict:
     return {"devices": result, "total_count": len(all_devices), "filtered": not show_all}
 
 
-async def get_device_sensors(device_id: str) -> list[dict]:
+async def get_device_sensors(device_id: str) -> tuple[list[dict], list[str]]:
     """Get all sensor entities belonging to a specific device.
 
     Uses HA's built-in device_entities() template function — the same mechanism
     that powers auto-entities cards. This is the most reliable way to get entities
     for a device because HA resolves the device→entity mapping internally.
 
-    Returns sensor entities with their current state. Works even when the device
-    is offline (state shows as 'unavailable').
+    Returns a tuple of:
+      - sensor entities with their current state (works even when device is offline)
+      - ALL entity IDs for the device (all domains, for Phase 2 control entity detection)
     """
     # Use HA's device_entities() — same as auto-entities card filter: device: "name"
     all_entity_ids = await ha_client.get_entities_for_device(device_id)
     print(f"[MOISTURE] get_device_sensors: device_entities({device_id}) returned {len(all_entity_ids)} entities")
 
     if all_entity_ids:
-        print(f"[MOISTURE]   All entities: {all_entity_ids[:20]}")
+        print(f"[MOISTURE]   All entities: {all_entity_ids}")
 
     # Filter to sensor domain only
     sensor_ids = [eid for eid in all_entity_ids if eid.startswith("sensor.")]
-    print(f"[MOISTURE]   Sensor entities: {len(sensor_ids)}")
+    non_sensor_ids = [eid for eid in all_entity_ids if not eid.startswith("sensor.")]
+    print(f"[MOISTURE]   Sensor entities: {len(sensor_ids)}, Non-sensor entities: {len(non_sensor_ids)}")
+    if non_sensor_ids:
+        print(f"[MOISTURE]   Non-sensor entities: {non_sensor_ids}")
 
     if not sensor_ids:
         print(f"[MOISTURE]   No sensor entities found for device {device_id}")
-        return []
+        return [], all_entity_ids
 
     # Fetch current states for the sensor entities
     states = await ha_client.get_entities_by_ids(sensor_ids)
@@ -969,7 +973,7 @@ async def get_device_sensors(device_id: str) -> list[dict]:
         })
 
     sensors.sort(key=lambda s: s["entity_id"])
-    return sensors
+    return sensors, all_entity_ids
 
 
 # --- Sensor State Fetching ---
@@ -2239,7 +2243,7 @@ async def api_get_device_sensors(device_id: str):
 
     Returns sensors that can be mapped as probe depth readings.
     """
-    sensors = await get_device_sensors(device_id)
+    sensors, _all_eids = await get_device_sensors(device_id)
     return {"device_id": device_id, "sensors": sensors, "total": len(sensors)}
 
 
@@ -2260,13 +2264,13 @@ async def api_autodetect_device_sensors(device_id: str):
       - sleep_duration → sleep_duration
       - AHT20 humidity/temperature sensors are excluded from moisture detection
     """
-    sensors = await get_device_sensors(device_id)
+    sensors, all_device_entity_ids = await get_device_sensors(device_id)
 
     depth_map = {"shallow": None, "mid": None, "deep": None}
     extra_map = {"wifi": None, "battery": None, "sleep_duration": None}
     disabled_sensor_entities = []  # Track disabled sensors for diagnostic
 
-    print(f"[MOISTURE] autodetect: {len(sensors)} sensors from get_device_sensors for device {device_id}")
+    print(f"[MOISTURE] autodetect: {len(sensors)} sensors from get_device_sensors, {len(all_device_entity_ids)} total entities for device {device_id}")
 
     if not sensors:
         print(f"[MOISTURE] autodetect: 0 sensors — device_entities() returned nothing for this device")
@@ -2409,8 +2413,10 @@ async def api_autodetect_device_sensors(device_id: str):
             depth_map["shallow"] = unmatched_moisture[2]["entity_id"]
 
     # --- Detect Gophr sleep/schedule/control entities ---
-    # Use HA's device_entities() to get ALL entities for this device (same as sensors above),
+    # Use the SAME entity list from Phase 1 (already fetched via device_entities()),
     # then classify the non-sensor entities (switches, lights, numbers, text, binary_sensor).
+    # If device_entities() returned no non-sensor entities, fall back to searching all_states
+    # by the device name slug extracted from known sensor entity IDs.
     schedule_times = []
     sleep_disabled_switch = None
     sleep_duration_number = None
@@ -2420,9 +2426,54 @@ async def api_autodetect_device_sensors(device_id: str):
     solar_charging_entity = None
     sleep_now_entity = None
 
-    # Get ALL entities for this device (we already got sensors above, now we need the rest)
-    all_device_entity_ids = await ha_client.get_entities_for_device(device_id)
-    print(f"[MOISTURE]   Phase 2: device_entities() returned {len(all_device_entity_ids)} total entities")
+    # Reuse all_device_entity_ids from get_device_sensors() — no second HTTP call needed
+    non_sensor_eids = [e for e in all_device_entity_ids if not e.startswith("sensor.")]
+    print(f"[MOISTURE]   Phase 2: {len(all_device_entity_ids)} total entities, {len(non_sensor_eids)} non-sensor: {non_sensor_eids}")
+
+    # Fallback: if device_entities() returned only sensors (no switches/lights/numbers/buttons),
+    # extract the device slug from known sensor entity IDs and search all_states by pattern.
+    # This handles cases where HA's device_entities() doesn't return all domain types.
+    if not non_sensor_eids and sensors:
+        # Extract device slug from a known sensor entity_id
+        # e.g., "sensor.gophr_2ac860_moisture_3_percentage" → "gophr_2ac860"
+        sample_eid = sensors[0]["entity_id"]  # e.g., "sensor.gophr_2ac860_..."
+        slug_part = sample_eid.split(".", 1)[1] if "." in sample_eid else sample_eid
+        # Find the device slug: everything before the first sensor-specific part
+        # For "gophr_2ac860_moisture_3_percentage", we want "gophr_2ac860"
+        # Strategy: find the common prefix among all sensor entity_ids
+        all_sensor_eids = [s["entity_id"].split(".", 1)[1] for s in sensors if "." in s["entity_id"]]
+        if len(all_sensor_eids) >= 2:
+            # Find common prefix of all sensor slugs
+            prefix = all_sensor_eids[0]
+            for other in all_sensor_eids[1:]:
+                while not other.startswith(prefix):
+                    prefix = prefix[:-1]
+                    if not prefix:
+                        break
+            # Clean up: remove trailing underscore
+            device_slug = prefix.rstrip("_")
+        else:
+            # Single sensor — take everything before the last few segments
+            # "gophr_2ac860_moisture_3_percentage" → try "gophr_2ac860"
+            parts = slug_part.split("_")
+            # Heuristic: device slug is the first 2-3 parts (before sensor-specific names)
+            device_slug = "_".join(parts[:2]) if len(parts) > 2 else slug_part
+
+        if device_slug and len(device_slug) >= 4:
+            print(f"[MOISTURE]   Phase 2 fallback: searching all_states for slug '{device_slug}'")
+            try:
+                all_states = await ha_client.get_all_states()
+                for state_obj in all_states:
+                    eid = state_obj.get("entity_id", "")
+                    if device_slug in eid and not eid.startswith("sensor."):
+                        if eid not in all_device_entity_ids:
+                            all_device_entity_ids.append(eid)
+                fallback_non_sensor = [e for e in all_device_entity_ids if not e.startswith("sensor.")]
+                print(f"[MOISTURE]   Phase 2 fallback found {len(fallback_non_sensor)} non-sensor entities: {fallback_non_sensor}")
+            except Exception as e:
+                print(f"[MOISTURE]   Phase 2 fallback failed: {e}")
+        else:
+            print(f"[MOISTURE]   Phase 2 fallback: could not extract device slug from sensor entities")
 
     for eid in all_device_entity_ids:
         eid_lower = eid.lower()
@@ -2531,7 +2582,9 @@ async def api_autodetect_device_sensors(device_id: str):
         "sensors": depth_map,
         "extra_sensors": {k: v for k, v in extra_map.items() if v is not None},
         "all_sensors": sensors,
+        "all_entity_ids": all_device_entity_ids,
         "total": len(sensors),
+        "total_all_domains": len(all_device_entity_ids),
         **({"diagnostic": diagnostic} if diagnostic else {}),
     }
 

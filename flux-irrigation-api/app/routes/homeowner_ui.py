@@ -3155,6 +3155,21 @@ async function onHoMoistureDeviceChange() {
             html += '<div style="color:var(--text-warning);font-size:12px;margin-bottom:8px;">Could not auto-detect sensors. This device has ' + allSensors.length + ' sensor entities.</div>';
         }
 
+        // Show all entity IDs found for this device (all domains)
+        const allEntityIds = data.all_entity_ids || [];
+        if (allEntityIds.length > 0) {
+            html += '<details style="margin-bottom:8px;"><summary style="font-size:11px;color:var(--text-muted);cursor:pointer;">All device entities (' + allEntityIds.length + ')</summary>';
+            html += '<div style="background:var(--bg-elevated);border-radius:6px;padding:8px;margin-top:4px;max-height:150px;overflow-y:auto;">';
+            for (const eid of allEntityIds) {
+                const domain = eid.split('.')[0] || '';
+                const isMatched = (Object.values(depthSensors).includes(eid) || Object.values(extraSensors).includes(eid));
+                const color = isMatched ? 'var(--text-success-dark)' : 'var(--text-muted)';
+                const icon = isMatched ? '✓ ' : '  ';
+                html += '<div style="font-size:10px;color:' + color + ';font-family:monospace;padding:1px 0;">' + icon + esc(eid) + '</div>';
+            }
+            html += '</div></details>';
+        }
+
         if (detected.length === 0) {
             var diag = data.diagnostic || {};
             var hint = diag.hint || 'Make sure this is a Gophr device with moisture sensors.';
