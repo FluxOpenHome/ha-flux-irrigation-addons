@@ -20,6 +20,10 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 - **Pump/Master Valve zone ordering** — Zones configured as Pump Start Relay or Master Valve are now sorted to appear after all normal irrigation zones in both the zone card tiles and the schedule card zone settings table
 - **Moisture card cleanup** — Removed the Zone Multipliers section from the moisture probe card for a cleaner layout; per-zone multiplier data remains accessible via the API and is reflected in schedule card factor badges
 
+### Fixed
+
+- **System Status watering factor** — The system status tile now shows the combined watering factor (weather × moisture) instead of only the weather factor. When moisture probes are enabled, the breakdown shows both components (e.g., "W: 0.80x · M: 0.90x"). The `/api/system/status` endpoint now includes `weather_multiplier`, `moisture_multiplier`, `combined_multiplier`, `moisture_enabled`, and `moisture_probe_count` fields, fixing the management dashboard which was missing moisture data.
+
 ---
 
 ## [1.1.8] — 2026-02-07

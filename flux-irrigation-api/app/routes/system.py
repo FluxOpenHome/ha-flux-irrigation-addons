@@ -30,6 +30,12 @@ class SystemStatus(BaseModel):
     rain_delay_until: Optional[str] = None
     api_version: str = "1.0.0"
     uptime_check: str
+    # Watering factor — combined weather × moisture multiplier
+    weather_multiplier: float = 1.0
+    moisture_multiplier: float = 1.0
+    combined_multiplier: float = 1.0
+    moisture_enabled: bool = False
+    moisture_probe_count: int = 0
     # Contact/address info — synced live to management company
     address: str = ""
     city: str = ""
@@ -129,6 +135,37 @@ async def get_system_status(request: Request):
         attrs = az.get("attributes", {})
         active_zone_name = attrs.get("friendly_name") or active_zone_eid
 
+    # --- Weather multiplier ---
+    weather_multiplier = 1.0
+    try:
+        from routes.weather import _load_weather_rules
+        weather_rules = _load_weather_rules()
+        weather_multiplier = weather_rules.get("watering_multiplier", 1.0)
+    except Exception:
+        pass
+
+    # --- Moisture probe data ---
+    moisture_enabled = False
+    moisture_probe_count = 0
+    moisture_multiplier = 1.0
+    try:
+        from routes.moisture import (
+            _load_data as _load_moisture_data,
+            calculate_overall_moisture_multiplier,
+        )
+        moisture_data = _load_moisture_data()
+        moisture_enabled = moisture_data.get("enabled", False)
+        moisture_probe_count = len(moisture_data.get("probes", {}))
+        moisture_result = await calculate_overall_moisture_multiplier()
+        moisture_multiplier = moisture_result.get("moisture_multiplier", 1.0)
+    except Exception:
+        pass
+
+    # --- Combined multiplier ---
+    combined_multiplier = round(
+        weather_multiplier * moisture_multiplier, 3
+    ) if moisture_multiplier > 0 else 0.0
+
     return SystemStatus(
         online=True,
         ha_connected=ha_connected,
@@ -141,6 +178,11 @@ async def get_system_status(request: Request):
         rain_delay_active=rain_delay_active,
         rain_delay_until=rain_delay_until if rain_delay_active else None,
         uptime_check=datetime.now(timezone.utc).isoformat(),
+        weather_multiplier=weather_multiplier,
+        moisture_multiplier=moisture_multiplier,
+        combined_multiplier=combined_multiplier,
+        moisture_enabled=moisture_enabled,
+        moisture_probe_count=moisture_probe_count,
         # Live contact/address info for management company sync
         address=config.homeowner_address or "",
         city=config.homeowner_city or "",
