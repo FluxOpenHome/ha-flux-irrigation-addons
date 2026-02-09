@@ -232,6 +232,8 @@ def _format_duration(seconds) -> str:
 
 def _friendly_zone_name(entity_id: str, aliases: dict, zones: list) -> str:
     """Get the best display name for a zone."""
+    if not isinstance(aliases, dict):
+        aliases = {}
     if entity_id in aliases:
         return aliases[entity_id]
     for z in zones:
@@ -266,26 +268,32 @@ def _format_timestamp(iso_str: str, fmt: str = "%Y-%m-%d %H:%M") -> str:
 
 # ─── PDF Builder Class ────────────────────────────────────────────────
 
+# Page geometry constants
+_PAGE_W = 215.9   # letter width mm
+_MARGIN = 15
+_CW = _PAGE_W - 2 * _MARGIN  # 185.9 mm content width
+_ROW_H = 5.5      # standard table row height
+_HDR_H = 6.5      # table header row height
+
+
 class FluxReport(FPDF):
     """Professional PDF report with branding, headers, footers, and styled tables."""
 
     def __init__(self):
         super().__init__(orientation="P", unit="mm", format="letter")
         self.set_auto_page_break(auto=True, margin=22)
-        self._page_width = 215.9  # letter width in mm
-        self._margin = 15
+        self._page_width = _PAGE_W
+        self._margin = _MARGIN
         self.set_left_margin(self._margin)
         self.set_right_margin(self._margin)
-        self._content_width = self._page_width - 2 * self._margin
+        self._content_width = _CW
         self._is_first_page = True
 
     def header(self):
         if self._is_first_page:
             return
-        # Subtle branded header on subsequent pages
         self.set_font("Helvetica", "", 7)
         self.set_text_color(*TEXT_LIGHT)
-        # Green accent line
         self.set_draw_color(*GREEN_PRIMARY)
         self.set_line_width(0.4)
         self.line(self._margin, 12, self._page_width - self._margin, 12)
@@ -293,18 +301,16 @@ class FluxReport(FPDF):
         self.cell(self._content_width / 2, 5, "Flux Open Home  |  System Report", align="L")
         self.cell(self._content_width / 2, 5,
                   f"Generated {datetime.now().strftime('%b %d, %Y')}", align="R")
-        self.ln(10)
+        self.set_y(16)
 
     def footer(self):
-        self.set_y(-18)
-        # Divider line
+        self.set_y(-16)
         self.set_draw_color(*DIVIDER_COLOR)
         self.set_line_width(0.3)
         self.line(self._margin, self.get_y(), self._page_width - self._margin, self.get_y())
         self.ln(2)
         self.set_font("Helvetica", "", 7)
         self.set_text_color(*TEXT_LIGHT)
-        # Gophr logo in footer if available
         gophr_shown = False
         if os.path.exists(_GOPHR_LOGO):
             try:
@@ -318,60 +324,63 @@ class FluxReport(FPDF):
         self.set_xy(self._margin, self.get_y())
         self.cell(self._content_width, 5, f"Page {self.page_no()}/{{nb}}", align="R")
 
+    # ── Helpers ──────────────────────────────────────────────────
+
+    def _remaining(self) -> float:
+        """Remaining vertical space before auto page break."""
+        return 279.4 - 22 - self.get_y()  # letter height - bottom margin - current y
+
+    def _ensure_space(self, needed: float):
+        """Add a page break if not enough space remains for the given content."""
+        if self._remaining() < needed:
+            self.add_page()
+
     # ── Section & Layout Helpers ──────────────────────────────────
 
     def section_header(self, title: str):
-        """Green gradient-style section header with left accent."""
-        self.ln(3)
-        # Check if we need a page break (need at least 30mm)
-        if self.get_y() > 240:
-            self.add_page()
+        """Green bar section header."""
+        self._ensure_space(20)
+        self.ln(2)
         y = self.get_y()
-        # Green background bar
         self.set_fill_color(*GREEN_PRIMARY)
-        self.rect(self._margin, y, self._content_width, 9, "F")
-        # White text
+        self.rect(self._margin, y, self._content_width, 8, "F")
         self.set_text_color(*WHITE)
-        self.set_font("Helvetica", "B", 11)
-        self.set_xy(self._margin + 4, y + 1.5)
-        self.cell(self._content_width - 8, 6, title)
-        self.set_xy(self._margin, y + 9)
-        self.ln(4)
+        self.set_font("Helvetica", "B", 10)
+        self.set_xy(self._margin + 3, y + 1)
+        self.cell(self._content_width - 6, 6, title)
+        self.set_xy(self._margin, y + 8)
+        self.ln(3)
         self.set_text_color(*TEXT_DARK)
 
     def sub_header(self, title: str):
-        """Smaller sub-section with green left border."""
+        """Smaller sub-section with green left accent bar."""
+        self._ensure_space(15)
         y = self.get_y()
         self.set_fill_color(*GREEN_PRIMARY)
-        self.rect(self._margin, y, 2, 6, "F")
-        self.set_font("Helvetica", "B", 9.5)
+        self.rect(self._margin, y, 2, 5.5, "F")
+        self.set_font("Helvetica", "B", 9)
         self.set_text_color(*GREEN_PRIMARY)
-        self.set_xy(self._margin + 5, y)
-        self.cell(0, 6, title)
-        self.set_xy(self._margin, y + 6)
-        self.ln(2)
+        self.set_xy(self._margin + 4, y)
+        self.cell(self._content_width - 4, 5.5, title)
+        self.set_xy(self._margin, y + 5.5)
+        self.ln(1.5)
         self.set_text_color(*TEXT_DARK)
 
-    def key_value(self, key: str, value: str, key_width: int = 52):
-        """Styled key: value pair with subtle formatting."""
-        self.set_font("Helvetica", "B", 8.5)
+    def key_value(self, key: str, value: str, key_width: int = 50):
+        """Styled key: value pair."""
+        self.set_font("Helvetica", "B", 8)
         self.set_text_color(*TEXT_MUTED)
-        self.cell(key_width, 5.5, key, new_x="END")
-        self.set_font("Helvetica", "", 9)
+        self.set_x(self._margin)
+        self.cell(key_width, 5, key, new_x="END")
+        self.set_font("Helvetica", "", 8.5)
         self.set_text_color(*TEXT_DARK)
-        self.cell(0, 5.5, str(value), new_x="LMARGIN", new_y="NEXT")
-
-    def status_badge(self, text: str, color: tuple):
-        """Small colored status indicator."""
-        self.set_fill_color(*color)
-        self.set_text_color(*WHITE)
-        self.set_font("Helvetica", "B", 7)
-        w = self.get_string_width(text) + 6
-        self.cell(w, 5, text, fill=True, align="C", new_x="END")
-        self.set_text_color(*TEXT_DARK)
+        self.cell(0, 5, str(value), new_x="LMARGIN", new_y="NEXT")
 
     def table_header(self, cols: list):
-        """Professional table header. cols = [(label, width), ...]"""
+        """Table header row. cols = [(label, width), ...]."""
+        if self._remaining() < _HDR_H + _ROW_H + 2:
+            self.add_page()
+        self.set_auto_page_break(auto=False)
         self.set_fill_color(*TABLE_HEADER_BG)
         self.set_text_color(*WHITE)
         self.set_font("Helvetica", "B", 7.5)
@@ -379,14 +388,21 @@ class FluxReport(FPDF):
         x = self._margin
         for label, w in cols:
             self.set_xy(x, y)
-            self.cell(w, 6.5, "  " + label, fill=True, new_x="END")
+            self.cell(w, _HDR_H, "  " + label, fill=True)
             x += w
-        self.set_xy(self._margin, y + 6.5)
-        self.ln(0.5)
+        self.set_xy(self._margin, y + _HDR_H)
+        self.ln(0.3)
         self.set_text_color(*TEXT_DARK)
+        self.set_auto_page_break(auto=True, margin=22)
 
-    def table_row(self, cols: list, widths: list, shade: bool = False):
-        """Alternating-shade table row."""
+    def table_row(self, cells: list, widths: list, shade: bool = False):
+        """Single table data row with alternating shading."""
+        # Pre-check page break BEFORE drawing — avoids fpdf2 auto-break
+        # interfering with absolute XY positioning within the row
+        if self._remaining() < _ROW_H + 1:
+            self.add_page()
+        # Temporarily disable auto page break so set_xy works correctly
+        self.set_auto_page_break(auto=False)
         if shade:
             self.set_fill_color(*TABLE_ROW_ALT)
         else:
@@ -395,37 +411,46 @@ class FluxReport(FPDF):
         self.set_text_color(*TEXT_DARK)
         y = self.get_y()
         x = self._margin
-        for i, val in enumerate(cols):
-            w = widths[i] if i < len(widths) else 25
+        for i, val in enumerate(cells):
+            w = widths[i] if i < len(widths) else 20
             text = str(val) if val is not None else "-"
-            # Truncate to fit
-            max_chars = max(int(w / 1.8), 8)
+            max_chars = max(int(w / 1.8), 6)
             if len(text) > max_chars:
-                text = text[:max_chars - 1] + ".."
+                text = text[:max_chars - 2] + ".."
             self.set_xy(x, y)
-            self.cell(w, 5.5, "  " + text, fill=True, new_x="END")
+            self.cell(w, _ROW_H, "  " + text, fill=True)
             x += w
-        self.set_xy(self._margin, y + 5.5)
-        self.ln(0)
+        self.set_xy(self._margin, y + _ROW_H)
+        self.set_auto_page_break(auto=True, margin=22)
 
     def info_line(self, text: str, bold: bool = False, indent: int = 4):
-        """Single line of info text with optional indent."""
+        """Single line of info text."""
         style = "B" if bold else ""
-        self.set_font("Helvetica", style, 8.5)
+        self.set_font("Helvetica", style, 8)
         self.set_x(self._margin + indent)
-        self.cell(0, 5, text, new_x="LMARGIN", new_y="NEXT")
+        self.cell(0, 4.5, text, new_x="LMARGIN", new_y="NEXT")
 
     def divider(self):
         """Subtle horizontal divider."""
-        self.ln(2)
+        self.ln(1)
         self.set_draw_color(*DIVIDER_COLOR)
         self.set_line_width(0.2)
         y = self.get_y()
         self.line(self._margin + 10, y, self._page_width - self._margin - 10, y)
-        self.ln(3)
+        self.ln(2)
 
-    def spacer(self, h: float = 4):
+    def spacer(self, h: float = 3):
         self.ln(h)
+
+
+# ─── Column width helpers ─────────────────────────────────────────────
+# All column widths are defined here so they add up to _CW exactly.
+
+def _scale_cols(raw: list) -> list:
+    """Scale column tuples so widths sum to exactly _CW."""
+    total = sum(w for _, w in raw)
+    scale = _CW / total
+    return [(label, round(w * scale, 1)) for label, w in raw]
 
 
 # ─── Report Builder ───────────────────────────────────────────────────
@@ -443,6 +468,12 @@ def build_report(
     hours: int,
 ) -> FPDF:
     """Build the complete professional system report PDF."""
+    # Defensive type checks
+    if not isinstance(zone_heads, dict):
+        zone_heads = {}
+    if not isinstance(zone_aliases, dict):
+        zone_aliases = {}
+
     pdf = FluxReport()
     pdf.alias_nb_pages()
 
@@ -454,38 +485,41 @@ def build_report(
 
     # Green top band
     pdf.set_fill_color(*GREEN_PRIMARY)
-    pdf.rect(0, 0, 216, 5, "F")
+    pdf.rect(0, 0, _PAGE_W, 5, "F")
 
-    # Flux Open Home logo
+    # Flux Open Home logo — centered
     logo_y = 22
     if os.path.exists(_FLUX_LOGO):
         try:
-            pdf.image(_FLUX_LOGO, x=55, y=logo_y, w=105)
-            logo_y += 32
+            logo_w = 100
+            logo_x = (_PAGE_W - logo_w) / 2
+            pdf.image(_FLUX_LOGO, x=logo_x, y=logo_y, w=logo_w)
+            logo_y += 30
         except Exception:
             logo_y = 22
 
-    # Title text
-    pdf.set_y(logo_y + 5)
-    pdf.set_font("Helvetica", "", 26)
+    # Title text — centered
+    pdf.set_y(logo_y + 4)
+    pdf.set_font("Helvetica", "", 24)
     pdf.set_text_color(*GREEN_PRIMARY)
-    pdf.cell(0, 14, "System Report", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(_CW, 12, "System Report", new_x="LMARGIN", new_y="NEXT", align="C")
 
     # Decorative line under title
     pdf.set_draw_color(*GREEN_ACCENT)
     pdf.set_line_width(0.8)
-    cx = pdf._page_width / 2
-    pdf.line(cx - 40, pdf.get_y() + 2, cx + 40, pdf.get_y() + 2)
-    pdf.ln(10)
+    cx = _PAGE_W / 2
+    line_y = pdf.get_y() + 1
+    pdf.line(cx - 35, line_y, cx + 35, line_y)
+    pdf.ln(7)
 
-    # Report metadata
+    # Report metadata — centered
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(*TEXT_MUTED)
-    pdf.cell(0, 6, f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}",
+    pdf.cell(_CW, 6, f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}",
              new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.cell(0, 6, f"Report Period: {_hours_label(hours)}",
+    pdf.cell(_CW, 6, f"Report Period: {_hours_label(hours)}",
              new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(12)
+    pdf.ln(10)
 
     # Property Info Box
     name_parts = []
@@ -496,24 +530,12 @@ def build_report(
 
     has_property_info = name_parts or status.get("address") or status.get("phone")
     if has_property_info:
-        # Light green box for property info
-        box_y = pdf.get_y()
-        pdf.set_fill_color(*GREEN_LIGHT)
-        pdf.rect(pdf._margin + 30, box_y, pdf._content_width - 60, 38, "F")
-        # Green left accent
-        pdf.set_fill_color(*GREEN_PRIMARY)
-        pdf.rect(pdf._margin + 30, box_y, 2, 38, "F")
-
-        pdf.set_y(box_y + 4)
+        # Calculate box height based on content
+        info_lines = 0
         if name_parts:
-            pdf.set_font("Helvetica", "B", 14)
-            pdf.set_text_color(*TEXT_DARK)
-            pdf.cell(0, 8, " ".join(name_parts), new_x="LMARGIN", new_y="NEXT", align="C")
-
-        pdf.set_font("Helvetica", "", 10)
-        pdf.set_text_color(*TEXT_DARK)
+            info_lines += 1
         if status.get("address"):
-            pdf.cell(0, 6, status["address"], new_x="LMARGIN", new_y="NEXT", align="C")
+            info_lines += 1
         city_parts = []
         if status.get("city"):
             city_parts.append(status["city"])
@@ -522,49 +544,78 @@ def build_report(
         if status.get("zip"):
             city_parts.append(status["zip"])
         if city_parts:
-            pdf.cell(0, 6, ", ".join(city_parts), new_x="LMARGIN", new_y="NEXT", align="C")
+            info_lines += 1
+        if status.get("phone"):
+            info_lines += 1
+        box_h = max(info_lines * 7 + 8, 28)
+
+        box_x = _MARGIN + 30
+        box_w = _CW - 60
+        box_y = pdf.get_y()
+
+        # Light green box
+        pdf.set_fill_color(*GREEN_LIGHT)
+        pdf.rect(box_x, box_y, box_w, box_h, "F")
+        # Green left accent
+        pdf.set_fill_color(*GREEN_PRIMARY)
+        pdf.rect(box_x, box_y, 2, box_h, "F")
+
+        inner_y = box_y + 4
+        pdf.set_y(inner_y)
+        if name_parts:
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.set_text_color(*TEXT_DARK)
+            pdf.cell(_CW, 7, " ".join(name_parts), new_x="LMARGIN", new_y="NEXT", align="C")
+
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(*TEXT_DARK)
+        if status.get("address"):
+            pdf.cell(_CW, 6, status["address"], new_x="LMARGIN", new_y="NEXT", align="C")
+        if city_parts:
+            pdf.cell(_CW, 6, ", ".join(city_parts), new_x="LMARGIN", new_y="NEXT", align="C")
         if status.get("phone"):
             pdf.set_text_color(*TEXT_MUTED)
-            pdf.cell(0, 6, status["phone"], new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.cell(_CW, 6, status["phone"], new_x="LMARGIN", new_y="NEXT", align="C")
 
-        pdf.set_y(box_y + 42)
+        pdf.set_y(box_y + box_h + 4)
 
-    # Gophr logo centered below property info
+    # Gophr logo centered
     if os.path.exists(_GOPHR_LOGO):
         try:
-            pdf.ln(8)
-            pdf.image(_GOPHR_LOGO, x=78, y=pdf.get_y(), w=60)
-            pdf.ln(24)
+            gophr_w = 55
+            gophr_x = (_PAGE_W - gophr_w) / 2
+            pdf.image(_GOPHR_LOGO, x=gophr_x, y=pdf.get_y(), w=gophr_w)
+            pdf.ln(22)
         except Exception:
             pass
 
-    # Quick stats row at bottom of cover
-    pdf.ln(6)
+    # Quick stats row
+    pdf.ln(4)
     pdf.set_draw_color(*DIVIDER_COLOR)
     pdf.set_line_width(0.3)
-    pdf.line(pdf._margin + 20, pdf.get_y(), pdf._page_width - pdf._margin - 20, pdf.get_y())
-    pdf.ln(5)
+    line_y = pdf.get_y()
+    pdf.line(_MARGIN + 20, line_y, _PAGE_W - _MARGIN - 20, line_y)
+    pdf.ln(4)
 
-    stat_width = pdf._content_width / 4
+    stat_width = _CW / 4
     stat_items = [
         (str(status.get("total_zones", 0)), "Zones"),
         (f"{status.get('weather_multiplier', 1.0)}x", "Weather Factor"),
         ("Active" if not status.get("system_paused") else "Paused", "System"),
         ("Yes" if status.get("moisture_enabled") else "No", "Moisture Probes"),
     ]
-    pdf.set_y(pdf.get_y())
-    x = pdf._margin
-    for val, label in stat_items:
-        pdf.set_xy(x, pdf.get_y())
+    stats_y = pdf.get_y()
+    for idx, (val, label) in enumerate(stat_items):
+        col_x = _MARGIN + idx * stat_width
+        pdf.set_xy(col_x, stats_y)
         pdf.set_font("Helvetica", "B", 16)
         pdf.set_text_color(*GREEN_PRIMARY)
         pdf.cell(stat_width, 9, val, align="C")
-        pdf.set_xy(x, pdf.get_y() + 9)
+        pdf.set_xy(col_x, stats_y + 9)
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(*TEXT_MUTED)
         pdf.cell(stat_width, 5, label, align="C")
-        x += stat_width
-    pdf.ln(20)
+    pdf.set_y(stats_y + 18)
 
     # ══════════════════════════════════════════════════════════════════
     #  CONTENT PAGES
@@ -583,13 +634,13 @@ def build_report(
     pdf.key_value("Moisture Probes", "Enabled" if status.get("moisture_enabled") else "Disabled")
     if status.get("rain_delay_active"):
         pdf.key_value("Rain Delay", f"Active until {_format_timestamp(status.get('rain_delay_until', ''))}")
-    pdf.spacer(5)
+    pdf.spacer(4)
 
     # ── Issues ────────────────────────────────────────────────────
     if issues:
+        cols = _scale_cols([("Severity", 25), ("Status", 22), ("Description", 82), ("Reported", 28), ("Service Date", 30)])
+        widths = [w for _, w in cols]
         pdf.section_header(f"Issues ({len(issues)})")
-        cols = [("Severity", 25), ("Status", 22), ("Description", 80), ("Reported", 28), ("Service Date", 30)]
-        widths = [c[1] for c in cols]
         pdf.table_header(cols)
         for i, issue in enumerate(issues):
             sev = _safe_str(issue.get("severity", "")).capitalize()
@@ -598,15 +649,12 @@ def build_report(
             created = _format_timestamp(issue.get("created_at", ""), "%Y-%m-%d")
             svc_date = _safe_str(issue.get("service_date"))
             pdf.table_row([sev, stat, desc, created, svc_date], widths, shade=(i % 2 == 1))
-        pdf.spacer(5)
+        pdf.spacer(4)
 
     # ── Zones Overview ────────────────────────────────────────────
-    # Defensive: ensure zone_heads is a dict (not a list)
-    if not isinstance(zone_heads, dict):
-        zone_heads = {}
+    cols = _scale_cols([("Zone", 55), ("State", 20), ("GPM", 20), ("Heads", 18), ("Notes", 73)])
+    widths = [w for _, w in cols]
     pdf.section_header(f"Zones ({len(zones)})")
-    cols = [("Zone", 55), ("State", 22), ("GPM", 22), ("Heads", 20), ("Notes", 66)]
-    widths = [c[1] for c in cols]
     pdf.table_header(cols)
     for i, z in enumerate(zones):
         eid = z.get("entity_id", "")
@@ -623,13 +671,16 @@ def build_report(
             head_count = str(len(heads_list)) if heads_list else "-"
             notes = _safe_str(heads_data.get("notes", ""))
         pdf.table_row([name, state, gpm, head_count, notes], widths, shade=(i % 2 == 1))
-    pdf.spacer(5)
+    pdf.spacer(4)
 
     # ── Zone Head/Nozzle Details ──────────────────────────────────
     zones_with_heads = [(z, zone_heads.get(z.get("entity_id", ""), {}))
                         for z in zones if zone_heads.get(z.get("entity_id", ""), {}).get("heads")]
     if zones_with_heads:
         pdf.section_header("Zone Head & Nozzle Details")
+        head_cols = _scale_cols([("Type", 30), ("GPM", 16), ("Arc", 18), ("Radius", 18),
+                                 ("Height", 16), ("PSI", 14), ("Brand", 28), ("Model", 46)])
+        head_widths = [w for _, w in head_cols]
         for z, hd in zones_with_heads:
             eid = z.get("entity_id", "")
             name = _friendly_zone_name(eid, zone_aliases, zones)
@@ -640,12 +691,9 @@ def build_report(
                 pdf.set_font("Helvetica", "I", 7.5)
                 pdf.set_text_color(*TEXT_MUTED)
                 pdf.set_x(pdf._margin + 6)
-                pdf.cell(0, 4.5, f"Notes: {hd['notes']}", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 4, f"Notes: {hd['notes']}", new_x="LMARGIN", new_y="NEXT")
                 pdf.set_text_color(*TEXT_DARK)
-                pdf.ln(1)
-            head_cols = [("Type", 32), ("GPM", 18), ("Arc", 20), ("Radius", 20),
-                         ("Height", 18), ("PSI", 16), ("Brand", 28), ("Model", 33)]
-            head_widths = [c[1] for c in head_cols]
+                pdf.ln(0.5)
             pdf.table_header(head_cols)
             for j, head in enumerate(hd.get("heads", [])):
                 pdf.table_row([
@@ -658,8 +706,8 @@ def build_report(
                     _safe_str(head.get("brand")),
                     _safe_str(head.get("model")),
                 ], head_widths, shade=(j % 2 == 1))
-            pdf.spacer(4)
-        pdf.spacer(3)
+            pdf.spacer(3)
+        pdf.spacer(2)
 
     # ── Weather Settings ──────────────────────────────────────────
     if weather.get("weather_enabled"):
@@ -679,7 +727,7 @@ def build_report(
         # Active adjustments
         adjustments = weather.get("active_adjustments", [])
         if adjustments:
-            pdf.spacer(2)
+            pdf.spacer(1)
             pdf.sub_header("Active Adjustments")
             for adj in adjustments:
                 rule = _safe_str(adj.get("rule", "")).replace("_", " ").title()
@@ -694,12 +742,12 @@ def build_report(
         enabled_rules = [(k, v) for k, v in rules.items()
                          if isinstance(v, dict) and v.get("enabled")]
         if enabled_rules:
-            pdf.spacer(2)
+            pdf.spacer(1)
             pdf.sub_header("Enabled Weather Rules")
             for rule_name, rule_data in enabled_rules:
                 label = rule_name.replace("_", " ").title()
                 pdf.info_line(f"{label}", indent=6)
-        pdf.spacer(5)
+        pdf.spacer(4)
 
     # ── Moisture Probes ───────────────────────────────────────────
     if moisture.get("enabled"):
@@ -720,16 +768,16 @@ def build_report(
                 thresholds = probe_data.get("thresholds", {})
                 if thresholds:
                     pdf.info_line(f"Saturation: {thresholds.get('saturated', 'N/A')}%  |  Dry: {thresholds.get('dry', 'N/A')}%", indent=6)
-                pdf.spacer(2)
+                pdf.spacer(1.5)
         else:
             pdf.info_line("No moisture probes configured.")
-        pdf.spacer(4)
+        pdf.spacer(3)
 
     # ── Sensors ───────────────────────────────────────────────────
     if sensors:
+        cols = _scale_cols([("Sensor", 60), ("Value", 28), ("Unit", 28), ("Last Updated", 50)])
+        widths = [w for _, w in cols]
         pdf.section_header(f"Sensors ({len(sensors)})")
-        cols = [("Sensor", 62), ("Value", 28), ("Unit", 28), ("Last Updated", 48)]
-        widths = [c[1] for c in cols]
         pdf.table_header(cols)
         for i, s in enumerate(sensors):
             name = s.get("friendly_name") or s.get("name", s.get("entity_id", ""))
@@ -737,7 +785,7 @@ def build_report(
             unit = _safe_str(s.get("unit_of_measurement", ""))
             updated = _format_timestamp(s.get("last_updated", ""))
             pdf.table_row([name, val, unit, updated], widths, shade=(i % 2 == 1))
-        pdf.spacer(5)
+        pdf.spacer(4)
 
     # ── Estimated Water Usage ─────────────────────────────────────
     zone_gpm_map = {}
@@ -766,21 +814,19 @@ def build_report(
 
         if total_gallons > 0:
             pdf.section_header(f"Estimated Water Usage  -  {_hours_label(hours)}")
-            # Big number highlight
-            pdf.spacer(2)
-            pdf.set_font("Helvetica", "B", 22)
+            pdf.spacer(1)
+            pdf.set_font("Helvetica", "B", 20)
             pdf.set_text_color(*GREEN_PRIMARY)
-            pdf.cell(0, 12, f"{total_gallons:,.1f} gallons", new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.cell(_CW, 10, f"{total_gallons:,.1f} gallons", new_x="LMARGIN", new_y="NEXT", align="C")
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(*TEXT_MUTED)
-            pdf.cell(0, 6, f"Total run time: {_format_duration(total_minutes * 60)}",
+            pdf.cell(_CW, 5, f"Total run time: {_format_duration(total_minutes * 60)}",
                      new_x="LMARGIN", new_y="NEXT", align="C")
             pdf.set_text_color(*TEXT_DARK)
-            pdf.spacer(4)
+            pdf.spacer(3)
 
-            # Per-zone table
-            cols = [("Zone", 62), ("Run Time", 30), ("GPM", 26), ("Est. Gallons", 35)]
-            widths = [c[1] for c in cols]
+            cols = _scale_cols([("Zone", 65), ("Run Time", 30), ("GPM", 25), ("Est. Gallons", 35)])
+            widths = [w for _, w in cols]
             pdf.table_header(cols)
             sorted_zones = sorted(zone_gallons.items(), key=lambda x: x[1], reverse=True)
             for i, (eid, gals) in enumerate(sorted_zones):
@@ -791,7 +837,7 @@ def build_report(
                     [name, _format_duration(mins * 60), str(round(gpm, 1)), f"{gals:,.1f}"],
                     widths, shade=(i % 2 == 1)
                 )
-            pdf.spacer(5)
+            pdf.spacer(4)
 
     # ── Run History ───────────────────────────────────────────────
     if history:
@@ -801,16 +847,16 @@ def build_report(
         pdf.key_value("Completed Runs", str(len(on_events)))
         total_dur = sum(e.get("duration_seconds", 0) for e in on_events)
         pdf.key_value("Total Run Time", _format_duration(total_dur))
-        pdf.spacer(3)
+        pdf.spacer(2)
 
         # Recent events table (limit 100)
         recent = history[:100]
         if recent:
             label = f"Recent Events (showing {len(recent)} of {len(history)})" if len(history) > 100 else f"All Events ({len(history)})"
             pdf.sub_header(label)
-            cols = [("Time", 32), ("Zone", 42), ("State", 14), ("Duration", 22),
-                    ("Source", 24), ("Weather", 24), ("Factor", 18)]
-            widths = [c[1] for c in cols]
+            cols = _scale_cols([("Time", 30), ("Zone", 42), ("State", 14), ("Duration", 22),
+                                ("Source", 24), ("Weather", 24), ("Factor", 18)])
+            widths = [w for _, w in cols]
             pdf.table_header(cols)
             for i, e in enumerate(recent):
                 ts = _format_timestamp(e.get("timestamp", ""), "%m/%d %H:%M")
@@ -828,15 +874,14 @@ def build_report(
                     factor = f"{wx['watering_multiplier']}x"
                 pdf.table_row([ts, name, state, dur, source, wx_cond, factor],
                               widths, shade=(i % 2 == 1))
-        pdf.spacer(5)
+        pdf.spacer(4)
 
     # ── End Page ──────────────────────────────────────────────────
-    # Final divider and branding
     pdf.divider()
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(*TEXT_LIGHT)
-    pdf.cell(0, 5, "End of Report", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.cell(0, 5, "Flux Open Home Irrigation Control  |  gophr.com",
+    pdf.cell(_CW, 5, "End of Report", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(_CW, 5, "Flux Open Home Irrigation Control  |  gophr.com",
              new_x="LMARGIN", new_y="NEXT", align="C")
 
     return pdf
