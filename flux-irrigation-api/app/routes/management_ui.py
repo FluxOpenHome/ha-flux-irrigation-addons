@@ -2035,17 +2035,16 @@ async function loadDetailMoisture(id) {
         badge.style.background = settings.enabled ? 'var(--bg-success-light)' : 'var(--bg-tile)';
         badge.style.color = settings.enabled ? 'var(--text-success-dark)' : 'var(--text-muted)';
 
-        // Update moisture multiplier badge — show min across per-zone multipliers
+        // Update moisture multiplier badge — show min across per-zone multipliers (no skip here, moved to probe cards)
         const perZone = (multData && multData.per_zone) || {};
         const pzVals = Object.values(perZone);
         const mm = pzVals.length > 0
             ? Math.min.apply(null, pzVals.map(function(v) { return v.moisture_multiplier != null ? v.moisture_multiplier : 1.0; }))
             : 1.0;
-        const anyZoneSkip = pzVals.some(function(v) { return v.skip; });
-        multBadge.textContent = anyZoneSkip ? 'Skip' : mm === 1.0 ? '1.0x' : mm + 'x';
-        multBadge.style.background = anyZoneSkip ? 'var(--bg-danger-light)' : mm === 1.0 ? 'var(--bg-success-light)' : mm < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
-        multBadge.style.color = anyZoneSkip ? 'var(--color-danger)' : mm === 1.0 ? 'var(--text-success-dark)' : mm < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
-        multBadge.style.display = settings.enabled ? '' : 'none';
+        multBadge.textContent = mm === 1.0 ? '1.0x' : mm.toFixed(2) + 'x';
+        multBadge.style.background = mm === 1.0 ? 'var(--bg-success-light)' : mm < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+        multBadge.style.color = mm === 1.0 ? 'var(--text-success-dark)' : mm < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+        multBadge.style.display = settings.enabled && pzVals.length > 0 ? '' : 'none';
 
         let html = '';
 
@@ -2056,8 +2055,37 @@ async function loadDetailMoisture(id) {
                 const devSensors = probe.device_sensors || {};
                 const zones = probe.zone_mappings || [];
                 html += '<div style="background:var(--bg-tile);border-radius:10px;padding:14px;border:1px solid var(--border-light);">';
-                // Header
-                html += '<div style="font-weight:600;font-size:14px;margin-bottom:10px;">' + esc(probe.display_name || pid) + '</div>';
+                // Header with per-zone skip/multiplier badges
+                var probeZones = zones;
+                var probeSkipBadges = '';
+                var probeFactorLines = '';
+                var liveWMult = (multData && multData.weather_multiplier != null) ? multData.weather_multiplier : 1.0;
+                var afEnabled = settings.apply_factors_to_schedule;
+                for (var pzi = 0; pzi < probeZones.length; pzi++) {
+                    var pzEid = probeZones[pzi];
+                    var pzInfo = perZone[pzEid];
+                    if (pzInfo) {
+                        var pzNum = (pzEid.match(/zone[_]?(\\d+)/i) || [])[1] || '?';
+                        if (pzInfo.skip) {
+                            probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-danger-light);color:var(--color-danger);">Z' + pzNum + ' Skip</span>';
+                        } else if (pzInfo.moisture_multiplier != null && pzInfo.moisture_multiplier !== 1.0) {
+                            probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-warning);color:var(--text-warning);">Z' + pzNum + ' ' + pzInfo.moisture_multiplier.toFixed(2) + 'x</span>';
+                        }
+                        // Factor detail line per zone
+                        if (pzInfo.skip) {
+                            probeFactorLines += '<div style="font-size:10px;color:var(--color-danger);">Z' + pzNum + ': Skip watering (soil saturated)</div>';
+                        } else {
+                            var cmult = pzInfo.combined != null ? pzInfo.combined : liveWMult;
+                            if (afEnabled || Math.abs(cmult - 1.0) >= 0.005) {
+                                probeFactorLines += '<div style="font-size:10px;color:var(--text-muted);">Z' + pzNum + ': Weather ' + liveWMult.toFixed(2) + 'x \\u00d7 Moisture ' + (pzInfo.moisture_multiplier != null ? pzInfo.moisture_multiplier.toFixed(2) : '1.00') + 'x = <strong>' + cmult.toFixed(2) + 'x</strong>' + (afEnabled ? ' \\u2713 Applied' : '') + '</div>';
+                            }
+                        }
+                    }
+                }
+                html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:600;font-size:14px;margin-bottom:' + (probeFactorLines ? '4' : '10') + 'px;">' + esc(probe.display_name || pid) + probeSkipBadges + '</div>';
+                if (probeFactorLines) {
+                    html += '<div style="margin-bottom:8px;">' + probeFactorLines + '</div>';
+                }
                 // Moisture bars
                 for (const depth of ['shallow', 'mid', 'deep']) {
                     const s = sensors[depth];
@@ -4017,12 +4045,27 @@ const HELP_CONTENT = `
 <tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Dry (30%) &ndash; Optimal (45%)</td><td style="padding:4px 6px;">1.25x &rarr; 1.0x</td><td style="padding:4px 6px;">Slight increase as soil dries</td></tr>
 <tr><td style="padding:4px 6px;">&lt; Dry (30%)</td><td style="padding:4px 6px;font-weight:600;color:var(--color-danger);">1.50x</td><td style="padding:4px 6px;">Critically dry, maximum increase</td></tr>
 </table>
-<p style="margin-bottom:6px;font-size:13px;"><strong>Adjustments applied after the base multiplier:</strong></p>
-<ul style="margin:4px 0 8px 20px;font-size:12px;">
-<li style="margin-bottom:3px;"><strong>Rain detection</strong> &mdash; If shallow is &ge; 15% wetter than mid and rain is forecast (&ge; 50%), multiplier is reduced by 40%. Moderate confidence (lower forecast) reduces by 20%. If root zone is near the wet threshold with high-confidence rain, watering is skipped entirely.</li>
-<li style="margin-bottom:3px;"><strong>Deep sensor guard</strong> &mdash; If deep &ge; Skip threshold, multiplier is capped at 0.50x. If deep is &gt; 15% wetter than mid, an additional 15% reduction is applied.</li>
-</ul>
-<p style="margin-bottom:10px;font-size:13px;"><strong>Combined watering factor</strong> = Weather Multiplier &times; Moisture Multiplier. This combined factor is applied to all zone run durations.</p>
+<p style="margin-bottom:6px;font-weight:600;font-size:13px;">Shallow Sensor (Rain Detection)</p>
+<p style="margin-bottom:6px;font-size:13px;">The shallow sensor detects recent rainfall by comparing surface moisture to root zone moisture. It does not directly set the multiplier but applies reductions after the base multiplier:</p>
+<table style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:8px;">
+<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 6px;">Condition</th><th style="text-align:left;padding:4px 6px;">Effect</th><th style="text-align:left;padding:4px 6px;">Behavior</th></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Shallow &minus; Mid &ge; 15% + Rain &ge; 50%</td><td style="padding:4px 6px;font-weight:600;">40% reduction</td><td style="padding:4px 6px;">High-confidence rain detected (wetting front + forecast)</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Shallow &minus; Mid &gt; 5% + Rain &ge; 40%</td><td style="padding:4px 6px;">20% reduction</td><td style="padding:4px 6px;">Moderate-confidence rain detected</td></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Weather is rainy/pouring/lightning</td><td style="padding:4px 6px;">40% reduction</td><td style="padding:4px 6px;">Active precipitation detected from weather data</td></tr>
+<tr><td style="padding:4px 6px;">Mid &ge; Wet&minus;5% + high-confidence rain</td><td style="padding:4px 6px;font-weight:600;color:var(--color-danger);">0.0x &mdash; Skip</td><td style="padding:4px 6px;">Root zone near saturation with confirmed rain</td></tr>
+</table>
+
+<p style="margin-bottom:6px;font-weight:600;font-size:13px;">Deep Sensor (Over-Irrigation Guard)</p>
+<p style="margin-bottom:6px;font-size:13px;">The deep sensor guards against over-irrigation by detecting water pooling below the root zone. It caps or further reduces the multiplier:</p>
+<table style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:8px;">
+<tr style="border-bottom:1px solid var(--border-light);"><th style="text-align:left;padding:4px 6px;">Deep Reading</th><th style="text-align:left;padding:4px 6px;">Effect</th><th style="text-align:left;padding:4px 6px;">Behavior</th></tr>
+<tr style="border-bottom:1px solid var(--border-light);"><td style="padding:4px 6px;">Deep &ge; Skip threshold (80%)</td><td style="padding:4px 6px;font-weight:600;">Capped at 0.50x</td><td style="padding:4px 6px;">Deep soil saturated, prevent further over-watering</td></tr>
+<tr><td style="padding:4px 6px;">Deep &minus; Mid &gt; 15%</td><td style="padding:4px 6px;">15% reduction</td><td style="padding:4px 6px;">Water pooling detected below root zone</td></tr>
+</table>
+
+<p style="margin-bottom:6px;font-weight:600;font-size:13px;">Combined Formula</p>
+<p style="margin-bottom:6px;font-size:13px;">The final multiplier is calculated as: <strong>Base (root zone) &times; Rain adjustment &times; Deep guard</strong>. For zones with multiple probes, the most conservative (lowest) multiplier is used. If any probe triggers skip, the zone is skipped.</p>
+<p style="margin-bottom:10px;font-size:13px;"><strong>Combined watering factor</strong> = Weather Multiplier &times; Moisture Multiplier. This combined factor is applied per-zone to run durations. Only zones with mapped probes are affected by moisture &mdash; unmapped zones use weather-only.</p>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Probe device selection and sensor mapping are configured from the homeowner's Configuration page. The management dashboard controls settings, thresholds, zone assignments, and duration adjustments. Gophr devices sleep between readings — while asleep, the system uses the last known good sensor values so the moisture multiplier stays active. If cached readings become older than the Stale Reading Threshold, they are treated as stale and the multiplier reverts to neutral (1.0x).</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>

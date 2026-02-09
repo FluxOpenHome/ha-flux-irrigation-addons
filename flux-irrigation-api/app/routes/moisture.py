@@ -84,6 +84,7 @@ DEFAULT_DATA = {
     "enabled": False,
     "apply_factors_to_schedule": False,
     "schedule_sync_enabled": True,
+    "skip_disabled_zones": [],  # Zone enable switch entities disabled by moisture skip
     "stale_reading_threshold_minutes": 120,
     # Legacy depth_weights kept for migration — no longer used in algorithm
     "depth_weights": {"shallow": 0.2, "mid": 0.5, "deep": 0.3},
@@ -930,6 +931,19 @@ async def capture_base_durations() -> dict:
             print(f"[MOISTURE] Re-resolved: {len(all_eids)} control entities, "
                   f"{len(duration_entities)} duration entities")
 
+    # Filter by detected zone count (expansion board limit)
+    max_zones = config.detected_zone_count if hasattr(config, "detected_zone_count") else 0
+    if max_zones > 0:
+        filtered = []
+        for eid in duration_entities:
+            zn = _extract_zone_num_from_duration(eid)
+            if zn > 0 and zn <= max_zones:
+                filtered.append(eid)
+        if filtered:
+            print(f"[MOISTURE] capture_base_durations: filtered {len(duration_entities)} "
+                  f"→ {len(filtered)} (max_zones={max_zones})")
+            duration_entities = filtered
+
     print(f"[MOISTURE] capture_base_durations: "
           f"{len(duration_entities)} duration entities: {duration_entities}")
     if not duration_entities:
@@ -987,6 +1001,25 @@ def _find_zone_entity(zone_num: int, config) -> str:
     if not zone_num:
         return ""
     for eid in config.allowed_zone_entities:
+        m = _ZONE_NUMBER_RE.search(eid)
+        if m and int(m.group(1)) == zone_num:
+            return eid
+    return ""
+
+
+def _find_enable_zone_switch(zone_num: int, config) -> str:
+    """Find the enable_zone switch entity for a zone number.
+
+    Searches config.allowed_control_entities for switch.*enable_zone_N.
+    Returns the matching entity_id, or an empty string if not found.
+    """
+    if not zone_num:
+        return ""
+    for eid in config.allowed_control_entities:
+        if not eid.startswith("switch."):
+            continue
+        if "enable_zone" not in eid.lower():
+            continue
         m = _ZONE_NUMBER_RE.search(eid)
         if m and int(m.group(1)) == zone_num:
             return eid
@@ -1253,9 +1286,18 @@ async def apply_adjusted_durations() -> dict:
     sensor_states = await _get_probe_sensor_states(data.get("probes", {}))
     weather_mult = get_weather_multiplier()
 
+    # Filter base_durations by detected zone count (expansion board limit)
+    max_zones = config.detected_zone_count if hasattr(config, "detected_zone_count") else 0
+    if max_zones > 0:
+        base_durations = {
+            eid: d for eid, d in base_durations.items()
+            if _extract_zone_num_from_duration(eid) <= max_zones
+        }
+
     adjusted = {}
     applied_count = 0
     failed = []
+    skip_disabled = list(data.get("skip_disabled_zones", []))  # Track zones disabled by skip
 
     print(f"[MOISTURE] Applying per-zone factors: {len(base_durations)} duration entities, "
           f"weather_mult={weather_mult}")
@@ -1275,15 +1317,39 @@ async def apply_adjusted_durations() -> dict:
         skip = zone_result.get("skip", False)
 
         if skip:
-            adjusted_value = 0.0
+            # Disable the zone's enable switch instead of setting duration to 0.
+            # This lets ESPHome skip the zone cleanly without blocking the schedule.
+            enable_eid = _find_enable_zone_switch(zone_num, config)
+            if enable_eid:
+                disable_ok = await ha_client.call_service("switch", "turn_off", {
+                    "entity_id": enable_eid,
+                })
+                if disable_ok and enable_eid not in skip_disabled:
+                    skip_disabled.append(enable_eid)
+                print(f"[MOISTURE] Skip zone {zone_num}: disabled {enable_eid} "
+                      f"(success={disable_ok})")
+            # Still write the adjusted duration using the base value (zone is disabled,
+            # but keep duration intact for when it's re-enabled)
+            combined = weather_mult * moisture_mult
+            adjusted_value = float(max(1, round(base * combined))) if combined > 0 else base
         else:
+            # If this zone was previously skip-disabled, re-enable it
+            enable_eid = _find_enable_zone_switch(zone_num, config)
+            if enable_eid and enable_eid in skip_disabled:
+                enable_ok = await ha_client.call_service("switch", "turn_on", {
+                    "entity_id": enable_eid,
+                })
+                if enable_ok:
+                    skip_disabled.remove(enable_eid)
+                print(f"[MOISTURE] Re-enabled zone {zone_num}: {enable_eid} "
+                      f"(success={enable_ok})")
             combined = weather_mult * moisture_mult
             adjusted_value = float(max(1, round(base * combined)))
 
-        # Write to HA via number.set_value service
+        # Write adjusted duration to HA
         print(f"[MOISTURE] Setting {dur_eid}: base={base} → adjusted={adjusted_value} "
               f"(weather={weather_mult}, moisture={moisture_mult:.3f}, "
-              f"zone={zone_entity_id or 'unknown'})")
+              f"zone={zone_entity_id or 'unknown'}, skip={skip})")
         success = await ha_client.call_service("number", "set_value", {
             "entity_id": dur_eid,
             "value": adjusted_value,
@@ -1313,6 +1379,7 @@ async def apply_adjusted_durations() -> dict:
             failed.append(dur_eid)
             print(f"[MOISTURE] FAILED to set {dur_eid} to {adjusted_value}")
 
+    data["skip_disabled_zones"] = skip_disabled
     data["duration_adjustment_active"] = applied_count > 0
     data["adjusted_durations"] = adjusted
     data["last_evaluation"] = datetime.now(timezone.utc).isoformat()
@@ -1341,10 +1408,27 @@ async def restore_base_durations() -> dict:
     or manually by the user.
     """
     data = _load_data()
+    config = get_config()
     base_durations = data.get("base_durations", {})
 
     if not base_durations:
         return {"success": True, "restored": 0, "reason": "No base durations to restore"}
+
+    # Filter by detected zone count (expansion board limit)
+    max_zones = config.detected_zone_count if hasattr(config, "detected_zone_count") else 0
+    if max_zones > 0:
+        base_durations = {
+            eid: d for eid, d in base_durations.items()
+            if _extract_zone_num_from_duration(eid) <= max_zones
+        }
+
+    # Re-enable any zones that were disabled by moisture skip
+    skip_disabled = data.get("skip_disabled_zones", [])
+    for enable_eid in skip_disabled:
+        enable_ok = await ha_client.call_service("switch", "turn_on", {
+            "entity_id": enable_eid,
+        })
+        print(f"[MOISTURE] Restore: re-enabled {enable_eid} (success={enable_ok})")
 
     restored_count = 0
     for dur_eid, dur_data in base_durations.items():
@@ -1361,6 +1445,7 @@ async def restore_base_durations() -> dict:
 
     data["duration_adjustment_active"] = False
     data["adjusted_durations"] = {}
+    data["skip_disabled_zones"] = []
     _save_data(data)
 
     return {"success": True, "restored": restored_count}
