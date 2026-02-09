@@ -1154,9 +1154,9 @@ async function loadZones() {
                 })()}
                 <div class="tile-name">
                     ${esc(displayName)}
-                    <span style="cursor:pointer;font-size:15px;color:var(--color-primary);margin-left:6px;"
+                    <span style="cursor:pointer;font-size:20px;color:var(--color-primary);margin-left:6px;"
                           onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
-                    <span style="cursor:pointer;font-size:14px;color:var(--color-info,#2196F3);margin-left:4px;"
+                    <span style="cursor:pointer;font-size:20px;color:var(--color-info,#2196F3);margin-left:4px;"
                           onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
@@ -1376,10 +1376,11 @@ async function loadControls() {
     const controlsEl = document.getElementById('detailControls');
     const scheduleEl = document.getElementById('detailSchedule');
     try {
+        const _cb = '?t=' + Date.now();
         const [data, durData, multData] = await Promise.all([
-            api('/entities'),
-            mapi('/durations').catch(() => ({})),
-            mapi('/multiplier').catch(() => ({ combined_multiplier: 1.0, weather_multiplier: 1.0, moisture_multiplier: 1.0 })),
+            api('/entities' + _cb),
+            mapi('/durations' + _cb).catch(() => ({})),
+            mapi('/multiplier' + _cb).catch(() => ({ combined_multiplier: 1.0, weather_multiplier: 1.0, moisture_multiplier: 1.0 })),
         ]);
         const allEntities = Array.isArray(data) ? data : (data.entities || []);
 
@@ -2626,9 +2627,12 @@ async function saveWeatherRules() {
         // Clear cache to pick up new multiplier; card structure stays intact
         _weatherDataCache = null;
         _weatherRulesCache = null;
+        // Force re-apply adjusted durations in case the backend chain had a silent failure
+        try { await mapi('/durations/apply', 'POST'); } catch(e2) { /* non-critical */ }
         loadWeather();
         loadStatus();
-        loadControls();
+        // Delay schedule refresh slightly to let HA entity states settle after writes
+        setTimeout(() => loadControls(), 1500);
     } catch (e) {
         showToast('Failed to save weather rules: ' + e.message, 'error');
     }
@@ -2651,9 +2655,12 @@ async function evaluateWeatherNow() {
         }
         // Refresh weather data (card structure stays intact)
         _weatherDataCache = null;
+        // Force re-apply adjusted durations in case the backend chain had a silent failure
+        try { await mapi('/durations/apply', 'POST'); } catch(e2) { /* non-critical */ }
         loadWeather();
         loadStatus();
-        loadControls();
+        // Delay schedule refresh slightly to let HA entity states settle after writes
+        setTimeout(() => loadControls(), 1500);
     } catch (e) {
         showToast('Evaluation failed: ' + e.message, 'error');
     }
@@ -2716,12 +2723,13 @@ async function loadMoisture() {
     const body = document.getElementById('moistureCardBody');
     const badge = document.getElementById('moistureStatusBadge');
     try {
-        const data = await mapi('/probes');
-        const settings = await mapi('/settings');
+        const _mcb = '?t=' + Date.now();
+        const data = await mapi('/probes' + _mcb);
+        const settings = await mapi('/settings' + _mcb);
         let multData = {};
-        try { multData = await mapi('/multiplier'); } catch (_) {}
+        try { multData = await mapi('/multiplier' + _mcb); } catch (_) {}
         let timelineData = {};
-        try { timelineData = await mapi('/schedule-timeline'); } catch (_) {}
+        try { timelineData = await mapi('/schedule-timeline' + _mcb); } catch (_) {}
 
         const probes = data.probes || {};
         const probeCount = Object.keys(probes).length;

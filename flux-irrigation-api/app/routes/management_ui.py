@@ -1997,9 +1997,12 @@ async function mgmtSaveWeatherRules() {
         showToast('Weather rules saved' + (mult != null ? ' — multiplier: ' + mult + 'x' : ''));
         _mgmtWeatherDataCache = null;
         _mgmtWeatherRulesCache = null;
+        // Force re-apply adjusted durations in case the backend chain had a silent failure
+        try { await api('/customers/' + currentCustomerId + '/moisture/durations/apply', { method: 'POST' }); } catch(e2) { /* non-critical */ }
         loadDetailWeather(currentCustomerId);
         loadDetailStatus(currentCustomerId);
-        loadDetailControls(currentCustomerId);
+        // Delay schedule refresh slightly to let HA entity states settle after writes
+        setTimeout(() => loadDetailControls(currentCustomerId), 1500);
     } catch (e) {
         showToast('Failed to save weather rules: ' + e.message, 'error');
     }
@@ -2022,9 +2025,12 @@ async function mgmtEvaluateWeather() {
             showToast('Triggered: ' + names + ' | Multiplier: ' + result.watering_multiplier + 'x');
         }
         _mgmtWeatherDataCache = null;
+        // Force re-apply adjusted durations in case the backend chain had a silent failure
+        try { await api('/customers/' + currentCustomerId + '/moisture/durations/apply', { method: 'POST' }); } catch(e2) { /* non-critical */ }
         loadDetailWeather(currentCustomerId);
         loadDetailStatus(currentCustomerId);
-        loadDetailControls(currentCustomerId);
+        // Delay schedule refresh slightly to let HA entity states settle after writes
+        setTimeout(() => loadDetailControls(currentCustomerId), 1500);
     } catch (e) {
         showToast('Evaluation failed: ' + e.message, 'error');
     }
@@ -2087,12 +2093,13 @@ async function loadDetailMoisture(id) {
     const body = document.getElementById('detailMoistureBody');
     const badge = document.getElementById('detailMoistureBadge');
     try {
-        const data = await api('/customers/' + id + '/moisture/probes');
-        const settings = await api('/customers/' + id + '/moisture/settings');
+        const _mcb = '?t=' + Date.now();
+        const data = await api('/customers/' + id + '/moisture/probes' + _mcb);
+        const settings = await api('/customers/' + id + '/moisture/settings' + _mcb);
         let multData = {};
-        try { multData = await api('/customers/' + id + '/moisture/multiplier'); } catch (_) {}
+        try { multData = await api('/customers/' + id + '/moisture/multiplier' + _mcb); } catch (_) {}
         let timelineData = {};
-        try { timelineData = await api('/customers/' + id + '/moisture/schedule-timeline'); } catch (_) {}
+        try { timelineData = await api('/customers/' + id + '/moisture/schedule-timeline' + _mcb); } catch (_) {}
 
         // Check if moisture multipliers changed → auto-refresh schedule card
         const multKey = JSON.stringify(multData.per_zone || {});
@@ -2922,9 +2929,9 @@ async function loadDetailZones(id) {
                 })()}
                 <div class="tile-name">
                     ${esc(displayName)}
-                    <span style="cursor:pointer;font-size:15px;color:var(--color-primary);margin-left:6px;"
+                    <span style="cursor:pointer;font-size:20px;color:var(--color-primary);margin-left:6px;"
                           onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
-                    <span style="cursor:pointer;font-size:14px;color:var(--color-info,#2196F3);margin-left:4px;"
+                    <span style="cursor:pointer;font-size:20px;color:var(--color-info,#2196F3);margin-left:4px;"
                           onclick="event.stopPropagation();mgmtShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
@@ -3193,10 +3200,11 @@ async function loadDetailControls(id) {
     const controlsEl = document.getElementById('detailControls');
     const scheduleEl = document.getElementById('detailSchedule');
     try {
+        const _cb = '?t=' + Date.now();
         const [data, durData, multData] = await Promise.all([
-            api('/customers/' + id + '/entities'),
-            api('/customers/' + id + '/moisture/durations').catch(() => ({})),
-            api('/customers/' + id + '/moisture/multiplier').catch(() => ({ combined_multiplier: 1.0, weather_multiplier: 1.0, moisture_multiplier: 1.0 })),
+            api('/customers/' + id + '/entities' + _cb),
+            api('/customers/' + id + '/moisture/durations' + _cb).catch(() => ({})),
+            api('/customers/' + id + '/moisture/multiplier' + _cb).catch(() => ({ combined_multiplier: 1.0, weather_multiplier: 1.0, moisture_multiplier: 1.0 })),
         ]);
         const allEntities = Array.isArray(data) ? data : (data.entities || []);
 
