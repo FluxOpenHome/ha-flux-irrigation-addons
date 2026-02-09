@@ -1115,7 +1115,23 @@ async function loadZones() {
             const isOn = z.state === 'on';
             const displayName = getZoneDisplayName(z);
             return `
-            <div class="tile ${isOn ? 'active' : ''}">
+            <div class="tile ${isOn ? 'active' : ''}" style="position:relative;">
+                ${(function() {
+                    var badges = '';
+                    var hasGpm = window._hoZoneGpmShow && window._hoZoneGpmShow[z.entity_id] && window._hoZoneGpmMap && window._hoZoneGpmMap[z.entity_id];
+                    var hasHeads = window._hoZoneHeadCountShow && window._hoZoneHeadCountShow[z.entity_id] && window._hoZoneHeadCount && window._hoZoneHeadCount[z.entity_id];
+                    if (hasGpm || hasHeads) {
+                        badges += '<div style="position:absolute;top:8px;right:10px;text-align:right;line-height:1.2;">';
+                        if (hasGpm) {
+                            badges += '<div><span style="font-size:14px;font-weight:700;color:var(--text-primary);">' + window._hoZoneGpmMap[z.entity_id].toFixed(1) + '</span><span style="font-size:10px;color:var(--text-secondary);margin-left:1px;">GPM</span></div>';
+                        }
+                        if (hasHeads) {
+                            badges += '<div><span style="font-size:14px;font-weight:700;color:var(--text-primary);">' + window._hoZoneHeadCount[z.entity_id] + '</span><span style="font-size:10px;color:var(--text-secondary);margin-left:1px;">' + (window._hoZoneHeadCount[z.entity_id] === 1 ? 'head' : 'heads') + '</span></div>';
+                        }
+                        badges += '</div>';
+                    }
+                    return badges;
+                })()}
                 <div class="tile-name">
                     ${esc(displayName)}
                     <span style="cursor:pointer;font-size:15px;color:var(--color-primary);margin-left:6px;"
@@ -1124,16 +1140,6 @@ async function loadZones() {
                           onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
-                ${(function() {
-                    var cardInfo = '';
-                    if (window._hoZoneGpmShow && window._hoZoneGpmShow[z.entity_id] && window._hoZoneGpmMap && window._hoZoneGpmMap[z.entity_id]) {
-                        cardInfo += '<div style="margin-top:2px;text-align:center;"><span style="font-size:22px;font-weight:700;color:var(--text-primary);">' + window._hoZoneGpmMap[z.entity_id].toFixed(1) + '</span><span style="font-size:11px;color:var(--text-secondary);margin-left:2px;">GPM</span></div>';
-                    }
-                    if (window._hoZoneHeadCountShow && window._hoZoneHeadCountShow[z.entity_id] && window._hoZoneHeadCount && window._hoZoneHeadCount[z.entity_id]) {
-                        cardInfo += '<div style="margin-top:1px;text-align:center;"><span style="font-size:18px;font-weight:700;color:var(--text-primary);">' + window._hoZoneHeadCount[z.entity_id] + '</span><span style="font-size:11px;color:var(--text-secondary);margin-left:2px;">' + (window._hoZoneHeadCount[z.entity_id] === 1 ? 'head' : 'heads') + '</span></div>';
-                    }
-                    return cardInfo;
-                })()}
                 <div class="tile-actions" style="flex-wrap:wrap;">
                     ${isOn
                         ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + zId + '\\')">Stop</button>'
