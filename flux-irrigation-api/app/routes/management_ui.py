@@ -479,7 +479,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 
         <!-- Zones Card -->
         <div class="card">
-            <div class="card-header"><h2>Zones</h2></div>
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                <h2>Zones</h2>
+                <div id="mgmtAutoAdvanceToggle" style="display:none;"></div>
+            </div>
             <div class="card-body" id="detailZones">
                 <div class="loading">Loading zones...</div>
             </div>
@@ -2358,6 +2361,7 @@ function getZoneDisplayName(z) {
                 return modes[zoneNum].state;
             }
         }
+        return 'Zone ' + zoneNum;
     }
     return z.friendly_name || z.name || z.entity_id;
 }
@@ -2376,6 +2380,7 @@ function resolveZoneName(entityId, fallbackName) {
                 return modes[zoneNum].state;
             }
         }
+        return 'Zone ' + zoneNum;
     }
     return fallbackName || entityId;
 }
@@ -2385,7 +2390,15 @@ async function loadDetailZones(id) {
     try {
         const data = await api('/customers/' + id + '/zones');
         // /api/zones returns a bare list [...], not {zones: [...]}
-        const zones = Array.isArray(data) ? data : (data.zones || []);
+        let zones = Array.isArray(data) ? data : (data.zones || []);
+        // Filter by detected zone count (server already filters, but belt-and-suspenders)
+        const maxZ = window._mgmtDetectedZoneCount || 0;
+        if (maxZ > 0) {
+            zones = zones.filter(function(z) {
+                const m = z.entity_id.match(/zone[_]?(\\d+)/i);
+                return !m || parseInt(m[1]) <= maxZ;
+            });
+        }
         if (zones.length === 0) { el.innerHTML = '<div class="empty-state"><p>No zones found</p></div>'; return; }
         el.innerHTML = '<div class="tile-grid">' + zones.map(z => {
             const zId = z.name || z.entity_id;
@@ -2706,6 +2719,42 @@ async function loadDetailControls(id) {
         window._expansionControls = expansionControls;
         mgmtRenderRainSensorCard(id);
         mgmtRenderExpansionCard(id);
+
+        // Detect zone count from expansion sensor for zone filtering
+        window._mgmtDetectedZoneCount = 0;
+        const expansionSensors = (window._expansionSensors || []);
+        for (const es of expansionSensors) {
+            if (/detected_zones/i.test(es.entity_id) && es.state) {
+                const czm = es.state.match(/(\\d+)\\s*zones?/i);
+                if (czm) window._mgmtDetectedZoneCount = parseInt(czm[1]);
+            }
+        }
+
+        // Extract auto_advance from system_controls and render in zone card header
+        var autoAdvanceEntity = null;
+        var filteredSystemControls = [];
+        for (var sci = 0; sci < scheduleByCategory.system_controls.length; sci++) {
+            var sc = scheduleByCategory.system_controls[sci];
+            if (/auto_advance/i.test(sc.entity_id)) {
+                autoAdvanceEntity = sc;
+            } else {
+                filteredSystemControls.push(sc);
+            }
+        }
+        scheduleByCategory.system_controls = filteredSystemControls;
+        var aaEl = document.getElementById('mgmtAutoAdvanceToggle');
+        if (autoAdvanceEntity && aaEl) {
+            var aaOn = autoAdvanceEntity.state === 'on';
+            aaEl.style.display = '';
+            aaEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;">' +
+                '<span style="font-size:13px;color:var(--text-secondary);">Auto Advance</span>' +
+                '<button class="btn ' + (aaOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
+                'onclick="setEntityValue(\\'' + currentCustomerId + '\\',\\'' + autoAdvanceEntity.entity_id + '\\',\\'switch\\',' +
+                '{state:\\'' + (aaOn ? 'off' : 'on') + '\\'});setTimeout(function(){loadDetailControls(currentCustomerId)},500)">' +
+                (aaOn ? 'On' : 'Off') + '</button></div>';
+        } else if (aaEl) {
+            aaEl.style.display = 'none';
+        }
 
         // Render Device Controls (excluding rain + expansion)
         if (regularControls.length === 0) {
@@ -3079,7 +3128,12 @@ function renderScheduleCard(custId, sched, durData) {
                 zoneMap[num].mode = zm;
             }
         }
-        const sortedZones = Object.keys(zoneMap).sort((a, b) => parseInt(a) - parseInt(b));
+        var sortedZones = Object.keys(zoneMap).sort((a, b) => parseInt(a) - parseInt(b));
+        // Filter by detected zone count (expansion board limit)
+        const maxZones = window._mgmtDetectedZoneCount || 0;
+        if (maxZones > 0) {
+            sortedZones = sortedZones.filter(function(zn) { return parseInt(zn) <= maxZones; });
+        }
         const hasMode = sortedZones.some(zn => zoneMap[zn].mode);
 
         html += '<table class="zone-settings-table"><thead><tr>' +
@@ -3803,14 +3857,15 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">Click a property card to see its full details including zone controls, sensors, schedule, weather, and run history. Use the <strong>← Back</strong> button to return to the property list.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Remote Zone Control</h4>
-<p style="margin-bottom:10px;">From the detail view, you can remotely control any irrigation zone:</p>
+<p style="margin-bottom:10px;">From the detail view, you can remotely control any irrigation zone. Zones are displayed as "Zone 1", "Zone 2", etc. by default — use aliases to give them friendly names. Controls include:</p>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Start</strong> — Turn on a zone (optionally set a timed run in minutes)</li>
 <li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a specific zone</li>
 <li style="margin-bottom:4px;"><strong>🛑 Stop All Zones</strong> — Emergency stop for all zones at once</li>
 <li style="margin-bottom:4px;"><strong>⏸ Pause / ▶ Resume</strong> — Pause or resume the entire irrigation system</li>
+<li style="margin-bottom:4px;"><strong>Auto Advance</strong> — Toggle in the zone card header. When enabled, manually running zones will automatically advance to the next zone when the current one finishes its timed run</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 When the system is paused, any zone that turns on (even from an ESPHome schedule) will be immediately shut off.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 When the system is paused, any zone that turns on (even from an ESPHome schedule) will be immediately shut off. If expansion boards are detected, only the physically connected zones are shown — extra pre-created entities are automatically hidden.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Schedule Management</h4>
 <p style="margin-bottom:10px;">View and manage watering schedules for each property:</p>
@@ -3851,7 +3906,7 @@ const HELP_CONTENT = `
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Expansion Boards</h4>
 <p style="margin-bottom:10px;">For controllers with I2C expansion board support, the Expansion Boards card shows:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone Count</strong> — Total detected zones (base + expansion)</li><li style="margin-bottom:4px;"><strong>Board Details</strong> — I2C addresses and zone ranges for each expansion board</li><li style="margin-bottom:4px;"><strong>Rescan</strong> — Trigger an I2C bus rescan to detect board changes</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; If no expansion boards are connected, the card shows &quot;No expansion boards connected&quot; with the base zone count.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The firmware pre-creates entities for up to 32 zones (to support up to 3 expansion boards). The system automatically detects how many zones are physically connected and only shows those zones — zone tiles, schedule settings, enables, and durations are all filtered to match.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
 <p style="margin-bottom:10px;">View a detailed log of all irrigation activity for each property:</p>

@@ -301,7 +301,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 
     <!-- Zones Card -->
     <div class="card">
-        <div class="card-header"><h2>Zones</h2></div>
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+            <h2>Zones</h2>
+            <div id="autoAdvanceToggle" style="display:none;"></div>
+        </div>
         <div class="card-body" id="detailZones">
             <div class="loading">Loading zones...</div>
         </div>
@@ -746,7 +749,7 @@ async function dismissIssue(issueId) {
 async function switchToManagement() {
     if (!confirm('Switch to Management mode? The homeowner dashboard will no longer be available until you switch back.')) return;
     try {
-        const BASE = window.location.pathname.replace(/\/+$/, '');
+        const BASE = window.location.pathname.replace(/\\/+$/, '');
         await fetch(BASE + '/api/mode', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
@@ -822,6 +825,7 @@ function getZoneDisplayName(z) {
                 return modes[zoneNum].state;
             }
         }
+        return 'Zone ' + zoneNum;
     }
     return z.friendly_name || z.name || z.entity_id;
 }
@@ -839,6 +843,7 @@ function resolveZoneName(entityId, fallbackName) {
                 return modes[zoneNum].state;
             }
         }
+        return 'Zone ' + zoneNum;
     }
     return fallbackName || entityId;
 }
@@ -871,7 +876,7 @@ const SCHEDULE_PATTERNS = {
     start_times: (eid, domain) =>
         domain === 'text' && /start_time/.test(eid),
     run_durations: (eid, domain) =>
-        domain === 'number' && (/run_duration/.test(eid) || (/zone_?\d/.test(eid) && !/repeat|cycle|mode/.test(eid)) || /duration.*zone/.test(eid)),
+        domain === 'number' && (/run_duration/.test(eid) || (/zone_?\\d/.test(eid) && !/repeat|cycle|mode/.test(eid)) || /duration.*zone/.test(eid)),
     repeat_cycles: (eid, domain) =>
         domain === 'number' && /repeat_cycle/.test(eid),
     zone_enables: (eid, domain) =>
@@ -1046,7 +1051,15 @@ async function loadZones() {
     const el = document.getElementById('detailZones');
     try {
         const data = await api('/zones');
-        const zones = Array.isArray(data) ? data : (data.zones || []);
+        let zones = Array.isArray(data) ? data : (data.zones || []);
+        // Filter by detected zone count (server already filters, but belt-and-suspenders)
+        const maxZ = window._detectedZoneCount || 0;
+        if (maxZ > 0) {
+            zones = zones.filter(function(z) {
+                const m = z.entity_id.match(/zone[_]?(\\d+)/i);
+                return !m || parseInt(m[1]) <= maxZ;
+            });
+        }
         if (zones.length === 0) { el.innerHTML = '<div class="empty-state"><p>No zones found</p></div>'; return; }
         el.innerHTML = '<div class="tile-grid">' + zones.map(z => {
             const zId = z.name || z.entity_id;
@@ -1316,6 +1329,42 @@ async function loadControls() {
         window._expansionControls = expansionControls;
         renderRainSensorCard();
         renderExpansionCard();
+
+        // Detect zone count from expansion sensor for zone filtering
+        window._detectedZoneCount = 0;
+        const expansionSensors = (window._expansionSensors || []);
+        for (const es of expansionSensors) {
+            if (/detected_zones/i.test(es.entity_id) && es.state) {
+                const czm = es.state.match(/(\\d+)\\s*zones?/i);
+                if (czm) window._detectedZoneCount = parseInt(czm[1]);
+            }
+        }
+
+        // Extract auto_advance from system_controls and render in zone card header
+        var autoAdvanceEntity = null;
+        var filteredSystemControls = [];
+        for (var sci = 0; sci < scheduleByCategory.system_controls.length; sci++) {
+            var sc = scheduleByCategory.system_controls[sci];
+            if (/auto_advance/i.test(sc.entity_id)) {
+                autoAdvanceEntity = sc;
+            } else {
+                filteredSystemControls.push(sc);
+            }
+        }
+        scheduleByCategory.system_controls = filteredSystemControls;
+        var aaEl = document.getElementById('autoAdvanceToggle');
+        if (autoAdvanceEntity && aaEl) {
+            var aaOn = autoAdvanceEntity.state === 'on';
+            aaEl.style.display = '';
+            aaEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;">' +
+                '<span style="font-size:13px;color:var(--text-secondary);">Auto Advance</span>' +
+                '<button class="btn ' + (aaOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
+                'onclick="setEntityValue(\\'' + autoAdvanceEntity.entity_id + '\\',\\'switch\\',' +
+                '{state:\\'' + (aaOn ? 'off' : 'on') + '\\'});setTimeout(loadControls,500)">' +
+                (aaOn ? 'On' : 'Off') + '</button></div>';
+        } else if (aaEl) {
+            aaEl.style.display = 'none';
+        }
 
         // Render Device Controls (excluding rain + expansion)
         if (regularControls.length === 0) {
@@ -1669,7 +1718,12 @@ function renderScheduleCard(sched, durData) {
                 zoneMap[num].mode = zm;
             }
         }
-        const sortedZones = Object.keys(zoneMap).sort((a, b) => parseInt(a) - parseInt(b));
+        var sortedZones = Object.keys(zoneMap).sort((a, b) => parseInt(a) - parseInt(b));
+        // Filter by detected zone count (expansion board limit)
+        const maxZones = window._detectedZoneCount || 0;
+        if (maxZones > 0) {
+            sortedZones = sortedZones.filter(function(zn) { return parseInt(zn) <= maxZones; });
+        }
         const hasMode = sortedZones.some(zn => zoneMap[zn].mode);
 
         html += '<table class="zone-settings-table"><thead><tr>' +
@@ -3021,9 +3075,9 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">The dashboard auto-refreshes every 30 seconds to keep everything up to date.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Zone Control</h4>
-<p style="margin-bottom:10px;">Each zone tile shows the current state (running or off). You can:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Start</strong> — Turn a zone on immediately with no time limit</li><li style="margin-bottom:4px;"><strong>Timed Start</strong> — Enter a duration in minutes and click <strong>Timed</strong> to run the zone for a set period, then auto-shutoff</li><li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a running zone immediately</li><li style="margin-bottom:4px;"><strong>Emergency Stop All</strong> — Instantly stops every active zone on the system</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Green-highlighted tiles indicate zones that are currently running.</div>
+<p style="margin-bottom:10px;">Each zone tile shows the current state (running or off). Zones are displayed as "Zone 1", "Zone 2", etc. by default — use aliases to give them friendly names. You can:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Start</strong> — Turn a zone on immediately with no time limit</li><li style="margin-bottom:4px;"><strong>Timed Start</strong> — Enter a duration in minutes and click <strong>Timed</strong> to run the zone for a set period, then auto-shutoff</li><li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a running zone immediately</li><li style="margin-bottom:4px;"><strong>Emergency Stop All</strong> — Instantly stops every active zone on the system</li><li style="margin-bottom:4px;"><strong>Auto Advance</strong> — Toggle in the zone card header. When enabled, manually running zones will automatically advance to the next zone when the current one finishes its timed run</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Green-highlighted tiles indicate zones that are currently running. If your controller has expansion boards, only the physically connected zones are shown — extra pre-created entities are automatically hidden.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>
 <p style="margin-bottom:10px;">If your irrigation controller has a rain sensor connected, a dedicated Rain Sensor card appears showing:</p>
@@ -3058,7 +3112,7 @@ const HELP_CONTENT = `
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Expansion Boards</h4>
 <p style="margin-bottom:10px;">If your controller supports I2C expansion boards for additional zones, the Expansion Boards card shows:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone Count</strong> — Total number of zones detected (base board + expansion)</li><li style="margin-bottom:4px;"><strong>Board Details</strong> — I2C addresses of connected expansion boards, with the zone range each board controls</li><li style="margin-bottom:4px;"><strong>Rescan</strong> — Trigger an I2C bus rescan to detect newly connected or disconnected boards</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; If no expansion boards are connected, the card shows &quot;No expansion boards connected&quot; with the base zone count. This card only appears when expansion board entities are detected on your controller.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The firmware pre-creates entities for up to 32 zones (to support up to 3 expansion boards). The system automatically detects how many zones are physically connected and only shows those zones throughout the dashboard — zone tiles, schedule settings, enables, and durations are all filtered to match.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">System Pause / Resume</h4>
 <p style="margin-bottom:10px;"><strong>Pause System</strong> immediately stops all active zones and prevents any new zones from starting — including ESPHome schedule programs. While paused, any zone that tries to turn on will be automatically shut off.</p>

@@ -310,7 +310,18 @@ async def get_device_entities(device_id: str) -> dict:
         ]
         print(f"[HA_CLIENT]   All switches on device: {all_switch_ids}")
 
-    return {"zones": zones, "sensors": sensors, "other": other}
+    # Check for expansion board detected_zones sensor
+    detected_zones_entity = None
+    for s in sensors:
+        if "detected_zones" in s["entity_id"].lower():
+            detected_zones_entity = s["entity_id"]
+            break
+
+    result = {"zones": zones, "sensors": sensors, "other": other}
+    if detected_zones_entity:
+        result["detected_zones_entity"] = detected_zones_entity
+        print(f"[HA_CLIENT]   Expansion sensor found: {detected_zones_entity}")
+    return result
 
 
 # --- REST API helpers ---

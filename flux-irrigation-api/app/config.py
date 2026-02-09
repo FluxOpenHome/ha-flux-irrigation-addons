@@ -40,6 +40,7 @@ class Config:
     weather_enabled: bool = False
     weather_check_interval_minutes: int = 15
     supervisor_token: Optional[str] = None
+    detected_zone_count: int = 0
 
     @classmethod
     def load(cls, prefer_file: bool = False) -> "Config":
@@ -180,8 +181,24 @@ class Config:
                 if self.allowed_control_entities:
                     print(f"[CONFIG]   Control entities: {self.allowed_control_entities}")
 
-                # If we got entities, we're done
+                # If we got entities, resolve expansion zone count and we're done
                 if total > 0:
+                    # Check for expansion board detected_zones sensor
+                    detected_zones_eid = result.get("detected_zones_entity")
+                    if detected_zones_eid:
+                        try:
+                            import re
+                            state = await ha_client.get_entity_state(detected_zones_eid)
+                            state_text = state.get("state", "") if state else ""
+                            m = re.search(r'(\d+)\s*zones?', state_text, re.IGNORECASE)
+                            if m:
+                                self.detected_zone_count = int(m.group(1))
+                                print(f"[CONFIG] Expansion board detected: {self.detected_zone_count} zones "
+                                      f"(from {detected_zones_eid}: {state_text!r})")
+                            else:
+                                print(f"[CONFIG] Expansion sensor found but could not parse zone count: {state_text!r}")
+                        except Exception as e:
+                            print(f"[CONFIG] Failed to read expansion zone count: {e}")
                     return
 
                 # If no entities found and retrying is enabled, wait and try again

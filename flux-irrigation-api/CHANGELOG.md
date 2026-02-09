@@ -4,6 +4,21 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ---
 
+## [1.1.9] — 2026-02-08
+
+### Added
+
+- **Expansion Board Zone Filtering** — Controllers with expansion boards pre-create entities for up to 32 zones (3 expansion boards × 8 zones + 8 base). The system now reads the `detected_zones` sensor to determine how many zones are physically connected and automatically filters zone tiles, schedule durations, zone enables, and zone modes throughout the dashboard to only show connected zones. Controllers without expansion board support are unaffected.
+- **Auto Advance Toggle on Zone Card** — The Auto Advance toggle has been moved from the Schedule "System Controls" section to the Zone card header, where it belongs. Auto Advance controls whether manually running zones automatically advance to the next zone, which is a zone behavior, not a schedule setting.
+- **Default Zone Naming** — Zones are now displayed as "Zone 1", "Zone 2", etc. by default instead of using the raw HA entity friendly name. User-created aliases override the default name and are never overwritten.
+
+### Changed
+
+- **Zone display names** — Zones without an alias now show "Zone N" instead of the HA entity friendly name (which was often unwieldy, e.g., "Irrigation System Zone 1")
+- **Auto Advance placement** — Moved from Schedule card System Controls section to Zone card header on both homeowner and management dashboards
+
+---
+
 ## [1.1.8] — 2026-02-07
 
 ### Added

@@ -364,6 +364,7 @@ async def get_device_entities():
         "zones": entities.get("zones", []),
         "sensors": entities.get("sensors", []),
         "other": entities.get("other", []),
+        "detected_zone_count": config.detected_zone_count,
     }
 
 

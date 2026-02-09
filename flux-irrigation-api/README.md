@@ -187,11 +187,11 @@ The management dashboard automatically checks connectivity to all properties eve
 - **Connection key regeneration lock** — The Generate button is locked when an active key exists, requiring an explicit unlock to prevent accidental invalidation
 - **Revoke access** — Instantly revoke management company access with one click, with a confirmation dialog to prevent accidents
 - **Run history** — JSONL-based local storage of zone run events with weather conditions captured at run time; CSV export
-- **Zone aliases** — Give zones friendly display names on the dashboard
+- **Zone aliases** — Zones default to "Zone 1", "Zone 2", etc.; give zones friendly display names with aliases that persist across refreshes
 - **Location map** — Leaflet map on the dashboard shows property location with re-center button
 - **Gophr Moisture Probes** — Select Gophr devices from a filtered device picker and map sensors to irrigation zones (many-to-many); moisture multiplier adjusts both API timed runs and ESPHome scheduled durations; combined weather × moisture multiplier; probe cards show WiFi signal, battery level, and sleep duration alongside moisture readings; Gophr logo displayed on all dashboard Moisture Probes card headers with dark/light mode support
 - **Rain Sensor Card** — Dedicated card for rain sensor hardware entities showing sensor state (Dry/Rain Detected), enable/disable, sensor type (NC/NO), rain delay controls, and delay duration; auto-detected from controller entities
-- **Expansion Board Card** — Dedicated card for I2C expansion board status showing detected zone count, board I2C addresses with zone ranges, and rescan button; shows "No expansion boards connected" when none detected
+- **Expansion Board Card** — Dedicated card for I2C expansion board status showing detected zone count, board I2C addresses with zone ranges, and rescan button; automatically filters all zone-related entities (tiles, durations, enables, modes) to only show the physically connected zones — firmware pre-creates up to 32 zone entities but only connected zones are displayed
 - **Issue Reporting** — Report issues to your management company with three severity levels (Clarification, Annoyance, Severe Issue); track issue status (Submitted, Acknowledged, Service Scheduled) and see management notes
 - **Upcoming Service** — When your management company schedules a service visit, a green banner appears at the top of the dashboard showing the date and any notes from management; tap the banner to add the appointment directly to your device's calendar app
 - **Clickable Address** — Tap your property address to open it in Apple Maps (iOS/Mac) or Google Maps (Android/other) for directions
