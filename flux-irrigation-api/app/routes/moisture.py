@@ -999,6 +999,16 @@ async def _get_probe_sensor_states(probes: dict) -> dict:
     if not sensor_ids:
         return {}
 
+    # Build set of depth sensor entity IDs belonging to sleeping probes.
+    # During sleep transitions ESPHome may briefly report 0 before going
+    # unavailable — protect the cache from those transient values.
+    sleeping_sensor_eids = set()
+    for probe_id, probe in probes.items():
+        if not _probe_awake_cache.get(probe_id, True):
+            for eid in probe.get("sensors", {}).values():
+                if eid:
+                    sleeping_sensor_eids.add(eid)
+
     all_states = await ha_client.get_entities_by_ids(list(sensor_ids))
     result = {}
     cache_dirty = False
@@ -1011,8 +1021,18 @@ async def _get_probe_sensor_states(probes: dict) -> dict:
         except (ValueError, TypeError):
             numeric_val = None
 
-        if numeric_val is not None:
-            # Good reading — update the cache
+        # If the probe is sleeping and we have a cached value, always use cache
+        if eid in sleeping_sensor_eids and eid in _sensor_cache:
+            cached = _sensor_cache[eid]
+            result[eid] = {
+                "state": cached["state"],
+                "raw_state": cached.get("raw_state", str(cached["state"])),
+                "last_updated": cached.get("last_updated", ""),
+                "friendly_name": cached.get("friendly_name", eid),
+                "cached": True,
+            }
+        elif numeric_val is not None:
+            # Good reading from awake probe — update the cache
             _sensor_cache[eid] = {
                 "state": numeric_val,
                 "raw_state": state_val,
@@ -2623,6 +2643,17 @@ async def api_get_probes():
     _load_sensor_cache()
     cache_dirty = False
 
+    # Build set of depth sensor entity IDs belonging to sleeping probes.
+    # During sleep transitions ESPHome may briefly report 0 before going
+    # unavailable — we must NOT let those transient values corrupt the cache.
+    sleeping_sensor_eids = set()
+    for probe_id, probe in probes.items():
+        if not _probe_awake_cache.get(probe_id, True):
+            # Probe is known to be sleeping — protect its depth sensors
+            for eid in probe.get("sensors", {}).values():
+                if eid:
+                    sleeping_sensor_eids.add(eid)
+
     state_lookup = {}
     for s in all_states:
         eid = s.get("entity_id", "")
@@ -2632,8 +2663,21 @@ async def api_get_probes():
         except (ValueError, TypeError):
             numeric = None
 
-        if numeric is not None and raw not in ("unavailable", "unknown"):
-            # Good reading — update the cache
+        # If the probe is sleeping and we have a cached value, always use cache
+        # This prevents transient 0-values during sleep transitions from
+        # overwriting good cached readings
+        if eid in sleeping_sensor_eids and eid in _sensor_cache:
+            cached = _sensor_cache[eid]
+            state_lookup[eid] = {
+                "state": cached["state"],
+                "raw_state": cached.get("raw_state", str(cached["state"])),
+                "last_updated": cached.get("last_updated", ""),
+                "friendly_name": cached.get("friendly_name", eid),
+                "unit": cached.get("unit", ""),
+                "cached": True,
+            }
+        elif numeric is not None and raw not in ("unavailable", "unknown"):
+            # Good reading from awake probe — update the cache
             _sensor_cache[eid] = {
                 "state": numeric,
                 "raw_state": raw,
@@ -2750,9 +2794,13 @@ async def api_get_probes():
             }
             device_sensors[skey] = entry
 
-        # Awake status: use cached status LED result, or do initial check
-        if probe_id not in _probe_awake_cache:
-            # First time seeing this probe — read status LED
+        # Awake status: use the live status LED state we already fetched
+        status_led_eid = extra.get("status_led")
+        if status_led_eid and status_led_eid in live_raw_states:
+            led_raw = live_raw_states[status_led_eid].lower()
+            awake = led_raw == "on"
+            _probe_awake_cache[probe_id] = awake
+        elif probe_id not in _probe_awake_cache:
             awake = await _check_probe_awake(probe_id)
         else:
             awake = _probe_awake_cache[probe_id]
@@ -3068,6 +3116,8 @@ async def api_press_sleep_now(probe_id: str, request: Request):
 
     success = await press_probe_sleep_now(probe_id)
     if success:
+        # Immediately mark probe as sleeping in cache so UI updates instantly
+        _probe_awake_cache[probe_id] = False
         log_change(get_actor(request), "Moisture Probes",
                    f"Sleep Now pressed for {display_name}")
         return {

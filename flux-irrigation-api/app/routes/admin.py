@@ -2402,7 +2402,10 @@ ADMIN_HTML = """<!DOCTYPE html>
                     // Header row
                     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
                     html += '<strong style="font-size:14px;">' + escHtml(probe.display_name || pid) + '</strong>';
+                    html += '<div style="display:flex;gap:6px;">';
+                    html += '<button class="btn btn-secondary btn-sm" onclick="updateProbeEntitiesCfg(\\'' + escHtml(pid) + '\\')">Update Entities</button>';
                     html += '<button class="btn btn-danger btn-sm" onclick="removeMoistureProbe(\\'' + escHtml(pid) + '\\')">Remove</button>';
+                    html += '</div>';
                     html += '</div>';
 
                     // Depth sensor pills
@@ -2415,11 +2418,19 @@ ADMIN_HTML = """<!DOCTYPE html>
                         }
                     }
                     html += '</div>';
-                    // Device sensor pills
+                    // Device sensor pills — show ALL detected entities
                     const extraLabels = [];
                     if (es.wifi) extraLabels.push('WiFi');
                     if (es.battery) extraLabels.push('Batt');
                     if (es.sleep_duration) extraLabels.push('Sleep');
+                    if (es.sleep_disabled) extraLabels.push('Sleep Toggle');
+                    if (es.status_led) extraLabels.push('Status LED');
+                    if (es.sleep_duration_number) extraLabels.push('Sleep Control');
+                    if (es.solar_charging) extraLabels.push('Solar');
+                    if (es.sleep_now) extraLabels.push('Sleep Now');
+                    if (es.min_awake_minutes) extraLabels.push('Min Awake');
+                    if (es.max_awake_minutes) extraLabels.push('Max Awake');
+                    if (es.schedule_times && es.schedule_times.length) extraLabels.push('Schedule (' + es.schedule_times.length + ')');
                     if (extraLabels.length > 0) {
                         html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">';
                         for (const lbl of extraLabels) {
@@ -2576,6 +2587,11 @@ ADMIN_HTML = """<!DOCTYPE html>
             if (extraSensors.wifi) extras.push('WiFi');
             if (extraSensors.battery) extras.push('Batt');
             if (extraSensors.sleep_duration) extras.push('Sleep');
+            if (extraSensors.sleep_disabled) extras.push('Sleep Toggle');
+            if (extraSensors.status_led) extras.push('Status LED');
+            if (extraSensors.sleep_duration_number) extras.push('Sleep Control');
+            if (extraSensors.solar_charging) extras.push('Solar');
+            if (extraSensors.sleep_now) extras.push('Sleep Now');
 
             if (detected.length > 0 || extras.length > 0) {
                 html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Auto-detected sensors</div>';
@@ -2655,6 +2671,19 @@ ADMIN_HTML = """<!DOCTYPE html>
             showToast('Probe removed');
             loadMoistureConfig();
         } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    async function updateProbeEntitiesCfg(probeId) {
+        try {
+            showToast('Re-detecting entities...', 'info');
+            var result = await mcfg('/probes/' + encodeURIComponent(probeId) + '/update-entities', 'POST');
+            if (result.changes && result.changes.length > 0) {
+                showToast('Updated: ' + result.changes.join(', '));
+            } else {
+                showToast('No new entities found');
+            }
+            loadMoistureConfig();
+        } catch (e) { showToast(e.message || 'Failed to update entities', 'error'); }
     }
 
     // Load moisture config on page load

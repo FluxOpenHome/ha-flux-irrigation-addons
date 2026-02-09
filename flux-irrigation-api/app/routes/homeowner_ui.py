@@ -1831,8 +1831,8 @@ function renderScheduleCard(sched, durData, multData) {
                 if (!zoneHasMoisture) zoneCombined = liveWeatherMult;
                 // Compute projected adjusted duration using per-zone multiplier
                 var factorBadge = '';
-                if (adj && adj.skip) {
-                    // Factors applied and skip triggered — show skip badge
+                if ((adj && adj.skip) || zoneSkip) {
+                    // Skip triggered — from applied factors or live moisture data
                     factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                         'background:var(--bg-danger-light);color:var(--color-danger);">Skip Watering</span>';
                 } else if (adj) {
