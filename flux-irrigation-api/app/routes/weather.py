@@ -338,6 +338,11 @@ async def run_weather_evaluation() -> dict:
             should_pause = True
             pause_reason = pause_reason or reason
             triggered.append({"rule": "precipitation_threshold", "action": "skip", "reason": reason})
+            new_adjustments.append({
+                "rule": "precipitation_threshold", "action": "skip",
+                "reason": reason,
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+            })
 
     # Rule 4: Temperature Freeze
     rule = rules.get("temperature_freeze", {})
@@ -350,6 +355,11 @@ async def run_weather_evaluation() -> dict:
             should_pause = True
             pause_reason = pause_reason or reason
             triggered.append({"rule": "temperature_freeze", "action": "skip", "reason": reason})
+            new_adjustments.append({
+                "rule": "temperature_freeze", "action": "skip",
+                "reason": reason,
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+            })
 
     # Rule 5: Temperature Cool (reduce watering)
     rule = rules.get("temperature_cool", {})
@@ -396,6 +406,11 @@ async def run_weather_evaluation() -> dict:
             should_pause = True
             pause_reason = pause_reason or reason
             triggered.append({"rule": "wind_speed", "action": "skip", "reason": reason})
+            new_adjustments.append({
+                "rule": "wind_speed", "action": "skip",
+                "reason": reason,
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+            })
 
     # Rule 8: Humidity
     rule = rules.get("humidity", {})
@@ -419,11 +434,21 @@ async def run_weather_evaluation() -> dict:
         month = str(datetime.now().month)
         monthly = rule.get("monthly_multipliers", {})
         season_mult = float(monthly.get(month, 1.0))
-        multiplier *= season_mult
+        if season_mult > 0:
+            multiplier *= season_mult
+        else:
+            season_mult = 1.0  # Treat 0 as 1.0 to avoid zeroing out the multiplier
+        reason = f"Seasonal adjustment for month {month}: {season_mult}x"
         triggered.append({
             "rule": "seasonal_adjustment", "action": "multiply",
-            "reason": f"Seasonal adjustment for month {month}: {season_mult}x",
+            "reason": reason,
         })
+        if abs(season_mult - 1.0) >= 0.005:
+            new_adjustments.append({
+                "rule": "seasonal_adjustment", "action": "multiply",
+                "reason": reason,
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+            })
 
     # --- Apply Actions ---
 
