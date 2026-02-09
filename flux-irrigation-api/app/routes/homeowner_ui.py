@@ -422,6 +422,18 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- Calendar Picker Modal (iOS) -->
+<div id="calendarPickerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:flex-end;justify-content:center;" onclick="if(event.target===this)closeCalendarPicker()">
+    <div style="background:var(--bg-card);border-radius:16px 16px 0 0;padding:0;width:100%;max-width:500px;box-shadow:0 -4px 24px rgba(0,0,0,0.2);animation:slideUp 0.25s ease-out;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px 10px 20px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);">Add to Calendar</h3>
+            <button onclick="closeCalendarPicker()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div style="padding:12px 20px 24px 20px;display:flex;flex-direction:column;gap:10px;" id="calendarPickerOptions"></div>
+    </div>
+</div>
+<style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>
+
 <script>
 // Homeowner API base — all calls go through /admin/api/homeowner/*
 const HBASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api/homeowner';
@@ -556,12 +568,118 @@ function renderUpcomingService(issues) {
 }
 
 // --- Add to Calendar ---
+function _calEventData() {
+    const svcDate = _upcomingServiceData.service_date.replace(/-/g, '');
+    const d = new Date(_upcomingServiceData.service_date + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    const endDate = d.toISOString().slice(0, 10).replace(/-/g, '');
+    const label = document.getElementById('dashTitle').textContent || '';
+    const title = 'Irrigation Service' + (label ? ' - ' + label : '');
+    const loc = document.getElementById('dashAddress').textContent || '';
+    let details = 'Irrigation service visit scheduled by your management company.';
+    if (_upcomingServiceData.management_note) {
+        details += '\\nNote: ' + _upcomingServiceData.management_note;
+    }
+    return { svcDate: svcDate, endDate: endDate, title: title, location: loc, details: details, isoEnd: d.toISOString().slice(0, 10) };
+}
+
 function addServiceToCalendar() {
     if (!_upcomingServiceData || !_upcomingServiceData.service_date) return;
-    // Server-side endpoint generates an RFC 5545 compliant .ics file
-    // using the icalendar library. The Content-Disposition: attachment
-    // header plus text/calendar MIME type triggers the OS calendar handler.
-    window.location.href = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+    if (isIOS) {
+        _showCalendarPicker();
+        return;
+    }
+
+    // Android/Desktop: try blob download, fall back to picker
+    var icsUrl = ISSUE_BASE + '/' + _upcomingServiceData.id + '/calendar.ics';
+    fetch(icsUrl).then(function(resp) {
+        if (!resp.ok) throw new Error('err');
+        return resp.blob();
+    }).then(function(blob) {
+        var file = new File([blob], 'irrigation-service.ics', { type: 'text/calendar' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            return navigator.share({ files: [file], title: 'Irrigation Service' });
+        }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'irrigation-service.ics';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+    }).catch(function() {
+        _showCalendarPicker();
+    });
+}
+
+function _showCalendarPicker() {
+    var ev = _calEventData();
+
+    var googleUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+        + '&text=' + encodeURIComponent(ev.title)
+        + '&dates=' + ev.svcDate + '/' + ev.endDate
+        + '&details=' + encodeURIComponent(ev.details)
+        + '&location=' + encodeURIComponent(ev.location);
+
+    var outlookUrl = 'https://outlook.live.com/calendar/0/action/compose?'
+        + 'subject=' + encodeURIComponent(ev.title)
+        + '&startdt=' + _upcomingServiceData.service_date
+        + '&enddt=' + ev.isoEnd
+        + '&body=' + encodeURIComponent(ev.details)
+        + '&location=' + encodeURIComponent(ev.location)
+        + '&allday=true';
+
+    var opts = document.getElementById('calendarPickerOptions');
+    opts.innerHTML = '';
+
+    // Build real <a> tags (not buttons) so the user physically taps the link.
+    // HA companion app intercepts <a target="_blank"> the same way
+    // openAddressInMaps() works via window.open.
+    var items = [
+        { label: 'Google Calendar', url: googleUrl },
+        { label: 'Outlook / Hotmail', url: outlookUrl }
+    ];
+    items.forEach(function(item) {
+        var a = document.createElement('a');
+        a.href = item.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = item.label;
+        a.style.cssText = 'display:block;width:100%;padding:14px 16px;border-radius:10px;border:1px solid var(--border-light);background:var(--bg-tile);color:var(--text-primary);font-size:15px;font-weight:500;cursor:pointer;text-align:left;text-decoration:none;box-sizing:border-box;';
+        a.onclick = function() { setTimeout(closeCalendarPicker, 300); };
+        opts.appendChild(a);
+    });
+
+    // Copy link fallback — guaranteed to work in any webview
+    var copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy Calendar Link';
+    copyBtn.style.cssText = 'width:100%;padding:14px 16px;border-radius:10px;border:1px dashed var(--border-light);background:transparent;color:var(--text-secondary);font-size:14px;cursor:pointer;text-align:left;';
+    copyBtn.onclick = function() {
+        navigator.clipboard.writeText(googleUrl).then(function() {
+            showToast('Calendar link copied! Paste in Safari to add event.');
+            closeCalendarPicker();
+        }).catch(function() {
+            // clipboard failed — select-all fallback
+            var inp = document.createElement('input');
+            inp.value = googleUrl;
+            document.body.appendChild(inp);
+            inp.select();
+            document.execCommand('copy');
+            document.body.removeChild(inp);
+            showToast('Calendar link copied! Paste in Safari to add event.');
+            closeCalendarPicker();
+        });
+    };
+    opts.appendChild(copyBtn);
+
+    document.getElementById('calendarPickerModal').style.display = 'flex';
+}
+
+function closeCalendarPicker() {
+    document.getElementById('calendarPickerModal').style.display = 'none';
 }
 
 // --- Open Address in Maps ---

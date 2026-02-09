@@ -571,6 +571,31 @@ app.include_router(moisture.router)
 app.include_router(issues.router)
 
 
+@app.get("/cal/{token}", include_in_schema=False)
+async def public_calendar_download(token: str):
+    """Serve an .ics calendar file using a temporary token.
+
+    This endpoint is accessible on port 8099 without HA ingress auth,
+    allowing Safari on iOS to download the .ics file and hand it to
+    Apple Calendar natively — the same way maps.apple.com links work.
+    Tokens are single-use and expire after 5 minutes.
+    """
+    from routes.issues import get_cal_token_issue_id, issue_calendar_ics
+
+    issue_id = get_cal_token_issue_id(token)
+    if issue_id is None:
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            "<html><body style='font-family:system-ui;padding:40px;text-align:center;'>"
+            "<h2>Link Expired</h2>"
+            "<p>This calendar link has expired or was already used.</p>"
+            "<p>Go back to your irrigation dashboard and tap the service banner again.</p>"
+            "</body></html>",
+            status_code=410,
+        )
+    return await issue_calendar_ics(issue_id)
+
+
 @app.get("/", include_in_schema=False)
 async def root(request: Request):
     """Redirect root to admin UI, preserving ingress path prefix."""
