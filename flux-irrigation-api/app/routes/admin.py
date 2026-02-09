@@ -2513,13 +2513,14 @@ ADMIN_HTML = """<!DOCTYPE html>
                 el.innerHTML = '<p style="color:var(--text-muted);">No sensor entities found on this device.</p>';
                 return;
             }
+            const _esc = typeof escHtml === 'function' ? escHtml : function(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; };
             let html = '<div style="background:var(--bg-tile);border-radius:8px;padding:12px;border:1px solid var(--border-light);">';
             html += '<div style="font-weight:600;margin-bottom:6px;">' + sensors.length + ' sensor(s) found on this device</div>';
             html += '<div style="font-size:12px;margin-bottom:10px;color:var(--text-muted);">';
             for (const s of sensors) {
                 const state = s.state != null ? s.state : '—';
                 const unit = s.unit_of_measurement || '';
-                html += '<div>' + escHtml(s.entity_id) + ' = <strong>' + escHtml(String(state)) + '</strong> ' + escHtml(unit) + '</div>';
+                html += '<div>' + _esc(s.entity_id) + ' = <strong>' + _esc(String(state)) + '</strong> ' + _esc(unit) + '</div>';
             }
             html += '</div>';
 
@@ -2534,7 +2535,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                     const nameLabel = s.friendly_name || eidShort;
                     const auto = s.entity_id.toLowerCase().includes(depth) || (s.friendly_name || '').toLowerCase().includes(depth) ? ' (auto)' : '';
                     const selected = (s.entity_id.toLowerCase().includes(depth) || (s.friendly_name || '').toLowerCase().includes(depth)) ? ' selected' : '';
-                    html += '<option value="' + escHtml(s.entity_id) + '"' + selected + '>' + escHtml(nameLabel) + auto + '</option>';
+                    html += '<option value="' + _esc(s.entity_id) + '"' + selected + '>' + _esc(nameLabel) + auto + '</option>';
                 }
                 html += '</select></div>';
             }
@@ -2545,13 +2546,15 @@ ADMIN_HTML = """<!DOCTYPE html>
             // Derive a default name from the device
             const select = document.getElementById('cfgMoistureDeviceSelect');
             const deviceName = select.options[select.selectedIndex] ? select.options[select.selectedIndex].textContent : 'Probe';
-            html += '<input type="text" id="cfgProbeDevice_name" value="' + escHtml(deviceName) + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;"></div>';
+            html += '<input type="text" id="cfgProbeDevice_name" value="' + _esc(deviceName) + '" style="width:100%;padding:4px;border:1px solid var(--border-input);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px;"></div>';
 
             html += '<button class="btn btn-primary btn-sm" onclick="addProbeFromDevice()">Add Probe</button>';
             html += '</div>';
             el.innerHTML = html;
         } catch (e) {
-            el.innerHTML = '<div style="color:var(--color-danger);">Failed to load device sensors: ' + escHtml(e.message) + '</div>';
+            console.error('[MoistureDeviceChange] Error:', e);
+            const safeMsg = e.message ? String(e.message).replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'Unknown error';
+            el.innerHTML = '<div style="color:var(--color-danger);">Failed to load device sensors: ' + safeMsg + '</div>';
         }
     }
 
