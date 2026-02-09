@@ -707,9 +707,10 @@ async def calculate_irrigation_timeline() -> dict:
         # For each schedule, find ALL mapped zones (for display) and the
         # FIRST mapped zone (for prep timing — probe wakes before this one).
         first_mapped_per_schedule = []
-        all_mapped_per_schedule = []
+        all_mapped_per_schedule = []  # grouped by schedule start_time
         for sched in schedules:
             found_first = False
+            sched_mapped = []
             for zone in sched["zones"]:
                 if zone["zone_entity_id"] in mapped_zones:
                     entry = {
@@ -717,11 +718,14 @@ async def calculate_irrigation_timeline() -> dict:
                         "zone_num": zone["zone_num"],
                         "zone_entity_id": zone["zone_entity_id"],
                         "zone_start_minutes": zone["expected_start_minutes"],
+                        "zone_end_minutes": zone["expected_end_minutes"],
+                        "duration_minutes": zone["duration_minutes"],
                     }
-                    all_mapped_per_schedule.append(entry)
+                    sched_mapped.append(entry)
                     if not found_first:
                         first_mapped_per_schedule.append(entry)
                         found_first = True
+            all_mapped_per_schedule.append(sched_mapped)
 
         # Calculate prep trigger time: zone_start - (current_sleep + PREP_BUFFER)
         # This is when we need to reprogram the probe's sleep duration
@@ -739,18 +743,36 @@ async def calculate_irrigation_timeline() -> dict:
                 "target_wake_minutes": target_wake % 1440,
             })
 
-        # Build display entries for ALL mapped zones (wake schedule popup)
+        # Build display entries for ALL mapped zones (wake schedule popup).
+        # Determine action per zone: "wake" (probe sleeps then wakes) vs
+        # "keep_awake" (probe stays awake from the previous mapped zone).
+        # Keep awake when: zones are adjacent, or the gap between them is
+        # shorter than the probe's sleep duration (sleeping+waking would
+        # take longer than just staying awake).
         display_entries = []
-        for am in all_mapped_per_schedule:
-            zone_start_min = am["zone_start_minutes"]
-            target_wake = zone_start_min - TARGET_WAKE_BEFORE_MINUTES
-            display_entries.append({
-                "schedule_start_time": am["schedule_start_time"],
-                "zone_num": am["zone_num"],
-                "zone_entity_id": am["zone_entity_id"],
-                "zone_start_minutes": zone_start_min,
-                "target_wake_minutes": target_wake % 1440,
-            })
+        for sched_zones in all_mapped_per_schedule:
+            for i, am in enumerate(sched_zones):
+                zone_start_min = am["zone_start_minutes"]
+                target_wake = zone_start_min - TARGET_WAKE_BEFORE_MINUTES
+                if i == 0:
+                    action = "wake"
+                else:
+                    prev = sched_zones[i - 1]
+                    gap = zone_start_min - prev["zone_end_minutes"]
+                    # Keep awake if gap is shorter than sleep duration
+                    # (no point sleeping for less time than one sleep cycle)
+                    if gap <= current_sleep:
+                        action = "keep_awake"
+                    else:
+                        action = "wake"
+                display_entries.append({
+                    "schedule_start_time": am["schedule_start_time"],
+                    "zone_num": am["zone_num"],
+                    "zone_entity_id": am["zone_entity_id"],
+                    "zone_start_minutes": zone_start_min,
+                    "target_wake_minutes": target_wake % 1440,
+                    "action": action,
+                })
 
         probe_prep[pid] = {
             "original_sleep_duration": current_sleep,
@@ -4149,9 +4171,18 @@ async def on_probe_wake(probe_id: str):
 
     if has_pending:
         print(f"[MOISTURE] Probe {display_name} woke up — "
-              f"waiting 5s then applying pending writes")
+              f"waiting 3s then applying pending writes "
+              f"(duration={pending_duration}, disabled={pending_disabled})")
         # Wait for writable entities to become available
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
+
+        # Verify device is still awake before attempting writes
+        still_awake = await _check_probe_awake(probe_id)
+        if not still_awake:
+            print(f"[MOISTURE] Probe {display_name} went back to sleep before "
+                  f"pending writes could be applied — will retry on next wake")
+            return  # Don't clear pending — retry on next wake
+
         # Re-load data in case anything changed during the wait
         data = _load_data()
         probe = data.get("probes", {}).get(probe_id)

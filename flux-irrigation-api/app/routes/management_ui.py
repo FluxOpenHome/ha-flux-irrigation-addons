@@ -2458,16 +2458,28 @@ function mgmtShowWakeSchedule(probeId) {
             var schedLabel = we.schedule_start_time || '';
             var isNext = (wi === nextIdx);
             var zoneSkipped = skipMap[we.zone_entity_id] || false;
+            var keepAwake = we.action === 'keep_awake';
+            /* Icon: skip=stop, keep_awake=eye, wake=clock */
+            var icon = zoneSkipped ? '&#9940;' : keepAwake ? '&#128065;' : '&#9200;';
             body += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;' +
                 (zoneSkipped ? 'opacity:0.5;' : '') +
                 (isNext && !zoneSkipped ? 'background:var(--bg-active-tile);' : '') + '">';
-            body += '<span style="font-size:16px;">' + (zoneSkipped ? '&#9940;' : '&#9200;') + '</span>';
+            body += '<span style="font-size:16px;">' + icon + '</span>';
             body += '<div style="flex:1;">';
-            body += '<div style="font-size:13px;' + (zoneSkipped ? 'color:var(--text-muted);text-decoration:line-through;' : isNext ? 'font-weight:600;color:var(--color-warning);' : 'color:var(--text-secondary);') + '">Wake at <strong>' + wakeTimeStr + '</strong></div>';
-            body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + (zoneSkipped ? ' — <span style="color:var(--color-danger);font-weight:500;">Skip (saturated)</span>' : ' runs at ' + zoneTimeStr) + (schedLabel ? ' &mdash; ' + schedLabel + ' schedule' : '') + '</div>';
+            if (zoneSkipped) {
+                body += '<div style="font-size:13px;color:var(--text-muted);text-decoration:line-through;">Wake at <strong>' + wakeTimeStr + '</strong></div>';
+                body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' — <span style="color:var(--color-danger);font-weight:500;">Skip (saturated)</span>' + (schedLabel ? ' &mdash; ' + schedLabel + ' schedule' : '') + '</div>';
+            } else if (keepAwake) {
+                body += '<div style="font-size:13px;' + (isNext ? 'font-weight:600;color:var(--color-warning);' : 'color:var(--text-secondary);') + '">Keep Awake</div>';
+                body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' runs at ' + zoneTimeStr + (schedLabel ? ' &mdash; ' + schedLabel + ' schedule' : '') + '</div>';
+            } else {
+                body += '<div style="font-size:13px;' + (isNext ? 'font-weight:600;color:var(--color-warning);' : 'color:var(--text-secondary);') + '">Wake at <strong>' + wakeTimeStr + '</strong></div>';
+                body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' runs at ' + zoneTimeStr + (schedLabel ? ' &mdash; ' + schedLabel + ' schedule' : '') + '</div>';
+            }
             body += '</div>';
             if (isNext && !zoneSkipped) body += '<span style="font-size:9px;background:var(--color-warning);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">NEXT</span>';
             if (zoneSkipped) body += '<span style="font-size:9px;background:var(--color-danger);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">SKIP</span>';
+            if (keepAwake && !zoneSkipped) body += '<span style="font-size:9px;background:var(--color-info);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">AWAKE</span>';
             body += '</div>';
         }
         body += '</div>';
@@ -4307,8 +4319,10 @@ const HELP_CONTENT = `
 
 <p style="margin-bottom:6px;font-weight:600;font-size:13px;">Probe-Aware Irrigation (Schedule Timeline)</p>
 <p style="margin-bottom:6px;font-size:13px;">The system automatically manages probe sleep/wake cycles around scheduled irrigation runs. For each probe with mapped zones, it:</p>
-<ol style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Calculates</strong> when each zone will run based on the schedule start times and zone durations</li><li style="margin-bottom:4px;"><strong>Reprograms</strong> the probe&rsquo;s sleep duration before the schedule starts so it wakes up ~10 minutes before its mapped zone</li><li style="margin-bottom:4px;"><strong>Checks moisture</strong> when the probe wakes &mdash; if the soil is saturated, the zone is automatically <strong>skipped</strong> (disabled before it even starts)</li><li style="margin-bottom:4px;">If not saturated, <strong>disables sleep</strong> to keep the probe awake for continuous monitoring during the zone run</li><li style="margin-bottom:4px;">If saturation is detected <strong>mid-run</strong>, the zone is shut off and the system <strong>auto-advances</strong> to the next zone</li><li style="margin-bottom:4px;">After the last mapped zone finishes, the <strong>original sleep duration</strong> is restored and any skipped zones are re-enabled for the next run</li></ol>
-<p style="margin-bottom:6px;font-size:13px;">The <strong>Schedule Timeline</strong> section on each probe card shows the expected zone start times and the probe&rsquo;s target wake time. This timeline recalculates automatically whenever schedule start times, zone durations, or zone enable states change.</p>
+<ol style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Calculates</strong> when each zone will run based on the schedule start times and zone durations</li><li style="margin-bottom:4px;"><strong>Reprograms</strong> the probe&rsquo;s sleep duration before the schedule starts so it wakes up ~10 minutes before its mapped zone</li><li style="margin-bottom:4px;"><strong>Checks moisture</strong> when the probe wakes &mdash; if the soil is saturated, the zone is automatically <strong>skipped</strong> (disabled before it even starts)</li><li style="margin-bottom:4px;">If not saturated, <strong>disables sleep</strong> to keep the probe awake for continuous monitoring during the zone run</li><li style="margin-bottom:4px;">If consecutive mapped zones are close together (gap &le; probe sleep duration), the probe <strong>stays awake</strong> through both zones instead of sleeping and re-waking</li><li style="margin-bottom:4px;">If saturation is detected <strong>mid-run</strong>, the zone is shut off and the system <strong>auto-advances</strong> to the next zone</li><li style="margin-bottom:4px;">After the last mapped zone finishes, the <strong>original sleep duration</strong> is restored and any skipped zones are re-enabled for the next run</li></ol>
+<p style="margin-bottom:6px;font-size:13px;">Click <strong>Wake Schedule</strong> on a probe card to see all mapped zones with their expected wake/run times. Each entry shows one of three states:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;">&#9200; <strong>Wake at HH:MM</strong> &mdash; The probe will wake from sleep before this zone runs</li><li style="margin-bottom:4px;">&#128065; <strong>Keep Awake</strong> &mdash; The probe stays awake from the previous zone (gap is shorter than sleep duration)</li><li style="margin-bottom:4px;">&#9940; <strong>Skip</strong> &mdash; The zone is saturated and will be skipped; the probe will not wake for it</li></ul>
+<p style="margin-bottom:6px;font-size:13px;">The next upcoming entry is highlighted with a <strong>NEXT</strong> badge. All times use the customer&rsquo;s configured timezone. The timeline recalculates automatically whenever schedule start times, zone durations, zone enable states, or probe mappings change.</p>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The timeline uses the <strong>current adjusted durations</strong> (factored by weather and moisture) when &ldquo;Apply Factors to Schedule&rdquo; is enabled. This means probe wake times automatically shift when factors change.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>

@@ -4,6 +4,24 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ---
 
+## [1.1.12] — 2026-02-09
+
+### Changed
+
+- **Wake schedule popup — all mapped zones** — The wake schedule popup now shows every zone mapped to a probe, not just the first mapped zone per schedule. Each entry displays the zone number, expected run time, and schedule label.
+- **Wake schedule popup — keep-awake display** — When consecutive mapped zones are close together (gap between them ≤ probe sleep duration), the popup shows "Keep Awake" with an eye icon and blue "AWAKE" badge instead of a separate wake time, indicating the probe will stay awake through both zones rather than sleeping and re-waking.
+- **Wake schedule popup — saturation skip display** — When all mapped zones are set to skip due to soil saturation, the popup shows a clear explanation ("All mapped zones are set to skip — probe will not wake to monitor watering") instead of the generic "No schedule calculated" message. Individual skipped zones show a red "SKIP" badge with strikethrough text.
+- **Homeowner dashboard clock timezone** — The dashboard clock now uses the homeowner's timezone (derived from their US state) instead of the browser's local time. The wake schedule popup's NEXT marker also uses the homeowner's timezone for accurate comparison.
+- **Management dashboard wake schedule timezone** — The NEXT marker in the management wake schedule popup now uses the customer's timezone (from their state field) instead of the manager's browser time.
+
+### Fixed
+
+- **Timeline recalculation delay on zone mapping changes** — Adding or removing zones from a probe's mappings now immediately recalculates the irrigation timeline. Previously, changes only took effect after the periodic evaluation cycle (5+ minutes). The `calculate_irrigation_timeline()` function is now called directly in the probe create, update, delete, and sleep duration endpoints.
+- **Stale skip badges after zone unmapping** — Removing a zone from a probe's mappings now immediately clears the "Skip" badge from the schedule card. Previously, stale `adjusted_durations` entries from the last `apply_adjusted_durations()` call kept showing skip for unmapped zones. The probe update endpoint now re-applies adjusted durations (when factors are active) or cleans stale entries (when factors are off) immediately after zone mapping changes.
+- **Wake schedule entries not sorted** — Wake schedule popup entries are now sorted chronologically by target wake time. Previously, entries could appear in arbitrary order when spanning multiple schedules.
+
+---
+
 ## [1.1.11] — 2026-02-09
 
 ### Changed
