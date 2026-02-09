@@ -944,6 +944,34 @@ async def press_customer_probe_sleep_now(customer_id: str, probe_id: str):
 
 
 @router.post(
+    "/api/customers/{customer_id}/moisture/probes/{probe_id}/calibrate",
+    summary="Press calibration buttons on customer probe",
+)
+async def calibrate_customer_probe(customer_id: str, probe_id: str, request: Request):
+    """Press calibration buttons on a customer's Gophr probe."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "POST",
+        f"/admin/api/homeowner/moisture/probes/{probe_id}/calibrate",
+        json_body=body,
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        return {
+            "success": False,
+            "error": data.get("detail", "Calibration failed")
+            if isinstance(data, dict) else "Calibration failed"
+        }
+    return data
+
+
+@router.post(
     "/api/customers/{customer_id}/moisture/zones/{zone_id}/multiplier",
     summary="Preview zone moisture multiplier",
 )

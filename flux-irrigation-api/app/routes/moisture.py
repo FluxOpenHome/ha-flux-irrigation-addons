@@ -2275,6 +2275,10 @@ class MoistureSettingsRequest(BaseModel):
     default_thresholds: Optional[dict] = None
 
 
+class CalibrateRequest(BaseModel):
+    action: str  # "dry" or "wet"
+
+
 # --- API Endpoints ---
 
 @router.get("/probes/discover", summary="Discover moisture probe candidates")
@@ -2482,6 +2486,8 @@ async def api_autodetect_device_sensors(device_id: str):
     status_led_entity = None
     solar_charging_entity = None
     sleep_now_entity = None
+    calibrate_dry_buttons = []
+    calibrate_wet_buttons = []
 
     # Reuse all_device_entity_ids from get_device_sensors() — no second HTTP call needed
     non_sensor_eids = [e for e in all_device_entity_ids if not e.startswith("sensor.")]
@@ -2578,6 +2584,17 @@ async def api_autodetect_device_sensors(device_id: str):
                 sleep_now_entity = eid
                 print(f"[MOISTURE]   MATCH sleep_now: {eid}")
 
+        # Calibration buttons (button.gophr_*_calibrate_moisture_X_dry / _wet)
+        if domain == "button" and "calibrate_moisture" in eid_lower:
+            if "_dry" in eid_lower:
+                if eid not in calibrate_dry_buttons:
+                    calibrate_dry_buttons.append(eid)
+                    print(f"[MOISTURE]   MATCH calibrate_dry: {eid}")
+            elif "_wet" in eid_lower:
+                if eid not in calibrate_wet_buttons:
+                    calibrate_wet_buttons.append(eid)
+                    print(f"[MOISTURE]   MATCH calibrate_wet: {eid}")
+
     # Sort schedule times by number suffix (schedule_time_1, _2, _3, _4)
     schedule_times.sort(key=lambda e: int(re.search(r'(\d+)$', e).group(1)) if re.search(r'(\d+)$', e) else 99)
 
@@ -2597,6 +2614,18 @@ async def api_autodetect_device_sensors(device_id: str):
         extra_map["solar_charging"] = solar_charging_entity
     if sleep_now_entity:
         extra_map["sleep_now"] = sleep_now_entity
+
+    # Sort calibration buttons by moisture number (moisture_1, _2, _3)
+    def _cal_sort_key(eid):
+        m = re.search(r'moisture[_]?(\d+)', eid.lower())
+        return int(m.group(1)) if m else 99
+
+    if calibrate_dry_buttons:
+        calibrate_dry_buttons.sort(key=_cal_sort_key)
+        extra_map["calibrate_dry"] = calibrate_dry_buttons
+    if calibrate_wet_buttons:
+        calibrate_wet_buttons.sort(key=_cal_sort_key)
+        extra_map["calibrate_wet"] = calibrate_wet_buttons
 
     print(f"[MOISTURE] autodetect result: depths={depth_map}, extras={extra_map}")
 
@@ -2700,6 +2729,13 @@ async def api_get_probes():
         except (ValueError, TypeError):
             numeric = None
 
+        # Determine if this is a valid (non-unavailable) state.
+        # Binary sensors and switches report "on"/"off" which aren't numeric
+        # but are still valid states that should be cached (e.g. solar_charging,
+        # sleep_disabled).
+        is_valid = raw not in ("unavailable", "unknown")
+        is_binary = numeric is None and is_valid
+
         # If the probe is sleeping and we have a cached value, always use cache
         # This prevents transient 0-values during sleep transitions from
         # overwriting good cached readings
@@ -2713,8 +2749,8 @@ async def api_get_probes():
                 "unit": cached.get("unit", ""),
                 "cached": True,
             }
-        elif numeric is not None and raw not in ("unavailable", "unknown"):
-            # Good reading from awake probe — update the cache
+        elif numeric is not None and is_valid:
+            # Good numeric reading from awake probe — update the cache
             _sensor_cache[eid] = {
                 "state": numeric,
                 "raw_state": raw,
@@ -2729,6 +2765,25 @@ async def api_get_probes():
                 "last_updated": s.get("last_updated", ""),
                 "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
                 "unit": s.get("attributes", {}).get("unit_of_measurement", ""),
+                "cached": False,
+            }
+        elif is_binary:
+            # Valid non-numeric state (binary_sensor on/off, switch on/off)
+            # Cache so we retain it when the device goes to sleep
+            _sensor_cache[eid] = {
+                "state": raw,
+                "raw_state": raw,
+                "last_updated": s.get("last_updated", ""),
+                "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+                "unit": "",
+            }
+            cache_dirty = True
+            state_lookup[eid] = {
+                "state": None,
+                "raw_state": raw,
+                "last_updated": s.get("last_updated", ""),
+                "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+                "unit": "",
                 "cached": False,
             }
         elif raw in ("unavailable", "unknown") and eid in _sensor_cache:
@@ -3279,6 +3334,64 @@ async def api_press_sleep_now(probe_id: str, request: Request):
         }
     else:
         raise HTTPException(status_code=500, detail="Failed to press sleep_now button on device")
+
+
+@router.post("/probes/{probe_id}/calibrate", summary="Press calibration buttons on probe")
+async def api_calibrate_probe(probe_id: str, body: CalibrateRequest, request: Request):
+    """Press all 3 calibrate dry or calibrate wet buttons on a Gophr probe.
+
+    The probe must be awake and sleep must be disabled for calibration to work.
+    action: "dry" presses all 3 dry calibration buttons simultaneously.
+    action: "wet" presses all 3 wet calibration buttons simultaneously.
+    """
+    if body.action not in ("dry", "wet"):
+        raise HTTPException(status_code=400, detail="action must be 'dry' or 'wet'")
+
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
+
+    extra = probe.get("extra_sensors") or {}
+    key = f"calibrate_{body.action}"
+    button_eids = extra.get(key, [])
+
+    if not button_eids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No {body.action} calibration buttons detected for this probe"
+        )
+
+    # Press all calibration buttons for the requested action
+    results = []
+    for eid in button_eids:
+        success = await ha_client.call_service("button", "press", {
+            "entity_id": eid,
+        })
+        results.append({"entity_id": eid, "success": success})
+        print(f"[MOISTURE] Calibrate {body.action} pressed: {eid} -> "
+              f"{'OK' if success else 'FAILED'}")
+
+    all_ok = all(r["success"] for r in results)
+    display_name = probe.get("display_name", probe_id)
+
+    if all_ok:
+        log_change(get_actor(request), "Moisture Probes",
+                   f"Calibrate {body.action} pressed for {display_name} "
+                   f"({len(button_eids)} sensors)")
+        return {
+            "success": True,
+            "action": body.action,
+            "message": f"Calibrate {body.action} pressed for all "
+                       f"{len(button_eids)} sensors on {display_name}",
+            "buttons_pressed": len(button_eids),
+        }
+    else:
+        failed = [r["entity_id"] for r in results if not r["success"]]
+        raise HTTPException(
+            status_code=500,
+            detail=f"Some calibration buttons failed: {failed}"
+        )
 
 
 @router.get("/settings", summary="Get moisture probe settings")

@@ -2694,9 +2694,13 @@ async function loadMoisture() {
                         html += '<span style="color:' + bColor + ';" title="Battery">' + bIcon + ' ' + (bv != null ? bv.toFixed(0) + '%' : '—') + '</span>';
                     }
                     if (devSensors.solar_charging) {
-                        const scVal = (devSensors.solar_charging.live_raw_state || devSensors.solar_charging.value || '').toLowerCase();
+                        const scLive = (devSensors.solar_charging.live_raw_state || '').toLowerCase();
+                        const scCached = (devSensors.solar_charging.value || '').toLowerCase();
+                        // Use live state if valid, otherwise fall back to cached value
+                        const scVal = (scLive && scLive !== 'unavailable' && scLive !== 'unknown') ? scLive : scCached;
                         const isCharging = scVal === 'on';
-                        html += '<span style="color:' + (isCharging ? 'var(--color-warning)' : 'var(--text-muted)') + ';" title="Solar Charging: ' + (isCharging ? 'Active' : 'Inactive') + '">' + (isCharging ? '☀️ Charging' : '🌙 No Solar') + '</span>';
+                        const scRetained = (scLive === 'unavailable' || scLive === 'unknown') && scCached;
+                        html += '<span style="color:' + (isCharging ? 'var(--color-warning)' : 'var(--text-muted)') + ';" title="Solar Charging: ' + (isCharging ? 'Active' : 'Inactive') + (scRetained ? ' (retained)' : '') + '">' + (isCharging ? '☀️ Charging' : '🌙 No Solar') + (scRetained ? ' <span style="font-size:9px;opacity:0.7;">(retained)</span>' : '') + '</span>';
                     }
                     // Probe Awake/Sleeping status + schedule prep info
                     if (devSensors.sleep_duration) {
@@ -2754,6 +2758,10 @@ async function loadMoisture() {
                     // Sleep Now button — press to force the probe to sleep immediately
                     if (es.sleep_now) {
                         html += '<button onclick="hoPressSleepNow(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--color-info);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-info);margin-top:2px;" title="Force probe to sleep now (starts the sleep duration countdown immediately)">Sleep Now</button>';
+                    }
+                    // Calibrate button — only if calibration entities detected
+                    if (es.calibrate_dry && es.calibrate_dry.length > 0) {
+                        html += '<button onclick="hoShowCalibrationModal(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--color-warning);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-warning);margin-top:2px;" title="Calibrate moisture sensors">Calibrate</button>';
                     }
                     html += '</div>';
                 }
@@ -2894,6 +2902,7 @@ async function loadMoisture() {
                 if (es.sleep_duration_number) _extraLabels.push('Sleep Control');
                 if (es.solar_charging) _extraLabels.push('Solar');
                 if (es.sleep_now) _extraLabels.push('Sleep Now');
+                if (es.calibrate_dry && es.calibrate_dry.length > 0) _extraLabels.push('Calibrate');
                 if (es.min_awake_minutes) _extraLabels.push('Min Awake');
                 if (es.max_awake_minutes) _extraLabels.push('Max Awake');
                 if (es.schedule_times && es.schedule_times.length) _extraLabels.push('Schedule (' + es.schedule_times.length + ')');
@@ -3140,6 +3149,7 @@ async function onHoMoistureDeviceChange() {
         if (extraSensors.sleep_duration_number) extras.push('Sleep Control');
         if (extraSensors.solar_charging) extras.push('Solar');
         if (extraSensors.sleep_now) extras.push('Sleep Now');
+        if (extraSensors.calibrate_dry) extras.push('Calibrate');
 
         if (detected.length > 0 || extras.length > 0) {
             html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Auto-detected sensors</div>';
@@ -3324,6 +3334,123 @@ async function hoPressSleepNow(probeId) {
         _moistureDataCache = null;
         loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
+}
+
+// --- Calibration Modal ---
+var _calWetTimer = null;
+
+function hoShowCalibrationModal(probeId) {
+    if (_calWetTimer) { clearInterval(_calWetTimer); _calWetTimer = null; }
+    var countdown = 60;
+
+    var body = '';
+    body += '<div style="font-size:13px;line-height:1.6;">';
+    body += '<p style="margin-bottom:10px;"><strong>Sensor Calibration</strong> teaches the probe what "completely dry" and "fully submerged in water" look like. This ensures accurate 0\\u2013100% moisture readings.</p>';
+
+    body += '<div style="background:var(--bg-tile);border:1px solid var(--border-light);border-radius:8px;padding:10px;margin-bottom:12px;">';
+    body += '<p style="margin:0 0 6px 0;font-weight:600;">Steps:</p>';
+    body += '<ol style="margin:0;padding-left:20px;">';
+    body += '<li>Ensure probe is <strong>awake</strong> and <strong>sleep is disabled</strong></li>';
+    body += '<li>Clean and thoroughly dry the sensor prongs</li>';
+    body += '<li>Press <strong>Calibrate Dry</strong> while sensors are in open air</li>';
+    body += '<li>Submerge only the sensor prongs into a glass of water</li>';
+    body += '<li>Wait for the Wet button to turn blue (60 seconds)</li>';
+    body += '<li>Press <strong>Calibrate Wet</strong> while sensors are submerged</li>';
+    body += '</ol>';
+    body += '</div>';
+
+    body += '<div id="calPrereqMsg" style="margin-bottom:8px;"></div>';
+
+    body += '<div style="display:flex;gap:10px;">';
+    body += '<button id="calDryBtn" onclick="hoCalibrate(\\'' + probeId + '\\', \\'dry\\')" style="flex:1;padding:10px 16px;border:2px solid var(--color-warning);border-radius:8px;background:var(--color-warning);color:#fff;font-weight:600;font-size:14px;cursor:pointer;">Calibrate Dry</button>';
+    body += '<button id="calWetBtn" disabled style="flex:1;padding:10px 16px;border:2px solid var(--border-light);border-radius:8px;background:var(--bg-tile);color:var(--text-muted);font-weight:600;font-size:14px;cursor:not-allowed;">Calibrate Wet <span id="calWetCountdown">(60s)</span></button>';
+    body += '</div>';
+
+    body += '<p style="font-size:11px;color:var(--text-muted);margin-top:10px;">After calibration, readings should show ~0% in air and ~100% in water. These settings are stored on the device but recalibration may be needed over time.</p>';
+    body += '</div>';
+
+    showModal('Calibrate Probe', body);
+
+    // Check prerequisites
+    hoUpdateCalPrereqs(probeId);
+
+    // Start 60-second countdown for Wet button
+    _calWetTimer = setInterval(function() {
+        countdown--;
+        var span = document.getElementById('calWetCountdown');
+        var btn = document.getElementById('calWetBtn');
+        if (!span || !btn) { clearInterval(_calWetTimer); _calWetTimer = null; return; }
+        if (countdown <= 0) {
+            clearInterval(_calWetTimer);
+            _calWetTimer = null;
+            span.textContent = '';
+            btn.disabled = false;
+            btn.style.border = '2px solid #3498db';
+            btn.style.background = '#3498db';
+            btn.style.color = '#fff';
+            btn.style.cursor = 'pointer';
+            btn.title = 'Press while sensors are submerged in water';
+            btn.onclick = function() { hoCalibrate(probeId, 'wet'); };
+        } else {
+            span.textContent = '(' + countdown + 's)';
+        }
+    }, 1000);
+}
+
+async function hoUpdateCalPrereqs(probeId) {
+    try {
+        var data = await mapi('/probes');
+        var probe = (data.probes || {})[probeId];
+        if (!probe) return;
+        var isAwake = probe.is_awake === true;
+        var ds = probe.device_sensors || {};
+        var isSleepDisabled = ds.sleep_disabled && ds.sleep_disabled.value === 'on';
+        var prereqDiv = document.getElementById('calPrereqMsg');
+        var dryBtn = document.getElementById('calDryBtn');
+        if (!prereqDiv || !dryBtn) return;
+
+        if (!isAwake || !isSleepDisabled) {
+            var reasons = [];
+            if (!isAwake) reasons.push('probe is sleeping');
+            if (!isSleepDisabled) reasons.push('sleep is not disabled');
+            prereqDiv.innerHTML = '<div style="padding:8px 10px;background:var(--bg-danger-light);border-radius:6px;font-size:12px;color:var(--color-danger);">&#9888;&#65039; Cannot calibrate: ' + reasons.join(' and ') + '. Wake the probe and disable sleep before calibrating.</div>';
+            dryBtn.disabled = true;
+            dryBtn.style.background = 'var(--bg-tile)';
+            dryBtn.style.color = 'var(--text-muted)';
+            dryBtn.style.border = '2px solid var(--border-light)';
+            dryBtn.style.cursor = 'not-allowed';
+        } else {
+            prereqDiv.innerHTML = '<div style="padding:8px 10px;background:var(--bg-success-light);border-radius:6px;font-size:12px;color:var(--text-success-dark);">&#10003; Probe is awake and sleep is disabled. Ready to calibrate.</div>';
+            dryBtn.disabled = false;
+            dryBtn.style.background = 'var(--color-warning)';
+            dryBtn.style.color = '#fff';
+            dryBtn.style.border = '2px solid var(--color-warning)';
+            dryBtn.style.cursor = 'pointer';
+        }
+    } catch(e) { console.error('Cal prereq check failed', e); }
+}
+
+async function hoCalibrate(probeId, action) {
+    var btn = action === 'dry' ? document.getElementById('calDryBtn') : document.getElementById('calWetBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Pressing...'; }
+    try {
+        var result = await mapi('/probes/' + encodeURIComponent(probeId) + '/calibrate', 'POST', { action: action });
+        showToast(result.message || ('Calibrate ' + action + ' pressed'));
+        if (btn) {
+            btn.textContent = action === 'dry' ? '\\u2713 Dry Done!' : '\\u2713 Wet Done!';
+            btn.style.background = 'var(--color-success)';
+            btn.style.border = '2px solid var(--color-success)';
+            btn.style.color = '#fff';
+        }
+        _moistureDataCache = null;
+        loadMoisture();
+    } catch (e) {
+        showToast(e.message, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = action === 'dry' ? 'Calibrate Dry' : 'Calibrate Wet';
+        }
+    }
 }
 
 function hoShowWakeSchedule(probeId) {
@@ -3697,6 +3824,7 @@ function showModal(title, bodyHtml) {
 }
 function closeDynamicModal() {
     document.getElementById('dynamicModal').style.display = 'none';
+    if (_calWetTimer) { clearInterval(_calWetTimer); _calWetTimer = null; }
 }
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
