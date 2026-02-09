@@ -23,6 +23,8 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 ### Fixed
 
 - **System Status watering factor** — The system status tile now shows the combined watering factor (weather × moisture) instead of only the weather factor. When moisture probes are enabled, the breakdown shows both components (e.g., "W: 0.80x · M: 0.90x"). The `/api/system/status` endpoint now includes `weather_multiplier`, `moisture_multiplier`, `combined_multiplier`, `moisture_enabled`, and `moisture_probe_count` fields, fixing the management dashboard which was missing moisture data.
+- **Moisture multiplier lost during Gophr sleep** — Gophr devices sleep between readings, causing HA to mark sensor entities as "unavailable". Previously this made the algorithm fall back to 1.0x (neutral), effectively erasing the moisture adjustment every sleep cycle. Now the last known good sensor values are cached (in memory and on disk) and used transparently when sensors are unavailable. The stale reading threshold still applies — if cached values are older than the threshold they are treated as stale. Cache survives add-on restarts.
+- **Status tile zone count with expansion boards** — The system status tile "Zones" count now respects the detected zone count from expansion boards, showing e.g. "16 zones" instead of "32 zones" when only 2 expansion boards are connected.
 
 ---
 

@@ -3,6 +3,7 @@ System control endpoints.
 Pause/resume the irrigation system, health checks, and system info.
 """
 
+import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -12,6 +13,13 @@ from config import get_config
 import ha_client
 import audit_log
 from config_changelog import log_change, get_actor
+
+_ZONE_NUMBER_RE = re.compile(r'zone[_]?(\d+)', re.IGNORECASE)
+
+
+def _extract_zone_number(entity_id: str) -> int:
+    m = _ZONE_NUMBER_RE.search(entity_id)
+    return int(m.group(1)) if m else 0
 
 
 router = APIRouter(prefix="/system", tags=["System"])
@@ -98,8 +106,11 @@ async def get_system_status(request: Request):
 
     ha_connected = await ha_client.check_connection()
 
-    # Count zones and active zones
+    # Count zones and active zones (filter by detected_zone_count for expansion boards)
     zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+    max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
+    if max_zones > 0:
+        zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) <= max_zones]
     active_zones = [z for z in zones if z.get("state") == "on"]
 
     # Count sensors

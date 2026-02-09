@@ -124,6 +124,9 @@ async def homeowner_status():
     ha_connected = await ha_client.check_connection()
 
     zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+    max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
+    if max_zones > 0:
+        zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) <= max_zones]
     active_zones = [z for z in zones if z.get("state") == "on"]
     sensors = await ha_client.get_entities_by_ids(config.allowed_sensor_entities)
 

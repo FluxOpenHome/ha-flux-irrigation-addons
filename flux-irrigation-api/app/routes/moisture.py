@@ -34,9 +34,46 @@ from config_changelog import log_change, get_actor
 router = APIRouter(prefix="/admin/api/homeowner/moisture", tags=["Moisture Probes"])
 
 MOISTURE_FILE = "/data/moisture_probes.json"
+SENSOR_CACHE_FILE = "/data/moisture_sensor_cache.json"
 
 # Keywords used to auto-discover moisture probe sensor entities
 PROBE_KEYWORDS = ["gophr", "moisture", "soil"]
+
+# --- Last-Known-Good Sensor Cache ---
+# Gophr devices sleep between readings.  While asleep HA marks entities as
+# "unavailable".  Without a cache the algorithm would fall back to 1.0x
+# (neutral), effectively erasing the moisture adjustment every sleep cycle.
+#
+# The cache stores the last VALID numeric reading for every sensor entity and
+# is used as a transparent fallback when HA returns "unavailable" / "unknown".
+# It persists to disk so it survives add-on restarts.
+
+_sensor_cache: dict[str, dict] = {}  # in-memory: {entity_id: {state, last_updated, ...}}
+_sensor_cache_loaded = False
+
+
+def _load_sensor_cache():
+    """Load the sensor value cache from disk (once)."""
+    global _sensor_cache, _sensor_cache_loaded
+    if _sensor_cache_loaded:
+        return
+    _sensor_cache_loaded = True
+    if os.path.exists(SENSOR_CACHE_FILE):
+        try:
+            with open(SENSOR_CACHE_FILE, "r") as f:
+                _sensor_cache = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            _sensor_cache = {}
+
+
+def _save_sensor_cache():
+    """Persist the sensor value cache to disk."""
+    try:
+        os.makedirs(os.path.dirname(SENSOR_CACHE_FILE), exist_ok=True)
+        with open(SENSOR_CACHE_FILE, "w") as f:
+            json.dump(_sensor_cache, f, indent=2)
+    except IOError:
+        pass
 
 
 # --- Data Model ---
@@ -247,9 +284,14 @@ async def get_device_sensors(device_id: str) -> list[dict]:
 async def _get_probe_sensor_states(probes: dict) -> dict:
     """Fetch current states for all sensors across all probes.
 
+    When a sensor is unavailable (device sleeping), the last-known-good
+    cached value is returned instead so the multiplier doesn't reset to 1.0x.
+
     Returns:
-        {entity_id: {state: float|None, last_updated: str, stale: bool}}
+        {entity_id: {state: float|None, last_updated: str, stale: bool, cached: bool}}
     """
+    _load_sensor_cache()
+
     # Collect all unique sensor entity IDs
     sensor_ids = set()
     for probe in probes.values():
@@ -262,6 +304,8 @@ async def _get_probe_sensor_states(probes: dict) -> dict:
 
     all_states = await ha_client.get_entities_by_ids(list(sensor_ids))
     result = {}
+    cache_dirty = False
+
     for s in all_states:
         eid = s.get("entity_id", "")
         state_val = s.get("state", "unknown")
@@ -270,12 +314,44 @@ async def _get_probe_sensor_states(probes: dict) -> dict:
         except (ValueError, TypeError):
             numeric_val = None
 
-        result[eid] = {
-            "state": numeric_val,
-            "raw_state": state_val,
-            "last_updated": s.get("last_updated", ""),
-            "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
-        }
+        if numeric_val is not None:
+            # Good reading — update the cache
+            _sensor_cache[eid] = {
+                "state": numeric_val,
+                "raw_state": state_val,
+                "last_updated": s.get("last_updated", ""),
+                "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+            }
+            cache_dirty = True
+            result[eid] = {
+                "state": numeric_val,
+                "raw_state": state_val,
+                "last_updated": s.get("last_updated", ""),
+                "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+                "cached": False,
+            }
+        elif eid in _sensor_cache:
+            # Device unavailable/unknown — use cached value
+            cached = _sensor_cache[eid]
+            result[eid] = {
+                "state": cached["state"],
+                "raw_state": cached.get("raw_state", str(cached["state"])),
+                "last_updated": cached.get("last_updated", ""),
+                "friendly_name": cached.get("friendly_name", eid),
+                "cached": True,
+            }
+        else:
+            # No cache available — pass through as None
+            result[eid] = {
+                "state": None,
+                "raw_state": state_val,
+                "last_updated": s.get("last_updated", ""),
+                "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+                "cached": False,
+            }
+
+    if cache_dirty:
+        _save_sensor_cache()
 
     return result
 
