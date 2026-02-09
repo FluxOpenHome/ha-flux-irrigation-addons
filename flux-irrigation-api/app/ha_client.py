@@ -163,6 +163,38 @@ async def _get_devices_via_template() -> list[dict]:
             return []
 
 
+async def get_entities_for_device(device_id: str) -> list[str]:
+    """Get all entity IDs belonging to a specific device using HA's device_entities() function.
+
+    This is the most reliable method — it uses HA's own internal device→entity resolution,
+    the same mechanism that powers auto-entities cards and device automations.
+    Returns a list of entity_id strings (e.g., ['sensor.gophr_2ac860_moisture_1_percentage', ...]).
+    """
+    template = "{{ device_entities('" + device_id + "') | join('\\n') }}"
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{HA_BASE_URL}/template",
+                headers=_get_headers(),
+                json={"template": template},
+                timeout=15.0,
+            )
+            if response.status_code == 200:
+                text = response.text.strip()
+                if not text:
+                    print(f"[HA_CLIENT] device_entities({device_id}): returned empty")
+                    return []
+                entities = [e.strip() for e in text.split("\n") if e.strip()]
+                print(f"[HA_CLIENT] device_entities({device_id}): {len(entities)} entities")
+                return entities
+            else:
+                print(f"[HA_CLIENT] device_entities template returned {response.status_code}: {response.text[:200]}")
+                return []
+    except Exception as e:
+        print(f"[HA_CLIENT] device_entities({device_id}) failed: {e}")
+        return []
+
+
 async def get_entity_registry() -> list[dict]:
     """Get all registered entities from Home Assistant.
 
