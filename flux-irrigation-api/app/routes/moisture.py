@@ -935,27 +935,23 @@ async def get_device_sensors(device_id: str) -> list[dict]:
     regardless of device connectivity. State may show as 'unavailable' or
     'unknown' for offline devices.
 
-    Uses two strategies:
-    1. Match entities by device_id in the entity registry (WebSocket or template fallback)
-    2. If #1 finds nothing, look up the device name from the device registry and
-       match sensor entities by name prefix (handles device_id mismatches after
-       ESPHome re-adoption or HA updates)
+    Uses three strategies in order:
+    1. Match entities by device_id in the entity registry
+    2. If #1 finds nothing, search the entity registry by entity_id name pattern
+       (using device name slug from device registry)
+    3. If #2 also finds nothing, search all_states by entity_id name pattern
+       (handles edge cases where entity registry itself is incomplete)
     """
     entity_registry = await ha_client.get_entity_registry()
-    all_states = await ha_client.get_all_states()
 
     print(f"[MOISTURE] get_device_sensors: looking for device_id={device_id}, "
-          f"registry has {len(entity_registry)} entities, states has {len(all_states)} entries")
+          f"registry has {len(entity_registry)} entities")
 
-    # Build a lookup of entity_id → state data
-    state_lookup = {}
-    for s in all_states:
-        state_lookup[s.get("entity_id", "")] = s
-
+    # --- Strategy 1: Match by device_id in entity registry ---
     sensors = []
     matched_any = 0
     disabled_sensors = []
-    non_sensor_count = 0
+
     for entity in entity_registry:
         if entity.get("device_id") != device_id:
             continue
@@ -967,49 +963,33 @@ async def get_device_sensors(device_id: str) -> list[dict]:
         if entity.get("disabled_by"):
             if domain == "sensor":
                 disabled_sensors.append(eid)
-            print(f"[MOISTURE]   SKIP disabled entity: {eid} (disabled_by={entity.get('disabled_by')})")
             continue
 
-        # Only include sensor entities
         if domain != "sensor":
-            non_sensor_count += 1
             continue
-
-        state_data = state_lookup.get(eid, {})
-        attrs = state_data.get("attributes", {})
-        friendly_name = attrs.get(
-            "friendly_name",
-            entity.get("name") or entity.get("original_name", eid)
-        )
 
         sensors.append({
             "entity_id": eid,
-            "friendly_name": friendly_name,
-            "state": state_data.get("state", "unavailable"),
-            "unit_of_measurement": attrs.get("unit_of_measurement", ""),
-            "device_class": attrs.get("device_class", ""),
-            "last_updated": state_data.get("last_updated", ""),
+            "friendly_name": entity.get("name") or entity.get("original_name", eid),
+            "state": "unavailable",
+            "unit_of_measurement": "",
+            "device_class": "",
+            "last_updated": "",
             "original_name": entity.get("original_name", ""),
         })
 
-    print(f"[MOISTURE] get_device_sensors: {matched_any} total entities matched device, "
-          f"{len(sensors)} are sensors, {len(disabled_sensors)} disabled sensors, "
-          f"{non_sensor_count} non-sensor entities")
-    if disabled_sensors:
-        print(f"[MOISTURE] WARNING: {len(disabled_sensors)} sensor(s) disabled in HA: {disabled_sensors}")
-        print(f"[MOISTURE] These sensors need to be enabled in Home Assistant before they can be detected.")
+    print(f"[MOISTURE] get_device_sensors: Strategy 1 (device_id match): "
+          f"{matched_any} entities matched, {len(sensors)} sensors, {len(disabled_sensors)} disabled")
 
-    # --- Fallback: device name-based entity search ---
-    # If device_id matching found nothing, look up the device name and find
-    # sensor entities whose entity_id contains the device's name slug.
-    # This handles device_id mismatches after ESPHome re-adoption.
-    if matched_any == 0:
-        print(f"[MOISTURE] get_device_sensors: 0 matches by device_id — trying device name fallback")
-
-        # Get the device name from the device registry
+    # --- Strategy 2: Search entity registry by entity_id name pattern ---
+    # When device_id matching fails (common after ESPHome re-adoption), search
+    # ALL entity registry entries whose entity_id contains the device name slug.
+    if not sensors:
         device_name = ""
+        name_slug = ""
         try:
             device_registry = await ha_client.get_device_registry()
+            print(f"[MOISTURE]   Device registry has {len(device_registry)} devices")
             for dev in device_registry:
                 if dev.get("id") == device_id:
                     device_name = dev.get("name_by_user") or dev.get("name") or ""
@@ -1018,20 +998,51 @@ async def get_device_sensors(device_id: str) -> list[dict]:
             print(f"[MOISTURE]   Device registry lookup failed: {e}")
 
         if device_name:
-            # Build a slug from the device name: "Moisture Sensor Device 2AC860" → "moisture_sensor_device_2ac860"
             name_slug = device_name.lower().replace(" ", "_").replace("-", "_")
             print(f"[MOISTURE]   Device name: '{device_name}' → slug: '{name_slug}'")
 
-            # Also try states directly — entities show up in states even when entity
-            # registry device_id doesn't match (states uses HA's internal resolution)
+            # Search entity registry by entity_id containing the slug
+            for entity in entity_registry:
+                eid = entity.get("entity_id", "")
+                domain = eid.split(".")[0] if "." in eid else ""
+                if domain != "sensor":
+                    continue
+                eid_name = eid.split(".", 1)[1].lower() if "." in eid else eid.lower()
+                if name_slug in eid_name:
+                    if entity.get("disabled_by"):
+                        disabled_sensors.append(eid)
+                        print(f"[MOISTURE]   Strategy 2 DISABLED: {eid} (disabled_by={entity.get('disabled_by')})")
+                        continue
+                    sensors.append({
+                        "entity_id": eid,
+                        "friendly_name": entity.get("name") or entity.get("original_name", eid),
+                        "state": "unavailable",
+                        "unit_of_measurement": "",
+                        "device_class": "",
+                        "last_updated": "",
+                        "original_name": entity.get("original_name", ""),
+                    })
+                    print(f"[MOISTURE]   Strategy 2 MATCH: {eid}")
+
+            print(f"[MOISTURE]   Strategy 2 (entity registry name search): {len(sensors)} sensors found")
+        else:
+            print(f"[MOISTURE]   Strategy 2 SKIPPED: device_id '{device_id}' not in device registry")
+            # Log sample device IDs for debugging
+            sample = [(d.get("id", "?")[:12], d.get("name", "?")) for d in device_registry[:5]]
+            print(f"[MOISTURE]   Sample devices: {sample}")
+
+        # --- Strategy 3: Search all_states by entity_id name pattern ---
+        # Last resort if entity registry search also failed
+        if not sensors and name_slug:
+            print(f"[MOISTURE]   Strategy 3: searching all_states for slug '{name_slug}'")
+            all_states = await ha_client.get_all_states()
+            print(f"[MOISTURE]   all_states has {len(all_states)} entries")
             for s in all_states:
                 eid = s.get("entity_id", "")
                 if not eid.startswith("sensor."):
                     continue
-                # Match entity_id containing the device name slug
-                eid_lower = eid.lower()
-                name_part = eid_lower.split(".", 1)[1] if "." in eid_lower else eid_lower
-                if name_slug and name_slug in name_part:
+                eid_name = eid.split(".", 1)[1].lower() if "." in eid else eid.lower()
+                if name_slug in eid_name:
                     attrs = s.get("attributes", {})
                     sensors.append({
                         "entity_id": eid,
@@ -1042,42 +1053,40 @@ async def get_device_sensors(device_id: str) -> list[dict]:
                         "last_updated": s.get("last_updated", ""),
                         "original_name": attrs.get("friendly_name", ""),
                     })
-                    print(f"[MOISTURE]   FALLBACK name match: {eid}")
+                    print(f"[MOISTURE]   Strategy 3 MATCH: {eid}")
 
             if sensors:
-                print(f"[MOISTURE]   Name fallback found {len(sensors)} sensor(s)")
+                print(f"[MOISTURE]   Strategy 3 (all_states name search): {len(sensors)} sensors found")
             else:
-                print(f"[MOISTURE]   Name fallback found 0 sensors for slug '{name_slug}'")
+                # Total failure — log everything for diagnosis
+                all_matching = [s.get("entity_id", "") for s in all_states
+                                if name_slug in s.get("entity_id", "").lower()]
+                print(f"[MOISTURE]   ALL entities matching slug (any domain): {all_matching[:20]}")
+                if not all_matching:
+                    # Check partial matches on each part of the slug
+                    for part in name_slug.split("_"):
+                        if len(part) >= 4:
+                            partial = [s.get("entity_id", "") for s in all_states
+                                       if part in s.get("entity_id", "").lower()][:5]
+                            if partial:
+                                print(f"[MOISTURE]   Partial matches for '{part}': {partial}")
 
-                # Last resort: check ALL entity_ids for the name slug across ALL domains
-                # to figure out what entities exist for this device
-                all_device_entities = []
-                for s in all_states:
-                    eid_lower = s.get("entity_id", "").lower()
-                    name_part = eid_lower.split(".", 1)[1] if "." in eid_lower else eid_lower
-                    if name_slug and name_slug in name_part:
-                        all_device_entities.append(s.get("entity_id", ""))
-                if all_device_entities:
-                    print(f"[MOISTURE]   ALL entities matching '{name_slug}': {all_device_entities[:20]}")
-                else:
-                    print(f"[MOISTURE]   No entities at all matching slug '{name_slug}' in {len(all_states)} states")
-        else:
-            print(f"[MOISTURE]   Could not find device name for device_id={device_id}")
+    if disabled_sensors:
+        print(f"[MOISTURE] WARNING: {len(disabled_sensors)} disabled sensor(s): {disabled_sensors}")
 
-        # Log detailed diagnostic info
-        all_device_ids = {}
-        for e in entity_registry:
-            did = e.get("device_id", "")
-            if did:
-                all_device_ids.setdefault(did, []).append(e.get("entity_id", ""))
-        print(f"[MOISTURE] DIAGNOSTIC: entity registry has {len(all_device_ids)} unique device_ids, "
-              f"{len(entity_registry)} total entities")
-        for did, eids in all_device_ids.items():
-            moisture_eids = [e for e in eids if "moisture" in e.lower() or "gophr" in e.lower()]
-            if moisture_eids:
-                print(f"[MOISTURE] DIAGNOSTIC: device_id '{did}' has moisture entities: "
-                      f"{moisture_eids[:5]}")
-        print(f"[MOISTURE] DIAGNOSTIC: requested device_id='{device_id}' (len={len(device_id)})")
+    # Enrich sensors with current state data if we don't have it yet
+    if sensors and sensors[0].get("state") == "unavailable" and sensors[0].get("unit_of_measurement") == "":
+        all_states = await ha_client.get_all_states()
+        state_lookup = {s.get("entity_id", ""): s for s in all_states}
+        for sensor in sensors:
+            state_data = state_lookup.get(sensor["entity_id"], {})
+            if state_data:
+                attrs = state_data.get("attributes", {})
+                sensor["state"] = state_data.get("state", "unavailable")
+                sensor["unit_of_measurement"] = attrs.get("unit_of_measurement", "")
+                sensor["device_class"] = attrs.get("device_class", "")
+                sensor["last_updated"] = state_data.get("last_updated", "")
+                sensor["friendly_name"] = attrs.get("friendly_name", sensor["friendly_name"])
 
     sensors.sort(key=lambda s: s["entity_id"])
     return sensors
@@ -2377,23 +2386,111 @@ async def api_autodetect_device_sensors(device_id: str):
     extra_map = {"wifi": None, "battery": None, "sleep_duration": None}
     disabled_sensor_entities = []  # Track disabled sensors for diagnostic
 
-    print(f"[MOISTURE] autodetect: {len(sensors)} sensors on device {device_id}")
+    print(f"[MOISTURE] autodetect: {len(sensors)} sensors from get_device_sensors for device {device_id}")
 
-    # Pre-check: if no sensors found, check if this is because sensors are disabled in HA
+    # --- NUCLEAR FALLBACK: if get_device_sensors returned 0, bypass all registry logic ---
+    # Go directly to get_all_states() + device name lookup. This is the most reliable
+    # method because get_all_states() is a simple REST call that always works, and
+    # list_moisture_devices() already proved the device name lookup works.
     if not sensors:
-        print(f"[MOISTURE] autodetect: 0 sensors — checking for disabled entities...")
-        pre_registry = await ha_client.get_entity_registry()
-        for entity in pre_registry:
-            if entity.get("device_id") != device_id:
-                continue
-            eid = entity.get("entity_id", "")
-            domain = eid.split(".")[0] if "." in eid else ""
-            if domain == "sensor" and entity.get("disabled_by"):
-                disabled_sensor_entities.append(eid)
-                print(f"[MOISTURE]   DISABLED sensor: {eid} (disabled_by={entity.get('disabled_by')})")
-        if disabled_sensor_entities:
-            print(f"[MOISTURE] autodetect: Found {len(disabled_sensor_entities)} DISABLED sensor entities! "
-                  f"These need to be enabled in Home Assistant.")
+        print(f"[MOISTURE] autodetect: 0 sensors from registry — trying DIRECT all_states search")
+        try:
+            # Step 1: Get the device name (same method list_moisture_devices uses)
+            device_name = ""
+            device_registry = await ha_client.get_device_registry()
+            print(f"[MOISTURE]   Direct search: device_registry has {len(device_registry)} devices")
+            for dev in device_registry:
+                dev_id = dev.get("id", "")
+                if dev_id == device_id:
+                    device_name = dev.get("name_by_user") or dev.get("name") or ""
+                    print(f"[MOISTURE]   Direct search: FOUND device — name='{device_name}', id='{dev_id}'")
+                    break
+
+            if not device_name:
+                print(f"[MOISTURE]   Direct search: device_id '{device_id}' NOT FOUND in registry!")
+                # Log first 5 device IDs for comparison
+                sample_ids = [d.get("id", "?") for d in device_registry[:5]]
+                sample_names = [d.get("name", "?") for d in device_registry[:5]]
+                print(f"[MOISTURE]   Sample device IDs: {sample_ids}")
+                print(f"[MOISTURE]   Sample device names: {sample_names}")
+            else:
+                # Step 2: Build slug from device name
+                name_slug = device_name.lower().replace(" ", "_").replace("-", "_")
+                print(f"[MOISTURE]   Direct search: name_slug='{name_slug}'")
+
+                # Step 3: Get ALL states and search for matching sensor entities
+                all_states = await ha_client.get_all_states()
+                print(f"[MOISTURE]   Direct search: get_all_states returned {len(all_states)} entities")
+
+                # Search ALL entity IDs for the slug (not just sensors, to see what exists)
+                all_matching = []
+                sensor_matching = []
+                for s in all_states:
+                    eid = s.get("entity_id", "")
+                    eid_name = eid.split(".", 1)[1].lower() if "." in eid else eid.lower()
+                    if name_slug in eid_name:
+                        all_matching.append(eid)
+                        if eid.startswith("sensor."):
+                            attrs = s.get("attributes", {})
+                            sensors.append({
+                                "entity_id": eid,
+                                "friendly_name": attrs.get("friendly_name", eid),
+                                "state": s.get("state", "unavailable"),
+                                "unit_of_measurement": attrs.get("unit_of_measurement", ""),
+                                "device_class": attrs.get("device_class", ""),
+                                "last_updated": s.get("last_updated", ""),
+                                "original_name": attrs.get("friendly_name", ""),
+                            })
+                            sensor_matching.append(eid)
+
+                print(f"[MOISTURE]   Direct search: {len(all_matching)} total entities match slug '{name_slug}'")
+                print(f"[MOISTURE]   Direct search: {len(sensor_matching)} sensor entities match")
+                if all_matching:
+                    print(f"[MOISTURE]   Direct search: matching entities: {all_matching[:30]}")
+                else:
+                    # Even more desperate: show entities that partially match
+                    partial = []
+                    device_name_parts = name_slug.split("_")
+                    for s in all_states:
+                        eid = s.get("entity_id", "").lower()
+                        # Check if ANY part of the device name (e.g., "gophr" or the MAC portion) matches
+                        for part in device_name_parts:
+                            if len(part) >= 4 and part in eid:
+                                partial.append(s.get("entity_id", ""))
+                                break
+                    if partial:
+                        print(f"[MOISTURE]   Direct search: PARTIAL matches (name parts): {partial[:20]}")
+                    else:
+                        print(f"[MOISTURE]   Direct search: NO matches at all! Dumping sample entity IDs:")
+                        sample_eids = [s.get("entity_id", "") for s in all_states[:20]]
+                        print(f"[MOISTURE]   {sample_eids}")
+
+                if sensors:
+                    print(f"[MOISTURE]   Direct search: SUCCESS — found {len(sensors)} sensor entities")
+
+        except Exception as e:
+            import traceback
+            print(f"[MOISTURE]   Direct search EXCEPTION: {e}")
+            print(f"[MOISTURE]   {traceback.format_exc()}")
+
+    # Pre-check: if still no sensors, check for disabled entities in registry
+    if not sensors:
+        print(f"[MOISTURE] autodetect: STILL 0 sensors after direct search — checking disabled entities...")
+        try:
+            pre_registry = await ha_client.get_entity_registry()
+            for entity in pre_registry:
+                if entity.get("device_id") != device_id:
+                    continue
+                eid = entity.get("entity_id", "")
+                domain = eid.split(".")[0] if "." in eid else ""
+                if domain == "sensor" and entity.get("disabled_by"):
+                    disabled_sensor_entities.append(eid)
+                    print(f"[MOISTURE]   DISABLED sensor: {eid} (disabled_by={entity.get('disabled_by')})")
+            if disabled_sensor_entities:
+                print(f"[MOISTURE] autodetect: Found {len(disabled_sensor_entities)} DISABLED sensor entities! "
+                      f"These need to be enabled in Home Assistant.")
+        except Exception as e:
+            print(f"[MOISTURE]   Disabled entity check failed: {e}")
     for s in sensors:
         print(f"[MOISTURE]   entity={s['entity_id']}  friendly={s.get('friendly_name','')}  class={s.get('device_class','')}  unit={s.get('unit_of_measurement','')}")
 
@@ -2533,7 +2630,9 @@ async def api_autodetect_device_sensors(device_id: str):
             depth_map["shallow"] = unmatched_moisture[2]["entity_id"]
 
     # --- Detect Gophr sleep/schedule/control entities ---
-    # These are NOT in the sensor domain, so we scan the full entity registry for this device.
+    # These are NOT in the sensor domain. We use TWO strategies:
+    # 1. Entity registry by device_id (may fail due to ID mismatch)
+    # 2. Direct all_states search by device name slug (most reliable fallback)
     schedule_times = []
     sleep_disabled_switch = None
     sleep_duration_number = None
@@ -2542,137 +2641,109 @@ async def api_autodetect_device_sensors(device_id: str):
     status_led_entity = None
     solar_charging_entity = None
 
-    entity_registry = await ha_client.get_entity_registry()
-
-    # Build device prefix from known sensor entities for fallback matching.
-    # E.g., if we found sensor.moisture_sensor_device_2ac860_moisture_1_percentage,
-    # the device prefix is "moisture_sensor_device_2ac860_".
-    device_prefix = ""
+    # Build device name slug for matching
+    device_name_slug = ""
     try:
-        if sensors:
-            sensor_names = [s["entity_id"].split(".", 1)[1] for s in sensors if "." in s["entity_id"]]
-            if len(sensor_names) >= 2:
-                # Find longest common prefix across multiple sensor names
-                prefix = sensor_names[0]
-                for sn in sensor_names[1:]:
-                    while not sn.startswith(prefix) and prefix:
-                        idx = prefix.rfind("_")
-                        prefix = prefix[:idx + 1] if idx > 0 else ""
-                if len(prefix) >= 5:  # Sanity check: prefix must be meaningful
-                    device_prefix = prefix
-            elif len(sensor_names) == 1:
-                # Single sensor: strip the last component to get the device prefix
-                # e.g., "moisture_sensor_device_2ac860_moisture_1_percentage" → trim last parts
-                parts = sensor_names[0].rsplit("_", 3)
-                if len(parts) >= 2:
-                    device_prefix = parts[0] + "_"
-        # If no sensors found, derive prefix from the device name
-        if not device_prefix:
-            try:
-                device_registry = await ha_client.get_device_registry()
-                for dev in device_registry:
-                    if dev.get("id") == device_id:
-                        dev_name = dev.get("name_by_user") or dev.get("name") or ""
-                        if dev_name:
-                            device_prefix = dev_name.lower().replace(" ", "_").replace("-", "_") + "_"
-                            print(f"[MOISTURE]   Device prefix from name: '{device_prefix}' (name='{dev_name}')")
-                        break
-            except Exception as dr_err:
-                print(f"[MOISTURE]   Device registry lookup for prefix failed: {dr_err}")
-        if device_prefix:
-            print(f"[MOISTURE]   Device entity prefix: '{device_prefix}'")
-    except Exception as e:
-        print(f"[MOISTURE]   Failed to build device prefix: {e}")
-        device_prefix = ""
+        device_registry = await ha_client.get_device_registry()
+        for dev in device_registry:
+            if dev.get("id") == device_id:
+                dev_name = dev.get("name_by_user") or dev.get("name") or ""
+                if dev_name:
+                    device_name_slug = dev_name.lower().replace(" ", "_").replace("-", "_")
+                break
+    except Exception:
+        pass
 
+    # Also build prefix from sensor entities if we have them
+    device_prefix = ""
+    if sensors:
+        sensor_names = [s["entity_id"].split(".", 1)[1] for s in sensors if "." in s["entity_id"]]
+        if len(sensor_names) >= 2:
+            prefix = sensor_names[0]
+            for sn in sensor_names[1:]:
+                while not sn.startswith(prefix) and prefix:
+                    idx = prefix.rfind("_")
+                    prefix = prefix[:idx + 1] if idx > 0 else ""
+            if len(prefix) >= 5:
+                device_prefix = prefix
+        elif len(sensor_names) == 1:
+            parts = sensor_names[0].rsplit("_", 3)
+            if len(parts) >= 2:
+                device_prefix = parts[0] + "_"
+    if not device_prefix and device_name_slug:
+        device_prefix = device_name_slug + "_"
+
+    print(f"[MOISTURE]   Phase 2: device_name_slug='{device_name_slug}', device_prefix='{device_prefix}'")
+
+    def _check_control_entity(eid):
+        """Classify a single entity_id as a control entity (schedule/switch/light/number).
+        Uses nonlocal to update the outer variables."""
+        nonlocal sleep_disabled_switch, sleep_duration_number, min_awake_entity
+        nonlocal max_awake_entity, status_led_entity, solar_charging_entity
+
+        eid_lower = eid.lower()
+        domain = eid.split(".")[0] if "." in eid else ""
+
+        if domain == "text" and "schedule_time" in eid_lower:
+            if eid not in schedule_times:
+                schedule_times.append(eid)
+                print(f"[MOISTURE]   MATCH schedule_time: {eid}")
+
+        if domain == "switch" and ("sleep_disabled" in eid_lower or "disable_sleep" in eid_lower):
+            if not sleep_disabled_switch:
+                sleep_disabled_switch = eid
+                print(f"[MOISTURE]   MATCH sleep_disabled: {eid}")
+
+        if domain == "light" and "status_led" in eid_lower:
+            if not status_led_entity:
+                status_led_entity = eid
+                print(f"[MOISTURE]   MATCH status_led: {eid}")
+
+        if domain == "binary_sensor" and "solar_charging" in eid_lower:
+            if not solar_charging_entity:
+                solar_charging_entity = eid
+                print(f"[MOISTURE]   MATCH solar_charging: {eid}")
+
+        if domain == "number":
+            if "min_awake" in eid_lower and not min_awake_entity:
+                min_awake_entity = eid
+                print(f"[MOISTURE]   MATCH min_awake: {eid}")
+            elif "max_awake" in eid_lower and not max_awake_entity:
+                max_awake_entity = eid
+                print(f"[MOISTURE]   MATCH max_awake: {eid}")
+            elif "sleep_duration" in eid_lower and not sleep_duration_number:
+                sleep_duration_number = eid
+                print(f"[MOISTURE]   MATCH sleep_duration_number: {eid}")
+
+    # Strategy 1: entity registry by device_id (may fail due to ID mismatch)
+    entity_registry = await ha_client.get_entity_registry()
     registry_match_count = 0
     for entity in entity_registry:
         if entity.get("device_id") != device_id:
             continue
         registry_match_count += 1
         if entity.get("disabled_by"):
-            print(f"[MOISTURE]   SKIP disabled: {entity.get('entity_id', '')} (disabled_by={entity.get('disabled_by')})")
             continue
-        eid = entity.get("entity_id", "")
-        eid_lower = eid.lower()
-        domain = eid.split(".")[0] if "." in eid else ""
+        _check_control_entity(entity.get("entity_id", ""))
 
-        # Schedule time text entities (text.gophr_*_schedule_time_1..4)
-        if domain == "text" and "schedule_time" in eid_lower:
-            schedule_times.append(eid)
-            print(f"[MOISTURE]   MATCH schedule_time: {eid}")
+    print(f"[MOISTURE]   Phase 2 registry scan: {registry_match_count} entities matched device_id")
 
-        # Sleep disabled switch (switch.gophr_*_sleep_disabled or *_disable_sleep)
-        if domain == "switch" and ("sleep_disabled" in eid_lower or "disable_sleep" in eid_lower):
-            sleep_disabled_switch = eid
-            print(f"[MOISTURE]   MATCH sleep_disabled: {eid}")
-
-        # Status LED light entity (light.*_status_led) — ON=awake, OFF=sleeping
-        if domain == "light" and "status_led" in eid_lower:
-            status_led_entity = eid
-            print(f"[MOISTURE]   MATCH status_led: {eid}")
-
-        # Solar charging binary sensor (binary_sensor.*_solar_charging)
-        if domain == "binary_sensor" and "solar_charging" in eid_lower:
-            solar_charging_entity = eid
-            print(f"[MOISTURE]   MATCH solar_charging: {eid}")
-
-        # Min/max awake minutes (number.gophr_*_min_awake_minutes, etc.)
-        # Writable sleep duration (number.gophr_*_sleep_duration)
-        if domain == "number":
-            if "min_awake" in eid_lower:
-                min_awake_entity = eid
-                print(f"[MOISTURE]   MATCH min_awake: {eid}")
-            elif "max_awake" in eid_lower:
-                max_awake_entity = eid
-                print(f"[MOISTURE]   MATCH max_awake: {eid}")
-            elif "sleep_duration" in eid_lower:
-                sleep_duration_number = eid
-                print(f"[MOISTURE]   MATCH sleep_duration_number: {eid}")
-
-    print(f"[MOISTURE]   Registry scan: {registry_match_count} entities matched device_id={device_id}")
-
-    # --- Fallback: prefix-based entity search ---
-    # If we missed key entities (sleep_disabled, status_led, sleep_duration_number, solar_charging),
-    # search by entity name prefix. This handles cases where HA's entity registry
-    # has a different device_id than expected (e.g., re-adopted ESPHome devices).
-    if device_prefix and (not sleep_disabled_switch or not status_led_entity or not sleep_duration_number or not solar_charging_entity):
-        print(f"[MOISTURE]   Fallback prefix scan for missing entities (prefix='{device_prefix}')")
+    # Strategy 2: Search entity registry by entity_id name pattern
+    # This is the most reliable approach — entity registry has ALL entities
+    # regardless of device state, and we match by name slug instead of device_id
+    if device_name_slug:
+        slug_match_count = 0
         for entity in entity_registry:
             if entity.get("disabled_by"):
                 continue
             eid = entity.get("entity_id", "")
-            eid_lower = eid.lower()
-            domain = eid.split(".")[0] if "." in eid else ""
-            name_part = eid.split(".", 1)[1] if "." in eid else ""
-
-            # Must share the device prefix
-            if not name_part.startswith(device_prefix):
+            eid_name = eid.split(".", 1)[1].lower() if "." in eid else eid.lower()
+            if device_name_slug not in eid_name:
                 continue
+            slug_match_count += 1
+            _check_control_entity(eid)
 
-            if not sleep_disabled_switch and domain == "switch" and ("sleep_disabled" in eid_lower or "disable_sleep" in eid_lower):
-                sleep_disabled_switch = eid
-                print(f"[MOISTURE]   FALLBACK MATCH sleep_disabled: {eid}")
-
-            if not status_led_entity and domain == "light" and "status_led" in eid_lower:
-                status_led_entity = eid
-                print(f"[MOISTURE]   FALLBACK MATCH status_led: {eid}")
-
-            if not sleep_duration_number and domain == "number" and "sleep_duration" in eid_lower:
-                sleep_duration_number = eid
-                print(f"[MOISTURE]   FALLBACK MATCH sleep_duration_number: {eid}")
-
-            if not min_awake_entity and domain == "number" and "min_awake" in eid_lower:
-                min_awake_entity = eid
-                print(f"[MOISTURE]   FALLBACK MATCH min_awake: {eid}")
-
-            if not max_awake_entity and domain == "number" and "max_awake" in eid_lower:
-                max_awake_entity = eid
-                print(f"[MOISTURE]   FALLBACK MATCH max_awake: {eid}")
-
-            if not solar_charging_entity and domain == "binary_sensor" and "solar_charging" in eid_lower:
-                solar_charging_entity = eid
-                print(f"[MOISTURE]   FALLBACK MATCH solar_charging: {eid}")
+        print(f"[MOISTURE]   Phase 2 entity registry slug scan: {slug_match_count} entities matched '{device_name_slug}'")
 
     # Sort schedule times by number suffix (schedule_time_1, _2, _3, _4)
     schedule_times.sort(key=lambda e: int(re.search(r'(\d+)$', e).group(1)) if re.search(r'(\d+)$', e) else 99)
