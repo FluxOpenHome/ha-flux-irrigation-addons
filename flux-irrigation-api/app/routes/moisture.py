@@ -3018,6 +3018,17 @@ async def api_set_sleep_duration(probe_id: str, body: SleepDurationRequest, requ
         if success:
             # Clear any pending value
             probe["pending_sleep_duration"] = None
+            # Update sensor cache so UI shows the new value immediately
+            sleep_sensor_eid = (probe.get("extra_sensors") or {}).get("sleep_duration")
+            if sleep_sensor_eid:
+                _load_sensor_cache()
+                _sensor_cache[sleep_sensor_eid] = {
+                    "state": float(body.minutes),
+                    "raw_state": str(body.minutes),
+                    "last_updated": datetime.now(timezone.utc).isoformat(),
+                    "friendly_name": sleep_sensor_eid,
+                }
+                _save_sensor_cache()
             _save_data(data)
             log_change(get_actor(request), "Moisture Probes",
                        f"Set sleep duration for {display_name}: {body.minutes} min (applied immediately)")
@@ -4033,6 +4044,17 @@ async def on_probe_wake(probe_id: str):
             success = await _set_probe_sleep_duration(probe_id, pending_duration)
             if success:
                 probe["pending_sleep_duration"] = None
+                # Update sensor cache so UI shows the new value immediately
+                sleep_sensor_eid = (probe.get("extra_sensors") or {}).get("sleep_duration")
+                if sleep_sensor_eid:
+                    _load_sensor_cache()
+                    _sensor_cache[sleep_sensor_eid] = {
+                        "state": float(pending_duration),
+                        "raw_state": str(pending_duration),
+                        "last_updated": datetime.now(timezone.utc).isoformat(),
+                        "friendly_name": sleep_sensor_eid,
+                    }
+                    _save_sensor_cache()
                 print(f"[MOISTURE] Pending sleep duration {pending_duration} min applied to {display_name}")
             else:
                 print(f"[MOISTURE] Failed to apply pending sleep duration to {display_name} — "
