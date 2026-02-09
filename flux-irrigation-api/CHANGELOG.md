@@ -6,6 +6,10 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ## [1.1.12] — 2026-02-09
 
+### Added
+
+- **Zone head details** — New zone details modal (click the ℹ icon on any zone tile) lets you document every sprinkler head in a zone. For each head: head type (pop-up spray, rotary nozzle, gear rotor, impact rotor, micro-spray, bubbler, drip emitter, drip line, fixed spray, strip nozzle), brand (Rain Bird, Hunter, Toro, K-Rain, Irritrol, Orbit, etc.), model number, mount type (pop-up, stationary, riser, shrub, on-grade), GPM flow rate, spray arc in degrees, throw radius in feet, pop-up height, operating PSI, and a name/location label. Total zone GPM is calculated automatically. Data persists in `/data/zone_nozzle_details.json`. Available on both homeowner and management dashboards. Includes comprehensive nozzle type reference data served via API.
+
 ### Changed
 
 - **Wake schedule popup — all mapped zones** — The wake schedule popup now shows every zone mapped to a probe, not just the first mapped zone per schedule. Each entry displays the zone number, expected run time, and schedule label.

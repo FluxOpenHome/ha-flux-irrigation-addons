@@ -87,6 +87,11 @@ class UpdateAliasesRequest(BaseModel):
     zone_aliases: dict
 
 
+class SaveZoneHeadsRequest(BaseModel):
+    heads: list = Field(default_factory=list, description="List of head detail objects")
+    notes: str = Field("", max_length=2000, description="General zone notes")
+
+
 # --- Helper functions ---
 
 def _zone_name(entity_id: str) -> str:
@@ -844,5 +849,68 @@ async def homeowner_changelog_csv():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=config_changelog.csv"},
     )
+
+
+# --- Zone Nozzle / Head Details ---
+
+@router.get("/zone_heads/reference", summary="Get nozzle type reference data")
+async def homeowner_nozzle_reference():
+    """Get professional sprinkler head type reference data for the UI."""
+    import zone_nozzle_data
+    return zone_nozzle_data.get_reference_data()
+
+
+@router.get("/zone_heads", summary="Get all zones head details")
+async def homeowner_get_all_zone_heads():
+    """Get head/nozzle details for all zones."""
+    _require_homeowner_mode()
+    import zone_nozzle_data
+    return zone_nozzle_data.get_all_zones_heads()
+
+
+@router.get("/zone_heads/{entity_id:path}", summary="Get zone head details")
+async def homeowner_get_zone_heads(entity_id: str):
+    """Get head/nozzle details for a specific zone."""
+    _require_homeowner_mode()
+    import zone_nozzle_data
+    return zone_nozzle_data.get_zone_heads(entity_id)
+
+
+@router.put("/zone_heads/{entity_id:path}", summary="Save zone head details")
+async def homeowner_save_zone_heads(entity_id: str, body: SaveZoneHeadsRequest, request: Request):
+    """Save head/nozzle details for a specific zone."""
+    _require_homeowner_mode()
+    import zone_nozzle_data
+
+    # Validate each head has required fields
+    for i, head in enumerate(body.heads):
+        if not isinstance(head, dict):
+            raise HTTPException(status_code=400, detail=f"Head {i} must be an object")
+        if not head.get("nozzle_type"):
+            raise HTTPException(status_code=400, detail=f"Head {i + 1} is missing nozzle type")
+
+    result = zone_nozzle_data.save_zone_heads(entity_id, body.heads, body.notes)
+
+    log_change(get_actor(request), "Zone Details",
+               f"Updated head details for {entity_id.split('.', 1)[-1].replace('_', ' ').title()} ({len(body.heads)} head(s))",
+               {"entity_id": entity_id, "head_count": len(body.heads)})
+
+    return {"success": True, **result}
+
+
+@router.delete("/zone_heads/{entity_id:path}", summary="Delete zone head details")
+async def homeowner_delete_zone_heads(entity_id: str, request: Request):
+    """Remove all head/nozzle details for a specific zone."""
+    _require_homeowner_mode()
+    import zone_nozzle_data
+    deleted = zone_nozzle_data.delete_zone_heads(entity_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No head data for zone '{entity_id}'")
+
+    log_change(get_actor(request), "Zone Details",
+               f"Cleared head details for {entity_id.split('.', 1)[-1].replace('_', ' ').title()}",
+               {"entity_id": entity_id})
+
+    return {"success": True, "message": f"Head details removed for {entity_id}"}
 
 

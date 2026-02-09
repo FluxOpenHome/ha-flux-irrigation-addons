@@ -219,6 +219,98 @@ async def update_zone_aliases(customer_id: str, body: UpdateZoneAliasesRequest):
     return {"success": True, "zone_aliases": customer.zone_aliases}
 
 
+@router.get(
+    "/api/customers/{customer_id}/zone_heads/reference",
+    summary="Get nozzle reference data via customer",
+)
+async def get_customer_nozzle_reference(customer_id: str):
+    """Get nozzle type reference data via customer proxy."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/zone_heads/reference"
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/zone_heads",
+    summary="Get all customer zone head details",
+)
+async def get_customer_all_zone_heads(customer_id: str):
+    """Get head/nozzle details for all zones of a customer."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/zone_heads"
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.get(
+    "/api/customers/{customer_id}/zone_heads/{entity_id:path}",
+    summary="Get customer zone head details",
+)
+async def get_customer_zone_heads(customer_id: str, entity_id: str):
+    """Get head/nozzle details for a specific customer zone."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "GET", f"/admin/api/homeowner/zone_heads/{entity_id}"
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.put(
+    "/api/customers/{customer_id}/zone_heads/{entity_id:path}",
+    summary="Save customer zone head details",
+)
+async def save_customer_zone_heads(customer_id: str, entity_id: str, request: Request):
+    """Save head/nozzle details for a specific customer zone."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    status_code, data = await management_client.proxy_request(
+        conn, "PUT", f"/admin/api/homeowner/zone_heads/{entity_id}",
+        json_body=body,
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
+@router.delete(
+    "/api/customers/{customer_id}/zone_heads/{entity_id:path}",
+    summary="Delete customer zone head details",
+)
+async def delete_customer_zone_heads(customer_id: str, entity_id: str):
+    """Remove all head/nozzle details for a specific customer zone."""
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+    status_code, data = await management_client.proxy_request(
+        conn, "DELETE", f"/admin/api/homeowner/zone_heads/{entity_id}",
+        extra_headers={"X-Actor": "Management"},
+    )
+    if status_code != 200:
+        raise _proxy_error(status_code, data)
+    return data
+
+
 @router.delete("/api/customers/{customer_id}", summary="Remove a customer")
 async def delete_customer(customer_id: str):
     _require_management_mode()

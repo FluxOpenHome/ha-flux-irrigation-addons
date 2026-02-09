@@ -2849,6 +2849,8 @@ async function loadDetailZones(id) {
                     ${esc(displayName)}
                     <span style="cursor:pointer;font-size:11px;color:var(--color-primary);margin-left:6px;"
                           onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
+                    <span style="cursor:pointer;font-size:10px;color:var(--color-info,#2196F3);margin-left:4px;"
+                          onclick="event.stopPropagation();mgmtShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
                 <div class="tile-actions" style="flex-wrap:wrap;">
@@ -4390,6 +4392,11 @@ const HELP_CONTENT = `
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 When the system is paused, any zone that turns on (even from an ESPHome schedule) will be immediately shut off. If expansion boards are detected, only the physically connected zones are shown — extra pre-created entities are automatically hidden.</div>
 
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">🔩 Zone Head Details</h4>
+<p style="margin-bottom:10px;">Click the <strong>ℹ</strong> icon on any zone tile to open the Zone Details modal. This lets you document every sprinkler head in the zone for professional service records:</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Number of Heads</strong> — Set how many sprinkler heads are in the zone, then click Update Table to build the inventory</li><li style="margin-bottom:4px;"><strong>Head Type</strong> — Pop-up spray, rotary nozzle, gear rotor, impact rotor, micro-spray, bubbler, drip emitter, drip line, fixed spray, or strip nozzle</li><li style="margin-bottom:4px;"><strong>Brand & Model</strong> — Manufacturer (Rain Bird, Hunter, Toro, etc.) and model number</li><li style="margin-bottom:4px;"><strong>Mount Type</strong> — Pop-up, stationary, riser, shrub, or on-grade</li><li style="margin-bottom:4px;"><strong>GPM</strong> — Flow rate in gallons per minute for each head. The total zone flow is calculated automatically.</li><li style="margin-bottom:4px;"><strong>Arc & Radius</strong> — Spray arc in degrees and throw radius in feet</li><li style="margin-bottom:4px;"><strong>Pop-Up Height</strong> — Riser height (2", 3", 4", 6", or 12")</li><li style="margin-bottom:4px;"><strong>PSI & Notes</strong> — Operating pressure and any location/condition notes</li></ul>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 This data is stored on the homeowner's system and shared with your management dashboard. Give each head a name/location (e.g. "Front left corner") so technicians can easily find them on the property.</div>
+
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Schedule Management</h4>
 <p style="margin-bottom:10px;">View and manage watering schedules for each property:</p>
 <ul style="margin:4px 0 12px 20px;">
@@ -4595,6 +4602,222 @@ function showHelp() {
 function closeHelpModal() {
     document.getElementById('helpModal').style.display = 'none';
 }
+
+// --- Zone Head Details (Management) ---
+var _mgmtNozzleRef = null;
+
+async function mgmtShowZoneDetailsModal(entityId, displayName) {
+    var custId = currentCustomerId;
+    if (!custId) { showToast('Select a customer first', 'error'); return; }
+    // Load reference data if not cached
+    if (!_mgmtNozzleRef) {
+        try { _mgmtNozzleRef = await api('/customers/' + custId + '/zone_heads/reference'); } catch(e) { _mgmtNozzleRef = {nozzle_types:[],brands:[],standard_arcs:[]}; }
+    }
+    // Load existing zone head data
+    var zoneData = {heads:[], notes:''};
+    try {
+        var resp = await api('/customers/' + custId + '/zone_heads/' + entityId);
+        if (resp && resp.heads) zoneData = resp;
+    } catch(e) {}
+
+    var body = '<div style="margin-bottom:10px;">';
+    body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
+    body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
+    body += '<input type="number" id="mgmtHeadCount" min="0" max="50" value="' + (zoneData.heads.length || 0) + '" style="width:60px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+    body += '<button class="btn btn-primary btn-sm" onclick="mgmtBuildHeadTable()" style="font-size:11px;">Update Table</button>';
+    body += '</div>';
+
+    body += '<div id="mgmtHeadTableWrap"></div>';
+
+    body += '<div style="margin-top:10px;">';
+    body += '<label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">Zone Notes:</label>';
+    body += '<textarea id="mgmtZoneNotes" rows="2" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;resize:vertical;background:var(--bg-input,#fff);color:var(--text-primary);">' + esc(zoneData.notes || '') + '</textarea>';
+    body += '</div>';
+
+    body += '<div style="margin-top:10px;display:flex;gap:8px;">';
+    body += '<button class="btn btn-primary" onclick="mgmtSaveZoneHeads()" style="font-size:13px;">&#128190; Save</button>';
+    body += '<button class="btn btn-sm" onclick="closeMgmtDynamicModal()" style="font-size:13px;background:transparent;border:1px solid var(--border-light);color:var(--text-secondary);">Cancel</button>';
+    body += '<span id="mgmtZoneSaveStatus" style="font-size:12px;color:var(--color-success);align-self:center;"></span>';
+    body += '</div>';
+
+    body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover,#f8f9fa);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
+    body += '<strong>&#128161; Tip:</strong> Document each sprinkler head in the zone — type, flow rate (GPM), spray arc, and location. ';
+    body += 'This helps professionals service the system and ensures accurate watering calculations.';
+    body += '</div>';
+    body += '</div>';
+
+    // Store entity ID for save
+    window._mgmtZoneDetailsEntityId = entityId;
+    window._mgmtZoneDetailsHeads = zoneData.heads;
+
+    mgmtShowModal('Zone Details — ' + displayName, body);
+
+    // Build the table with existing data
+    setTimeout(function() { mgmtRenderHeadTable(zoneData.heads); }, 50);
+}
+
+function mgmtBuildHeadTable() {
+    var count = parseInt(document.getElementById('mgmtHeadCount').value) || 0;
+    if (count < 0) count = 0;
+    if (count > 50) count = 50;
+    var existing = mgmtCollectHeadData();
+    var heads = [];
+    for (var i = 0; i < count; i++) {
+        heads.push(existing[i] || {});
+    }
+    mgmtRenderHeadTable(heads);
+}
+
+function mgmtRenderHeadTable(heads) {
+    var wrap = document.getElementById('mgmtHeadTableWrap');
+    if (!heads || heads.length === 0) {
+        wrap.innerHTML = '<div style="color:var(--text-secondary);font-size:12px;padding:8px;">No heads configured. Set the number above and click Update Table.</div>';
+        document.getElementById('mgmtHeadCount').value = '0';
+        return;
+    }
+    document.getElementById('mgmtHeadCount').value = String(heads.length);
+    var ref = _mgmtNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[]};
+
+    var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<thead><tr style="background:var(--bg-hover,#f5f5f5);">';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">#</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Name / Location</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Head Type</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Brand</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Model</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Mount</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">GPM</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Arc (°)</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Radius (ft)</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Pop-Up Height</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">PSI</th>';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Notes</th>';
+    html += '</tr></thead><tbody>';
+
+    for (var i = 0; i < heads.length; i++) {
+        var h = heads[i] || {};
+        var rowBg = i % 2 === 0 ? '' : 'background:var(--bg-hover,#fafafa);';
+        html += '<tr style="' + rowBg + '">';
+        html += '<td style="padding:4px 6px;border:1px solid var(--border-light);text-align:center;font-weight:600;">' + (i+1) + '</td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner" style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '" style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<option value="">—</option>';
+        for (var t = 0; t < ref.nozzle_types.length; t++) {
+            var nt = ref.nozzle_types[t];
+            html += '<option value="' + nt.id + '"' + (h.nozzle_type === nt.id ? ' selected' : '') + '>' + esc(nt.name) + '</option>';
+        }
+        html += '</select></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="brand" data-row="' + i + '" style="width:100%;min-width:70px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<option value="">—</option>';
+        for (var b = 0; b < ref.brands.length; b++) {
+            html += '<option value="' + esc(ref.brands[b]) + '"' + (h.brand === ref.brands[b] ? ' selected' : '') + '>' + esc(ref.brands[b]) + '</option>';
+        }
+        html += '</select></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="model" data-row="' + i + '" value="' + esc(h.model || '') + '" placeholder="e.g. 5004" style="width:100%;min-width:60px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="mount" data-row="' + i + '" style="width:100%;min-width:65px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<option value="">—</option>';
+        var mounts = ["Pop-Up","Stationary","Riser","Shrub","On-Grade"];
+        for (var m = 0; m < mounts.length; m++) {
+            html += '<option value="' + mounts[m] + '"' + (h.mount === mounts[m] ? ' selected' : '') + '>' + mounts[m] + '</option>';
+        }
+        html += '</select></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM" style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="arc_degrees" data-row="' + i + '" value="' + (h.arc_degrees || '') + '" min="0" max="360" step="1" placeholder="°" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="radius_ft" data-row="' + i + '" value="' + (h.radius_ft || '') + '" min="0" max="200" step="0.5" placeholder="ft" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="popup_height" data-row="' + i + '" style="width:100%;min-width:50px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<option value="">—</option>';
+        var heights = ['2"','3"','4"','6"','12"'];
+        var heightVals = ['2','3','4','6','12'];
+        for (var p = 0; p < heights.length; p++) {
+            html += '<option value="' + heightVals[p] + '"' + (String(h.popup_height) === heightVals[p] ? ' selected' : '') + '>' + heights[p] + '</option>';
+        }
+        html += '</select></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes" style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+
+        html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+
+    html += '<div id="mgmtHeadGpmSummary" style="margin-top:6px;font-size:12px;color:var(--text-secondary);"></div>';
+
+    wrap.innerHTML = html;
+    mgmtUpdateGpmSummary();
+    var gpmInputs = wrap.querySelectorAll('input[data-field="gpm"]');
+    for (var g = 0; g < gpmInputs.length; g++) {
+        gpmInputs[g].addEventListener('input', mgmtUpdateGpmSummary);
+    }
+}
+
+function mgmtUpdateGpmSummary() {
+    var inputs = document.querySelectorAll('#mgmtHeadTableWrap input[data-field="gpm"]');
+    var total = 0;
+    for (var i = 0; i < inputs.length; i++) {
+        total += parseFloat(inputs[i].value) || 0;
+    }
+    var el = document.getElementById('mgmtHeadGpmSummary');
+    if (el) el.innerHTML = '<strong>Total Zone Flow: ' + total.toFixed(2) + ' GPM</strong>';
+}
+
+function mgmtCollectHeadData() {
+    var wrap = document.getElementById('mgmtHeadTableWrap');
+    if (!wrap) return [];
+    var heads = [];
+    var rows = wrap.querySelectorAll('tbody tr');
+    for (var i = 0; i < rows.length; i++) {
+        var head = {};
+        var fields = rows[i].querySelectorAll('[data-field]');
+        for (var j = 0; j < fields.length; j++) {
+            var field = fields[j].getAttribute('data-field');
+            var val = fields[j].value;
+            if (field === 'gpm' || field === 'arc_degrees' || field === 'radius_ft' || field === 'psi') {
+                head[field] = val ? parseFloat(val) : null;
+            } else if (field === 'popup_height') {
+                head[field] = val || null;
+            } else {
+                head[field] = val || '';
+            }
+        }
+        heads.push(head);
+    }
+    return heads;
+}
+
+async function mgmtSaveZoneHeads() {
+    var custId = currentCustomerId;
+    var entityId = window._mgmtZoneDetailsEntityId;
+    if (!custId || !entityId) return;
+    var heads = mgmtCollectHeadData();
+    var notes = (document.getElementById('mgmtZoneNotes') || {}).value || '';
+    var statusEl = document.getElementById('mgmtZoneSaveStatus');
+    try {
+        statusEl.textContent = 'Saving...';
+        statusEl.style.color = 'var(--text-secondary)';
+        await api('/customers/' + custId + '/zone_heads/' + entityId, {
+            method: 'PUT',
+            body: JSON.stringify({ heads: heads, notes: notes }),
+        });
+        statusEl.textContent = '\\u2713 Saved!';
+        statusEl.style.color = 'var(--color-success)';
+        showToast('Zone head details saved');
+    } catch(e) {
+        statusEl.textContent = 'Error: ' + e.message;
+        statusEl.style.color = 'var(--color-danger)';
+        showToast('Failed to save: ' + e.message, 'error');
+    }
+}
+
 function mgmtShowModal(title, bodyHtml) {
     document.getElementById('mgmtDynamicModalTitle').textContent = title;
     document.getElementById('mgmtDynamicModalBody').innerHTML = bodyHtml;
