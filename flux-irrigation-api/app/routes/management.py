@@ -7,7 +7,7 @@ to monitor and control remote homeowner irrigation systems.
 
 import json
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 import httpx
 
@@ -1371,3 +1371,100 @@ async def discover_notify_services():
 
     services.sort(key=lambda s: s["name"])
     return {"services": services}
+
+
+# --- PDF Report Proxy Endpoint ---
+
+
+@router.get(
+    "/api/customers/{customer_id}/report/pdf",
+    summary="Generate customer system report PDF",
+)
+async def get_customer_report_pdf(
+    customer_id: str,
+    hours: int = Query(720, ge=1, le=8760),
+):
+    """Generate a comprehensive system report PDF for a customer.
+
+    Gathers data from the customer's homeowner API via proxy,
+    then builds the PDF locally using the shared report builder.
+    """
+    from fastapi.responses import Response as FastResponse
+    from datetime import datetime as dt
+    from routes.report_pdf import build_report
+
+    _require_management_mode()
+    customer = _get_customer_or_404(customer_id)
+    conn = _customer_connection(customer)
+
+    # Gather all data via proxy calls to the customer's homeowner API
+    _, status_data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/status"
+    )
+    if not isinstance(status_data, dict):
+        status_data = {}
+
+    _, zones_data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/zones"
+    )
+    if not isinstance(zones_data, list):
+        zones_data = []
+
+    _, aliases_data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/zone_aliases"
+    )
+    if not isinstance(aliases_data, dict):
+        aliases_data = {}
+
+    _, zone_heads_data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/zone_heads"
+    )
+    if not isinstance(zone_heads_data, dict):
+        zone_heads_data = {}
+
+    _, sensors_resp = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/sensors"
+    )
+    sensors_data = sensors_resp.get("sensors", []) if isinstance(sensors_resp, dict) else []
+
+    _, weather_data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/weather"
+    )
+    if not isinstance(weather_data, dict):
+        weather_data = {"weather_enabled": False}
+    else:
+        weather_data["weather_enabled"] = True
+
+    _, moisture_settings = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/moisture/settings"
+    )
+    moisture_data = moisture_settings if isinstance(moisture_settings, dict) else {"enabled": False}
+
+    _, issues_resp = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/issues"
+    )
+    issues_data = issues_resp if isinstance(issues_resp, list) else issues_resp.get("issues", []) if isinstance(issues_resp, dict) else []
+
+    _, history_data = await management_client.proxy_request(
+        conn, "GET", "/admin/api/homeowner/history/runs",
+        params={"hours": str(hours)},
+    )
+    if not isinstance(history_data, list):
+        history_data = history_data.get("events", []) if isinstance(history_data, dict) else []
+
+    # Build PDF using shared builder
+    pdf = build_report(
+        status_data, zones_data, aliases_data, zone_heads_data,
+        sensors_data, weather_data, moisture_data, issues_data,
+        history_data, hours
+    )
+
+    pdf_bytes = pdf.output()
+    timestamp = dt.now().strftime("%Y%m%d_%H%M")
+    return FastResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="flux_report_{customer_id}_{timestamp}.pdf"',
+        },
+    )

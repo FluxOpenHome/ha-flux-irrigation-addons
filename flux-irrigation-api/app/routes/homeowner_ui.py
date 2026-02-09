@@ -221,7 +221,15 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <div id="dashAddress" onclick="openAddressInMaps()" style="font-size:14px;color:var(--color-link);margin-top:4px;display:none;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" title="Open in Maps"></div>
             <div id="dashTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="reportHours" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;">
+                <option value="24">24 Hours</option>
+                <option value="168">7 Days</option>
+                <option value="720" selected>30 Days</option>
+                <option value="2160">90 Days</option>
+                <option value="8760">1 Year</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="generateReport()" title="Generate a PDF system report">PDF Report</button>
             <button class="btn btn-secondary btn-sm" onclick="cloneToDashboard()" title="Create a native HA dashboard from current config">Clone to HA Dashboard</button>
             <button class="btn btn-secondary btn-sm" onclick="refreshDashboard()">Refresh</button>
             <button class="btn btn-danger btn-sm" onclick="stopAllZones()">Emergency Stop All</button>
@@ -1024,6 +1032,11 @@ async function loadDashboard() {
 
 async function refreshDashboard() {
     loadDashboard();
+}
+
+function generateReport() {
+    var hours = document.getElementById('reportHours').value || '720';
+    window.open(HBASE + '/report/pdf?hours=' + hours + '&t=' + Date.now(), '_blank');
 }
 
 async function cloneToDashboard() {

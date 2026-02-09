@@ -22,7 +22,7 @@ import os
 
 from config import get_config, async_initialize
 from audit_log import cleanup_old_logs
-from routes import zones, sensors, entities, history, system, admin, management, homeowner, weather, moisture, issues, dashboard_clone
+from routes import zones, sensors, entities, history, system, admin, management, homeowner, weather, moisture, issues, dashboard_clone, report_pdf
 
 
 PROXY_SERVICE_NAMES = [
@@ -703,6 +703,7 @@ app.include_router(weather.router)
 app.include_router(moisture.router)
 app.include_router(issues.router)
 app.include_router(dashboard_clone.router)
+app.include_router(report_pdf.router)
 
 
 @app.get("/cal/{token}", include_in_schema=False)

@@ -393,7 +393,15 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                 <div id="detailPhone" style="font-size:13px;color:var(--text-muted);margin-top:2px;display:none;">&#128222; <a id="detailPhoneLink" href="" style="color:var(--color-link);text-decoration:none;"></a></div>
                 <div id="mgmtTimezone" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
             </div>
-            <div style="display:flex;gap:8px;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <select id="mgmtReportHours" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:12px;">
+                    <option value="24">24 Hours</option>
+                    <option value="168">7 Days</option>
+                    <option value="720" selected>30 Days</option>
+                    <option value="2160">90 Days</option>
+                    <option value="8760">1 Year</option>
+                </select>
+                <button class="btn btn-secondary btn-sm" onclick="mgmtGenerateReport()" title="Generate a PDF system report">PDF Report</button>
                 <button class="btn btn-secondary btn-sm" onclick="mgmtShowChangelog()" title="Change Log">&#128203; Log</button>
                 <button class="btn btn-secondary btn-sm" onclick="refreshDetail()">Refresh</button>
                 <button class="btn btn-danger btn-sm" onclick="stopAllZones()">Emergency Stop All</button>
@@ -1560,6 +1568,12 @@ function backToList() {
 
 async function refreshDetail() {
     if (currentCustomerId) loadDetailData(currentCustomerId);
+}
+
+function mgmtGenerateReport() {
+    if (!currentCustomerId) { showToast('Select a customer first', 'error'); return; }
+    var hours = document.getElementById('mgmtReportHours').value || '720';
+    window.open('/admin/api/customers/' + currentCustomerId + '/report/pdf?hours=' + hours + '&t=' + Date.now(), '_blank');
 }
 
 // --- Location Map ---
