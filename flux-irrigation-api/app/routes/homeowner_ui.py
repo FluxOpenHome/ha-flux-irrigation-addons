@@ -260,6 +260,25 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         </div>
     </div>
 
+    <!-- Estimated Gallons Card -->
+    <div class="card" id="estGallonsCard" style="display:none;">
+        <div class="card-header">
+            <h2>Estimated Gallons</h2>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <select id="gallonsRange" onchange="loadEstGallons()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;">
+                    <option value="24">Last 24 hours</option>
+                    <option value="168">Last 7 days</option>
+                    <option value="720">Last 30 days</option>
+                    <option value="2160">Last 90 days</option>
+                    <option value="8760">Last year</option>
+                </select>
+            </div>
+        </div>
+        <div class="card-body" id="estGallonsBody">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
     <!-- Rain Sensor Card -->
     <div class="card" id="rainSensorCard" style="display:none;">
         <div class="card-header">
@@ -999,6 +1018,7 @@ async function loadDashboard() {
     loadControls();
     if (!_initialLoadDone) _initialLoadDone = true;
     loadHistory();
+    loadEstGallons();
     loadActiveIssues();
 }
 
@@ -2074,8 +2094,14 @@ async function loadHistory() {
         // Determine if any event has probe (moisture) data — show column only if so
         const hasProbeData = events.some(e => e.moisture && e.moisture.moisture_multiplier != null);
 
+        // Determine if any event's zone has GPM data configured
+        const gpmMap = window._hoZoneGpmMap || {};
+        const hasGpmData = events.some(e => gpmMap[e.entity_id] > 0);
+
         el.innerHTML = weatherSummary +
-            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th><th style="padding:6px;">Moisture Factor</th>' +
+            '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th>' +
+            (hasGpmData ? '<th style="padding:6px;">GPM</th><th style="padding:6px;">Est. Gallons</th>' : '') +
+            '<th style="padding:6px;">Moisture Factor</th>' +
             '<th style="padding:6px;">Weather</th></tr></thead><tbody>' +
             events.slice(0, 100).map(e => {
                 const wx = e.weather || {};
@@ -2135,11 +2161,25 @@ async function loadHistory() {
                 } else {
                     stateCell = '<span style="color:var(--text-disabled);">OFF</span>';
                 }
+                // GPM and Estimated Gallons cells
+                let gpmCell = '-';
+                let estGalCell = '-';
+                if (hasGpmData) {
+                    const zGpm = gpmMap[e.entity_id];
+                    if (zGpm > 0) {
+                        gpmCell = zGpm.toFixed(1);
+                        if (e.duration_seconds > 0 && (e.state === 'on' || e.state === 'open')) {
+                            const gal = (e.duration_seconds / 60) * zGpm;
+                            estGalCell = '<span style="font-weight:600;">' + gal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</span>';
+                        }
+                    }
+                }
                 return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' ? 'opacity:0.7;' : ''}">
                 <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}${srcLabel}</td>
                 <td style="padding:6px;">${stateCell}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
+                ${hasGpmData ? '<td style="padding:6px;">' + gpmCell + '</td><td style="padding:6px;">' + estGalCell + '</td>' : ''}
                 <td style="padding:6px;font-size:12px;">${mFactorCell}</td>
                 <td style="padding:6px;font-size:12px;">${wxCell}</td>
             </tr>`;
@@ -2155,6 +2195,61 @@ function formatTime(ts) {
         const d = new Date(ts);
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch { return ts; }
+}
+
+// --- Estimated Gallons Card ---
+async function loadEstGallons() {
+    const card = document.getElementById('estGallonsCard');
+    const el = document.getElementById('estGallonsBody');
+    const gpmMap = window._hoZoneGpmMap || {};
+    // Hide card if no zones have GPM data
+    if (Object.keys(gpmMap).length === 0) { card.style.display = 'none'; return; }
+    try {
+        const hoursRaw = document.getElementById('gallonsRange') ? document.getElementById('gallonsRange').value : '24';
+        const hours = parseInt(hoursRaw, 10) || 24;
+        const data = await api('/history/runs?hours=' + hours);
+        const events = data.events || [];
+        // Filter to ON/open events with duration and GPM
+        const relevant = events.filter(e => (e.state === 'on' || e.state === 'open') && e.duration_seconds > 0 && gpmMap[e.entity_id]);
+        if (relevant.length === 0) {
+            card.style.display = '';
+            el.innerHTML = '<div class="empty-state"><p>No water usage data for the selected period</p></div>';
+            return;
+        }
+        // Aggregate per zone
+        const zoneGallons = {};
+        const zoneNames = {};
+        relevant.forEach(e => {
+            const gpm = gpmMap[e.entity_id] || 0;
+            const mins = e.duration_seconds / 60;
+            const gal = mins * gpm;
+            if (!zoneGallons[e.entity_id]) zoneGallons[e.entity_id] = 0;
+            zoneGallons[e.entity_id] += gal;
+            if (!zoneNames[e.entity_id]) zoneNames[e.entity_id] = resolveZoneName(e.entity_id, e.zone_name);
+        });
+        const totalGal = Object.values(zoneGallons).reduce((a, b) => a + b, 0);
+        // Sort zones by gallons desc
+        const sorted = Object.keys(zoneGallons).sort((a, b) => zoneGallons[b] - zoneGallons[a]);
+        let html = '<div style="text-align:center;margin-bottom:12px;">' +
+            '<div style="font-size:32px;font-weight:700;color:var(--text-primary);">' + totalGal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</div>' +
+            '<div style="font-size:13px;color:var(--text-muted);">estimated gallons</div>' +
+            '</div>';
+        html += '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
+            '<thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:4px 6px;">Zone</th><th style="padding:4px 6px;text-align:right;">Gallons</th><th style="padding:4px 6px;text-align:right;">GPM</th></tr></thead><tbody>';
+        sorted.forEach(eid => {
+            html += '<tr style="border-bottom:1px solid var(--border-row);">' +
+                '<td style="padding:4px 6px;">' + esc(zoneNames[eid]) + '</td>' +
+                '<td style="padding:4px 6px;text-align:right;font-weight:600;">' + zoneGallons[eid].toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</td>' +
+                '<td style="padding:4px 6px;text-align:right;color:var(--text-muted);">' + (gpmMap[eid] || 0).toFixed(1) + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        card.style.display = '';
+        el.innerHTML = html;
+    } catch (e) {
+        card.style.display = '';
+        el.innerHTML = '<div style="color:var(--color-danger);">Failed to load water usage: ' + esc(e.message) + '</div>';
+    }
 }
 
 // --- Weather ---
