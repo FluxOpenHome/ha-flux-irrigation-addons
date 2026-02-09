@@ -1016,11 +1016,12 @@ async function loadStatus() {
         }
 
         const wf = s.combined_multiplier != null ? s.combined_multiplier : 1.0;
-        const wfColor = wf === 1.0 ? 'var(--color-success)' : wf < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+        const wfColor = wf === 0 ? 'var(--color-danger)' : wf === 1.0 ? 'var(--color-success)' : wf < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
+        const wfLabel = wf === 0 ? 'Skip Watering' : wf + 'x';
         const wm = s.weather_multiplier != null ? s.weather_multiplier : 1.0;
         const mmult = s.moisture_multiplier != null ? s.moisture_multiplier : 1.0;
         const moistureActive = s.moisture_enabled && s.moisture_probe_count > 0;
-        const factorBreakdown = moistureActive ? 'W: ' + wm + 'x · M: ' + mmult + 'x' : 'W: ' + wm + 'x';
+        const factorBreakdown = wf === 0 ? 'Soil moisture exceeds skip threshold' : (moistureActive ? 'W: ' + wm + 'x · M: ' + mmult + 'x' : 'W: ' + wm + 'x');
 
         el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
@@ -1028,7 +1029,7 @@ async function loadStatus() {
             <div class="tile"><div class="tile-name">System</div><div class="tile-state ${s.system_paused ? '' : 'on'}">${s.system_paused ? 'Paused' : 'Active'}</div></div>
             <div class="tile"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
             <div class="tile"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
-            <div class="tile"><div class="tile-name">Watering Factor</div><div class="tile-state" style="color:${wfColor};font-weight:700;">${wf}x</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${factorBreakdown}</div></div>
+            <div class="tile"><div class="tile-name">Watering Factor</div><div class="tile-state" style="color:${wfColor};font-weight:700;">${wfLabel}</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${factorBreakdown}</div></div>
             ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
         </div>`;
     } catch (e) {
@@ -1662,7 +1663,9 @@ function renderScheduleCard(sched, durData, multData) {
     // --- Apply Factors Toggle (rendered inline from durData, no separate API call) ---
     const afOn = durData && durData.duration_adjustment_active;
     var factorSummary = 'Automatically adjust run durations by the combined watering factor';
-    if (liveCombinedMult !== 1.0 || liveWeatherMult !== 1.0 || liveMoistureMult !== 1.0) {
+    if (liveCombinedMult === 0) {
+        factorSummary = 'Skip Watering — soil moisture exceeds skip threshold';
+    } else if (liveCombinedMult !== 1.0 || liveWeatherMult !== 1.0 || liveMoistureMult !== 1.0) {
         factorSummary = 'Current factor: ' + liveCombinedMult.toFixed(2) + 'x';
         if (liveMoistureMult !== 1.0 && liveWeatherMult !== 1.0) {
             factorSummary += ' (W:' + liveWeatherMult.toFixed(2) + ' × M:' + liveMoistureMult.toFixed(2) + ')';
@@ -1807,11 +1810,19 @@ function renderScheduleCard(sched, durData, multData) {
                 const baseVal = adj ? String(adj.original) : duration.state;
                 // Compute projected adjusted duration using live multiplier (shown even when factors not applied)
                 var factorBadge = '';
-                if (adj) {
+                if (adj && adj.skip) {
+                    // Factors applied and skip triggered — show skip badge
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-danger-light);color:var(--color-danger);">Skip Watering</span>';
+                } else if (adj) {
                     // Factors are actively applied — show applied adjusted value
                     factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                         'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
                         adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)</span>';
+                } else if (liveCombinedMult === 0) {
+                    // Factors not applied but skip would trigger — show skip preview
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-tile);color:var(--color-danger);opacity:0.8;" title="Watering would be skipped if Apply Factors is enabled">Skip Watering</span>';
                 } else if (Math.abs(liveCombinedMult - 1.0) >= 0.005) {
                     // Factors not applied but multiplier differs from 1.0 — show preview
                     var curVal = parseFloat(duration.state) || 0;
@@ -2541,9 +2552,9 @@ async function loadMoisture() {
 
         // Update moisture multiplier badge
         const mm = multData.moisture_multiplier != null ? multData.moisture_multiplier : 1.0;
-        multBadge.textContent = mm + 'x';
-        multBadge.style.background = mm === 1.0 ? 'var(--bg-success-light)' : mm < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
-        multBadge.style.color = mm === 1.0 ? 'var(--text-success-dark)' : mm < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+        multBadge.textContent = mm === 0 ? 'Skip' : mm + 'x';
+        multBadge.style.background = mm === 0 ? 'var(--bg-danger-light)' : mm === 1.0 ? 'var(--bg-success-light)' : mm < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
+        multBadge.style.color = mm === 0 ? 'var(--color-danger)' : mm === 1.0 ? 'var(--text-success-dark)' : mm < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
         multBadge.style.display = settings.enabled ? '' : 'none';
 
         let html = '';

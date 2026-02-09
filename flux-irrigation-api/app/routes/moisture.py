@@ -817,6 +817,9 @@ def get_weather_multiplier() -> float:
 async def get_combined_multiplier(zone_entity_id: str) -> dict:
     """Get the combined weather × moisture multiplier for a zone.
 
+    Uses the system-wide overall moisture multiplier so the value is
+    consistent with the status tile and schedule card display.
+
     Returns:
         {
             "combined_multiplier": float,
@@ -839,13 +842,9 @@ async def get_combined_multiplier(zone_entity_id: str) -> dict:
             "moisture_reason": "Moisture probes not enabled",
         }
 
-    sensor_states = await _get_probe_sensor_states(data.get("probes", {}))
-    moisture_result = calculate_zone_moisture_multiplier(
-        zone_entity_id, data, sensor_states,
-    )
-
-    moisture_mult = moisture_result["multiplier"]
-    skip = moisture_result["skip"]
+    overall = await calculate_overall_moisture_multiplier()
+    moisture_mult = overall.get("moisture_multiplier", 1.0)
+    skip = moisture_mult == 0
 
     combined = weather_mult * moisture_mult if not skip else 0.0
 
@@ -854,7 +853,7 @@ async def get_combined_multiplier(zone_entity_id: str) -> dict:
         "weather_multiplier": weather_mult,
         "moisture_multiplier": moisture_mult,
         "moisture_skip": skip,
-        "moisture_reason": moisture_result["reason"],
+        "moisture_reason": overall.get("reason", ""),
     }
 
 
@@ -995,50 +994,26 @@ async def apply_adjusted_durations() -> dict:
     sensor_states = await _get_probe_sensor_states(data.get("probes", {}))
     weather_mult = get_weather_multiplier()
 
+    # Use a single system-wide moisture multiplier so the value matches the
+    # status tile and is consistent across all zones.
+    overall_result = await calculate_overall_moisture_multiplier()
+    overall_moisture_mult = overall_result.get("moisture_multiplier", 1.0)
+    overall_skip = overall_moisture_mult == 0
+
     adjusted = {}
     applied_count = 0
     failed = []
 
     print(f"[MOISTURE] Applying factors: {len(base_durations)} duration entities, "
-          f"weather_mult={weather_mult}")
-
-    # Build reverse mapping: duration_entity_id → zone_entity_id (for moisture lookup)
-    # Match by zone number: extract "zone_N" from both and pair them
-    import re
-    def _extract_zone_num(eid: str):
-        m = re.search(r"zone[_\s]?(\d+)", eid, re.IGNORECASE)
-        return m.group(1) if m else None
-
-    dur_to_zone = {}
-    zone_by_num = {}
-    for zone_eid in config.allowed_zone_entities:
-        zn = _extract_zone_num(zone_eid)
-        if zn:
-            zone_by_num[zn] = zone_eid
-
-    for dur_eid in base_durations:
-        zn = _extract_zone_num(dur_eid)
-        if zn and zn in zone_by_num:
-            dur_to_zone[dur_eid] = zone_by_num[zn]
+          f"weather_mult={weather_mult}, moisture_mult={overall_moisture_mult}")
 
     for dur_eid, dur_data in base_durations.items():
         base = dur_data["base_value"]
-
-        # Get moisture multiplier for the corresponding zone (defaults to 1.0 if no match)
-        zone_eid = dur_to_zone.get(dur_eid)
-        moisture_result = None
-        if zone_eid:
-            moisture_result = calculate_zone_moisture_multiplier(
-                zone_eid, data, sensor_states,
-            )
-            moisture_mult = moisture_result["multiplier"]
-            skip = moisture_result["skip"]
-        else:
-            moisture_mult = 1.0
-            skip = False
+        moisture_mult = overall_moisture_mult
+        skip = overall_skip
 
         if skip:
-            adjusted_value = 1.0
+            adjusted_value = 0.0
         else:
             combined = weather_mult * moisture_mult
             adjusted_value = float(max(1, round(base * combined)))
@@ -1063,18 +1038,10 @@ async def apply_adjusted_durations() -> dict:
                 "skip": skip,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             }
-            # Capture probe sensor readings for run history context
-            if moisture_result and moisture_result.get("probe_details"):
-                pd = moisture_result["probe_details"][0]  # Primary probe
-                readings = pd.get("depth_readings", {})
-                sensor_context = {}
-                for depth_key, depth_label in [("shallow", "T"), ("mid", "M"), ("deep", "B")]:
-                    dr = readings.get(depth_key, {})
-                    if dr.get("value") is not None and not dr.get("stale"):
-                        sensor_context[depth_label] = round(dr["value"], 1)
-                adj_entry["sensor_readings"] = sensor_context
-                adj_entry["profile"] = pd.get("profile", "unknown")
-                adj_entry["reason"] = moisture_result.get("reason", "")
+            # Capture overall probe context for run history
+            if overall_result.get("avg_moisture") is not None:
+                adj_entry["profile"] = overall_result.get("profile", "unknown")
+                adj_entry["reason"] = overall_result.get("reason", "")
             adjusted[dur_eid] = adj_entry
         else:
             failed.append(dur_eid)
