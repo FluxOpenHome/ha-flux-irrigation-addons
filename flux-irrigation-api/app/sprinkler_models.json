@@ -1,0 +1,471 @@
+[
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "pop_up_spray",
+    "model": "1800 Series",
+    "gpm": 1.5,
+    "note": "Adjustable nozzle"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "pop_up_spray",
+    "model": "1804 (4\")",
+    "gpm": 1.5,
+    "note": "4-inch pop-up"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "pop_up_spray",
+    "model": "1806 (6\")",
+    "gpm": 1.5,
+    "note": "6-inch pop-up"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "pop_up_spray",
+    "model": "1812 (12\")",
+    "gpm": 1.5,
+    "note": "12-inch pop-up"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "pop_up_spray",
+    "model": "U-Series (UNI-Spray)",
+    "gpm": 1.5,
+    "note": "Universal body"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "rotary_nozzle",
+    "model": "R-VAN14",
+    "gpm": 0.47,
+    "note": "8-14 ft adj arc"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "rotary_nozzle",
+    "model": "R-VAN18",
+    "gpm": 0.65,
+    "note": "13-18 ft adj arc"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "rotary_nozzle",
+    "model": "R-VAN24",
+    "gpm": 0.84,
+    "note": "17-24 ft adj arc"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "gear_rotor",
+    "model": "3500 Series",
+    "gpm": 1.2,
+    "note": "25-35 ft mid-range"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "gear_rotor",
+    "model": "5000 Series",
+    "gpm": 2.0,
+    "note": "25-50 ft full-size"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "gear_rotor",
+    "model": "5000 Plus",
+    "gpm": 2.2,
+    "note": "25-50 ft, Rain Curtain"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "gear_rotor",
+    "model": "5004-PC",
+    "gpm": 2.0,
+    "note": "25-50 ft, seal-a-matic"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "gear_rotor",
+    "model": "42SA+ / Falcon",
+    "gpm": 3.5,
+    "note": "40-62 ft"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "gear_rotor",
+    "model": "8005 Series",
+    "gpm": 4.5,
+    "note": "38-71 ft commercial"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "impact_rotor",
+    "model": "25PJDA-C",
+    "gpm": 3.0,
+    "note": "Brass impact 36-65 ft"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "impact_rotor",
+    "model": "L-Series Brass",
+    "gpm": 5.0,
+    "note": "Large area brass impact"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "drip_emitter",
+    "model": "XB-10PC",
+    "gpm": 0.017,
+    "note": "1 GPH emitter"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "drip_emitter",
+    "model": "XB-20PC",
+    "gpm": 0.033,
+    "note": "2 GPH emitter"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "drip_line",
+    "model": "XFD (dripline)",
+    "gpm": 0.6,
+    "note": "Per 100ft at 12\" spacing"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "strip_spray",
+    "model": "HE-VAN Strip",
+    "gpm": 0.62,
+    "note": "High-eff strip nozzle"
+  },
+  {
+    "brand": "Rain Bird",
+    "nozzle_type": "bubbler",
+    "model": "1400 Series",
+    "gpm": 0.13,
+    "note": "Adjustable stream bubbler"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "pop_up_spray",
+    "model": "Pro-Spray (PS-04)",
+    "gpm": 1.5,
+    "note": "4-inch pop-up body"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "pop_up_spray",
+    "model": "Pro-Spray (PS-06)",
+    "gpm": 1.5,
+    "note": "6-inch pop-up body"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "pop_up_spray",
+    "model": "Pro-Spray (PS-12)",
+    "gpm": 1.5,
+    "note": "12-inch pop-up body"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "pop_up_spray",
+    "model": "Pro-Spray PRS40",
+    "gpm": 1.5,
+    "note": "Built-in pressure reg"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "rotary_nozzle",
+    "model": "MP Rotator 1000",
+    "gpm": 0.26,
+    "note": "8-15 ft"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "rotary_nozzle",
+    "model": "MP Rotator 2000",
+    "gpm": 0.44,
+    "note": "13-21 ft"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "rotary_nozzle",
+    "model": "MP Rotator 3000",
+    "gpm": 0.67,
+    "note": "22-30 ft"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "rotary_nozzle",
+    "model": "MP Rotator 3500",
+    "gpm": 0.79,
+    "note": "31-35 ft"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "rotary_nozzle",
+    "model": "MP Rotator 800SR",
+    "gpm": 0.16,
+    "note": "6-12 ft short radius"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "rotary_nozzle",
+    "model": "MP Rotator Strip",
+    "gpm": 0.4,
+    "note": "5x15 and 5x30 ft strips"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "gear_rotor",
+    "model": "PGP-ADJ",
+    "gpm": 2.3,
+    "note": "22-52 ft classic rotor"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "gear_rotor",
+    "model": "PGP Ultra",
+    "gpm": 2.5,
+    "note": "22-52 ft updated PGP"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "gear_rotor",
+    "model": "PGJ",
+    "gpm": 1.3,
+    "note": "16-26 ft mid-range"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "gear_rotor",
+    "model": "I-20",
+    "gpm": 3.0,
+    "note": "25-46 ft commercial"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "gear_rotor",
+    "model": "I-25",
+    "gpm": 4.0,
+    "note": "34-71 ft large rotor"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "gear_rotor",
+    "model": "I-40",
+    "gpm": 4.5,
+    "note": "40-72 ft commercial"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "drip_emitter",
+    "model": "PCT-05",
+    "gpm": 0.008,
+    "note": "0.5 GPH emitter"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "drip_emitter",
+    "model": "PCT-10",
+    "gpm": 0.017,
+    "note": "1.0 GPH emitter"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "drip_emitter",
+    "model": "PCT-20",
+    "gpm": 0.033,
+    "note": "2.0 GPH emitter"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "drip_line",
+    "model": "HDL (dripline)",
+    "gpm": 0.5,
+    "note": "Per 100ft at 12\" spacing"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "bubbler",
+    "model": "PCB Series",
+    "gpm": 0.1,
+    "note": "Adjustable bubbler"
+  },
+  {
+    "brand": "Hunter",
+    "nozzle_type": "micro_spray",
+    "model": "MSBN / MSFN Series",
+    "gpm": 0.25,
+    "note": "Micro-spray nozzle"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "pop_up_spray",
+    "model": "570Z Pro (4\")",
+    "gpm": 1.5,
+    "note": "4-inch pop-up"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "pop_up_spray",
+    "model": "570Z Pro (6\")",
+    "gpm": 1.5,
+    "note": "6-inch pop-up"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "pop_up_spray",
+    "model": "LPS400 (Precision)",
+    "gpm": 1.5,
+    "note": "Low-pressure spray"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "rotary_nozzle",
+    "model": "Precision Rotating",
+    "gpm": 0.5,
+    "note": "Multi-stream rotating"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "gear_rotor",
+    "model": "T5 RapidSet",
+    "gpm": 1.8,
+    "note": "25-46 ft mid-size"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "gear_rotor",
+    "model": "TR70 (Super 700)",
+    "gpm": 3.5,
+    "note": "34-63 ft commercial"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "gear_rotor",
+    "model": "TR70XT",
+    "gpm": 4.0,
+    "note": "38-72 ft extended"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "gear_rotor",
+    "model": "T7 (Flex700)",
+    "gpm": 3.0,
+    "note": "25-55 ft, FlexTech"
+  },
+  {
+    "brand": "Toro",
+    "nozzle_type": "drip_line",
+    "model": "DL2000 (dripline)",
+    "gpm": 0.55,
+    "note": "Per 100ft at 12\" spacing"
+  },
+  {
+    "brand": "K-Rain",
+    "nozzle_type": "pop_up_spray",
+    "model": "K1 SmartSpray",
+    "gpm": 1.5,
+    "note": "4-inch pop-up"
+  },
+  {
+    "brand": "K-Rain",
+    "nozzle_type": "gear_rotor",
+    "model": "RPS75i",
+    "gpm": 2.1,
+    "note": "24-46 ft adj rotor"
+  },
+  {
+    "brand": "K-Rain",
+    "nozzle_type": "gear_rotor",
+    "model": "ProPlus",
+    "gpm": 2.5,
+    "note": "25-50 ft full rotor"
+  },
+  {
+    "brand": "K-Rain",
+    "nozzle_type": "gear_rotor",
+    "model": "SuperPro",
+    "gpm": 1.5,
+    "note": "20-38 ft mid-range"
+  },
+  {
+    "brand": "Irritrol",
+    "nozzle_type": "pop_up_spray",
+    "model": "I-PRO 400",
+    "gpm": 1.5,
+    "note": "4-inch pop-up"
+  },
+  {
+    "brand": "Irritrol",
+    "nozzle_type": "gear_rotor",
+    "model": "550R",
+    "gpm": 2.0,
+    "note": "25-49 ft adj rotor"
+  },
+  {
+    "brand": "Irritrol",
+    "nozzle_type": "gear_rotor",
+    "model": "430R",
+    "gpm": 1.5,
+    "note": "20-40 ft compact rotor"
+  },
+  {
+    "brand": "Orbit",
+    "nozzle_type": "pop_up_spray",
+    "model": "54183 Professional",
+    "gpm": 1.5,
+    "note": "4-inch pop-up"
+  },
+  {
+    "brand": "Orbit",
+    "nozzle_type": "gear_rotor",
+    "model": "55662 Voyager II",
+    "gpm": 2.0,
+    "note": "25-52 ft adj rotor"
+  },
+  {
+    "brand": "Orbit",
+    "nozzle_type": "gear_rotor",
+    "model": "55660 Saturn III",
+    "gpm": 2.5,
+    "note": "25-45 ft gear rotor"
+  },
+  {
+    "brand": "Nelson",
+    "nozzle_type": "gear_rotor",
+    "model": "8200 Series",
+    "gpm": 2.5,
+    "note": "25-45 ft adj rotor"
+  },
+  {
+    "brand": "Nelson",
+    "nozzle_type": "impact_rotor",
+    "model": "8200 Big Gun",
+    "gpm": 12.0,
+    "note": "Large-area impact"
+  },
+  {
+    "brand": "Weathermatic",
+    "nozzle_type": "pop_up_spray",
+    "model": "LX Series",
+    "gpm": 1.5,
+    "note": "4-inch pop-up"
+  },
+  {
+    "brand": "Weathermatic",
+    "nozzle_type": "gear_rotor",
+    "model": "T3 Turbo",
+    "gpm": 2.0,
+    "note": "25-50 ft adj rotor"
+  },
+  {
+    "brand": "Weathermatic",
+    "nozzle_type": "gear_rotor",
+    "model": "TurboMax",
+    "gpm": 3.5,
+    "note": "35-65 ft commercial"
+  }
+]

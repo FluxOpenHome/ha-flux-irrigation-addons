@@ -90,6 +90,8 @@ class UpdateAliasesRequest(BaseModel):
 class SaveZoneHeadsRequest(BaseModel):
     heads: list = Field(default_factory=list, description="List of head detail objects")
     notes: str = Field("", max_length=2000, description="General zone notes")
+    show_gpm_on_card: bool = Field(False, description="Show total GPM on zone card")
+    show_head_count_on_card: bool = Field(False, description="Show head count on zone card")
 
 
 # --- Helper functions ---
@@ -889,7 +891,10 @@ async def homeowner_save_zone_heads(entity_id: str, body: SaveZoneHeadsRequest, 
         if not head.get("nozzle_type"):
             raise HTTPException(status_code=400, detail=f"Head {i + 1} is missing nozzle type")
 
-    result = zone_nozzle_data.save_zone_heads(entity_id, body.heads, body.notes)
+    result = zone_nozzle_data.save_zone_heads(
+        entity_id, body.heads, body.notes,
+        body.show_gpm_on_card, body.show_head_count_on_card
+    )
 
     log_change(get_actor(request), "Zone Details",
                f"Updated head details for {entity_id.split('.', 1)[-1].replace('_', ' ').title()} ({len(body.heads)} head(s))",

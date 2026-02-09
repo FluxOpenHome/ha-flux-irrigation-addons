@@ -5,6 +5,10 @@ Manages per-zone sprinkler head inventory for professional documentation.
 Each zone can store multiple heads with type, GPM, spray arc, radius, etc.
 
 Persists data in /data/zone_nozzle_details.json.
+
+The sprinkler model database is loaded from sprinkler_models.json in the
+app directory.  To add models, simply edit that JSON file — no Python
+changes required.
 """
 
 import json
@@ -12,6 +16,7 @@ import os
 import uuid
 
 ZONE_NOZZLE_FILE = "/data/zone_nozzle_details.json"
+_MODELS_FILE = os.path.join(os.path.dirname(__file__), "sprinkler_models.json")
 
 # -------------------------------------------------------------------
 # Reference data – professional sprinkler head types & specifications
@@ -244,6 +249,8 @@ def get_zone_heads(entity_id: str) -> dict:
         "heads": zone_data.get("heads", []),
         "notes": zone_data.get("notes", ""),
         "total_gpm": sum(h.get("gpm", 0) for h in zone_data.get("heads", [])),
+        "show_gpm_on_card": zone_data.get("show_gpm_on_card", False),
+        "show_head_count_on_card": zone_data.get("show_head_count_on_card", False),
     }
 
 
@@ -256,11 +263,15 @@ def get_all_zones_heads() -> dict:
             "heads": zone_data.get("heads", []),
             "notes": zone_data.get("notes", ""),
             "total_gpm": sum(h.get("gpm", 0) for h in zone_data.get("heads", [])),
+            "show_gpm_on_card": zone_data.get("show_gpm_on_card", False),
+            "show_head_count_on_card": zone_data.get("show_head_count_on_card", False),
         }
     return result
 
 
-def save_zone_heads(entity_id: str, heads: list, notes: str = "") -> dict:
+def save_zone_heads(entity_id: str, heads: list, notes: str = "",
+                    show_gpm_on_card: bool = False,
+                    show_head_count_on_card: bool = False) -> dict:
     """Save complete head list for a zone. Replaces all heads."""
     data = _load_data()
     if "zones" not in data:
@@ -274,6 +285,8 @@ def save_zone_heads(entity_id: str, heads: list, notes: str = "") -> dict:
     data["zones"][entity_id] = {
         "heads": heads,
         "notes": notes,
+        "show_gpm_on_card": show_gpm_on_card,
+        "show_head_count_on_card": show_head_count_on_card,
     }
     _save_data(data)
     return get_zone_heads(entity_id)
@@ -289,10 +302,26 @@ def delete_zone_heads(entity_id: str) -> bool:
     return False
 
 
+def _load_models() -> list:
+    """Load sprinkler model database from JSON file.
+
+    The file lives alongside this module (sprinkler_models.json) so that
+    adding new models only requires editing a simple JSON array.
+    """
+    if os.path.exists(_MODELS_FILE):
+        try:
+            with open(_MODELS_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return []
+
+
 def get_reference_data() -> dict:
     """Return nozzle type reference data for the UI."""
     return {
         "nozzle_types": NOZZLE_TYPES,
         "brands": BRANDS,
         "standard_arcs": STANDARD_ARCS,
+        "models": _load_models(),
     }

@@ -2840,6 +2840,20 @@ function resolveZoneName(entityId, fallbackName) {
 async function loadDetailZones(id) {
     const el = document.getElementById('detailZones');
     try {
+        // Fetch zone head GPM data in parallel with zones
+        try {
+            var allHeads = await api('/customers/' + id + '/zone_heads');
+            window._mgmtZoneGpmMap = {};
+            window._mgmtZoneGpmShow = {};
+            window._mgmtZoneHeadCountShow = {};
+            window._mgmtZoneHeadCount = {};
+            for (var eid in allHeads) {
+                if (allHeads[eid].total_gpm > 0) window._mgmtZoneGpmMap[eid] = allHeads[eid].total_gpm;
+                if (allHeads[eid].show_gpm_on_card) window._mgmtZoneGpmShow[eid] = true;
+                if (allHeads[eid].show_head_count_on_card) window._mgmtZoneHeadCountShow[eid] = true;
+                if (allHeads[eid].heads && allHeads[eid].heads.length > 0) window._mgmtZoneHeadCount[eid] = allHeads[eid].heads.length;
+            }
+        } catch(e) { window._mgmtZoneGpmMap = {}; window._mgmtZoneGpmShow = {}; window._mgmtZoneHeadCountShow = {}; window._mgmtZoneHeadCount = {}; }
         const data = await api('/customers/' + id + '/zones');
         // /api/zones returns a bare list [...], not {zones: [...]}
         let zones = Array.isArray(data) ? data : (data.zones || []);
@@ -2872,12 +2886,22 @@ async function loadDetailZones(id) {
             <div class="tile ${isOn ? 'active' : ''}">
                 <div class="tile-name">
                     ${esc(displayName)}
-                    <span style="cursor:pointer;font-size:11px;color:var(--color-primary);margin-left:6px;"
+                    <span style="cursor:pointer;font-size:15px;color:var(--color-primary);margin-left:6px;"
                           onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
-                    <span style="cursor:pointer;font-size:10px;color:var(--color-info,#2196F3);margin-left:4px;"
+                    <span style="cursor:pointer;font-size:14px;color:var(--color-info,#2196F3);margin-left:4px;"
                           onclick="event.stopPropagation();mgmtShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
+                ${(function() {
+                    var cardInfo = '';
+                    if (window._mgmtZoneGpmShow && window._mgmtZoneGpmShow[z.entity_id] && window._mgmtZoneGpmMap && window._mgmtZoneGpmMap[z.entity_id]) {
+                        cardInfo += '<div style="margin-top:2px;text-align:center;"><span style="font-size:22px;font-weight:700;color:var(--text-primary);">' + window._mgmtZoneGpmMap[z.entity_id].toFixed(1) + '</span><span style="font-size:11px;color:var(--text-secondary);margin-left:2px;">GPM</span></div>';
+                    }
+                    if (window._mgmtZoneHeadCountShow && window._mgmtZoneHeadCountShow[z.entity_id] && window._mgmtZoneHeadCount && window._mgmtZoneHeadCount[z.entity_id]) {
+                        cardInfo += '<div style="margin-top:1px;text-align:center;"><span style="font-size:18px;font-weight:700;color:var(--text-primary);">' + window._mgmtZoneHeadCount[z.entity_id] + '</span><span style="font-size:11px;color:var(--text-secondary);margin-left:2px;">' + (window._mgmtZoneHeadCount[z.entity_id] === 1 ? 'head' : 'heads') + '</span></div>';
+                    }
+                    return cardInfo;
+                })()}
                 <div class="tile-actions" style="flex-wrap:wrap;">
                     ${isOn
                         ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + id + '\\',\\'' + zId + '\\')">Stop</button>'
@@ -4419,7 +4443,7 @@ const HELP_CONTENT = `
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">🔩 Zone Head Details</h4>
 <p style="margin-bottom:10px;">Click the <strong>ℹ</strong> icon on any zone tile to open the Zone Details modal. This lets you document every sprinkler head in the zone for professional service records:</p>
-<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Number of Heads</strong> — Set how many sprinkler heads are in the zone, then click Update Table to build the inventory</li><li style="margin-bottom:4px;"><strong>Head Type</strong> — Pop-up spray, rotary nozzle, gear rotor, impact rotor, micro-spray, bubbler, drip emitter, drip line, fixed spray, or strip nozzle</li><li style="margin-bottom:4px;"><strong>Brand & Model</strong> — Manufacturer (Rain Bird, Hunter, Toro, etc.) and model number</li><li style="margin-bottom:4px;"><strong>Mount Type</strong> — Pop-up, stationary, riser, shrub, or on-grade</li><li style="margin-bottom:4px;"><strong>GPM</strong> — Flow rate in gallons per minute for each head. The total zone flow is calculated automatically.</li><li style="margin-bottom:4px;"><strong>Arc & Radius</strong> — Spray arc in degrees and throw radius in feet</li><li style="margin-bottom:4px;"><strong>Pop-Up Height</strong> — Riser height (2", 3", 4", 6", or 12")</li><li style="margin-bottom:4px;"><strong>PSI & Notes</strong> — Operating pressure and any location/condition notes</li></ul>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Number of Heads</strong> — Set how many sprinkler heads are in the zone, then click Update Table to build the inventory</li><li style="margin-bottom:4px;"><strong>Head Type</strong> — Pop-up spray, rotary nozzle, gear rotor, impact rotor, micro-spray, bubbler, drip emitter, drip line, fixed spray, or strip nozzle</li><li style="margin-bottom:4px;"><strong>Brand & Model</strong> — Select a manufacturer, then pick a model from the filtered picklist. Known models auto-fill the GPM field. Choose "Custom..." to type any model not in the list. The model database is stored in <code>sprinkler_models.json</code> and can be easily extended.</li><li style="margin-bottom:4px;"><strong>Mount Type</strong> — Pop-up, stationary, riser, shrub, or on-grade</li><li style="margin-bottom:4px;"><strong>GPM</strong> — Flow rate in gallons per minute. Auto-populated when you select a known model, or type your own value. The total zone flow is calculated automatically and displayed on the zone card.</li><li style="margin-bottom:4px;"><strong>Arc & Radius</strong> — Spray arc in degrees and throw radius in feet</li><li style="margin-bottom:4px;"><strong>Pop-Up Height</strong> — Riser height (2", 3", 4", 6", or 12")</li><li style="margin-bottom:4px;"><strong>PSI & Notes</strong> — Operating pressure and any location/condition notes</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 This data is stored on the homeowner's system and shared with your management dashboard. Give each head a name/location (e.g. "Front left corner") so technicians can easily find them on the property.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Schedule Management</h4>
@@ -4636,7 +4660,7 @@ async function mgmtShowZoneDetailsModal(entityId, displayName) {
     if (!custId) { showToast('Select a customer first', 'error'); return; }
     // Load reference data if not cached
     if (!_mgmtNozzleRef) {
-        try { _mgmtNozzleRef = await api('/customers/' + custId + '/zone_heads/reference'); } catch(e) { _mgmtNozzleRef = {nozzle_types:[],brands:[],standard_arcs:[]}; }
+        try { _mgmtNozzleRef = await api('/customers/' + custId + '/zone_heads/reference'); } catch(e) { _mgmtNozzleRef = {nozzle_types:[],brands:[],standard_arcs:[],models:[]}; }
     }
     // Load existing zone head data
     var zoneData = {heads:[], notes:''};
@@ -4657,6 +4681,11 @@ async function mgmtShowZoneDetailsModal(entityId, displayName) {
     body += '<div style="margin-top:10px;">';
     body += '<label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">Zone Notes:</label>';
     body += '<textarea id="mgmtZoneNotes" rows="2" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;resize:vertical;background:var(--bg-input,#fff);color:var(--text-primary);">' + esc(zoneData.notes || '') + '</textarea>';
+    body += '</div>';
+
+    body += '<div style="margin-top:10px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">';
+    body += '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;"><input type="checkbox" id="mgmtShowGpmOnCard"' + (zoneData.show_gpm_on_card ? ' checked' : '') + '> Show GPM on zone card</label>';
+    body += '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;"><input type="checkbox" id="mgmtShowHeadCountOnCard"' + (zoneData.show_head_count_on_card ? ' checked' : '') + '> Show head count on zone card</label>';
     body += '</div>';
 
     body += '<div style="margin-top:10px;display:flex;gap:8px;">';
@@ -4701,7 +4730,7 @@ function mgmtRenderHeadTable(heads) {
         return;
     }
     document.getElementById('mgmtHeadCount').value = String(heads.length);
-    var ref = _mgmtNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[]};
+    var ref = _mgmtNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
 
     var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
     html += '<thead><tr style="background:var(--bg-hover,#f5f5f5);">';
@@ -4742,7 +4771,26 @@ function mgmtRenderHeadTable(heads) {
         }
         html += '</select></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="model" data-row="' + i + '" value="' + esc(h.model || '') + '" placeholder="e.g. 5004" style="width:100%;min-width:60px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+        // Model (picklist filtered by brand+type, with Custom option)
+        html += '<td style="padding:2px;border:1px solid var(--border-light);">';
+        html += '<select data-field="model_select" data-row="' + i + '" style="width:100%;min-width:100px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<option value="">—</option>';
+        var selBrand = h.brand || '';
+        var selType = h.nozzle_type || '';
+        var models = (ref.models || []).filter(function(md) {
+            return (!selBrand || md.brand === selBrand) && (!selType || md.nozzle_type === selType);
+        });
+        var foundModel = false;
+        for (var mi = 0; mi < models.length; mi++) {
+            var isSel = (h.model === models[mi].model);
+            if (isSel) foundModel = true;
+            html += '<option value="' + esc(models[mi].model) + '" data-gpm="' + (models[mi].gpm || '') + '"' + (isSel ? ' selected' : '') + '>' + esc(models[mi].model) + '</option>';
+        }
+        html += '<option value="__custom__"' + (h.model && !foundModel && h.model !== '' ? ' selected' : '') + '>Custom...</option>';
+        html += '</select>';
+        var showCustom = (h.model && !foundModel && h.model !== '') ? '' : 'display:none;';
+        html += '<input type="text" data-field="model_custom" data-row="' + i + '" value="' + esc((!foundModel ? h.model : '') || '') + '" placeholder="Type model" style="' + showCustom + 'width:100%;margin-top:2px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '</td>';
 
         html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="mount" data-row="' + i + '" style="width:100%;min-width:65px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
         html += '<option value="">—</option>';
@@ -4783,6 +4831,61 @@ function mgmtRenderHeadTable(heads) {
     for (var g = 0; g < gpmInputs.length; g++) {
         gpmInputs[g].addEventListener('input', mgmtUpdateGpmSummary);
     }
+
+    // Model select: auto-fill GPM + toggle custom input
+    var modelSels = wrap.querySelectorAll('select[data-field="model_select"]');
+    for (var ms = 0; ms < modelSels.length; ms++) {
+        modelSels[ms].addEventListener('change', function() {
+            var row = this.getAttribute('data-row');
+            var customInput = wrap.querySelector('input[data-field="model_custom"][data-row="' + row + '"]');
+            if (this.value === '__custom__') {
+                customInput.style.display = '';
+                customInput.focus();
+            } else {
+                customInput.style.display = 'none';
+                customInput.value = '';
+                var opt = this.options[this.selectedIndex];
+                var modelGpm = opt.getAttribute('data-gpm');
+                if (modelGpm) {
+                    var gpmInput = wrap.querySelector('input[data-field="gpm"][data-row="' + row + '"]');
+                    if (gpmInput) {
+                        gpmInput.value = modelGpm;
+                        mgmtUpdateGpmSummary();
+                    }
+                }
+            }
+        });
+    }
+
+    // Brand / Type change: re-filter model picklist
+    var brandSels = wrap.querySelectorAll('select[data-field="brand"]');
+    var typeSels = wrap.querySelectorAll('select[data-field="nozzle_type"]');
+    function mgmtRefreshModelOptions(row) {
+        var brandEl = wrap.querySelector('select[data-field="brand"][data-row="' + row + '"]');
+        var typeEl = wrap.querySelector('select[data-field="nozzle_type"][data-row="' + row + '"]');
+        var modelSel = wrap.querySelector('select[data-field="model_select"][data-row="' + row + '"]');
+        if (!brandEl || !typeEl || !modelSel) return;
+        var sb = brandEl.value || '';
+        var st = typeEl.value || '';
+        var allModels = (ref.models || []).filter(function(md) {
+            return (!sb || md.brand === sb) && (!st || md.nozzle_type === st);
+        });
+        var curVal = modelSel.value;
+        var opts = '<option value="">—</option>';
+        for (var q = 0; q < allModels.length; q++) {
+            opts += '<option value="' + esc(allModels[q].model) + '" data-gpm="' + (allModels[q].gpm || '') + '">' + esc(allModels[q].model) + '</option>';
+        }
+        opts += '<option value="__custom__">Custom...</option>';
+        modelSel.innerHTML = opts;
+        modelSel.value = curVal;
+        if (modelSel.value !== curVal) modelSel.value = '';
+    }
+    for (var bi = 0; bi < brandSels.length; bi++) {
+        brandSels[bi].addEventListener('change', function() { mgmtRefreshModelOptions(this.getAttribute('data-row')); });
+    }
+    for (var ti = 0; ti < typeSels.length; ti++) {
+        typeSels[ti].addEventListener('change', function() { mgmtRefreshModelOptions(this.getAttribute('data-row')); });
+    }
 }
 
 function mgmtUpdateGpmSummary() {
@@ -4806,7 +4909,16 @@ function mgmtCollectHeadData() {
         for (var j = 0; j < fields.length; j++) {
             var field = fields[j].getAttribute('data-field');
             var val = fields[j].value;
-            if (field === 'gpm' || field === 'arc_degrees' || field === 'radius_ft' || field === 'psi') {
+            if (field === 'model_select') {
+                if (val === '__custom__') {
+                    var customEl = rows[i].querySelector('[data-field="model_custom"]');
+                    head['model'] = customEl ? (customEl.value || '') : '';
+                } else {
+                    head['model'] = val || '';
+                }
+            } else if (field === 'model_custom') {
+                // Handled by model_select — skip
+            } else if (field === 'gpm' || field === 'arc_degrees' || field === 'radius_ft' || field === 'psi') {
                 head[field] = val ? parseFloat(val) : null;
             } else if (field === 'popup_height') {
                 head[field] = val || null;
@@ -4825,17 +4937,34 @@ async function mgmtSaveZoneHeads() {
     if (!custId || !entityId) return;
     var heads = mgmtCollectHeadData();
     var notes = (document.getElementById('mgmtZoneNotes') || {}).value || '';
+    var showGpm = document.getElementById('mgmtShowGpmOnCard') ? document.getElementById('mgmtShowGpmOnCard').checked : false;
+    var showCount = document.getElementById('mgmtShowHeadCountOnCard') ? document.getElementById('mgmtShowHeadCountOnCard').checked : false;
     var statusEl = document.getElementById('mgmtZoneSaveStatus');
     try {
         statusEl.textContent = 'Saving...';
         statusEl.style.color = 'var(--text-secondary)';
         await api('/customers/' + custId + '/zone_heads/' + entityId, {
             method: 'PUT',
-            body: JSON.stringify({ heads: heads, notes: notes }),
+            body: JSON.stringify({ heads: heads, notes: notes, show_gpm_on_card: showGpm, show_head_count_on_card: showCount }),
         });
         statusEl.textContent = '\\u2713 Saved!';
         statusEl.style.color = 'var(--color-success)';
         showToast('Zone head details saved');
+        // Refresh zone card GPM display
+        try {
+            var allHeads = await api('/customers/' + custId + '/zone_heads');
+            window._mgmtZoneGpmMap = {};
+            window._mgmtZoneGpmShow = {};
+            window._mgmtZoneHeadCountShow = {};
+            window._mgmtZoneHeadCount = {};
+            for (var eid in allHeads) {
+                if (allHeads[eid].total_gpm > 0) window._mgmtZoneGpmMap[eid] = allHeads[eid].total_gpm;
+                if (allHeads[eid].show_gpm_on_card) window._mgmtZoneGpmShow[eid] = true;
+                if (allHeads[eid].show_head_count_on_card) window._mgmtZoneHeadCountShow[eid] = true;
+                if (allHeads[eid].heads && allHeads[eid].heads.length > 0) window._mgmtZoneHeadCount[eid] = allHeads[eid].heads.length;
+            }
+            loadDetailZones(custId);
+        } catch(e2) {}
     } catch(e) {
         statusEl.textContent = 'Error: ' + e.message;
         statusEl.style.color = 'var(--color-danger)';
