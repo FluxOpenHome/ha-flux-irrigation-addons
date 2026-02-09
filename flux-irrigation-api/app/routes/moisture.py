@@ -2855,6 +2855,13 @@ async def api_add_probe(body: ProbeCreateRequest, request: Request):
     log_change(get_actor(request), "Moisture Probes",
                f"Added probe: {probe['display_name']}")
 
+    # Recalculate schedule timeline immediately (new probe may have zone mappings)
+    if probe.get("zone_mappings"):
+        try:
+            await calculate_irrigation_timeline()
+        except Exception as e:
+            print(f"[MOISTURE] Timeline recalc after probe create failed: {e}")
+
     return {"success": True, "probe": probe}
 
 
@@ -2887,6 +2894,7 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Req
                 if ov != nv:
                     changes.append(f"{depth.title()} sensor: {ov or '(none)'} -> {nv or '(none)'}")
         probe["sensors"] = body.sensors
+    zone_mappings_changed = False
     if body.zone_mappings is not None:
         old_zones = set(probe.get("zone_mappings", []))
         new_zones = set(body.zone_mappings)
@@ -2896,6 +2904,8 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Req
             changes.append(f"Added zones: {', '.join(sorted(added))}")
         if removed:
             changes.append(f"Removed zones: {', '.join(sorted(removed))}")
+        if added or removed:
+            zone_mappings_changed = True
         probe["zone_mappings"] = body.zone_mappings
     if body.thresholds is not None:
         probe["thresholds"] = body.thresholds
@@ -2907,6 +2917,14 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Req
             log_change(actor, "Moisture Probes", f"{display} — {change}")
     else:
         log_change(actor, "Moisture Probes", f"Updated probe: {display}")
+
+    # Recalculate schedule timeline immediately when zone mappings change
+    if zone_mappings_changed:
+        try:
+            await calculate_irrigation_timeline()
+        except Exception as e:
+            print(f"[MOISTURE] Timeline recalc after zone mapping change failed: {e}")
+
     return {"success": True, "probe": probe}
 
 
@@ -2981,11 +2999,19 @@ async def api_delete_probe(probe_id: str, request: Request):
         raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
 
     display_name = data["probes"][probe_id].get("display_name", probe_id)
+    had_mappings = bool(data["probes"][probe_id].get("zone_mappings"))
     del data["probes"][probe_id]
     _save_data(data)
 
     log_change(get_actor(request), "Moisture Probes",
                f"Removed probe: {display_name}")
+
+    # Recalculate schedule timeline immediately (removed probe's mappings are gone)
+    if had_mappings:
+        try:
+            await calculate_irrigation_timeline()
+        except Exception as e:
+            print(f"[MOISTURE] Timeline recalc after probe delete failed: {e}")
 
     return {"success": True, "message": f"Probe '{probe_id}' removed"}
 
@@ -3032,6 +3058,12 @@ async def api_set_sleep_duration(probe_id: str, body: SleepDurationRequest, requ
             _save_data(data)
             log_change(get_actor(request), "Moisture Probes",
                        f"Set sleep duration for {display_name}: {body.minutes} min (applied immediately)")
+            # Recalculate timeline (prep timing depends on sleep duration)
+            if probe.get("zone_mappings"):
+                try:
+                    await calculate_irrigation_timeline()
+                except Exception:
+                    pass
             return {
                 "success": True,
                 "status": "applied",
@@ -3046,6 +3078,12 @@ async def api_set_sleep_duration(probe_id: str, body: SleepDurationRequest, requ
         _save_data(data)
         log_change(get_actor(request), "Moisture Probes",
                    f"Queued sleep duration for {display_name}: {body.minutes} min (pending wake)")
+        # Recalculate timeline with pending value (prep timing depends on sleep duration)
+        if probe.get("zone_mappings"):
+            try:
+                await calculate_irrigation_timeline()
+            except Exception:
+                pass
         return {
             "success": True,
             "status": "pending",
