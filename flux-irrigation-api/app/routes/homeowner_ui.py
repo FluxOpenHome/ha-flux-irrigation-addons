@@ -2565,6 +2565,8 @@ async function loadMoisture() {
         const settings = await mapi('/settings');
         let multData = {};
         try { multData = await mapi('/multiplier'); } catch (_) {}
+        let timelineData = {};
+        try { timelineData = await mapi('/schedule-timeline'); } catch (_) {}
 
         const probes = data.probes || {};
         const probeCount = Object.keys(probes).length;
@@ -2585,7 +2587,7 @@ async function loadMoisture() {
             return;
         }
         // Skip DOM rebuild if data hasn't changed (prevents flickering on refresh)
-        const moistureKey = JSON.stringify(data) + '|' + JSON.stringify(settings) + '|' + JSON.stringify(multData);
+        const moistureKey = JSON.stringify(data) + '|' + JSON.stringify(settings) + '|' + JSON.stringify(multData) + '|' + JSON.stringify(timelineData);
         if (_moistureDataCache === moistureKey) return;
         _moistureDataCache = moistureKey;
         card.style.display = 'block';
@@ -2672,11 +2674,23 @@ async function loadMoisture() {
                         const bColor = bv == null ? 'var(--text-muted)' : bv > 50 ? 'var(--text-success-dark)' : bv > 20 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
                         html += '<span style="color:' + bColor + ';" title="Battery">' + bIcon + ' ' + (bv != null ? bv.toFixed(0) + '%' : '—') + '</span>';
                     }
-                    // Probe Awake/Sleeping status — uses write-probe detection from backend
+                    // Probe Awake/Sleeping status + schedule prep info
                     if (devSensors.sleep_duration) {
                         const isAwake = probe.is_awake === true;
                         html += '<span style="font-weight:600;color:' + (isAwake ? 'var(--color-success)' : 'var(--text-muted)') + ';">' +
                             (isAwake ? '☀️ Awake' : '😴 Sleeping') + '</span>';
+                        // Show schedule prep state if timeline has data for this probe
+                        var probePrep = (timelineData.probe_prep || {})[pid];
+                        if (probePrep && probePrep.state !== 'idle') {
+                            var prepState = probePrep.state;
+                            if (prepState === 'prep_pending') {
+                                html += '<span style="font-size:10px;color:var(--color-warning);" title="Probe sleep adjusted to wake before zone">⏰ Waking for Z' + (probePrep.active_zone_num || '?') + '</span>';
+                            } else if (prepState === 'monitoring') {
+                                html += '<span style="font-size:10px;color:var(--color-success);" title="Probe is awake and monitoring zone moisture">🔍 Monitoring Z' + (probePrep.active_zone_num || '?') + '</span>';
+                            } else if (prepState === 'sleeping_between') {
+                                html += '<span style="font-size:10px;color:var(--text-muted);" title="Sleeping between mapped zones">💤 Between zones</span>';
+                            }
+                        }
                     }
                     // Sleep disabled toggle button
                     if (devSensors.sleep_disabled) {
@@ -2716,23 +2730,46 @@ async function loadMoisture() {
                     html += '</div>';
                 }
 
-                // Gophr schedule time sync status
-                if (devSensors.schedule_times && devSensors.schedule_times.length > 0) {
+                // Schedule Timeline — show when mapped zones will run + probe wake time
+                var probePrep2 = (timelineData.probe_prep || {})[pid];
+                var probeMapped = probe.zone_mappings || [];
+                if (probePrep2 && probePrep2.prep_entries && probePrep2.prep_entries.length > 0 && probeMapped.length > 0) {
                     html += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border-light);font-size:11px;">';
-                    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
-                    html += '<span style="font-weight:600;color:var(--text-secondary);">Schedule Sync</span>';
-                    html += '<button class="btn btn-primary btn-sm" style="font-size:10px;padding:2px 8px;" ' +
-                        'onclick="syncProbeSchedules()">Sync Now</button>';
-                    html += '</div>';
-                    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
-                    for (var si = 0; si < devSensors.schedule_times.length; si++) {
-                        var st = devSensors.schedule_times[si];
-                        var stVal = st.value || '—';
-                        var stNum = si + 1;
-                        var stColor = stVal === '00:00' || stVal === '—' || stVal === 'unknown' ? 'var(--text-muted)' : 'var(--text-success-dark)';
-                        html += '<span style="color:' + stColor + ';" title="' + esc(st.entity_id) + '">⏱ ' + stNum + ': ' + esc(stVal) + '</span>';
+                    html += '<span style="font-weight:600;color:var(--text-secondary);">Schedule Timeline</span>';
+                    for (var pe = 0; pe < probePrep2.prep_entries.length; pe++) {
+                        var entry = probePrep2.prep_entries[pe];
+                        // Find zone in the schedule timeline to get full info
+                        var schedInfo = null;
+                        var schedules2 = timelineData.schedules || [];
+                        for (var s2 = 0; s2 < schedules2.length; s2++) {
+                            if (schedules2[s2].start_time === entry.schedule_start_time) {
+                                schedInfo = schedules2[s2];
+                                break;
+                            }
+                        }
+                        html += '<div style="margin-top:4px;padding:4px 6px;background:var(--bg-card);border-radius:4px;border:1px solid var(--border-light);">';
+                        html += '<div style="font-weight:500;color:var(--text-primary);">🕐 ' + esc(entry.schedule_start_time) + ' schedule</div>';
+                        // Show mapped zone expected time
+                        var zoneTime = '';
+                        if (schedInfo) {
+                            for (var zz = 0; zz < schedInfo.zones.length; zz++) {
+                                var zt = schedInfo.zones[zz];
+                                if (zt.zone_entity_id === entry.zone_entity_id) {
+                                    zoneTime = zt.expected_start_time + ' — ' + zt.expected_end_time;
+                                    break;
+                                }
+                            }
+                        }
+                        html += '<div style="color:var(--text-muted);">Zone ' + entry.zone_num + ' expected: <strong style="color:var(--text-primary);">' + (zoneTime || '?') + '</strong></div>';
+                        // Calculate and show probe wake time
+                        var targetWakeMins = entry.target_wake_minutes;
+                        var wakeH = Math.floor(targetWakeMins / 60) % 24;
+                        var wakeM = targetWakeMins % 60;
+                        var wakeStr = (wakeH < 10 ? '0' : '') + wakeH + ':' + (wakeM < 10 ? '0' : '') + wakeM;
+                        html += '<div style="color:var(--color-warning);">⏰ Probe wake target: <strong>' + wakeStr + '</strong></div>';
+                        html += '</div>';
                     }
-                    html += '</div></div>';
+                    html += '</div>';
                 }
 
                 // Zone summary + edit toggle
@@ -3349,6 +3386,12 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">The moisture card also shows:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, and sleep duration are shown below the moisture readings when available (auto-detected from the Gophr device)</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. The algorithm integrates weather forecast data for rain detection — if the shallow sensor shows a wetting front and rain is forecasted, watering is automatically reduced or skipped. Gophr devices sleep between readings — while the device is asleep, the system uses the last known good sensor values so the moisture multiplier stays active. If the cached readings become older than the Stale Reading Threshold, they are treated as stale and the multiplier reverts to neutral (1.0x).</div>
+
+<p style="margin-bottom:6px;font-weight:600;font-size:13px;">Probe-Aware Irrigation (Schedule Timeline)</p>
+<p style="margin-bottom:6px;font-size:13px;">The system automatically manages probe sleep/wake cycles around scheduled irrigation runs. For each probe with mapped zones, it:</p>
+<ol style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Calculates</strong> when each zone will run based on the schedule start times and zone durations</li><li style="margin-bottom:4px;"><strong>Reprograms</strong> the probe&rsquo;s sleep duration before the schedule starts so it wakes up ~10 minutes before its mapped zone</li><li style="margin-bottom:4px;"><strong>Checks moisture</strong> when the probe wakes &mdash; if the soil is saturated, the zone is automatically <strong>skipped</strong> (disabled before it even starts)</li><li style="margin-bottom:4px;">If not saturated, <strong>disables sleep</strong> to keep the probe awake for continuous monitoring during the zone run</li><li style="margin-bottom:4px;">If saturation is detected <strong>mid-run</strong>, the zone is shut off and the system <strong>auto-advances</strong> to the next zone</li><li style="margin-bottom:4px;">After the last mapped zone finishes, the <strong>original sleep duration</strong> is restored and any skipped zones are re-enabled for the next run</li></ol>
+<p style="margin-bottom:6px;font-size:13px;">The <strong>Schedule Timeline</strong> section on each probe card shows the expected zone start times and the probe&rsquo;s target wake time. This timeline recalculates automatically whenever schedule start times, zone durations, or zone enable states change.</p>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The timeline uses the <strong>current adjusted durations</strong> (factored by weather and moisture) when &ldquo;Apply Factors to Schedule&rdquo; is enabled. This means probe wake times automatically shift when factors change.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
 <p style="margin-bottom:10px;">The run history table shows every zone on/off event with:</p>

@@ -323,23 +323,26 @@ async def _periodic_weather_check():
 
 
 async def _periodic_moisture_evaluation():
-    """Periodically evaluate moisture probes, adjust run durations, and sync Gophr schedules."""
+    """Periodically evaluate moisture probes, adjust run durations, and recalculate schedule timeline."""
     while True:
         try:
             config = get_config()
             if config.mode == "homeowner":
-                from routes.moisture import run_moisture_evaluation, sync_schedule_times_to_probes
+                from routes.moisture import run_moisture_evaluation, calculate_irrigation_timeline
                 result = await run_moisture_evaluation()
                 if not result.get("skipped"):
                     print(f"[MAIN] Moisture evaluation: {result.get('applied', 0)} zone(s) adjusted")
 
-                # Sync irrigation schedule times to Gophr probes
+                # Recalculate schedule timeline (replaces old sync_schedule_times_to_probes)
                 try:
-                    sync_result = await sync_schedule_times_to_probes()
-                    if sync_result.get("synced", 0) > 0:
-                        print(f"[MAIN] Gophr schedule sync: {sync_result['synced']} time(s) synced")
-                except Exception as sync_err:
-                    print(f"[MAIN] Gophr schedule sync error: {sync_err}")
+                    timeline = await calculate_irrigation_timeline()
+                    sched_count = len(timeline.get("schedules", []))
+                    prep_count = len(timeline.get("probe_prep", {}))
+                    if prep_count > 0:
+                        print(f"[MAIN] Schedule timeline: {sched_count} schedule(s), "
+                              f"{prep_count} probe(s) with prep timing")
+                except Exception as tl_err:
+                    print(f"[MAIN] Schedule timeline error: {tl_err}")
         except Exception as e:
             print(f"[MAIN] Moisture evaluation error: {e}")
 
@@ -605,8 +608,16 @@ async def lifespan(app: FastAPI):
                   f"interval={config.weather_check_interval_minutes}min")
             # Start awake status poller for Gophr probes
             if probe_count > 0:
-                from routes.moisture import start_awake_poller
+                from routes.moisture import start_awake_poller, calculate_irrigation_timeline
                 start_awake_poller()
+                # Calculate initial schedule timeline for probe-aware irrigation
+                try:
+                    timeline = await calculate_irrigation_timeline()
+                    prep_count = len(timeline.get("probe_prep", {}))
+                    if prep_count > 0:
+                        print(f"[MAIN] Initial schedule timeline: {prep_count} probe(s) with prep timing")
+                except Exception as tl_err:
+                    print(f"[MAIN] Initial timeline calculation error: {tl_err}")
     if config.irrigation_device_id:
         entity_refresh_task = asyncio.create_task(_periodic_entity_refresh())
         print(f"[MAIN] Entity auto-refresh active: checking every 5 minutes for newly enabled/disabled entities")

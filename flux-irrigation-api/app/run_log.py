@@ -303,6 +303,20 @@ def _get_probe_sensor_entities() -> set:
         return set()
 
 
+def _get_schedule_entities() -> set:
+    """Get schedule-related entity IDs that trigger timeline recalculation.
+
+    Watches start times, run durations, zone enables, and schedule enable.
+    Changes to any of these require recalculating the irrigation schedule
+    timeline so probe wake times are updated.
+    """
+    try:
+        from routes.moisture import _get_schedule_entity_ids
+        return _get_schedule_entity_ids()
+    except Exception:
+        return set()
+
+
 async def _handle_probe_sensor_change(entity_id: str, new_state: str, old_state: str):
     """Handle a moisture probe sensor state change.
 
@@ -336,6 +350,22 @@ async def _handle_probe_sensor_change(entity_id: str, new_state: str, old_state:
         print(f"[RUN_LOG] Probe sensor transition check error: {e}")
 
 
+async def _handle_schedule_entity_change(entity_id: str, new_state: str, old_state: str):
+    """Handle a schedule-related entity state change.
+
+    Triggers recalculation of the irrigation schedule timeline so probe
+    wake times are updated when start times, durations, or zone enables change.
+    """
+    import asyncio
+    try:
+        from routes.moisture import calculate_irrigation_timeline
+        print(f"[RUN_LOG] Schedule entity changed: {entity_id} ({old_state} → {new_state}) "
+              f"— recalculating timeline")
+        asyncio.create_task(calculate_irrigation_timeline())
+    except Exception as e:
+        print(f"[RUN_LOG] Schedule timeline recalculation error: {e}")
+
+
 async def _watch_via_websocket(allowed_entities: set):
     """Subscribe to HA state_changed events via WebSocket for real-time logging.
 
@@ -353,12 +383,16 @@ async def _watch_via_websocket(allowed_entities: set):
     token = config.supervisor_token
     ws_url = "ws://supervisor/core/websocket"
 
-    # Build combined watch set: zone entities + probe sensor entities
+    # Build combined watch set: zone entities + probe sensor entities + schedule entities
     probe_entities = _get_probe_sensor_entities()
-    all_watched = allowed_entities | probe_entities
+    schedule_entities = _get_schedule_entities()
+    all_watched = allowed_entities | probe_entities | schedule_entities
     if probe_entities:
         print(f"[RUN_LOG] Also watching {len(probe_entities)} probe sensor entities "
               f"for skip↔factor transitions")
+    if schedule_entities:
+        print(f"[RUN_LOG] Also watching {len(schedule_entities)} schedule entities "
+              f"for timeline recalculation")
 
     extra_headers = {"Authorization": f"Bearer {token}"}
 
@@ -385,7 +419,8 @@ async def _watch_via_websocket(allowed_entities: set):
             raise RuntimeError(f"WS subscribe failed: {msg}")
 
         print(f"[RUN_LOG] WebSocket connected — real-time monitoring active "
-              f"({len(allowed_entities)} zone + {len(probe_entities)} probe entities)")
+              f"({len(allowed_entities)} zone + {len(probe_entities)} probe + "
+              f"{len(schedule_entities)} schedule entities)")
 
         # Step 4: Listen for events
         async for raw_msg in ws:
@@ -414,6 +449,8 @@ async def _watch_via_websocket(allowed_entities: set):
                     await _handle_state_change(entity_id, new_state, old_state, zone_name)
                 elif entity_id in probe_entities:
                     await _handle_probe_sensor_change(entity_id, new_state, old_state)
+                elif entity_id in schedule_entities:
+                    await _handle_schedule_entity_change(entity_id, new_state, old_state)
 
             except json.JSONDecodeError:
                 continue

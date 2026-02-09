@@ -65,3 +65,33 @@ else:
 ### Enable Zone Switch for Skip Zones
 
 **The enable_zone switch approach for skipping zones WORKS CORRECTLY.** `_find_enable_zone_switch()` finds switches in `config.allowed_control_entities` because enable_zone switches are classified in the "other" category by `ha_client.get_device_entities()`. Do NOT revert to setting `adjusted_value = 0.0` for skip — the enable switch approach properly disables/re-enables zone hardware.
+
+### Probe-Aware Irrigation (Schedule Timeline)
+
+**The system calculates when each zone will run and manages probe sleep/wake cycles around scheduled runs.** This replaced the old `sync_schedule_times_to_probes()` system which wrote schedule times to ESPHome entities.
+
+**Key files and data:**
+- Timeline persisted to `/data/irrigation_schedule.json`
+- `calculate_irrigation_timeline()` in `moisture.py` — reads schedule start times from `text.*_start_time_*` entities and zone durations via `_get_ordered_enabled_zones()`
+- `PREP_BUFFER_MINUTES = 20` — how far ahead to reprogram sleep
+- `TARGET_WAKE_BEFORE_MINUTES = 10` — target wake time before zone starts
+
+**Prep state machine** (`probe_prep` in the timeline JSON):
+`idle` → `prep_pending` (sleep reprogrammed, waiting for wake) → `awake_checking` (probe woke, checking moisture) → `monitoring` (zone running, probe awake) → `sleeping_between` (sleeping to next mapped zone) → `idle` (all done, original restored)
+
+**Flow:**
+1. At `prep_trigger_minutes` (= mapped_zone_start - sleep_duration - 20min), `_awake_poll_loop()` reprograms the probe's sleep duration so it wakes ~10 min before the zone
+2. On wake with `state == "prep_pending"`: `_handle_prepped_wake()` checks moisture
+3. Saturated → skip zone via `_find_enable_zone_switch()` turning OFF the enable switch → `_prep_next_mapped_zone()` looks for the next mapped zone
+4. Not saturated → `set_probe_sleep_disabled(True)` keeps probe awake → `state = "monitoring"`
+5. Zone OFF → `on_zone_state_change()` checks if next zone is same-probe-mapped (keep awake) or programs sleep to next mapped zone
+6. After last mapped zone → `_finish_probe_prep_cycle()` restores original sleep, re-enables all skipped zones
+
+**Recalculation triggers:**
+- Schedule start times, zone durations, zone enables change (via WebSocket watcher in `run_log.py`)
+- Probe sleep duration changes, probe mappings change (via `moisture.py`)
+- On startup and periodic evaluation (via `main.py`)
+
+**Do NOT use `text.gophr_*_schedule_time_*` entities** — these are firmware-side schedule entities that will be removed. The new system reads schedule start times from the irrigation controller's `text.*_start_time_*` entities and computes everything locally.
+
+**`_get_ordered_enabled_zones()` reads live HA entity states** which already include factored durations when "Apply Factors to Schedule" is active. This means the timeline automatically accounts for weather and moisture adjustments.

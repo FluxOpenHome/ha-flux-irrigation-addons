@@ -4,6 +4,28 @@ All notable changes to the Flux Open Home Irrigation Control add-on are document
 
 ---
 
+## [1.1.10] — 2026-02-09
+
+### Added
+
+- **Probe-Aware Irrigation (Schedule Timeline)** — Complete rework of how Gophr moisture probes interact with scheduled irrigation runs. The system now calculates when each zone will run based on schedule start times and zone durations, then automatically reprograms the probe's sleep duration so it wakes ~10 minutes before its mapped zone. On wake, if the soil is saturated the zone is skipped (disabled via the enable_zone switch before it starts) and the system advances to the next zone. If not saturated, sleep is disabled to keep the probe awake for continuous mid-run monitoring. Between non-consecutive mapped zones, the probe sleeps and is reprogrammed to wake before the next mapped zone. After the last mapped zone finishes, the original sleep duration is restored and any skipped zones are re-enabled for the next run.
+- **Schedule Timeline JSON** — New persistent file (`/data/irrigation_schedule.json`) stores the calculated zone execution timeline, probe-to-zone mappings, probe prep timing, and prep state machine. Timeline recalculates automatically whenever schedule start times, zone durations, zone enable states, probe sleep duration, or probe mappings change.
+- **Schedule Timeline UI** — Probe cards on both homeowner and management dashboards now show a "Schedule Timeline" section with expected zone start times, which zones have mapped probes, and the probe's target wake time. Probe status indicators show current prep state (Waking for zone, Monitoring zone, Between zones).
+- **Schedule Timeline API** — `GET /admin/api/homeowner/moisture/schedule-timeline` returns the current timeline; `POST /admin/api/homeowner/moisture/schedule-timeline/recalculate` forces a recalculation.
+- **Skip-and-Advance** — When mid-run moisture monitoring detects saturation, the current zone is shut off and the system automatically starts the next enabled zone with auto advance enabled, preventing schedule gaps.
+- **Schedule Entity Watching** — WebSocket watcher expanded to detect changes to schedule start times (`text.*_start_time_*`), zone run durations (`number.*_run_duration`), and zone enable states (`switch.*_enable_zone_*`), triggering an automatic timeline recalculation.
+
+### Changed
+
+- **Deprecated `sync_schedule_times_to_probes()`** — The old system that synced irrigation schedule times to probe ESPHome entities has been replaced by the new probe-aware timeline system. The old sync endpoint returns a deprecation warning.
+- **Periodic evaluation** — `_periodic_moisture_evaluation()` now calls `calculate_irrigation_timeline()` instead of the deprecated `sync_schedule_times_to_probes()`.
+
+### Fixed
+
+- **Management dashboard map** — Properties without address data now show "Map unavailable — no address configured" instead of silently hiding the map div. Geocoding failures also show appropriate messages instead of blank space.
+
+---
+
 ## [1.1.9] — 2026-02-08
 
 ### Added
