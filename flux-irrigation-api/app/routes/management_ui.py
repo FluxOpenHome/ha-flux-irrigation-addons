@@ -2227,7 +2227,14 @@ async function loadDetailMoisture(id) {
                 var _ppWake = (timelineData.probe_prep || {})[pid];
                 var _hasZones = (probe.zone_mappings || []).length > 0;
                 if (_hasZones) {
+                    var _zoneSkipMap = {};
+                    for (var _zsi = 0; _zsi < probeZones.length; _zsi++) {
+                        var _zsEid = probeZones[_zsi];
+                        var _zsInfo = perZone[_zsEid];
+                        _zoneSkipMap[_zsEid] = _zsInfo ? !!_zsInfo.skip : false;
+                    }
                     window['_wakePrep_' + pid] = _ppWake;
+                    window['_wakeSkip_' + pid] = _zoneSkipMap;
                     html += '<button onclick="mgmtShowWakeSchedule(\\'' + esc(pid) + '\\')" style="margin-top:6px;padding:2px 8px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);" title="View probe wake schedule">Wake Schedule</button>';
                 }
                 // Zone summary + edit toggle
@@ -2404,7 +2411,16 @@ async function mgmtPressSleepNow(probeId) {
 
 function mgmtShowWakeSchedule(probeId) {
     var prep = window['_wakePrep_' + probeId];
+    var skipMap = window['_wakeSkip_' + probeId] || {};
     var body = '';
+    /* Check if ALL mapped zones are set to skip (probe is saturated) */
+    var skipKeys = Object.keys(skipMap);
+    var allSkipping = skipKeys.length > 0 && skipKeys.every(function(k) { return skipMap[k]; });
+    if (allSkipping) {
+        body = '<div style="padding:8px 0;"><div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-danger-light);border-radius:6px;margin-bottom:8px;"><span style="font-size:16px;">&#9940;</span><div style="font-size:13px;color:var(--color-danger);font-weight:500;">All mapped zones are set to skip &mdash; probe will not wake to monitor watering.</div></div><div style="font-size:12px;color:var(--text-muted);">The probe\\'s moisture readings indicate saturation. Once moisture levels drop below the skip threshold, wake scheduling will resume automatically.</div></div>';
+        mgmtShowModal('Wake Schedule', body);
+        return;
+    }
     if (prep && prep.prep_entries && prep.prep_entries.length > 0) {
         /* Sort entries by target_wake_minutes chronologically */
         var sorted = prep.prep_entries.slice().sort(function(a, b) {
@@ -2424,7 +2440,7 @@ function mgmtShowWakeSchedule(probeId) {
         }
         var nextIdx = -1;
         for (var ni = 0; ni < sorted.length; ni++) {
-            if (sorted[ni].target_wake_minutes > nowMin) { nextIdx = ni; break; }
+            if (sorted[ni].target_wake_minutes > nowMin && !skipMap[sorted[ni].zone_entity_id]) { nextIdx = ni; break; }
         }
         function _fmtTime(m) {
             var h = Math.floor(m / 60) % 24;
@@ -2440,14 +2456,17 @@ function mgmtShowWakeSchedule(probeId) {
             var zoneTimeStr = _fmtTime(we.zone_start_minutes || 0);
             var schedLabel = we.schedule_start_time || '';
             var isNext = (wi === nextIdx);
+            var zoneSkipped = skipMap[we.zone_entity_id] || false;
             body += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;' +
-                (isNext ? 'background:var(--bg-active-tile);' : '') + '">';
-            body += '<span style="font-size:16px;">&#9200;</span>';
+                (zoneSkipped ? 'opacity:0.5;' : '') +
+                (isNext && !zoneSkipped ? 'background:var(--bg-active-tile);' : '') + '">';
+            body += '<span style="font-size:16px;">' + (zoneSkipped ? '&#9940;' : '&#9200;') + '</span>';
             body += '<div style="flex:1;">';
-            body += '<div style="font-size:13px;' + (isNext ? 'font-weight:600;color:var(--color-warning);' : 'color:var(--text-secondary);') + '">Wake at <strong>' + wakeTimeStr + '</strong></div>';
-            body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' runs at ' + zoneTimeStr + (schedLabel ? ' &mdash; ' + schedLabel + ' schedule' : '') + '</div>';
+            body += '<div style="font-size:13px;' + (zoneSkipped ? 'color:var(--text-muted);text-decoration:line-through;' : isNext ? 'font-weight:600;color:var(--color-warning);' : 'color:var(--text-secondary);') + '">Wake at <strong>' + wakeTimeStr + '</strong></div>';
+            body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + (zoneSkipped ? ' — <span style="color:var(--color-danger);font-weight:500;">Skip (saturated)</span>' : ' runs at ' + zoneTimeStr) + (schedLabel ? ' &mdash; ' + schedLabel + ' schedule' : '') + '</div>';
             body += '</div>';
-            if (isNext) body += '<span style="font-size:9px;background:var(--color-warning);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">NEXT</span>';
+            if (isNext && !zoneSkipped) body += '<span style="font-size:9px;background:var(--color-warning);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">NEXT</span>';
+            if (zoneSkipped) body += '<span style="font-size:9px;background:var(--color-danger);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">SKIP</span>';
             body += '</div>';
         }
         body += '</div>';
