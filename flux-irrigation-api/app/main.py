@@ -603,6 +603,10 @@ async def lifespan(app: FastAPI):
             probe_count = len(moisture_data.get("probes", {}))
             print(f"[MAIN] Moisture probe evaluation active: {probe_count} probe(s), "
                   f"interval={config.weather_check_interval_minutes}min")
+            # Start awake status poller for Gophr probes
+            if probe_count > 0:
+                from routes.moisture import start_awake_poller
+                start_awake_poller()
     if config.irrigation_device_id:
         entity_refresh_task = asyncio.create_task(_periodic_entity_refresh())
         print(f"[MAIN] Entity auto-refresh active: checking every 5 minutes for newly enabled/disabled entities")
@@ -617,6 +621,11 @@ async def lifespan(app: FastAPI):
         weather_task.cancel()
     if moisture_task:
         moisture_task.cancel()
+    try:
+        from routes.moisture import stop_awake_poller
+        stop_awake_poller()
+    except Exception:
+        pass
     if zone_watcher_task:
         zone_watcher_task.cancel()
     if entity_refresh_task:

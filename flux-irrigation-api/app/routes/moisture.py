@@ -52,6 +52,15 @@ PROBE_KEYWORDS = ["gophr", "moisture", "soil"]
 _sensor_cache: dict[str, dict] = {}  # in-memory: {entity_id: {state, last_updated, ...}}
 _sensor_cache_loaded = False
 
+# --- Probe Awake Status Cache ---
+# HA retains ESPHome entity values long after the device sleeps, so checking
+# sensor states is NOT reliable for detecting sleep.  Instead we use a
+# "write-probe": attempt a harmless write to min_awake_minutes (toggle between
+# 1.0 and 1.5).  If HA returns an error the device is unreachable (sleeping).
+# The result is cached and updated on every write attempt or wake detection.
+_probe_awake_cache: dict[str, bool] = {}  # probe_id -> True=awake, False=sleeping
+_probe_awake_toggle: dict[str, float] = {}  # probe_id -> last written value (1.0 or 1.5)
+
 
 def _load_sensor_cache():
     """Load the sensor value cache from disk (once)."""
@@ -75,6 +84,96 @@ def _save_sensor_cache():
             json.dump(_sensor_cache, f, indent=2)
     except IOError:
         pass
+
+
+async def _check_probe_awake(probe_id: str) -> bool:
+    """Determine if a Gophr probe is awake by attempting a harmless write.
+
+    Toggles min_awake_minutes between 1.0 and 1.5.  If the write succeeds
+    the device is reachable (awake); if HA returns an error the device is
+    sleeping.  Result is cached in _probe_awake_cache.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        return False
+
+    min_awake_eid = (probe.get("extra_sensors") or {}).get("min_awake_minutes")
+    if not min_awake_eid:
+        # No min_awake entity — can't do write-probe, assume awake
+        print(f"[MOISTURE] _check_probe_awake({probe_id}): no min_awake entity, assuming awake")
+        return True
+
+    # Toggle between 1.0 and 1.5 so each probe attempt writes a different value
+    last_val = _probe_awake_toggle.get(probe_id, 1.0)
+    next_val = 1.5 if last_val == 1.0 else 1.0
+    _probe_awake_toggle[probe_id] = next_val
+
+    success = await ha_client.call_service("number", "set_value", {
+        "entity_id": min_awake_eid,
+        "value": next_val,
+    })
+
+    _probe_awake_cache[probe_id] = success
+    status = "AWAKE" if success else "SLEEPING"
+    print(f"[MOISTURE] Write-probe {probe_id}: {min_awake_eid}={next_val} → {status}")
+    return success
+
+
+_awake_poller_task: asyncio.Task | None = None
+_AWAKE_POLL_INTERVAL = 5  # seconds
+
+
+async def _awake_poll_loop():
+    """Background task that polls all configured probes every 5 seconds.
+
+    Keeps _probe_awake_cache fresh so the UI always shows correct
+    Awake/Sleeping status without needing a user action to trigger a check.
+    Also detects wake events for applying pending writes.
+    """
+    while True:
+        try:
+            await asyncio.sleep(_AWAKE_POLL_INTERVAL)
+            data = _load_data()
+            if not data.get("enabled"):
+                continue
+            probes = data.get("probes", {})
+            for probe_id, probe in probes.items():
+                min_awake_eid = (probe.get("extra_sensors") or {}).get("min_awake_minutes")
+                if not min_awake_eid:
+                    continue
+                was_awake = _probe_awake_cache.get(probe_id, False)
+                now_awake = await _check_probe_awake(probe_id)
+
+                # Detect wake transition → fire pending writes
+                if now_awake and not was_awake:
+                    print(f"[MOISTURE] Awake poll detected wake: {probe_id}")
+                    sleep_eid = (probe.get("extra_sensors") or {}).get("sleep_duration")
+                    if sleep_eid:
+                        asyncio.create_task(on_probe_wake(sleep_eid))
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[MOISTURE] Awake poll error: {e}")
+            await asyncio.sleep(10)
+
+
+def start_awake_poller():
+    """Start the background awake-status polling task."""
+    global _awake_poller_task
+    if _awake_poller_task and not _awake_poller_task.done():
+        return  # Already running
+    _awake_poller_task = asyncio.create_task(_awake_poll_loop())
+    print("[MOISTURE] Awake poller started (interval: 5s)")
+
+
+def stop_awake_poller():
+    """Stop the background awake-status polling task."""
+    global _awake_poller_task
+    if _awake_poller_task and not _awake_poller_task.done():
+        _awake_poller_task.cancel()
+        _awake_poller_task = None
+        print("[MOISTURE] Awake poller stopped")
 
 
 # --- Data Model ---
@@ -1192,31 +1291,32 @@ async def _calculate_sleep_until_next_mapped_zone(
     for i in range(current_idx + 1, next_mapped_idx):
         gap_minutes += ordered_zones[i]["duration_minutes"]
 
-    # Convert to seconds, subtract a 30s buffer so the probe wakes slightly
-    # before the next mapped zone starts
-    sleep_seconds = max(0, int(gap_minutes * 60) - 30)
+    # Subtract a 0.5 min buffer so the probe wakes slightly before the next zone
+    sleep_minutes = max(0, int(gap_minutes - 0.5))
 
     # If the gap is very short (< 2 minutes), don't bother sleeping
-    if sleep_seconds < 120:
+    if sleep_minutes < 2:
         return {
             "next_zone_entity_id": ordered_zones[next_mapped_idx]["zone_entity_id"],
-            "sleep_seconds": 0,  # Signal: keep awake
+            "sleep_minutes": 0,  # Signal: keep awake
             "gap_minutes": gap_minutes,
         }
 
     return {
         "next_zone_entity_id": ordered_zones[next_mapped_idx]["zone_entity_id"],
-        "sleep_seconds": sleep_seconds,
+        "sleep_minutes": sleep_minutes,
         "gap_minutes": gap_minutes,
     }
 
 
-async def _set_probe_sleep_duration(probe_id: str, seconds: int) -> bool:
-    """Write a sleep duration (in seconds) to the Gophr's writable number entity.
+async def _set_probe_sleep_duration(probe_id: str, minutes: int) -> bool:
+    """Write a sleep duration (in minutes) to the Gophr's writable number entity.
+
+    The Gophr ESPHome device expects the sleep_duration value in MINUTES.
 
     Args:
         probe_id: The probe identifier
-        seconds: Sleep duration in seconds
+        minutes: Sleep duration in minutes
 
     Returns True if the service call succeeded.
     """
@@ -1241,9 +1341,9 @@ async def _set_probe_sleep_duration(probe_id: str, seconds: int) -> bool:
 
     success = await ha_client.call_service("number", "set_value", {
         "entity_id": sleep_number_eid,
-        "value": seconds,
+        "value": minutes,
     })
-    print(f"[MOISTURE] Set sleep duration for {probe_id}: {seconds}s via "
+    print(f"[MOISTURE] Set sleep duration for {probe_id}: {minutes} min via "
           f"{sleep_number_eid}: {'OK' if success else 'FAILED'}")
     return success
 
@@ -1943,16 +2043,26 @@ async def api_get_probes():
             if not s_eid:
                 continue
             sd = state_lookup.get(s_eid, {})
-            device_sensors[skey] = {
+            entry = {
                 "entity_id": s_eid,
                 "value": sd.get("raw_state", "unknown"),
                 "friendly_name": sd.get("friendly_name", s_eid),
+                "live_raw_state": live_raw_states.get(s_eid, "unknown"),
             }
+            device_sensors[skey] = entry
+
+        # Awake status: use cached write-probe result, or do initial probe
+        if probe_id not in _probe_awake_cache:
+            # First time seeing this probe — do a write-probe
+            awake = await _check_probe_awake(probe_id)
+        else:
+            awake = _probe_awake_cache[probe_id]
 
         enriched[probe_id] = {
             **probe,
             "sensors_live": sensors_with_readings,
             "device_sensors": device_sensors,
+            "is_awake": awake,
         }
 
     return {
@@ -2072,7 +2182,7 @@ async def api_delete_probe(probe_id: str, request: Request):
 
 
 class SleepDurationRequest(BaseModel):
-    seconds: int = Field(..., ge=30, le=7200, description="Sleep duration in seconds (30-7200)")
+    minutes: int = Field(..., ge=1, le=120, description="Sleep duration in minutes (1-120)")
 
 
 @router.put("/probes/{probe_id}/sleep-duration", summary="Set probe sleep duration")
@@ -2080,6 +2190,59 @@ async def api_set_sleep_duration(probe_id: str, body: SleepDurationRequest, requ
     """Set the sleep duration for a Gophr probe.
 
     If the probe is currently awake, the value is written immediately.
+    If the probe is asleep, the value is stored as pending
+    and will be applied automatically when the probe next wakes up.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
+
+    display_name = probe.get("display_name", probe_id)
+
+    # Write-probe: try a harmless write to determine if device is reachable
+    is_awake = await _check_probe_awake(probe_id)
+
+    if is_awake:
+        # Write immediately (device expects minutes)
+        success = await _set_probe_sleep_duration(probe_id, body.minutes)
+        if success:
+            # Clear any pending value
+            probe["pending_sleep_duration"] = None
+            _save_data(data)
+            log_change(get_actor(request), "Moisture Probes",
+                       f"Set sleep duration for {display_name}: {body.minutes} min (applied immediately)")
+            return {
+                "success": True,
+                "status": "applied",
+                "message": f"Sleep duration set to {body.minutes} min",
+                "minutes": body.minutes,
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to write sleep duration to device")
+    else:
+        # Store as pending (in minutes — same unit as device)
+        probe["pending_sleep_duration"] = body.minutes
+        _save_data(data)
+        log_change(get_actor(request), "Moisture Probes",
+                   f"Queued sleep duration for {display_name}: {body.minutes} min (pending wake)")
+        return {
+            "success": True,
+            "status": "pending",
+            "message": f"Sleep duration {body.minutes} min queued — will apply when probe wakes",
+            "minutes": body.minutes,
+        }
+
+
+class SleepDisabledRequest(BaseModel):
+    disabled: bool = Field(..., description="True to disable sleep (keep probe awake), False to allow sleeping")
+
+
+@router.put("/probes/{probe_id}/sleep-disabled", summary="Toggle probe sleep disabled")
+async def api_set_sleep_disabled(probe_id: str, body: SleepDisabledRequest, request: Request):
+    """Enable or disable sleep on a Gophr probe.
+
+    If the probe is currently awake, the toggle is applied immediately.
     If the probe is asleep (unavailable), the value is stored as pending
     and will be applied automatically when the probe next wakes up.
     """
@@ -2090,45 +2253,36 @@ async def api_set_sleep_duration(probe_id: str, body: SleepDurationRequest, requ
 
     display_name = probe.get("display_name", probe_id)
 
-    # Check if probe is currently awake by reading its sleep_duration sensor
-    sleep_eid = probe.get("extra_sensors", {}).get("sleep_duration")
-    is_awake = False
-    if sleep_eid:
-        try:
-            states = await ha_client.get_entities_by_ids([sleep_eid])
-            if states and states[0].get("state") not in ("unavailable", "unknown", None):
-                is_awake = True
-        except Exception:
-            pass
+    # Write-probe: try a harmless write to determine if device is reachable
+    is_awake = await _check_probe_awake(probe_id)
 
     if is_awake:
-        # Write immediately
-        success = await _set_probe_sleep_duration(probe_id, body.seconds)
+        success = await set_probe_sleep_disabled(probe_id, body.disabled)
         if success:
-            # Clear any pending value
-            probe["pending_sleep_duration"] = None
+            probe["pending_sleep_disabled"] = None
             _save_data(data)
+            action = "disabled" if body.disabled else "enabled"
             log_change(get_actor(request), "Moisture Probes",
-                       f"Set sleep duration for {display_name}: {body.seconds}s (applied immediately)")
+                       f"Sleep {action} for {display_name} (applied immediately)")
             return {
                 "success": True,
                 "status": "applied",
-                "message": f"Sleep duration set to {body.seconds}s",
-                "seconds": body.seconds,
+                "message": f"Sleep {action} for {display_name}",
+                "disabled": body.disabled,
             }
         else:
-            raise HTTPException(status_code=500, detail="Failed to write sleep duration to device")
+            raise HTTPException(status_code=500, detail="Failed to toggle sleep disabled on device")
     else:
-        # Store as pending
-        probe["pending_sleep_duration"] = body.seconds
+        probe["pending_sleep_disabled"] = body.disabled
         _save_data(data)
+        action = "disable" if body.disabled else "enable"
         log_change(get_actor(request), "Moisture Probes",
-                   f"Queued sleep duration for {display_name}: {body.seconds}s (pending wake)")
+                   f"Queued sleep {action} for {display_name} (pending wake)")
         return {
             "success": True,
             "status": "pending",
-            "message": f"Sleep duration {body.seconds}s queued — will apply when probe wakes",
-            "seconds": body.seconds,
+            "message": f"Sleep {action} queued — will apply when probe wakes",
+            "disabled": body.disabled,
         }
 
 
@@ -2505,7 +2659,7 @@ async def api_get_durations():
 _active_moisture_monitors: dict[str, asyncio.Task] = {}
 
 # Track original sleep durations for restoration after last mapped zone
-_original_sleep_durations: dict[str, int] = {}  # probe_id -> original seconds
+_original_sleep_durations: dict[str, int] = {}  # probe_id -> original minutes
 
 
 async def sync_schedule_times_to_probes() -> dict:
@@ -2760,7 +2914,7 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
                             orig_val = int(float(raw))
                             _original_sleep_durations[probe_id] = orig_val
                             print(f"[MOISTURE] Saved original sleep duration "
-                                  f"for {probe_id}: {orig_val}s")
+                                  f"for {probe_id}: {orig_val} min")
                     except (ValueError, TypeError):
                         pass
 
@@ -2787,20 +2941,20 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
                     probe_id, zone_entity_id
                 )
 
-                if sleep_info and sleep_info["sleep_seconds"] > 0:
+                if sleep_info and sleep_info["sleep_minutes"] > 0:
                     # There IS a next mapped zone, gap warrants sleeping
                     await _set_probe_sleep_duration(
-                        probe_id, sleep_info["sleep_seconds"]
+                        probe_id, sleep_info["sleep_minutes"]
                     )
                     await set_probe_sleep_disabled(probe_id, False)
                     print(
                         f"[MOISTURE] Zone OFF → mid-run sleep: {probe_id} "
-                        f"will sleep {sleep_info['sleep_seconds']}s until "
+                        f"will sleep {sleep_info['sleep_minutes']} min until "
                         f"{sleep_info['next_zone_entity_id']} "
                         f"(gap={sleep_info['gap_minutes']:.1f} min)"
                     )
 
-                elif sleep_info and sleep_info["sleep_seconds"] == 0:
+                elif sleep_info and sleep_info["sleep_minutes"] == 0:
                     # Gap is too short — keep awake, don't cycle sleep
                     print(
                         f"[MOISTURE] Zone OFF → gap too short "
@@ -2818,7 +2972,7 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
                         print(
                             f"[MOISTURE] Zone OFF → last mapped zone, "
                             f"restored sleep duration: {probe_id} = "
-                            f"{original}s"
+                            f"{original} min"
                         )
                     await set_probe_sleep_disabled(probe_id, False)
                     print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
@@ -2899,7 +3053,8 @@ async def check_skip_factor_transition(entity_id: str, new_state: str, old_state
 async def on_probe_wake(entity_id: str):
     """Called when a probe entity transitions from unavailable to a real value.
 
-    Checks for pending sleep duration writes and applies them.
+    Updates the awake cache, then checks for pending sleep duration and
+    sleep_disabled writes and applies them.
     Waits a few seconds after wake to ensure writable entities are ready.
     """
     data = _load_data()
@@ -2908,32 +3063,51 @@ async def on_probe_wake(entity_id: str):
     for probe_id, probe in probes.items():
         sleep_eid = probe.get("extra_sensors", {}).get("sleep_duration")
         if sleep_eid == entity_id:
-            pending = probe.get("pending_sleep_duration")
-            if pending is not None:
-                display_name = probe.get("display_name", probe_id)
+            # Mark probe as awake in the cache
+            _probe_awake_cache[probe_id] = True
+
+            display_name = probe.get("display_name", probe_id)
+            pending_duration = probe.get("pending_sleep_duration")
+            pending_disabled = probe.get("pending_sleep_disabled")
+            has_pending = pending_duration is not None or pending_disabled is not None
+
+            if has_pending:
                 print(f"[MOISTURE] Probe {display_name} woke up — "
-                      f"waiting 5s then applying pending sleep duration: {pending}s")
-                # Wait for writable number entity to become available
+                      f"waiting 5s then applying pending writes")
+                # Wait for writable entities to become available
                 await asyncio.sleep(5)
                 # Re-load data in case anything changed during the wait
                 data = _load_data()
                 probe = data.get("probes", {}).get(probe_id)
                 if not probe:
                     return
-                pending = probe.get("pending_sleep_duration")
-                if pending is None:
-                    print(f"[MOISTURE] Pending sleep duration was cleared during wait — skipping")
-                    return
-                success = await _set_probe_sleep_duration(probe_id, pending)
-                if success:
-                    probe["pending_sleep_duration"] = None
-                    _save_data(data)
-                    print(f"[MOISTURE] Pending sleep duration {pending}s applied to {display_name}")
-                else:
-                    print(f"[MOISTURE] Failed to apply pending sleep duration to {display_name} — "
-                          f"will retry on next wake")
+
+                # Apply pending sleep duration
+                pending_duration = probe.get("pending_sleep_duration")
+                if pending_duration is not None:
+                    success = await _set_probe_sleep_duration(probe_id, pending_duration)
+                    if success:
+                        probe["pending_sleep_duration"] = None
+                        print(f"[MOISTURE] Pending sleep duration {pending_duration} min applied to {display_name}")
+                    else:
+                        print(f"[MOISTURE] Failed to apply pending sleep duration to {display_name} — "
+                              f"will retry on next wake")
+
+                # Apply pending sleep_disabled toggle
+                pending_disabled = probe.get("pending_sleep_disabled")
+                if pending_disabled is not None:
+                    success = await set_probe_sleep_disabled(probe_id, pending_disabled)
+                    if success:
+                        probe["pending_sleep_disabled"] = None
+                        action = "disabled" if pending_disabled else "enabled"
+                        print(f"[MOISTURE] Pending sleep {action} applied to {display_name}")
+                    else:
+                        print(f"[MOISTURE] Failed to apply pending sleep toggle to {display_name} — "
+                              f"will retry on next wake")
+
+                _save_data(data)
             else:
-                print(f"[MOISTURE] Probe {probe.get('display_name', probe_id)} woke up (no pending writes)")
+                print(f"[MOISTURE] Probe {display_name} woke up (no pending writes)")
             return
 
 
