@@ -263,6 +263,19 @@ async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
     is_off = new_state in ("off", "closed")
 
     if is_on or is_off:
+        # Skip OFF events where we never saw the ON — these are state snapshots
+        # from add-on restarts or initial WebSocket subscription, not real runs.
+        # Exception: if there's a recent unmatched ON event in the log (zone was
+        # running when the add-on restarted), still log the OFF to close the cycle.
+        if is_off and entity_id not in _zone_start_times:
+            recent = get_run_history(hours=24, zone_id=entity_id, limit=1)
+            if recent and recent[0].get("state") in ("on", "open"):
+                # There's an unmatched ON — this OFF closes the cycle, let it through
+                pass
+            else:
+                _zone_states[entity_id] = new_state
+                return
+
         # Only log as "schedule" source if we don't already have
         # a recent entry (to avoid duplicating API-triggered events)
         recent = get_run_history(hours=1, zone_id=entity_id, limit=1)

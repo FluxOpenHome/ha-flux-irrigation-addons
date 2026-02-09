@@ -2126,7 +2126,14 @@ async function loadHistory() {
         const hoursRaw = document.getElementById('historyRange') ? document.getElementById('historyRange').value : '24';
         const hours = parseInt(hoursRaw, 10) || 24;
         const data = await api('/history/runs?hours=' + hours);
-        const events = data.events || [];
+        // Filter out bare OFF/closed events with no duration from schedule source —
+        // these are state snapshots from add-on restarts, not actual runs.
+        // Keep weather_pause, system_pause, moisture_skip, skip, etc.
+        const events = (data.events || []).filter(e => {
+            if ((e.state === 'off' || e.state === 'closed') && !e.duration_seconds
+                && (!e.source || e.source === 'schedule' || e.source === 'unknown')) return false;
+            return true;
+        });
         if (events.length === 0) { el.innerHTML = '<div class="empty-state"><p>No run events in the selected time range</p></div>'; return; }
 
         // Show current weather context summary if available
