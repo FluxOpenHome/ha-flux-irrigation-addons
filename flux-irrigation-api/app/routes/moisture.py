@@ -515,6 +515,46 @@ def _minutes_to_hhmm(minutes: float) -> str:
     return f"{m // 60:02d}:{m % 60:02d}"
 
 
+def _parse_time_to_minutes(val: str) -> int:
+    """Parse a time string to minutes-since-midnight.
+
+    Handles multiple formats:
+      - 24-hour: "5:00", "17:30", "05:00"
+      - 12-hour with AM/PM: "5:00 AM", "10:00 AM", "1:00 PM", "9:00 PM"
+      - 12-hour lowercase: "5:00 am", "1:00 pm"
+
+    Returns minutes since midnight (0-1439).
+    Raises ValueError if the string can't be parsed.
+    """
+    cleaned = val.strip()
+
+    # Check for AM/PM suffix
+    am_pm = ""
+    upper = cleaned.upper()
+    if upper.endswith("AM") or upper.endswith("PM"):
+        am_pm = upper[-2:]
+        cleaned = cleaned[:-2].strip()
+    elif upper.endswith("A") or upper.endswith("P"):
+        # Handle "5:00A" or "5:00P" edge case
+        am_pm = upper[-1] + "M"
+        cleaned = cleaned[:-1].strip()
+
+    parts = cleaned.split(":")
+    hour = int(parts[0])
+    minute = int(parts[1]) if len(parts) > 1 else 0
+
+    if am_pm:
+        # 12-hour format
+        if am_pm == "AM":
+            if hour == 12:
+                hour = 0  # 12:00 AM = midnight = 0:00
+        elif am_pm == "PM":
+            if hour != 12:
+                hour += 12  # 1:00 PM = 13:00, 12:00 PM stays 12:00
+
+    return hour * 60 + minute
+
+
 def _load_schedule_timeline() -> dict:
     """Load the calculated irrigation schedule timeline from disk."""
     if os.path.exists(SCHEDULE_TIMELINE_FILE):
@@ -583,8 +623,7 @@ async def calculate_irrigation_timeline() -> dict:
             eid = s.get("entity_id", "")
             if val and val not in ("unknown", "unavailable", ""):
                 try:
-                    parts = val.split(":")
-                    mins = int(parts[0]) * 60 + int(parts[1])
+                    mins = _parse_time_to_minutes(val)
                     start_times.append({
                         "entity_id": eid,
                         "time_str": val,
@@ -842,8 +881,8 @@ async def discover_moisture_probes() -> list[dict]:
     return candidates
 
 
-# Keywords for filtering HA devices — only show Gophr devices
-DEVICE_KEYWORDS = ["gophr"]
+# Keywords for filtering HA devices — show Gophr/moisture probe devices
+DEVICE_KEYWORDS = ["gophr", "moisture"]
 
 
 async def list_moisture_devices(show_all: bool = False) -> dict:
@@ -909,18 +948,25 @@ async def get_device_sensors(device_id: str) -> list[dict]:
 
     sensors = []
     matched_any = 0
+    disabled_sensors = []
+    non_sensor_count = 0
     for entity in entity_registry:
         if entity.get("device_id") != device_id:
             continue
         matched_any += 1
-        if entity.get("disabled_by"):
-            continue
 
         eid = entity.get("entity_id", "")
         domain = eid.split(".")[0] if "." in eid else ""
 
+        if entity.get("disabled_by"):
+            if domain == "sensor":
+                disabled_sensors.append(eid)
+            print(f"[MOISTURE]   SKIP disabled entity: {eid} (disabled_by={entity.get('disabled_by')})")
+            continue
+
         # Only include sensor entities
         if domain != "sensor":
+            non_sensor_count += 1
             continue
 
         state_data = state_lookup.get(eid, {})
@@ -941,15 +987,34 @@ async def get_device_sensors(device_id: str) -> list[dict]:
         })
 
     print(f"[MOISTURE] get_device_sensors: {matched_any} total entities matched device, "
-          f"{len(sensors)} are sensors")
+          f"{len(sensors)} are sensors, {len(disabled_sensors)} disabled sensors, "
+          f"{non_sensor_count} non-sensor entities")
+    if disabled_sensors:
+        print(f"[MOISTURE] WARNING: {len(disabled_sensors)} sensor(s) disabled in HA: {disabled_sensors}")
+        print(f"[MOISTURE] These sensors need to be enabled in Home Assistant before they can be detected.")
     if matched_any == 0:
-        # Log some device IDs from the registry to help debug mismatches
-        sample_device_ids = set()
-        for e in entity_registry[:50]:
+        # Detailed diagnostic logging to help debug device_id mismatches
+        all_device_ids = {}
+        for e in entity_registry:
             did = e.get("device_id", "")
             if did:
-                sample_device_ids.add(did)
-        print(f"[MOISTURE] Sample device_ids in registry: {list(sample_device_ids)[:10]}")
+                all_device_ids.setdefault(did, []).append(e.get("entity_id", ""))
+        print(f"[MOISTURE] DIAGNOSTIC: entity registry has {len(all_device_ids)} unique device_ids, "
+              f"{len(entity_registry)} total entities")
+        # Look for entities with the Gophr/moisture keywords to find the right device_id
+        for did, eids in all_device_ids.items():
+            moisture_eids = [e for e in eids if "moisture" in e.lower() or "gophr" in e.lower()]
+            if moisture_eids:
+                print(f"[MOISTURE] DIAGNOSTIC: device_id '{did}' has moisture entities: "
+                      f"{moisture_eids[:5]}")
+        # Show partial match attempts
+        if len(device_id) > 8:
+            partial = device_id[:8]
+            partial_matches = [did for did in all_device_ids if partial in did]
+            if partial_matches:
+                print(f"[MOISTURE] DIAGNOSTIC: partial match '{partial}*': {partial_matches}")
+        # Log the requested device_id for comparison
+        print(f"[MOISTURE] DIAGNOSTIC: requested device_id='{device_id}' (len={len(device_id)})")
 
     sensors.sort(key=lambda s: s["entity_id"])
     return sensors
@@ -2247,8 +2312,25 @@ async def api_autodetect_device_sensors(device_id: str):
 
     depth_map = {"shallow": None, "mid": None, "deep": None}
     extra_map = {"wifi": None, "battery": None, "sleep_duration": None}
+    disabled_sensor_entities = []  # Track disabled sensors for diagnostic
 
     print(f"[MOISTURE] autodetect: {len(sensors)} sensors on device {device_id}")
+
+    # Pre-check: if no sensors found, check if this is because sensors are disabled in HA
+    if not sensors:
+        print(f"[MOISTURE] autodetect: 0 sensors — checking for disabled entities...")
+        pre_registry = await ha_client.get_entity_registry()
+        for entity in pre_registry:
+            if entity.get("device_id") != device_id:
+                continue
+            eid = entity.get("entity_id", "")
+            domain = eid.split(".")[0] if "." in eid else ""
+            if domain == "sensor" and entity.get("disabled_by"):
+                disabled_sensor_entities.append(eid)
+                print(f"[MOISTURE]   DISABLED sensor: {eid} (disabled_by={entity.get('disabled_by')})")
+        if disabled_sensor_entities:
+            print(f"[MOISTURE] autodetect: Found {len(disabled_sensor_entities)} DISABLED sensor entities! "
+                  f"These need to be enabled in Home Assistant.")
     for s in sensors:
         print(f"[MOISTURE]   entity={s['entity_id']}  friendly={s.get('friendly_name','')}  class={s.get('device_class','')}  unit={s.get('unit_of_measurement','')}")
 
@@ -2403,19 +2485,29 @@ async def api_autodetect_device_sensors(device_id: str):
     # E.g., if we found sensor.moisture_sensor_device_2ac860_moisture_1_percentage,
     # the device prefix is "moisture_sensor_device_2ac860_".
     device_prefix = ""
-    if sensors:
-        # Extract common prefix from sensor entity IDs (strip domain)
-        sensor_names = [s["entity_id"].split(".", 1)[1] for s in sensors if "." in s["entity_id"]]
-        if sensor_names:
-            # Find longest common prefix
-            prefix = sensor_names[0]
-            for sn in sensor_names[1:]:
-                while not sn.startswith(prefix) and prefix:
-                    # Trim to last underscore
-                    idx = prefix.rfind("_")
-                    prefix = prefix[:idx + 1] if idx > 0 else ""
-            device_prefix = prefix
-            print(f"[MOISTURE]   Device entity prefix: '{device_prefix}'")
+    try:
+        if sensors:
+            sensor_names = [s["entity_id"].split(".", 1)[1] for s in sensors if "." in s["entity_id"]]
+            if len(sensor_names) >= 2:
+                # Find longest common prefix across multiple sensor names
+                prefix = sensor_names[0]
+                for sn in sensor_names[1:]:
+                    while not sn.startswith(prefix) and prefix:
+                        idx = prefix.rfind("_")
+                        prefix = prefix[:idx + 1] if idx > 0 else ""
+                if len(prefix) >= 5:  # Sanity check: prefix must be meaningful
+                    device_prefix = prefix
+            elif len(sensor_names) == 1:
+                # Single sensor: strip the last component to get the device prefix
+                # e.g., "moisture_sensor_device_2ac860_moisture_1_percentage" → trim last parts
+                parts = sensor_names[0].rsplit("_", 3)
+                if len(parts) >= 2:
+                    device_prefix = parts[0] + "_"
+            if device_prefix:
+                print(f"[MOISTURE]   Device entity prefix: '{device_prefix}'")
+    except Exception as e:
+        print(f"[MOISTURE]   Failed to build device prefix: {e}")
+        device_prefix = ""
 
     registry_match_count = 0
     for entity in entity_registry:
@@ -2526,12 +2618,47 @@ async def api_autodetect_device_sensors(device_id: str):
 
     print(f"[MOISTURE] autodetect result: depths={depth_map}, extras={extra_map}")
 
+    # Build diagnostic info when detection fails
+    diagnostic = {}
+    if not any(depth_map.values()):
+        diagnostic["error"] = "No depth sensors detected"
+        diagnostic["device_id"] = device_id
+        diagnostic["sensor_count"] = len(sensors)
+        diagnostic["filtered_sensor_count"] = len(filtered_sensors)
+        diagnostic["registry_entities_for_device"] = registry_match_count
+        if disabled_sensor_entities:
+            diagnostic["disabled_sensors"] = disabled_sensor_entities
+            diagnostic["hint"] = (
+                f"Found {len(disabled_sensor_entities)} sensor entities that are DISABLED in "
+                f"Home Assistant. Go to the ESPHome device page in HA, enable these entities, "
+                f"then try again."
+            )
+        elif not sensors:
+            diagnostic["hint"] = (
+                "No sensor entities found for this device_id. "
+                "The device may have a different internal ID than expected. "
+                "Try selecting 'Show all devices' and re-selecting the device."
+            )
+        elif not filtered_sensors:
+            diagnostic["hint"] = (
+                f"Found {len(sensors)} sensor(s) but all were filtered out "
+                f"(voltage/solar entities). Check entity names."
+            )
+        else:
+            diagnostic["hint"] = (
+                f"Found {len(filtered_sensors)} sensor(s) but none matched depth patterns. "
+                f"Expected entity names containing 'moisture_1', 'moisture_2', 'moisture_3' "
+                f"or keywords like 'shallow', 'mid', 'deep'."
+            )
+            diagnostic["sensor_entities"] = [s["entity_id"] for s in filtered_sensors]
+
     return {
         "device_id": device_id,
         "sensors": depth_map,
         "extra_sensors": {k: v for k, v in extra_map.items() if v is not None},
         "all_sensors": sensors,
         "total": len(sensors),
+        **({"diagnostic": diagnostic} if diagnostic else {}),
     }
 
 
@@ -2806,6 +2933,68 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Req
     else:
         log_change(actor, "Moisture Probes", f"Updated probe: {display}")
     return {"success": True, "probe": probe}
+
+
+@router.post("/probes/{probe_id}/update-entities", summary="Re-detect and update probe entities")
+async def api_update_probe_entities(probe_id: str, request: Request):
+    """Re-run autodetect for an existing probe and update its sensor/extra_sensor mappings.
+
+    This is useful when:
+    - New entities are enabled in Home Assistant
+    - The device was re-adopted in ESPHome
+    - Entities weren't detected during initial setup (device was sleeping)
+    """
+    data = _load_data()
+
+    if probe_id not in data.get("probes", {}):
+        raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
+
+    probe = data["probes"][probe_id]
+    device_id = probe.get("device_id")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="Probe has no device_id — cannot re-detect entities")
+
+    # Run autodetect for this device
+    autodetect_result = await api_autodetect_device_sensors(device_id)
+    new_sensors = autodetect_result.get("sensors", {})
+    new_extra = autodetect_result.get("extra_sensors", {})
+
+    changes = []
+    old_sensors = probe.get("sensors", {})
+    old_extra = probe.get("extra_sensors", {})
+
+    # Update depth sensors (only if newly detected — don't clear existing ones)
+    for depth in ("shallow", "mid", "deep"):
+        new_eid = new_sensors.get(depth)
+        old_eid = old_sensors.get(depth)
+        if new_eid and new_eid != old_eid:
+            old_sensors[depth] = new_eid
+            changes.append(f"{depth.title()}: {old_eid or '(none)'} -> {new_eid}")
+    probe["sensors"] = old_sensors
+
+    # Update extra sensors (merge — don't overwrite existing with None)
+    for key, new_val in new_extra.items():
+        if new_val and new_val != old_extra.get(key):
+            changes.append(f"Extra {key}: {old_extra.get(key, '(none)')} -> {new_val}")
+            old_extra[key] = new_val
+    probe["extra_sensors"] = old_extra
+
+    _save_data(data)
+
+    display_name = probe.get("display_name", probe_id)
+    actor = get_actor(request)
+    if changes:
+        log_change(actor, "Moisture Probes", f"{display_name} — entities updated: {', '.join(changes)}")
+    else:
+        log_change(actor, "Moisture Probes", f"{display_name} — entity update (no changes)")
+
+    return {
+        "success": True,
+        "changes": changes,
+        "sensors": probe["sensors"],
+        "extra_sensors": probe["extra_sensors"],
+        "diagnostic": autodetect_result.get("diagnostic"),
+    }
 
 
 @router.delete("/probes/{probe_id}", summary="Remove a moisture probe")

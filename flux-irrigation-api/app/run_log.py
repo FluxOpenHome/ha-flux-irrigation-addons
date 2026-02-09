@@ -350,20 +350,40 @@ async def _handle_probe_sensor_change(entity_id: str, new_state: str, old_state:
         print(f"[RUN_LOG] Probe sensor transition check error: {e}")
 
 
+_schedule_recalc_task: "asyncio.Task | None" = None
+_schedule_recalc_pending = False
+
+
+async def _debounced_timeline_recalc():
+    """Wait 3 seconds then recalculate the timeline. Debounces rapid changes."""
+    import asyncio
+    global _schedule_recalc_pending
+    await asyncio.sleep(3)
+    _schedule_recalc_pending = False
+    try:
+        from routes.moisture import calculate_irrigation_timeline
+        await calculate_irrigation_timeline()
+    except Exception as e:
+        print(f"[RUN_LOG] Schedule timeline recalculation error: {e}")
+
+
 async def _handle_schedule_entity_change(entity_id: str, new_state: str, old_state: str):
     """Handle a schedule-related entity state change.
 
     Triggers recalculation of the irrigation schedule timeline so probe
     wake times are updated when start times, durations, or zone enables change.
+    Debounced to 3 seconds to prevent rapid-fire recalculations when many
+    entities change at once (e.g., after a restart or bulk update).
     """
     import asyncio
-    try:
-        from routes.moisture import calculate_irrigation_timeline
-        print(f"[RUN_LOG] Schedule entity changed: {entity_id} ({old_state} → {new_state}) "
-              f"— recalculating timeline")
-        asyncio.create_task(calculate_irrigation_timeline())
-    except Exception as e:
-        print(f"[RUN_LOG] Schedule timeline recalculation error: {e}")
+    global _schedule_recalc_task, _schedule_recalc_pending
+    print(f"[RUN_LOG] Schedule entity changed: {entity_id} ({old_state} → {new_state})")
+    if not _schedule_recalc_pending:
+        _schedule_recalc_pending = True
+        print(f"[RUN_LOG] Timeline recalculation scheduled (3s debounce)")
+    if _schedule_recalc_task and not _schedule_recalc_task.done():
+        _schedule_recalc_task.cancel()
+    _schedule_recalc_task = asyncio.create_task(_debounced_timeline_recalc())
 
 
 async def _watch_via_websocket(allowed_entities: set):

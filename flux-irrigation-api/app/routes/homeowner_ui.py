@@ -2620,7 +2620,7 @@ async function loadMoisture() {
                 for (var pzi = 0; pzi < probeZones.length; pzi++) {
                     var pzEid = probeZones[pzi];
                     var pzInfo = perZone[pzEid];
-                    var pzNum = (pzEid.match(/zone[_]?(\d+)/i) || [])[1] || '?';
+                    var pzNum = (pzEid.match(/zone[_]?(\\d+)/i) || [])[1] || '?';
                     if (pzInfo && pzInfo.skip) {
                         probeSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-danger-light);color:var(--color-danger);">Z' + pzNum + ' Skip</span>';
                     } else if (pzInfo && pzInfo.moisture_multiplier != null && pzInfo.moisture_multiplier !== 1.0) {
@@ -2868,7 +2868,10 @@ async function loadMoisture() {
                 html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--border-light);">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
                 html += '<strong style="font-size:14px;">' + esc(probe.display_name || pid) + '</strong>';
+                html += '<div style="display:flex;gap:6px;">';
+                html += '<button class="btn btn-secondary btn-sm" onclick="updateProbeEntities(\\'' + esc(pid) + '\\')">Update Entities</button>';
                 html += '<button class="btn btn-danger btn-sm" onclick="deleteMoistureProbe(\\'' + esc(pid) + '\\')">Remove</button>';
+                html += '</div>';
                 html += '</div>';
                 // Sensor depth pills
                 html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">';
@@ -3148,7 +3151,25 @@ async function onHoMoistureDeviceChange() {
         }
 
         if (detected.length === 0) {
-            html += '<div style="color:var(--text-muted);font-size:12px;margin-bottom:8px;">No moisture depth sensors detected. Make sure this is a Gophr device with moisture sensors.</div>';
+            var diag = data.diagnostic || {};
+            var hint = diag.hint || 'Make sure this is a Gophr device with moisture sensors.';
+            html += '<div style="color:var(--color-danger);font-size:12px;margin-bottom:4px;font-weight:600;">No moisture depth sensors detected</div>';
+            html += '<div style="color:var(--text-muted);font-size:11px;margin-bottom:4px;">' + esc(hint) + '</div>';
+            if (diag.disabled_sensors && diag.disabled_sensors.length > 0) {
+                html += '<div style="background:var(--bg-warning);padding:8px 10px;border-radius:6px;margin-bottom:8px;">';
+                html += '<div style="font-size:11px;font-weight:600;color:var(--text-warning);margin-bottom:4px;">Disabled entities found:</div>';
+                for (var di = 0; di < diag.disabled_sensors.length; di++) {
+                    html += '<div style="font-size:10px;color:var(--text-warning);">' + esc(diag.disabled_sensors[di]) + '</div>';
+                }
+                html += '</div>';
+            }
+            if (diag.sensor_count !== undefined) {
+                html += '<div style="color:var(--text-muted);font-size:11px;margin-bottom:2px;">Sensors: ' + diag.sensor_count + ' found, ' + (diag.filtered_sensor_count || 0) + ' filtered, ' + (diag.registry_entities_for_device || 0) + ' registry matches</div>';
+            }
+            if (diag.sensor_entities && diag.sensor_entities.length > 0) {
+                html += '<div style="color:var(--text-muted);font-size:10px;margin-bottom:4px;">Entities: ' + diag.sensor_entities.join(', ') + '</div>';
+            }
+            html += '<div style="color:var(--text-muted);font-size:11px;margin-bottom:8px;">Device ID: ' + esc(data.device_id || '?') + '</div>';
         }
 
         // Display name
@@ -3207,6 +3228,23 @@ async function deleteMoistureProbe(probeId) {
         _moistureDataCache = null;
         loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function updateProbeEntities(probeId) {
+    try {
+        showToast('Re-detecting entities...', 'info');
+        var result = await mapi('/probes/' + encodeURIComponent(probeId) + '/update-entities', 'POST');
+        if (result.changes && result.changes.length > 0) {
+            showToast('Updated: ' + result.changes.join(', '));
+        } else {
+            showToast('No new entities found');
+        }
+        if (result.diagnostic && result.diagnostic.disabled_sensors) {
+            showToast(result.diagnostic.disabled_sensors.length + ' sensors disabled in HA — enable them first', 'warning');
+        }
+        _moistureDataCache = null;
+        loadMoisture();
+    } catch (e) { showToast(e.message || 'Failed to update entities', 'error'); }
 }
 
 async function hoSetSleepDuration(probeId) {

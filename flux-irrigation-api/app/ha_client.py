@@ -170,7 +170,9 @@ async def get_entity_registry() -> list[dict]:
     through the Supervisor proxy can fail with SUPERVISOR_TOKEN.
     """
     try:
-        return await _ws_command("config/entity_registry/list")
+        result = await _ws_command("config/entity_registry/list")
+        print(f"[HA_CLIENT] Entity registry via WebSocket: {len(result)} entities")
+        return result
     except Exception as ws_err:
         print(f"[HA_CLIENT] WebSocket entity registry failed ({ws_err}), using template API fallback")
         return await _get_entities_via_template()
@@ -394,12 +396,32 @@ async def get_all_states() -> list[dict]:
 
 
 async def get_entities_by_ids(entity_ids: list[str]) -> list[dict]:
-    """Get states for a specific list of entity IDs."""
+    """Get states for a specific list of entity IDs.
+
+    For small batches (<=20), fetches individual entity states in parallel
+    to avoid the overhead of loading ALL states from HA.
+    For larger batches, falls back to fetching all states and filtering.
+    """
     if not entity_ids:
         return []
-    all_states = await get_all_states()
-    allowed = set(entity_ids)
-    return [s for s in all_states if s.get("entity_id", "") in allowed]
+
+    unique_ids = list(set(entity_ids))
+
+    if len(unique_ids) <= 20:
+        # Fetch individual states in parallel — much lighter than get_all_states()
+        import asyncio
+        tasks = [get_entity_state(eid) for eid in unique_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        states = []
+        for eid, result in zip(unique_ids, results):
+            if isinstance(result, dict):
+                states.append(result)
+        return states
+    else:
+        # Large batch — fetch all states and filter
+        all_states = await get_all_states()
+        allowed = set(unique_ids)
+        return [s for s in all_states if s.get("entity_id", "") in allowed]
 
 
 async def call_service(
