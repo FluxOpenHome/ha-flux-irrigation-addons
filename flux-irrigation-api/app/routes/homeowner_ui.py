@@ -375,10 +375,12 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         </div>
     </div>
 
-    <!-- Device Controls Card -->
+    <!-- Device Controls Card (collapsible, collapsed by default) -->
     <div class="card">
-        <div class="card-header"><h2>Device Controls</h2></div>
-        <div class="card-body" id="detailControls">
+        <div class="card-header" onclick="toggleDeviceControls()" style="cursor:pointer;user-select:none;">
+            <h2 style="display:flex;align-items:center;gap:8px;"><span id="deviceControlsChevron" style="font-size:12px;transition:transform 0.2s;display:inline-block;">&#9654;</span> Device Controls</h2>
+        </div>
+        <div class="card-body" id="detailControls" style="display:none;">
             <div class="loading">Loading controls...</div>
         </div>
     </div>
@@ -2980,6 +2982,15 @@ function exportHistoryCSV() {
 function toggleWeatherRules() {
     const container = document.getElementById('weatherRulesContainer');
     const chevron = document.getElementById('weatherRulesChevron');
+    if (!container) return;
+    const isHidden = container.style.display === 'none';
+    container.style.display = isHidden ? 'block' : 'none';
+    if (chevron) chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+}
+
+function toggleDeviceControls() {
+    const container = document.getElementById('detailControls');
+    const chevron = document.getElementById('deviceControlsChevron');
     if (!container) return;
     const isHidden = container.style.display === 'none';
     container.style.display = isHidden ? 'block' : 'none';
