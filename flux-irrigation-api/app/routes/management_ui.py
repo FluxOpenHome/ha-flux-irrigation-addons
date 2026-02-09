@@ -4396,6 +4396,10 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Test</strong> — Click the Test button to send a test notification and verify everything works</li>
 <li style="margin-bottom:4px;">Notifications include the customer name, issue severity, and description so you know exactly what was reported</li>
 </ul>
+
+<div style="border-top:1px solid var(--border-light);margin-top:20px;padding-top:16px;text-align:center;">
+<a href="https://github.com/FluxOpenHome/ha-flux-irrigation-addons/blob/main/flux-irrigation-api/README.md" target="_blank" style="color:var(--color-primary);font-size:14px;font-weight:500;text-decoration:none;">&#128214; Full Documentation on GitHub</a>
+</div>
 `;
 
 // --- Change Log ---

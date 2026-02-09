@@ -1601,7 +1601,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <select id="weatherEntitySelect" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
                     <option value="">-- Select a weather entity --</option>
                 </select>
-                <p style="font-size:12px;color:var(--text-placeholder);margin-top:4px;">Uses your existing HA weather integration (NWS, Weather Underground, etc.). No API key needed.</p>
+                <p style="font-size:12px;color:var(--text-placeholder);margin-top:4px;">We recommend the <strong>NWS (National Weather Service)</strong> integration for the most accurate weather data. See the Help section below for setup instructions.</p>
             </div>
 
             <div id="weatherPreview" style="display:none;background:var(--bg-weather);border-radius:8px;padding:14px;margin-bottom:16px;">
@@ -2815,8 +2815,19 @@ ADMIN_HTML = """<!DOCTYPE html>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Settings</h4>
 <p style="margin-bottom:10px;">Enable weather-aware irrigation by connecting a Home Assistant weather entity. When enabled, weather data is used for smart watering adjustments on the Homeowner Dashboard.</p>
+
+<p style="font-size:14px;font-weight:600;color:var(--text-primary);margin:12px 0 6px 0;">Recommended: NWS (National Weather Service)</p>
+<p style="margin-bottom:8px;">The NWS integration provides the most accurate weather data for US locations. It is free and does not require an API key. Here&rsquo;s how to set it up:</p>
+<ol style="margin:4px 0 12px 20px;">
+<li style="margin-bottom:6px;">In Home Assistant, go to <strong>Settings &rarr; Devices &amp; Services</strong>. Click the <strong>+ Add Integration</strong> button in the bottom-right corner. Search for <strong>NWS</strong> (National Weather Service).</li>
+<li style="margin-bottom:6px;"><strong>API Key</strong> &mdash; The NWS does not issue API keys. You can type any value here (e.g., <code style="background:var(--bg-tile);padding:1px 4px;border-radius:3px;">123456789</code>). The government does not charge for this service.</li>
+<li style="margin-bottom:6px;"><strong>Latitude &amp; Longitude</strong> &mdash; Home Assistant will pre-fill these with your current location. If you are not at the same location as your irrigation controller, go to <a href="https://www.latlong.net/convert-address-to-lat-long.html" target="_blank" style="color:var(--color-primary);">latlong.net</a> and type in the controller&rsquo;s address to get the correct coordinates.</li>
+<li style="margin-bottom:6px;"><strong>METAR Station</strong> &mdash; METAR is a weather station that reports local conditions. Home Assistant will pre-fill this with the closest station to your location. If you want to verify or change it, go to the <a href="https://turbli.com/maps/world-metar-map/" target="_blank" style="color:var(--color-primary);">Turbli METAR map</a> and find the closest circle to your property &mdash; hover over it to see the <strong>4-letter station code</strong> (e.g., KMCO, KORL).</li>
+<li style="margin-bottom:6px;"><strong>Area</strong> &mdash; Assign it to an area in Home Assistant (e.g., &ldquo;Outdoors&rdquo; or your home name).</li>
+<li style="margin-bottom:6px;">Come back to this Configuration page, scroll down to the Weather section, and select your new weather entity from the dropdown. It will match the METAR station code you entered (e.g., <code style="background:var(--bg-tile);padding:1px 4px;border-radius:3px;">weather.kmco</code>).</li>
+</ol>
+
 <ul style="margin:4px 0 12px 20px;">
-<li style="margin-bottom:4px;"><strong>Weather Entity</strong> — Select a weather integration from Home Assistant (e.g., OpenWeatherMap, Met.no, or your local weather station).</li>
 <li style="margin-bottom:4px;"><strong>Check Interval</strong> — How often to refresh weather data (5–60 minutes). Lower values give more responsive adjustments but use more API calls.</li>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Weather rules and thresholds (rain skip, wind delay, temperature adjustments, etc.) are configured from the Homeowner Dashboard's weather section.</div>
@@ -2841,6 +2852,10 @@ ADMIN_HTML = """<!DOCTYPE html>
 <li style="margin-bottom:4px;">Your local irrigation system continues to operate normally</li>
 <li style="margin-bottom:4px;">To re-enable access, generate a new connection key and share it with your management company</li>
 </ul>
+
+<div style="border-top:1px solid var(--border-light);margin-top:20px;padding-top:16px;text-align:center;">
+<a href="https://github.com/FluxOpenHome/ha-flux-irrigation-addons/blob/main/flux-irrigation-api/README.md" target="_blank" style="color:var(--color-primary);font-size:14px;font-weight:500;text-decoration:none;">&#128214; Full Documentation on GitHub</a>
+</div>
 `;
 
     function showHelp() {

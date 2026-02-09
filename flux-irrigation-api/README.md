@@ -126,15 +126,19 @@ On the Configuration page, in the **Connection Key for Management Company** sect
 
 > **Note:** Once a connection key has been generated, the Generate button is locked to prevent accidental regeneration. To generate a new key (which invalidates the old one), click **Unlock to Regenerate** and confirm.
 
-### Step 6: Set Up Weather-Based Control (Optional)
+### Step 6: Set Up Weather-Based Control (Recommended)
 
-See [Weather-Based Irrigation Control](#weather-based-irrigation-control) below for full details. Quick setup:
+We recommend the **NWS (National Weather Service)** integration for the most accurate weather data. It is free and the government does not charge for this service or issue API keys.
 
-1. Install a weather integration in Home Assistant if you don't have one already (e.g., **National Weather Service**, **Weather Underground**, **OpenWeatherMap**)
-2. On the Configuration page, scroll to **Weather-Based Control**
-3. Enable the toggle and select your `weather.*` entity from the dropdown
-4. Configure the weather rules to your preference
-5. Click **Save Weather Settings**
+1. In Home Assistant, go to **Settings → Devices & Services**. Click the **+ Add Integration** button in the bottom-right corner. Search for **NWS** (National Weather Service).
+2. **API Key** — The NWS does not issue API keys. You can type any value here (e.g., `123456789`).
+3. **Latitude & Longitude** — Home Assistant will pre-fill these with your current location. If you are not at the same location as your irrigation controller, go to [latlong.net](https://www.latlong.net/convert-address-to-lat-long.html) and type in the controller's address to get the correct coordinates.
+4. **METAR Station** — METAR is a weather station that reports local conditions. Home Assistant will pre-fill this with the closest station to your location. If you want to verify or change it, go to the [Turbli METAR Map](https://turbli.com/maps/world-metar-map/) and find the closest circle to your property — hover over it to see the **4-letter station code** (e.g., KMCO, KORL).
+5. **Area** — Assign it to an area in Home Assistant (e.g., "Outdoors" or your home name).
+6. Come back to the **Configuration** page in the add-on. Scroll down to **Weather-Based Control**, enable the toggle, and select your new weather entity from the dropdown. It will match the METAR station code you entered (e.g., `weather.kmco`).
+7. Configure the weather rules to your preference and click **Save Weather Settings**.
+
+See [Weather-Based Irrigation Control](#weather-based-irrigation-control) below for full details on all supported weather integrations and rule configuration.
 
 ### Revoking Management Access
 
@@ -181,61 +185,61 @@ The management dashboard automatically checks connectivity to all properties eve
 
 ### Homeowner
 
-- **Homeowner Dashboard** — Full local control with zone start/stop (timed or manual), auto advance, sensor monitoring, schedule management, run history, and weather conditions
-- **Weather-Based Control** — 9 configurable weather rules that automatically pause, reduce, or increase irrigation based on real-time conditions and forecasts
-- **Connection keys** — Simple encoded key shares the API URL and credentials for easy setup (send via copy, email, or QR code)
-- **Connection key regeneration lock** — The Generate button is locked when an active key exists, requiring an explicit unlock to prevent accidental invalidation
-- **Revoke access** — Instantly revoke management company access with one click, with a confirmation dialog to prevent accidents
-- **Run history** — JSONL-based local storage of zone run events with weather conditions captured at run time; CSV export
-- **Zone aliases** — Zones default to "Zone 1", "Zone 2", etc.; give zones friendly display names with aliases that persist across refreshes
-- **Location map** — Leaflet map on the dashboard shows property location with re-center button
-- **Gophr Moisture Probes** — Select Gophr devices from a filtered device picker and map sensors to irrigation zones (many-to-many); moisture multiplier adjusts both API timed runs and ESPHome scheduled durations; combined weather × moisture multiplier; probe cards show WiFi signal, battery level, solar charging status, and sleep duration alongside moisture readings; the **mid sensor (root zone)** drives all watering decisions — shallow detects rain, deep guards against over-irrigation; Gophr logo displayed on all dashboard Moisture Probes card headers with dark/light mode support
-- **Rain Sensor Card** — Dedicated card for rain sensor hardware entities showing sensor state (Dry/Rain Detected), enable/disable, sensor type (NC/NO), rain delay controls, and delay duration; auto-detected from controller entities
-- **Expansion Board Card** — Dedicated card for I2C expansion board status showing detected zone count, board I2C addresses with zone ranges, and rescan button; automatically filters all zone-related entities (tiles, durations, enables, modes) to only show the physically connected zones — firmware pre-creates up to 32 zone entities but only connected zones are displayed
-- **Issue Reporting** — Report issues to your management company with three severity levels (Clarification, Annoyance, Severe Issue); track issue status (Submitted, Acknowledged, Service Scheduled) and see management notes
-- **Upcoming Service** — When your management company schedules a service visit, a green banner appears at the top of the dashboard showing the date and any notes from management; tap the banner to add the appointment directly to your device's calendar app
-- **Clickable Address** — Tap your property address to open it in Apple Maps (iOS/Mac) or Google Maps (Android/other) for directions
-- **Auto Advance** — Toggle at the top of the zone card. To manually run zones with auto advance: start the first zone (timed), then enable Auto Advance — each zone will automatically advance to the next enabled zone when its timer expires
-- **System pause/resume** — Emergency pause that stops all active zones and suspends ESPHome schedule programs
-- **Dark mode** — Toggle between light and dark themes; preference is saved per-device and applied instantly
-- **In-app help** — ❓ button on every page opens a scrollable help modal explaining all features and controls for that screen
+- 🏠 **Homeowner Dashboard** — Full local control with zone start/stop (timed or manual), auto advance, sensor monitoring, schedule management, run history, and weather conditions
+- ☀️ **Weather-Based Control** — 9 configurable weather rules that automatically pause, reduce, or increase irrigation based on real-time conditions and forecasts
+- 🔐 **Connection keys** — Simple encoded key shares the API URL and credentials for easy setup (send via copy, email, or QR code)
+- 🔒 **Connection key regeneration lock** — The Generate button is locked when an active key exists, requiring an explicit unlock to prevent accidental invalidation
+- 🔓 **Revoke access** — Instantly revoke management company access with one click, with a confirmation dialog to prevent accidents
+- 📚 **Run history** — JSONL-based local storage of zone run events with weather conditions captured at run time; CSV export
+- ✏️ **Zone aliases** — Zones default to "Zone 1", "Zone 2", etc.; give zones friendly display names with aliases that persist across refreshes
+- 📍 **Location map** — Leaflet map on the dashboard shows property location with re-center button
+- 🌱 **Gophr Moisture Probes** — Select Gophr devices from a filtered device picker and map sensors to irrigation zones (many-to-many); moisture multiplier adjusts both API timed runs and ESPHome scheduled durations; combined weather × moisture multiplier; probe cards show WiFi signal, battery level, solar charging status, and sleep duration alongside moisture readings; the **mid sensor (root zone)** drives all watering decisions — shallow detects rain, deep guards against over-irrigation; Gophr logo displayed on all dashboard Moisture Probes card headers with dark/light mode support
+- 🌧️ **Rain Sensor Card** — Dedicated card for rain sensor hardware entities showing sensor state (Dry/Rain Detected), enable/disable, sensor type (NC/NO), rain delay controls, and delay duration; auto-detected from controller entities
+- 🔌 **Expansion Board Card** — Dedicated card for I2C expansion board status showing detected zone count, board I2C addresses with zone ranges, and rescan button; automatically filters all zone-related entities (tiles, durations, enables, modes) to only show the physically connected zones — firmware pre-creates up to 32 zone entities but only connected zones are displayed
+- ⚠️ **Issue Reporting** — Report issues to your management company with three severity levels (Clarification, Annoyance, Severe Issue); track issue status (Submitted, Acknowledged, Service Scheduled) and see management notes
+- 📅 **Upcoming Service** — When your management company schedules a service visit, a green banner appears at the top of the dashboard showing the date and any notes from management; tap the banner to add the appointment directly to your device's calendar app
+- 📍 **Clickable Address** — Tap your property address to open it in Apple Maps (iOS/Mac) or Google Maps (Android/other) for directions
+- ▶ **Auto Advance** — Toggle at the top of the zone card. To manually run zones with auto advance: start the first zone (timed), then enable Auto Advance — each zone will automatically advance to the next enabled zone when its timer expires
+- ⏸️ **System pause/resume** — Emergency pause that stops all active zones and suspends ESPHome schedule programs
+- 🌙 **Dark mode** — Toggle between light and dark themes; preference is saved per-device and applied instantly
+- ❓ **In-app help** — Button on every page opens a condensed, page-specific help modal covering the features and controls visible on that screen. For the complete documentation, see this README
 
 ### Management
 
-- **Management Dashboard** — Multi-property grid view with click-to-expand detail cards for each property
-- **QR code scanning** — Scan a homeowner's QR code with your camera to add a property instantly, instead of pasting the connection key
-- **Update connection key** — Swap a customer's connection key without losing notes, aliases, or metadata
-- **Customer search and filtering** — Search properties by name, contact, address, phone, or notes; filter by status (online, offline, revoked) and by state or city
-- **Customer notes** — Add and edit notes on property cards
-- **Live contact sync** — Homeowner name, phone, and address are synced automatically on every health check, even if added after the connection key was generated
-- **Customer local time** — Property detail view shows the customer's local time and timezone abbreviation (e.g., "2:30 PM EST"), derived from the customer's state address
-- **Remote zone control** — Start, stop, and emergency-stop zones on any connected property; Auto Advance toggle at the top of the zone card lets you start the first zone and have it automatically advance through all enabled zones
-- **Remote weather management** — View and configure weather rules on customer systems
-- **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data with device status (WiFi, battery, sleep), assign zones to probes, and manage duration adjustments on customer systems
-- **Remote rain sensor management** — View and control rain sensor settings (enable/disable, sensor type, rain delay) on customer systems
-- **Remote expansion board status** — View detected zones, expansion board I2C addresses, and trigger rescans on customer controllers
-- **Issue Management** — View and manage homeowner-reported issues across all properties; color-coded alerts on property cards; dedicated alerts panel with all active issues; acknowledge issues with notes and schedule service dates; browser notifications and HA push notifications (mobile app, SMS, etc.) when new issues are reported
-- **Clickable Addresses** — Click any property address on cards or detail views to open it in Apple Maps or Google Maps for easy navigation to the property
-- **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
-- **Run history and CSV export** — View and export zone run history and weather logs for each property
-- **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration
-- **Dark mode** — Toggle between light and dark themes; preference is saved per-device independently from the homeowner dashboard
-- **In-app help** — ❓ button opens a scrollable help modal covering all 11 management features (adding properties, remote control, schedules, weather, history, notes, and more)
+- 🏢 **Management Dashboard** — Multi-property grid view with click-to-expand detail cards for each property
+- 📷 **QR code scanning** — Scan a homeowner's QR code with your camera to add a property instantly, instead of pasting the connection key
+- 🔐 **Update connection key** — Swap a customer's connection key without losing notes, aliases, or metadata
+- 🔍 **Customer search and filtering** — Search properties by name, contact, address, phone, or notes; filter by status (online, offline, revoked) and by state or city
+- 📝 **Customer notes** — Add and edit notes on property cards
+- 🔄 **Live contact sync** — Homeowner name, phone, and address are synced automatically on every health check, even if added after the connection key was generated
+- 🕐 **Customer local time** — Property detail view shows the customer's local time and timezone abbreviation (e.g., "2:30 PM EST"), derived from the customer's state address
+- 💧 **Remote zone control** — Start, stop, and emergency-stop zones on any connected property; Auto Advance toggle at the top of the zone card lets you start the first zone and have it automatically advance through all enabled zones
+- ☀️ **Remote weather management** — View and configure weather rules on customer systems
+- 🌱 **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data with device status (WiFi, battery, sleep), assign zones to probes, and manage duration adjustments on customer systems
+- 🌧️ **Remote rain sensor management** — View and control rain sensor settings (enable/disable, sensor type, rain delay) on customer systems
+- 🔌 **Remote expansion board status** — View detected zones, expansion board I2C addresses, and trigger rescans on customer controllers
+- ⚠️ **Issue Management** — View and manage homeowner-reported issues across all properties; color-coded alerts on property cards; dedicated alerts panel with all active issues; acknowledge issues with notes and schedule service dates; browser notifications and HA push notifications (mobile app, SMS, etc.) when new issues are reported
+- 📍 **Clickable Addresses** — Click any property address on cards or detail views to open it in Apple Maps or Google Maps for easy navigation to the property
+- 📅 **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
+- 📚 **Run history and CSV export** — View and export zone run history and weather logs for each property
+- 📖 **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration
+- 🌙 **Dark mode** — Toggle between light and dark themes; preference is saved per-device independently from the homeowner dashboard
+- ❓ **In-app help** — Button opens a condensed help modal covering all management features on that page. For full documentation and setup guides, see this README
 
 ### Platform
 
-- **Dual-mode operation** — Same add-on works for homeowners and management companies
-- **Scoped access** — Only irrigation zones and sensors are exposed — no access to lights, locks, cameras, or any other HA entities
-- **Management access control** — Generate a connection key that grants your management company full access to all devices (irrigation zones, moisture probes, weather, schedules, sensors); revoke access instantly with one click
-- **Audit logging** — Every API action is logged with timestamp, API key, action, and details
-- **Rate limiting** — Configurable request limits to protect the homeowner's HA instance
-- **Entity auto-refresh** — Background task runs every 5 minutes to detect newly enabled or disabled entities in Home Assistant without requiring an add-on restart
-- **Moisture probe integration** — Gophr probes are added via a device picker (filtered for Gophr devices only); auto-detection maps percentage sensors to shallow/mid/deep depths and detects WiFi, battery, sleep duration, sleep control, and solar charging entities; gradient-based algorithm uses the **mid sensor (root zone — where grass roots live)** as the primary decision driver, shallow sensor for rain detection, and deep sensor for over-irrigation guard; per-zone moisture multipliers only affect zones with mapped probes (unmapped zones use weather-only); mid-run moisture monitoring checks every 30s and can shut off a zone early when saturation is detected; crash recovery restores base durations on add-on restart
-- **Probe-aware irrigation (Schedule Timeline)** — The system calculates when each zone will run based on schedule start times and zone durations, then automatically reprograms probe sleep duration so the probe wakes ~10 minutes before its mapped zone. On wake, if the soil is saturated the zone is skipped (disabled before it starts) and the system advances to the next zone. If not saturated, sleep is disabled to keep the probe awake for continuous mid-run monitoring. After the last mapped zone finishes, the original sleep duration is restored and any skipped zones are re-enabled. The timeline recalculates automatically when schedule start times, zone durations, zone enable states, or probe mappings change. Uses factored durations when "Apply Factors to Schedule" is active.
-- **Configuration change log** — Every configuration change is logged with old → new values, who made the change, when, and what category; rolling 1000-entry buffer with CSV export; available on all dashboards
-- **Weather event logging** — All weather rule evaluations and actions are logged with CSV export and clearing from both dashboards
-- **Dark mode** — All pages (homeowner dashboard, configuration, management dashboard) support dark mode with a 🌙/☀️ toggle; preferences are saved per-device in localStorage
-- **In-app help** — Every page has a ❓ help button that opens a scrollable modal with page-specific documentation covering all features and controls
+- 🔀 **Dual-mode operation** — Same add-on works for homeowners and management companies
+- 🛡️ **Scoped access** — Only irrigation zones and sensors are exposed — no access to lights, locks, cameras, or any other HA entities
+- 🔐 **Management access control** — Generate a connection key that grants your management company full access to all devices (irrigation zones, moisture probes, weather, schedules, sensors); revoke access instantly with one click
+- 📋 **Audit logging** — Every API action is logged with timestamp, API key, action, and details
+- ⚡ **Rate limiting** — Configurable request limits to protect the homeowner's HA instance
+- 🔄 **Entity auto-refresh** — Background task runs every 5 minutes to detect newly enabled or disabled entities in Home Assistant without requiring an add-on restart
+- 🌱 **Moisture probe integration** — Gophr probes are added via a device picker (filtered for Gophr devices only); auto-detection maps percentage sensors to shallow/mid/deep depths and detects WiFi, battery, sleep duration, sleep control, and solar charging entities; gradient-based algorithm uses the **mid sensor (root zone — where grass roots live)** as the primary decision driver, shallow sensor for rain detection, and deep sensor for over-irrigation guard; per-zone moisture multipliers only affect zones with mapped probes (unmapped zones use weather-only); mid-run moisture monitoring checks every 30s and can shut off a zone early when saturation is detected; crash recovery restores base durations on add-on restart
+- ⏰ **Probe-aware irrigation (Schedule Timeline)** — The system calculates when each zone will run based on schedule start times and zone durations, then automatically reprograms probe sleep duration so the probe wakes ~10 minutes before its mapped zone. On wake, if the soil is saturated the zone is skipped (disabled before it starts) and the system advances to the next zone. If not saturated, sleep is disabled to keep the probe awake for continuous mid-run monitoring. After the last mapped zone finishes, the original sleep duration is restored and any skipped zones are re-enabled. The timeline recalculates automatically when schedule start times, zone durations, zone enable states, or probe mappings change. Uses factored durations when "Apply Factors to Schedule" is active.
+- 📋 **Configuration change log** — Every configuration change is logged with old → new values, who made the change, when, and what category; rolling 1000-entry buffer with CSV export; available on all dashboards
+- ☀️ **Weather event logging** — All weather rule evaluations and actions are logged with CSV export and clearing from both dashboards
+- 🌙 **Dark mode** — All pages (homeowner dashboard, configuration, management dashboard) support dark mode with a 🌙/☀️ toggle; preferences are saved per-device in localStorage
+- ❓ **In-app help** — Every page has a ❓ help button that opens a condensed, page-specific help modal. The in-app help covers only the features and controls on the current page, while this README serves as the full reference documentation with setup guides, integration details, and architecture information
 
 ---
 
@@ -249,17 +253,19 @@ Any Home Assistant weather integration that provides a `weather.*` entity will w
 
 Below are the most common integrations and how to set them up:
 
-#### National Weather Service (NWS) — Free, US Only
+#### National Weather Service (NWS) — Free, US Only (Recommended)
 
-The NWS integration is free, requires no API key, and provides excellent forecast data for US locations.
+The NWS integration is free, provides the most accurate weather data for US locations, and the government does not charge for this service or issue API keys.
 
 1. Go to **Settings → Devices & Services → + Add Integration**
 2. Search for **National Weather Service (NWS)**
-3. Enter your **latitude and longitude** (pre-filled from your HA config)
-4. Enter a **station ID** (optional — HA will find the nearest one automatically)
-5. Click **Submit** — a `weather.home` (or similar) entity will be created
+3. **API Key** — Type any value (e.g., `123456789`). The NWS does not issue or require real API keys.
+4. **Latitude & Longitude** — Home Assistant will pre-fill these with your current location. If you are not at the same location as your irrigation controller, go to [latlong.net](https://www.latlong.net/convert-address-to-lat-long.html) and type in the controller's address to get the correct coordinates.
+5. **METAR Station** — METAR is a weather station that reports local conditions. Home Assistant will pre-fill this with the closest station to your location. If you want to verify or change it, go to the [Turbli METAR Map](https://turbli.com/maps/world-metar-map/) and find the closest circle to your property — hover over it to see the **4-letter station code** (e.g., KMCO, KORL).
+6. **Area** — Assign it to an area (e.g., "Outdoors").
+7. Click **Submit** — a weather entity matching your METAR code will be created (e.g., `weather.kmco`)
 
-> **Best for:** US-based users who want a reliable, free, no-signup weather source.
+> **Best for:** US-based users who want the most accurate, free, no-signup weather source.
 
 #### OpenWeatherMap — Free Tier Available, Worldwide
 
