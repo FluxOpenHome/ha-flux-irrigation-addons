@@ -1819,6 +1819,11 @@ async def api_get_probes():
 
     # Single batch fetch for all sensor states
     all_states = await ha_client.get_entities_by_ids(list(all_sensor_ids)) if all_sensor_ids else []
+
+    # Use sensor cache to retain last-known-good values when device is sleeping
+    _load_sensor_cache()
+    cache_dirty = False
+
     state_lookup = {}
     for s in all_states:
         eid = s.get("entity_id", "")
@@ -1827,15 +1832,57 @@ async def api_get_probes():
             numeric = float(raw)
         except (ValueError, TypeError):
             numeric = None
-        state_lookup[eid] = {
-            "state": numeric,
-            "raw_state": raw,
-            "last_updated": s.get("last_updated", ""),
-            "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
-            "unit": s.get("attributes", {}).get("unit_of_measurement", ""),
-        }
+
+        if numeric is not None and raw not in ("unavailable", "unknown"):
+            # Good reading — update the cache
+            _sensor_cache[eid] = {
+                "state": numeric,
+                "raw_state": raw,
+                "last_updated": s.get("last_updated", ""),
+                "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+                "unit": s.get("attributes", {}).get("unit_of_measurement", ""),
+            }
+            cache_dirty = True
+            state_lookup[eid] = {
+                "state": numeric,
+                "raw_state": raw,
+                "last_updated": s.get("last_updated", ""),
+                "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+                "unit": s.get("attributes", {}).get("unit_of_measurement", ""),
+                "cached": False,
+            }
+        elif raw in ("unavailable", "unknown") and eid in _sensor_cache:
+            # Device sleeping — use last-known-good cached value
+            cached = _sensor_cache[eid]
+            state_lookup[eid] = {
+                "state": cached["state"],
+                "raw_state": cached.get("raw_state", str(cached["state"])),
+                "last_updated": cached.get("last_updated", ""),
+                "friendly_name": cached.get("friendly_name", eid),
+                "unit": cached.get("unit", ""),
+                "cached": True,
+            }
+        else:
+            # No cache available — pass through as-is
+            state_lookup[eid] = {
+                "state": numeric,
+                "raw_state": raw,
+                "last_updated": s.get("last_updated", ""),
+                "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+                "unit": s.get("attributes", {}).get("unit_of_measurement", ""),
+                "cached": False,
+            }
+
+    if cache_dirty:
+        _save_sensor_cache()
 
     stale_threshold = data.get("stale_reading_threshold_minutes", 120)
+
+    # We need the REAL HA raw states for determining awake/sleeping,
+    # separate from the cache-augmented state_lookup.
+    live_raw_states = {}
+    for s in all_states:
+        live_raw_states[s.get("entity_id", "")] = s.get("state", "unknown")
 
     # Enrich probe data with live readings
     enriched = {}
@@ -1851,23 +1898,32 @@ async def api_get_probes():
                 "friendly_name": sd.get("friendly_name", eid),
                 "last_updated": sd.get("last_updated", ""),
                 "stale": _is_stale(sd.get("last_updated", ""), stale_threshold),
+                "cached": sd.get("cached", False),
             }
 
         # Device-level sensors from stored extra_sensors entity IDs
         device_sensors = {}
         extra = probe.get("extra_sensors") or {}
+
         for key in ("wifi", "battery", "sleep_duration"):
             eid = extra.get(key)
             if not eid:
                 continue
             sd = state_lookup.get(eid, {})
             default_unit = "dBm" if key == "wifi" else "%" if key == "battery" else "s"
-            device_sensors[key] = {
+            sensor_entry = {
                 "value": sd.get("state"),
+                "raw_state": sd.get("raw_state", "unknown"),
                 "unit": sd.get("unit") or default_unit,
                 "entity_id": eid,
                 "friendly_name": sd.get("friendly_name", eid),
+                "cached": sd.get("cached", False),
             }
+            # For sleep_duration: the UI needs the REAL HA state to determine
+            # awake vs sleeping, even when we provide a cached numeric value.
+            if key == "sleep_duration":
+                sensor_entry["live_raw_state"] = live_raw_states.get(eid, "unknown")
+            device_sensors[key] = sensor_entry
 
         # Gophr schedule/sleep entities
         schedule_time_eids = extra.get("schedule_times", [])
@@ -2786,8 +2842,10 @@ async def check_skip_factor_transition(entity_id: str, new_state: str, old_state
     if not data.get("enabled") or not data.get("apply_factors_to_schedule"):
         return False
 
-    # Don't evaluate on unavailable/unknown transitions (probe sleep/wake)
-    if new_state in ("unavailable", "unknown") or old_state in ("unavailable", "unknown"):
+    # If the NEW state is unavailable/unknown, we can't evaluate — skip
+    # But if only the OLD state was unavailable (probe waking up), we MUST check
+    # because the new reading may cross the skip threshold
+    if new_state in ("unavailable", "unknown"):
         return False
 
     # Try to parse as numeric — moisture sensor values
@@ -2841,8 +2899,8 @@ async def check_skip_factor_transition(entity_id: str, new_state: str, old_state
 async def on_probe_wake(entity_id: str):
     """Called when a probe entity transitions from unavailable to a real value.
 
-    Checks for pending sleep duration writes and applies them immediately
-    since the probe is now awake and reachable.
+    Checks for pending sleep duration writes and applies them.
+    Waits a few seconds after wake to ensure writable entities are ready.
     """
     data = _load_data()
     probes = data.get("probes", {})
@@ -2852,15 +2910,28 @@ async def on_probe_wake(entity_id: str):
         if sleep_eid == entity_id:
             pending = probe.get("pending_sleep_duration")
             if pending is not None:
-                print(f"[MOISTURE] Probe {probe.get('display_name', probe_id)} woke up — "
-                      f"applying pending sleep duration: {pending}s")
+                display_name = probe.get("display_name", probe_id)
+                print(f"[MOISTURE] Probe {display_name} woke up — "
+                      f"waiting 5s then applying pending sleep duration: {pending}s")
+                # Wait for writable number entity to become available
+                await asyncio.sleep(5)
+                # Re-load data in case anything changed during the wait
+                data = _load_data()
+                probe = data.get("probes", {}).get(probe_id)
+                if not probe:
+                    return
+                pending = probe.get("pending_sleep_duration")
+                if pending is None:
+                    print(f"[MOISTURE] Pending sleep duration was cleared during wait — skipping")
+                    return
                 success = await _set_probe_sleep_duration(probe_id, pending)
                 if success:
                     probe["pending_sleep_duration"] = None
                     _save_data(data)
-                    print(f"[MOISTURE] Pending sleep duration applied successfully")
+                    print(f"[MOISTURE] Pending sleep duration {pending}s applied to {display_name}")
                 else:
-                    print(f"[MOISTURE] Failed to apply pending sleep duration")
+                    print(f"[MOISTURE] Failed to apply pending sleep duration to {display_name} — "
+                          f"will retry on next wake")
             else:
                 print(f"[MOISTURE] Probe {probe.get('display_name', probe_id)} woke up (no pending writes)")
             return

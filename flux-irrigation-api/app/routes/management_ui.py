@@ -1514,6 +1514,7 @@ function backToList() {
     _mgmtWeatherDataCache = null;
     _mgmtWeatherRulesCache = null;
     _mgmtMoistureDataCache = null;
+    _mgmtLastMultiplierKey = null;
     _mgmtWeatherCardBuilt = false;
     _mgmtSensorGridBuilt = false;
     _mgmtControlsLoadedFor = null;
@@ -1604,6 +1605,7 @@ async function loadDetailData(id) {
 let _mgmtWeatherDataCache = null;
 let _mgmtWeatherRulesCache = null;
 let _mgmtMoistureDataCache = null;
+let _mgmtLastMultiplierKey = null;  // Track multiplier changes to auto-refresh schedule
 let _mgmtWeatherCardBuilt = false;
 
 const _mgmtCondIcons = {
@@ -2045,6 +2047,14 @@ async function loadDetailMoisture(id) {
         let multData = {};
         try { multData = await api('/customers/' + id + '/moisture/multiplier'); } catch (_) {}
 
+        // Check if moisture multipliers changed → auto-refresh schedule card
+        const multKey = JSON.stringify(multData.per_zone || {});
+        if (_mgmtLastMultiplierKey !== null && _mgmtLastMultiplierKey !== multKey) {
+            console.log('[MOISTURE] Factors changed, refreshing schedule card');
+            loadDetailControls(id);
+        }
+        _mgmtLastMultiplierKey = multKey;
+
         // Skip DOM rebuild if data hasn't changed (prevents flickering on refresh)
         const moistureKey = JSON.stringify(data) + '|' + JSON.stringify(settings) + '|' + JSON.stringify(multData);
         if (_mgmtMoistureDataCache === moistureKey) return;
@@ -2108,11 +2118,12 @@ async function loadDetailMoisture(id) {
                     if (!s) continue;
                     const val = s.value != null ? s.value : null;
                     const stale = s.stale;
+                    const isCached = s.cached === true;
                     const pct = val != null ? Math.min(val, 100) : 0;
-                    const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
+                    const color = val == null ? '#bbb' : stale ? '#999' : isCached ? '#7f8c8d' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
                     html += '<div style="margin-bottom:6px;">';
                     html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:2px;">';
-                    html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + '</span>';
+                    html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + (isCached ? ' <span style="font-size:9px;opacity:0.7;" title="Last reading before device went to sleep">(retained)</span>' : '') + '</span>';
                     html += '<span>' + (val != null ? val.toFixed(0) + '%' : '—') + (stale ? ' ⏳' : '') + '</span>';
                     html += '</div>';
                     html += '<div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden;">';
@@ -2135,28 +2146,37 @@ async function loadDetailMoisture(id) {
                         const bColor = bv == null ? 'var(--text-muted)' : bv > 50 ? 'var(--text-success-dark)' : bv > 20 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
                         html += '<span style="color:' + bColor + ';" title="Battery">' + bIcon + ' ' + (bv != null ? bv.toFixed(0) + '%' : '—') + '</span>';
                     }
+                    // Probe Awake/Sleeping status — use live_raw_state (real HA state, not cached)
+                    if (devSensors.sleep_duration) {
+                        const liveState = devSensors.sleep_duration.live_raw_state || devSensors.sleep_duration.raw_state || '';
+                        const isAsleep = liveState === 'unavailable' || liveState === 'unknown';
+                        html += '<span style="font-weight:600;color:' + (isAsleep ? 'var(--text-muted)' : 'var(--color-success)') + ';">' +
+                            (isAsleep ? '😴 Sleeping' : '☀️ Awake') + '</span>';
+                    }
                     if (devSensors.sleep_duration) {
                         const sv = devSensors.sleep_duration.value;
-                        let sleepSec = sv != null ? sv : '';
+                        let sleepSec = '';
                         const unit = (devSensors.sleep_duration.unit || 's').toLowerCase();
-                        if (unit === 'min' || unit === 'minutes') sleepSec = sv != null ? Math.round(sv * 60) : '';
-                        else if (unit === 'h' || unit === 'hours') sleepSec = sv != null ? Math.round(sv * 3600) : '';
-                        else sleepSec = sv != null ? Math.round(sv) : '';
+                        // Convert sensor value to seconds
+                        if (sv != null) {
+                            if (unit === 'min' || unit === 'minutes') sleepSec = Math.round(sv * 60);
+                            else if (unit === 'h' || unit === 'hours') sleepSec = Math.round(sv * 3600);
+                            else sleepSec = Math.round(sv);
+                        }
                         const pendingSleep = probe.pending_sleep_duration;
+                        // Input shows pending value if set, otherwise sensor value
+                        const inputVal = pendingSleep != null ? pendingSleep : sleepSec;
                         html += '<span style="display:inline-flex;align-items:center;gap:4px;" title="Sleep Duration">';
-                        html += '💤 <input type="number" id="mgmtSleepDur_' + esc(pid) + '" value="' + sleepSec + '" min="30" max="7200" step="30" style="width:60px;padding:1px 4px;border:1px solid var(--border-light);border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
+                        html += '💤 <input type="number" id="mgmtSleepDur_' + esc(pid) + '" value="' + inputVal + '" min="30" max="7200" step="30" style="width:60px;padding:1px 4px;border:1px solid ' + (pendingSleep != null ? 'var(--color-warning)' : 'var(--border-light)') + ';border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
                         html += '<span style="font-size:10px;">sec</span>';
                         html += '<button onclick="mgmtSetSleepDuration(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);">Set</button>';
                         if (pendingSleep != null) {
-                            html += '<span style="color:var(--color-warning);font-size:10px;" title="Pending: will apply when probe wakes">⏳ ' + pendingSleep + 's</span>';
+                            html += '<span style="color:var(--color-warning);font-size:10px;" title="Pending: will apply when probe wakes">⏳ Pending</span>';
+                            if (sleepSec) {
+                                html += '<span style="font-size:10px;color:var(--text-muted);" title="Current actual value on device">(actual: ' + sleepSec + 's)</span>';
+                            }
                         }
                         html += '</span>';
-                    }
-                    if (devSensors.sleep_disabled) {
-                        const sdVal = (devSensors.sleep_disabled.value || '').toLowerCase();
-                        const isDisabled = sdVal === 'on';
-                        html += '<span style="color:' + (isDisabled ? 'var(--color-warning)' : 'var(--text-success-dark)') + ';" title="Sleep ' + (isDisabled ? 'disabled (staying awake)' : 'enabled') + '">' +
-                            (isDisabled ? '⏰ Awake' : '😴 Sleep OK') + '</span>';
                     }
                     html += '</div>';
                 }

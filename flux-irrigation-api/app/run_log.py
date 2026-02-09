@@ -275,19 +275,26 @@ async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
 
 
 def _get_probe_sensor_entities() -> set:
-    """Get the set of moisture probe sensor entity IDs to watch for skip↔factor transitions."""
+    """Get the set of moisture probe sensor entity IDs to watch.
+
+    Watches moisture sensors for skip↔factor transitions (only if apply_factors is on),
+    AND sleep_duration sensors for wake detection (always, if probes are enabled).
+    """
     try:
         from routes.moisture import _load_data as _load_moisture_data
         data = _load_moisture_data()
-        if not data.get("enabled") or not data.get("apply_factors_to_schedule"):
+        if not data.get("enabled"):
             return set()
         entities = set()
+        apply_factors = data.get("apply_factors_to_schedule", False)
         for probe_id, probe in data.get("probes", {}).items():
-            for depth in ("shallow", "mid", "deep"):
-                sensor_eid = probe.get("sensors", {}).get(depth)
-                if sensor_eid:
-                    entities.add(sensor_eid)
-            # Also watch sleep_duration for wake detection
+            # Moisture sensors — only if apply_factors is enabled
+            if apply_factors:
+                for depth in ("shallow", "mid", "deep"):
+                    sensor_eid = probe.get("sensors", {}).get(depth)
+                    if sensor_eid:
+                        entities.add(sensor_eid)
+            # Sleep duration sensor — always watched for wake detection
             sleep_eid = probe.get("extra_sensors", {}).get("sleep_duration")
             if sleep_eid:
                 entities.add(sleep_eid)
@@ -303,15 +310,18 @@ async def _handle_probe_sensor_change(entity_id: str, new_state: str, old_state:
     any mapped zone. If so, triggers an immediate factor re-evaluation.
     Also handles probe wake detection for pending sleep duration writes.
     """
+    import asyncio
+
     # Wake detection: unavailable → real value means probe woke up
+    # Run as background task so it doesn't block transition detection
     if old_state in ("unavailable", "unknown") and new_state not in ("unavailable", "unknown"):
         try:
             from routes.moisture import on_probe_wake
-            await on_probe_wake(entity_id)
+            asyncio.create_task(on_probe_wake(entity_id))
         except Exception as e:
             print(f"[RUN_LOG] Probe wake hook error: {e}")
 
-    # Skip↔factor transition detection: only for moisture sensors (not sleep_duration etc.)
+    # Skip↔factor transition detection — runs immediately, not blocked by wake handler
     try:
         from routes.moisture import check_skip_factor_transition
         needs_reeval = await check_skip_factor_transition(entity_id, new_state, old_state)
