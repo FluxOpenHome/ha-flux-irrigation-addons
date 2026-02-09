@@ -425,6 +425,17 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- Generic Dynamic Modal -->
+<div id="dynamicModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;" onclick="if(event.target===this)closeDynamicModal()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:400px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 10px 20px;border-bottom:1px solid var(--border-light);">
+            <h3 id="dynamicModalTitle" style="font-size:15px;font-weight:600;margin:0;color:var(--text-primary);"></h3>
+            <button onclick="closeDynamicModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div id="dynamicModalBody" style="padding:12px 20px 20px 20px;overflow-y:auto;"></div>
+    </div>
+</div>
+
 <!-- Calendar Picker Modal (iOS) -->
 <div id="calendarPickerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:flex-end;justify-content:center;" onclick="if(event.target===this)closeCalendarPicker()">
     <div style="background:var(--bg-card);border-radius:16px 16px 0 0;padding:0;width:100%;max-width:500px;box-shadow:0 -4px 24px rgba(0,0,0,0.2);animation:slideUp 0.25s ease-out;">
@@ -2645,7 +2656,7 @@ async function loadMoisture() {
                     const stale = s.stale;
                     const isCached = s.cached === true;
                     const pct = val != null ? Math.min(val, 100) : 0;
-                    const color = val == null ? '#bbb' : stale ? '#999' : isCached ? '#7f8c8d' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
+                    const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
                     html += '<div style="margin-bottom:6px;">';
                     html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:2px;">';
                     html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + (isCached ? ' <span style="font-size:9px;opacity:0.7;" title="Last reading before device went to sleep">(retained)</span>' : '') + '</span>';
@@ -2737,45 +2748,13 @@ async function loadMoisture() {
                     html += '</div>';
                 }
 
-                // Wake schedule — always visible
+                // Wake schedule — button that opens a popup
                 var _ppWake = (timelineData.probe_prep || {})[pid];
                 var _hasZones = (probe.zone_mappings || []).length > 0;
                 if (_hasZones) {
-                    html += '<div style="margin-top:6px;padding:6px 8px;background:var(--bg-tile);border:1px solid var(--border-light);border-radius:6px;">';
-                    html += '<div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Wake Schedule</div>';
-                    if (_ppWake && _ppWake.prep_entries && _ppWake.prep_entries.length > 0) {
-                        var _nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-                        var _nextIdx = -1;
-                        for (var _ni = 0; _ni < _ppWake.prep_entries.length; _ni++) {
-                            if (_ppWake.prep_entries[_ni].target_wake_minutes > _nowMin) { _nextIdx = _ni; break; }
-                        }
-                        for (var _wi = 0; _wi < _ppWake.prep_entries.length; _wi++) {
-                            var _we = _ppWake.prep_entries[_wi];
-                            var _twm = _we.target_wake_minutes;
-                            var _twH = Math.floor(_twm / 60) % 24;
-                            var _twM = Math.round(_twm % 60);
-                            var _twAmPm = _twH >= 12 ? 'PM' : 'AM';
-                            var _twH12 = _twH % 12 || 12;
-                            var _wakeTimeStr = _twH12 + ':' + (_twM < 10 ? '0' : '') + _twM + ' ' + _twAmPm;
-                            var _zsm = _we.zone_start_minutes || 0;
-                            var _zsH = Math.floor(_zsm / 60) % 24;
-                            var _zsM = Math.round(_zsm % 60);
-                            var _zsAmPm = _zsH >= 12 ? 'PM' : 'AM';
-                            var _zsH12 = _zsH % 12 || 12;
-                            var _zoneTimeStr = _zsH12 + ':' + (_zsM < 10 ? '0' : '') + _zsM + ' ' + _zsAmPm;
-                            var _isNext = (_wi === _nextIdx);
-                            html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;' + (_isNext ? 'color:var(--color-warning);font-weight:600;' : 'color:var(--text-secondary);') + 'font-size:11px;">';
-                            html += '<span>⏰</span>';
-                            html += '<span>Wake <strong>' + _wakeTimeStr + '</strong></span>';
-                            html += '<span style="color:var(--text-muted);">→</span>';
-                            html += '<span>Zone ' + _we.zone_num + ' runs ' + _zoneTimeStr + '</span>';
-                            if (_isNext) html += '<span style="font-size:9px;background:var(--color-warning);color:#fff;padding:1px 4px;border-radius:3px;margin-left:auto;">NEXT</span>';
-                            html += '</div>';
-                        }
-                    } else {
-                        html += '<div style="font-size:11px;color:var(--text-muted);font-style:italic;">No schedule calculated yet — configure schedule start times and zone durations</div>';
-                    }
-                    html += '</div>';
+                    // Store prep data on window for the popup to read
+                    window['_wakePrep_' + pid] = _ppWake;
+                    html += '<button onclick="hoShowWakeSchedule(\\'' + esc(pid) + '\\')" style="margin-top:6px;padding:2px 8px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);" title="View probe wake schedule">Wake Schedule</button>';
                 }
 
                 // Zone summary + edit toggle
@@ -3330,6 +3309,51 @@ async function hoPressSleepNow(probeId) {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+function hoShowWakeSchedule(probeId) {
+    var prep = window['_wakePrep_' + probeId];
+    var body = '';
+    if (prep && prep.prep_entries && prep.prep_entries.length > 0) {
+        var nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+        var nextIdx = -1;
+        for (var ni = 0; ni < prep.prep_entries.length; ni++) {
+            if (prep.prep_entries[ni].target_wake_minutes > nowMin) { nextIdx = ni; break; }
+        }
+        body += '<div style="display:flex;flex-direction:column;gap:6px;">';
+        for (var wi = 0; wi < prep.prep_entries.length; wi++) {
+            var we = prep.prep_entries[wi];
+            var twm = we.target_wake_minutes;
+            var twH = Math.floor(twm / 60) % 24;
+            var twM = Math.round(twm % 60);
+            var twAmPm = twH >= 12 ? 'PM' : 'AM';
+            var twH12 = twH % 12 || 12;
+            var wakeTimeStr = twH12 + ':' + (twM < 10 ? '0' : '') + twM + ' ' + twAmPm;
+            var zsm = we.zone_start_minutes || 0;
+            var zsH = Math.floor(zsm / 60) % 24;
+            var zsM = Math.round(zsm % 60);
+            var zsAmPm = zsH >= 12 ? 'PM' : 'AM';
+            var zsH12 = zsH % 12 || 12;
+            var zoneTimeStr = zsH12 + ':' + (zsM < 10 ? '0' : '') + zsM + ' ' + zsAmPm;
+            var isNext = (wi === nextIdx);
+            body += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;' +
+                (isNext ? 'background:var(--bg-active-tile);' : '') + '">';
+            body += '<span style="font-size:16px;">&#9200;</span>';
+            body += '<div style="flex:1;">';
+            body += '<div style="font-size:13px;' + (isNext ? 'font-weight:600;color:var(--color-warning);' : 'color:var(--text-secondary);') + '">Wake at <strong>' + wakeTimeStr + '</strong></div>';
+            body += '<div style="font-size:11px;color:var(--text-muted);">Zone ' + we.zone_num + ' runs at ' + zoneTimeStr + '</div>';
+            body += '</div>';
+            if (isNext) body += '<span style="font-size:9px;background:var(--color-warning);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;">NEXT</span>';
+            body += '</div>';
+        }
+        body += '</div>';
+        if (prep.state && prep.state !== 'idle') {
+            body += '<div style="margin-top:10px;padding:6px 8px;background:var(--bg-tile);border-radius:6px;font-size:11px;color:var(--text-muted);">Current state: <strong>' + prep.state + '</strong></div>';
+        }
+    } else {
+        body = '<div style="font-size:13px;color:var(--text-muted);font-style:italic;padding:8px 0;">No schedule calculated yet. Configure schedule start times and zone durations to enable wake scheduling.</div>';
+    }
+    showModal('Wake Schedule', body);
+}
+
 async function toggleApplyFactors(enable) {
     try {
         const result = await mapi('/settings', 'PUT', { apply_factors_to_schedule: enable });
@@ -3579,13 +3603,19 @@ function showHelp() {
 function closeHelpModal() {
     document.getElementById('helpModal').style.display = 'none';
 }
+function showModal(title, bodyHtml) {
+    document.getElementById('dynamicModalTitle').textContent = title;
+    document.getElementById('dynamicModalBody').innerHTML = bodyHtml;
+    document.getElementById('dynamicModal').style.display = 'flex';
+}
+function closeDynamicModal() {
+    document.getElementById('dynamicModal').style.display = 'none';
+}
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && document.getElementById('helpModal').style.display === 'flex') {
-        closeHelpModal();
+    if (e.key === 'Escape') {
+        if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
+        if (document.getElementById('dynamicModal').style.display === 'flex') closeDynamicModal();
     }
-});
-document.getElementById('helpModal').addEventListener('click', function(e) {
-    if (e.target === this) closeHelpModal();
 });
 </script>
 </body>
