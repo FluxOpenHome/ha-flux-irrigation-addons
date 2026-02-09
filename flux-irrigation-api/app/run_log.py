@@ -265,6 +265,14 @@ async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
 
     _zone_states[entity_id] = new_state
 
+    # Notify moisture probe module for Gophr sleep/wake control
+    if is_on or is_off:
+        try:
+            from routes.moisture import on_zone_state_change
+            await on_zone_state_change(entity_id, new_state)
+        except Exception as e:
+            print(f"[RUN_LOG] Moisture zone state hook error: {e}")
+
 
 async def _watch_via_websocket(allowed_entities: set):
     """Subscribe to HA state_changed events via WebSocket for real-time logging.
