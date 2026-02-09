@@ -975,13 +975,17 @@ function showMap(lat, lon, label) {
     const mapEl = document.getElementById('detailMap');
     mapEl.style.display = 'block';
     if (leafletMap) { leafletMap.remove(); leafletMap = null; }
-    leafletMap = L.map('detailMap').setView([lat, lon], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-    }).addTo(leafletMap);
-    L.marker([lat, lon]).addTo(leafletMap).bindPopup(esc(label)).openPopup();
-    setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 200);
+    // Delay Leaflet init until after the container is visible and laid out
+    requestAnimationFrame(() => {
+        leafletMap = L.map('detailMap').setView([lat, lon], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19,
+        }).addTo(leafletMap);
+        L.marker([lat, lon]).addTo(leafletMap).bindPopup(esc(label)).openPopup();
+        setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 300);
+        setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 1000);
+    });
 }
 
 // --- Dashboard Loading ---

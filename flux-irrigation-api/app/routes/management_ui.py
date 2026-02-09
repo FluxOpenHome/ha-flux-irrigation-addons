@@ -1586,28 +1586,32 @@ function showMap(lat, lon, label) {
     mapEl.style.display = 'block';
     if (leafletMap) { leafletMap.remove(); leafletMap = null; }
     mapCenter = { lat, lon };
-    leafletMap = L.map('detailMap').setView([lat, lon], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-    }).addTo(leafletMap);
-    L.marker([lat, lon]).addTo(leafletMap).bindPopup(esc(label)).openPopup();
-    // Recenter button
-    const RecenterControl = L.Control.extend({
-        options: { position: 'topleft' },
-        onAdd: function() {
-            const btn = L.DomUtil.create('div', 'leaflet-bar');
-            btn.innerHTML = '<a href="#" title="Recenter map" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">⌖</a>';
-            btn.style.cursor = 'pointer';
-            L.DomEvent.on(btn, 'click', function(e) {
-                L.DomEvent.stop(e);
-                if (leafletMap && mapCenter) leafletMap.setView([mapCenter.lat, mapCenter.lon], 16);
-            });
-            return btn;
-        }
+    // Delay Leaflet init until after the container is visible and laid out
+    requestAnimationFrame(() => {
+        leafletMap = L.map('detailMap').setView([lat, lon], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19,
+        }).addTo(leafletMap);
+        L.marker([lat, lon]).addTo(leafletMap).bindPopup(esc(label)).openPopup();
+        // Recenter button
+        const RecenterControl = L.Control.extend({
+            options: { position: 'topleft' },
+            onAdd: function() {
+                const btn = L.DomUtil.create('div', 'leaflet-bar');
+                btn.innerHTML = '<a href="#" title="Recenter map" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">⌖</a>';
+                btn.style.cursor = 'pointer';
+                L.DomEvent.on(btn, 'click', function(e) {
+                    L.DomEvent.stop(e);
+                    if (leafletMap && mapCenter) leafletMap.setView([mapCenter.lat, mapCenter.lon], 16);
+                });
+                return btn;
+            }
+        });
+        leafletMap.addControl(new RecenterControl());
+        setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 300);
+        setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 1000);
     });
-    leafletMap.addControl(new RecenterControl());
-    setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 200);
 }
 
 async function loadDetailData(id) {

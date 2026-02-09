@@ -491,6 +491,64 @@ async def switch_mode(body: ModeSwitch):
     }
 
 
+# --- Contact Info (Homeowner Mode) ---
+
+
+class ContactInfoRequest(BaseModel):
+    address: str = Field("", max_length=200, description="Street address")
+    city: str = Field("", max_length=100, description="City")
+    state: str = Field("", max_length=50, description="State")
+    zip: str = Field("", max_length=20, description="ZIP code")
+    phone: str = Field("", max_length=20, description="Homeowner phone number")
+    first_name: str = Field("", max_length=50, description="Homeowner first name")
+    last_name: str = Field("", max_length=50, description="Homeowner last name")
+    label: str = Field("", max_length=100, description="Property label")
+
+
+@router.put("/api/contact-info", summary="Save contact and address info")
+async def save_contact_info(body: ContactInfoRequest):
+    """Save homeowner contact/address info without regenerating the connection key."""
+    options = _load_options()
+
+    # Track changes for changelog
+    contact_changes = []
+    contact_fields = {
+        "homeowner_address": ("Address", body.address),
+        "homeowner_city": ("City", body.city),
+        "homeowner_state": ("State", body.state),
+        "homeowner_zip": ("ZIP", body.zip),
+        "homeowner_phone": ("Phone", body.phone),
+        "homeowner_first_name": ("First name", body.first_name),
+        "homeowner_last_name": ("Last name", body.last_name),
+        "homeowner_label": ("Property label", body.label),
+    }
+    for opt_key, (label, new_val) in contact_fields.items():
+        old_val = options.get(opt_key, "")
+        if old_val != new_val:
+            contact_changes.append(f"{label}: {old_val or '(empty)'} -> {new_val or '(empty)'}")
+
+    options["homeowner_address"] = body.address
+    options["homeowner_city"] = body.city
+    options["homeowner_state"] = body.state
+    options["homeowner_zip"] = body.zip
+    options["homeowner_phone"] = body.phone
+    options["homeowner_first_name"] = body.first_name
+    options["homeowner_last_name"] = body.last_name
+    options["homeowner_label"] = body.label
+
+    await _save_options(options)
+    await reload_config()
+
+    for change in contact_changes:
+        log_change("Homeowner", "Connection Key", change)
+
+    return {
+        "success": True,
+        "changes": len(contact_changes),
+        "message": f"Contact info saved ({len(contact_changes)} change(s))" if contact_changes else "No changes",
+    }
+
+
 # --- Connection Key (Homeowner Mode) ---
 
 
@@ -624,6 +682,7 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     print(f"[ADMIN] Generated fresh management API key")
 
     await _save_options(options)
+    await reload_config()
 
     key_data = ConnectionKeyData(
         url=url,
@@ -1392,6 +1451,10 @@ ADMIN_HTML = """<!DOCTYPE html>
                     </p>
                 </div>
             </div>
+            <div style="margin-bottom:12px;">
+                <button class="btn btn-secondary" onclick="saveContactInfo()">Save Contact Info</button>
+                <span id="contactSaveStatus" style="font-size:12px;color:var(--color-success);margin-left:8px;display:none;">&#10003; Saved</span>
+            </div>
             <div id="generateKeyArea">
                 <div id="generateKeyUnlocked" style="display:block;">
                     <button class="btn btn-primary" onclick="generateConnectionKey()">Generate Connection Key</button>
@@ -1904,6 +1967,34 @@ ADMIN_HTML = """<!DOCTYPE html>
         } catch(e) {
             resultEl.innerHTML = '<span style="color:var(--color-danger);">&#10008; Test failed: ' + escHtml(e.message) + '</span>';
         }
+    }
+
+    async function saveContactInfo() {
+        const body = {
+            first_name: document.getElementById('homeownerFirstName').value.trim(),
+            last_name: document.getElementById('homeownerLastName').value.trim(),
+            label: document.getElementById('homeownerLabel').value.trim(),
+            address: document.getElementById('homeownerAddress').value.trim(),
+            city: document.getElementById('homeownerCity').value.trim(),
+            state: document.getElementById('homeownerState').value.trim(),
+            zip: document.getElementById('homeownerZip').value.trim(),
+            phone: document.getElementById('homeownerPhone').value.trim(),
+        };
+        try {
+            const res = await fetch(`${BASE}/contact-info`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(data.message || 'Contact info saved');
+                const badge = document.getElementById('contactSaveStatus');
+                if (badge) { badge.style.display = 'inline'; setTimeout(() => { badge.style.display = 'none'; }, 3000); }
+            } else {
+                showToast(data.detail || 'Failed to save', 'error');
+            }
+        } catch(e) { showToast('Failed to save contact info', 'error'); }
     }
 
     async function generateConnectionKey() {
