@@ -857,13 +857,35 @@ async def admin_ui(request: Request):
     config = get_config()
     if config.mode == "management":
         from routes.management_ui import MANAGEMENT_HTML
-        return HTMLResponse(content=MANAGEMENT_HTML)
+        import logging
+        _log = logging.getLogger(__name__)
+        _log.warning("[ADMIN-UI] Serving management HTML: %d bytes, starts=%s, ends=%s, has_loadCustomers=%s, has_DOMContentLoaded=%s, has_jsErrorBanner=%s",
+            len(MANAGEMENT_HTML),
+            repr(MANAGEMENT_HTML[:60]),
+            repr(MANAGEMENT_HTML[-60:]),
+            'loadCustomers' in MANAGEMENT_HTML,
+            'DOMContentLoaded' in MANAGEMENT_HTML,
+            'jsErrorBanner' in MANAGEMENT_HTML,
+        )
+        return HTMLResponse(
+            content=MANAGEMENT_HTML,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
     # Homeowner mode: check view param
     view = request.query_params.get("view", "")
+    no_cache = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
     if view == "config":
-        return HTMLResponse(content=ADMIN_HTML)
+        return HTMLResponse(content=ADMIN_HTML, headers=no_cache)
     from routes.homeowner_ui import HOMEOWNER_HTML
-    return HTMLResponse(content=HOMEOWNER_HTML)
+    return HTMLResponse(content=HOMEOWNER_HTML, headers=no_cache)
 
 
 ADMIN_HTML = """<!DOCTYPE html>

@@ -2130,16 +2130,16 @@ async function loadDetailMoisture(id) {
                 } else {
                     html += '<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No zones mapped</span>';
                 }
-                html += '<a href="#" onclick="mgmtToggleProbeZones(\'' + esc(pid) + '\');return false;" style="font-size:12px;">Edit Zones</a>';
+                html += '<a href="#" onclick="mgmtToggleProbeZones(\\'' + esc(pid) + '\\');return false;" style="font-size:12px;">Edit Zones</a>';
                 html += '</div>';
                 // Collapsible zone assignment
                 html += '<div id="mgmtProbeZones_' + esc(pid) + '" style="display:none;margin-top:10px;border-top:1px solid var(--border-light);padding-top:10px;">';
                 html += '<div style="display:flex;gap:6px;margin-bottom:8px;">';
-                html += '<button class="btn btn-secondary btn-sm" onclick="mgmtProbeZonesSelectAll(\'' + esc(pid) + '\',true)">Select All</button>';
-                html += '<button class="btn btn-secondary btn-sm" onclick="mgmtProbeZonesSelectAll(\'' + esc(pid) + '\',false)">Select None</button>';
+                html += '<button class="btn btn-secondary btn-sm" onclick="mgmtProbeZonesSelectAll(\\'' + esc(pid) + '\\',true)">Select All</button>';
+                html += '<button class="btn btn-secondary btn-sm" onclick="mgmtProbeZonesSelectAll(\\'' + esc(pid) + '\\',false)">Select None</button>';
                 html += '</div>';
                 html += '<div id="mgmtProbeZoneCbs_' + esc(pid) + '" style="font-size:12px;">Loading zones...</div>';
-                html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="mgmtSaveProbeZones(\'' + esc(pid) + '\')">Save Zone Mapping</button>';
+                html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="mgmtSaveProbeZones(\\'' + esc(pid) + '\\')">Save Zone Mapping</button>';
                 html += '</div>';
                 html += '</div>';
             }
