@@ -19,6 +19,7 @@ Key concepts:
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -1082,6 +1083,10 @@ class ProbeCreateRequest(BaseModel):
         default_factory=dict,
         description='Sensor entity IDs by depth: {"shallow": "sensor.xxx", "mid": "sensor.yyy", "deep": "sensor.zzz"}',
     )
+    extra_sensors: Optional[dict] = Field(
+        None,
+        description='Auto-detected device-level sensor entity IDs: {"wifi": "sensor.xxx", "battery": "sensor.yyy", "sleep_duration": "sensor.zzz"}',
+    )
     zone_mappings: list[str] = Field(
         default_factory=list,
         description="List of zone entity_ids this probe is mapped to",
@@ -1096,6 +1101,7 @@ class ProbeUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     device_id: Optional[str] = None
     sensors: Optional[dict] = None
+    extra_sensors: Optional[dict] = None
     zone_mappings: Optional[list[str]] = None
     thresholds: Optional[dict] = None
 
@@ -1137,67 +1143,83 @@ async def api_get_device_sensors(device_id: str):
     return {"device_id": device_id, "sensors": sensors, "total": len(sensors)}
 
 
-async def _get_device_status_sensors(device_id: str) -> dict:
-    """Fetch device-level status sensors (WiFi, battery, sleep) for a Gophr device.
+@router.get("/devices/{device_id}/autodetect", summary="Auto-detect sensor assignments for a Gophr device")
+async def api_autodetect_device_sensors(device_id: str):
+    """Auto-detect moisture depth sensors and device status sensors from entity names.
 
-    Returns dict with keys: wifi, battery, sleep_duration — each has value + unit.
+    Uses naming conventions:
+      - moisture_sensor_3 / sensor 3 → shallow (shallowest depth)
+      - moisture_sensor_2 / sensor 2 → mid (root zone)
+      - moisture_sensor_1 / sensor 1 → deep (deepest)
+      - Also matches 'shallow', 'mid'/'middle', 'deep'/'bottom' keywords
+      - WiFi: entity contains 'wifi', 'signal', 'rssi', or has device_class signal_strength
+      - Battery: entity contains 'battery' or has device_class battery
+      - Sleep: entity contains 'sleep'
     """
-    if not device_id:
-        return {}
+    sensors = await get_device_sensors(device_id)
 
-    try:
-        entity_registry = await ha_client.get_entity_registry()
-        all_states = await ha_client.get_all_states()
-        state_lookup = {s.get("entity_id", ""): s for s in all_states}
+    depth_map = {"shallow": None, "mid": None, "deep": None}
+    extra_map = {"wifi": None, "battery": None, "sleep_duration": None}
 
-        # Find all sensor entities on this device
-        device_sensors = []
-        for entity in entity_registry:
-            if entity.get("device_id") != device_id:
+    for s in sensors:
+        eid = s["entity_id"].lower()
+        fname = (s.get("friendly_name") or "").lower()
+        searchable = f"{eid} {fname}"
+        device_class = s.get("device_class", "")
+
+        # WiFi signal detection
+        if device_class == "signal_strength" or any(
+            kw in searchable for kw in ("wifi", "signal_strength", "rssi")
+        ):
+            if not extra_map["wifi"]:
+                extra_map["wifi"] = s["entity_id"]
+            continue
+
+        # Battery detection
+        if device_class == "battery" or "battery" in searchable:
+            if not extra_map["battery"]:
+                extra_map["battery"] = s["entity_id"]
+            continue
+
+        # Sleep duration detection
+        if "sleep" in searchable:
+            if not extra_map["sleep_duration"]:
+                extra_map["sleep_duration"] = s["entity_id"]
+            continue
+
+        # Moisture depth detection
+        # Priority 1: numbered sensors (sensor_3=shallow, sensor_2=mid, sensor_1=deep)
+        num_match = re.search(r'(?:moisture_)?sensor[_\s]?(\d+)', searchable)
+        if num_match:
+            num = int(num_match.group(1))
+            if num == 3 and not depth_map["shallow"]:
+                depth_map["shallow"] = s["entity_id"]
                 continue
-            if entity.get("disabled_by"):
+            elif num == 2 and not depth_map["mid"]:
+                depth_map["mid"] = s["entity_id"]
                 continue
-            eid = entity.get("entity_id", "")
-            if not eid.startswith("sensor."):
+            elif num == 1 and not depth_map["deep"]:
+                depth_map["deep"] = s["entity_id"]
                 continue
-            device_sensors.append(eid)
 
-        result = {}
-        for eid in device_sensors:
-            eid_lower = eid.lower()
-            state_data = state_lookup.get(eid, {})
-            attrs = state_data.get("attributes", {})
-            raw_state = state_data.get("state", "unknown")
-            friendly = attrs.get("friendly_name", eid)
-            unit = attrs.get("unit_of_measurement", "")
-            device_class = attrs.get("device_class", "")
+        # Priority 2: keyword matching
+        if any(kw in searchable for kw in ("shallow", "surface", "top")):
+            if not depth_map["shallow"]:
+                depth_map["shallow"] = s["entity_id"]
+        elif any(kw in searchable for kw in ("mid", "middle", "root")):
+            if not depth_map["mid"]:
+                depth_map["mid"] = s["entity_id"]
+        elif any(kw in searchable for kw in ("deep", "bottom", "reserve")):
+            if not depth_map["deep"]:
+                depth_map["deep"] = s["entity_id"]
 
-            try:
-                val = float(raw_state)
-            except (ValueError, TypeError):
-                val = None
-
-            # WiFi signal: entity_id contains wifi/signal/rssi, or device_class is signal_strength
-            if device_class == "signal_strength" or any(
-                kw in eid_lower for kw in ("wifi", "signal", "rssi")
-            ):
-                if "wifi" not in result:
-                    result["wifi"] = {"value": val, "unit": unit or "dBm", "entity_id": eid, "friendly_name": friendly}
-
-            # Battery: device_class is battery, or entity_id contains battery
-            elif device_class == "battery" or "battery" in eid_lower:
-                if "battery" not in result:
-                    result["battery"] = {"value": val, "unit": unit or "%", "entity_id": eid, "friendly_name": friendly}
-
-            # Sleep duration: entity_id contains sleep
-            elif "sleep" in eid_lower:
-                if "sleep_duration" not in result:
-                    result["sleep_duration"] = {"value": val, "unit": unit or "s", "entity_id": eid, "friendly_name": friendly}
-
-        return result
-    except Exception as e:
-        print(f"[MOISTURE] Failed to fetch device status sensors for {device_id}: {e}")
-        return {}
+    return {
+        "device_id": device_id,
+        "sensors": depth_map,
+        "extra_sensors": {k: v for k, v in extra_map.items() if v},
+        "all_sensors": sensors,
+        "total": len(sensors),
+    }
 
 
 @router.get("/probes", summary="Get probe configuration and live readings")
@@ -1213,40 +1235,72 @@ async def api_get_probes():
             "total": 0,
         }
 
-    sensor_states = await _get_probe_sensor_states(probes)
-    stale_threshold = data.get("stale_reading_threshold_minutes", 120)
-
-    # Collect unique device IDs for device-level sensor lookup
-    device_ids = set()
+    # Collect ALL entity IDs we need to fetch — depth sensors + extra sensors
+    all_sensor_ids = set()
     for probe in probes.values():
-        did = probe.get("device_id")
-        if did:
-            device_ids.add(did)
+        for eid in probe.get("sensors", {}).values():
+            if eid:
+                all_sensor_ids.add(eid)
+        for eid in probe.get("extra_sensors", {}).values():
+            if eid:
+                all_sensor_ids.add(eid)
 
-    # Fetch device-level sensors (WiFi, battery, sleep) for all devices
-    device_status = {}
-    for did in device_ids:
-        device_status[did] = await _get_device_status_sensors(did)
+    # Single batch fetch for all sensor states
+    all_states = await ha_client.get_entities_by_ids(list(all_sensor_ids)) if all_sensor_ids else []
+    state_lookup = {}
+    for s in all_states:
+        eid = s.get("entity_id", "")
+        raw = s.get("state", "unknown")
+        try:
+            numeric = float(raw)
+        except (ValueError, TypeError):
+            numeric = None
+        state_lookup[eid] = {
+            "state": numeric,
+            "raw_state": raw,
+            "last_updated": s.get("last_updated", ""),
+            "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+            "unit": s.get("attributes", {}).get("unit_of_measurement", ""),
+        }
+
+    stale_threshold = data.get("stale_reading_threshold_minutes", 120)
 
     # Enrich probe data with live readings
     enriched = {}
     for probe_id, probe in probes.items():
+        # Depth sensor readings
         sensors_with_readings = {}
         for depth, eid in probe.get("sensors", {}).items():
-            sensor_data = sensor_states.get(eid, {})
+            sd = state_lookup.get(eid, {})
             sensors_with_readings[depth] = {
                 "entity_id": eid,
-                "value": sensor_data.get("state"),
-                "raw_state": sensor_data.get("raw_state", "unknown"),
-                "friendly_name": sensor_data.get("friendly_name", eid),
-                "last_updated": sensor_data.get("last_updated", ""),
-                "stale": _is_stale(sensor_data.get("last_updated", ""), stale_threshold),
+                "value": sd.get("state"),
+                "raw_state": sd.get("raw_state", "unknown"),
+                "friendly_name": sd.get("friendly_name", eid),
+                "last_updated": sd.get("last_updated", ""),
+                "stale": _is_stale(sd.get("last_updated", ""), stale_threshold),
+            }
+
+        # Device-level sensors from stored extra_sensors entity IDs
+        device_sensors = {}
+        extra = probe.get("extra_sensors") or {}
+        for key in ("wifi", "battery", "sleep_duration"):
+            eid = extra.get(key)
+            if not eid:
+                continue
+            sd = state_lookup.get(eid, {})
+            default_unit = "dBm" if key == "wifi" else "%" if key == "battery" else "s"
+            device_sensors[key] = {
+                "value": sd.get("state"),
+                "unit": sd.get("unit") or default_unit,
+                "entity_id": eid,
+                "friendly_name": sd.get("friendly_name", eid),
             }
 
         enriched[probe_id] = {
             **probe,
             "sensors_live": sensors_with_readings,
-            "device_sensors": device_status.get(probe.get("device_id"), {}),
+            "device_sensors": device_sensors,
         }
 
     return {
@@ -1281,6 +1335,7 @@ async def api_add_probe(body: ProbeCreateRequest, request: Request):
         "display_name": body.display_name or body.probe_id,
         "device_id": body.device_id,
         "sensors": body.sensors,
+        "extra_sensors": body.extra_sensors or {},
         "zone_mappings": body.zone_mappings,
         "thresholds": body.thresholds,
     }
@@ -1312,6 +1367,8 @@ async def api_update_probe(probe_id: str, body: ProbeUpdateRequest, request: Req
         display = body.display_name
     if body.device_id is not None:
         probe["device_id"] = body.device_id
+    if body.extra_sensors is not None:
+        probe["extra_sensors"] = body.extra_sensors
     if body.sensors is not None:
         old_sensors = probe.get("sensors", {})
         if old_sensors != body.sensors:
