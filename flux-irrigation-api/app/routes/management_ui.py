@@ -4086,13 +4086,16 @@ async function loadDetailEstGallons(id) {
         }
         // Aggregate per zone
         const zoneGallons = {};
+        const zoneMinutes = {};
         const zoneNames = {};
         relevant.forEach(e => {
             const gpm = gpmMap[e.entity_id] || 0;
             const mins = e.duration_seconds / 60;
             const gal = mins * gpm;
             if (!zoneGallons[e.entity_id]) zoneGallons[e.entity_id] = 0;
+            if (!zoneMinutes[e.entity_id]) zoneMinutes[e.entity_id] = 0;
             zoneGallons[e.entity_id] += gal;
+            zoneMinutes[e.entity_id] += mins;
             if (!zoneNames[e.entity_id]) zoneNames[e.entity_id] = resolveZoneName(e.entity_id, e.zone_name);
         });
         const totalGal = Object.values(zoneGallons).reduce((a, b) => a + b, 0);
@@ -4103,10 +4106,12 @@ async function loadDetailEstGallons(id) {
             '<div style="font-size:13px;color:var(--text-muted);">estimated gallons</div>' +
             '</div>';
         html += '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
-            '<thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:4px 6px;">Zone</th><th style="padding:4px 6px;text-align:right;">Gallons</th><th style="padding:4px 6px;text-align:right;">GPM</th></tr></thead><tbody>';
+            '<thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:4px 6px;">Zone</th><th style="padding:4px 6px;text-align:right;">Time</th><th style="padding:4px 6px;text-align:right;">Gallons</th><th style="padding:4px 6px;text-align:right;">GPM</th></tr></thead><tbody>';
         sorted.forEach(eid => {
+            const totalMins = Math.round(zoneMinutes[eid]);
             html += '<tr style="border-bottom:1px solid var(--border-row);">' +
                 '<td style="padding:4px 6px;">' + esc(zoneNames[eid]) + '</td>' +
+                '<td style="padding:4px 6px;text-align:right;">' + totalMins + ' min</td>' +
                 '<td style="padding:4px 6px;text-align:right;font-weight:600;">' + zoneGallons[eid].toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</td>' +
                 '<td style="padding:4px 6px;text-align:right;color:var(--text-muted);">' + (gpmMap[eid] || 0).toFixed(1) + '</td>' +
                 '</tr>';
