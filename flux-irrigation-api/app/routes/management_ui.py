@@ -1143,6 +1143,7 @@ function renderCustomerGrid(customers) {
                     (issueSummary.issues && issueSummary.issues.length > 3 ? '<div style="font-size:11px;color:var(--text-muted);">+ ' + (issueSummary.issues.length - 3) + ' more</div>' : '') +
                 '</div>' : ''}
                 <div class="customer-actions" onclick="event.stopPropagation()">
+                    <button class="btn btn-secondary btn-sm" onclick="editCardName('${c.id}', event)" title="Rename property">&#9998; Rename</button>
                     <button class="btn btn-secondary btn-sm" onclick="editCardNotes('${c.id}', event)">Notes</button>
                     <button class="btn btn-secondary btn-sm" onclick="updateCardKey('${c.id}', event)" title="Update Connection Key">&#128273; Update Key</button>
                     <button class="btn btn-secondary btn-sm" onclick="checkCustomer('${c.id}')">Test Connection</button>
@@ -1609,6 +1610,40 @@ async function refreshAll() {
 // --- Notes Editing ---
 let notesModalCustomerId = null;
 let notesModalSource = null; // 'card' or 'detail'
+
+function editCardName(id, event) {
+    event.stopPropagation();
+    const c = allCustomers.find(x => x.id === id);
+    const currentName = c ? c.name : '';
+    var html = '<div>';
+    html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Display Name</label>';
+    html += '<input type="text" id="renameInput" value="' + esc(currentName) + '" placeholder="Property display name" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:14px;box-sizing:border-box;">';
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">';
+    html += '<button class="btn btn-secondary" onclick="closeMgmtDynamicModal()">Cancel</button>';
+    html += '<button class="btn btn-primary" onclick="saveCardName(\\'' + id + '\\')">Save</button>';
+    html += '</div></div>';
+    mgmtShowModal('Rename Property', html, '400px');
+    setTimeout(function() { var inp = document.getElementById('renameInput'); if (inp) { inp.focus(); inp.select(); } }, 50);
+}
+
+async function saveCardName(id) {
+    var name = (document.getElementById('renameInput').value || '').trim();
+    if (!name) { showToast('Name cannot be empty', 'error'); return; }
+    try {
+        await api('/customers/' + id, {
+            method: 'PUT',
+            body: JSON.stringify({ name: name })
+        });
+        showToast('Property renamed');
+        closeMgmtDynamicModal();
+        // Update detail header if viewing this customer
+        if (currentCustomerId === id) {
+            var detailName = document.getElementById('detailName');
+            if (detailName) detailName.textContent = name;
+        }
+        loadCustomers();
+    } catch (e) { showToast(e.message, 'error'); }
+}
 
 function editCardNotes(id, event) {
     event.stopPropagation();
