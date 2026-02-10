@@ -133,12 +133,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-icon { padding: 6px 10px; }
 
 /* Zone/Sensor Tiles */
-.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
 .tile { background: var(--bg-tile); border-radius: 8px; padding: 14px; border: 1px solid var(--border-light); }
 .tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
 .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
 .tile-state.on { color: var(--color-success); font-weight: 500; }
+.tile-sprinkler-icon { display:flex; justify-content:center; align-items:center; gap:4px; margin:8px 0; color:var(--text-muted); min-height:36px; }
+.tile-sprinkler-icon svg { opacity:0.7; transition:opacity 0.3s ease; }
+.tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:1; animation:sprinklerPulse 2s ease-in-out infinite; }
+@keyframes sprinklerPulse { 0%,100%{ opacity:0.6; transform:scale(1); } 50%{ opacity:1; transform:scale(1.08); } }
 .tile-actions { display: flex; gap: 6px; }
 
 /* Card Row — side-by-side cards */
@@ -607,6 +611,42 @@ function showToast(msg, type = 'success') {
     toast.textContent = msg;
     container.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
+}
+
+// --- Sprinkler Type Icons ---
+var _sprinklerCategoryMap = {
+    'pop_up_spray':'spray','rotary_nozzle':'spray','fixed_spray':'spray','strip_spray':'spray',
+    'gear_rotor':'rotor','impact_rotor':'rotor',
+    'drip_emitter':'drip','drip_line':'drip',
+    'micro_spray':'micro','bubbler':'micro'
+};
+function getSprinklerCategories(heads) {
+    if (!heads || heads.length === 0) return null;
+    var counts = {};
+    for (var i = 0; i < heads.length; i++) {
+        var cat = _sprinklerCategoryMap[heads[i].nozzle_type];
+        if (cat) counts[cat] = (counts[cat] || 0) + 1;
+    }
+    var sorted = Object.keys(counts).sort(function(a, b) {
+        if (counts[b] !== counts[a]) return counts[b] - counts[a];
+        return a.localeCompare(b);
+    });
+    if (sorted.length === 0) return null;
+    if (sorted.length === 1) return { categories: [sorted[0]], single: true };
+    if (counts[sorted[0]] === counts[sorted[1]]) {
+        return { categories: [sorted[0], sorted[1]], single: false };
+    }
+    return { categories: [sorted[0]], single: true };
+}
+function getSprinklerSvg(category, size) {
+    var s = size || 36;
+    var svgs = {
+        'spray': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="10" y="15" width="4" height="7" rx="1"/><path d="M12 13 Q4 5 3 2.5 Q3 2 3.5 2 L20.5 2 Q21 2 21 2.5 Q20 5 12 13Z" opacity="0.65"/><circle cx="12" cy="14" r="2.5"/></svg>',
+        'rotor': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="10" y="13" width="4" height="9" rx="1"/><circle cx="12" cy="11" r="3"/><path d="M14.5 8.5 Q17 4 19 2.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.6"/><path d="M15.5 9.5 Q19 6 21 5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4"/></svg>',
+        'drip': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><path d="M12 2 C12 2 6 10 6 15 C6 18.3 8.7 21 12 21 C15.3 21 18 18.3 18 15 C18 10 12 2 12 2Z"/></svg>',
+        'micro': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="10.5" y="15" width="3" height="7" rx="1"/><circle cx="7" cy="6" r="1.5" opacity="0.5"/><circle cx="12" cy="4" r="1.5" opacity="0.5"/><circle cx="17" cy="6" r="1.5" opacity="0.5"/><circle cx="9" cy="9.5" r="1.3" opacity="0.4"/><circle cx="15" cy="9.5" r="1.3" opacity="0.4"/><circle cx="12" cy="12" r="1.8" opacity="0.65"/></svg>'
+    };
+    return svgs[category] || '';
 }
 
 // --- Collapsible Cards ---
@@ -1389,7 +1429,12 @@ async function loadZones() {
                 if (allHeads[eid].show_head_count_on_card) window._hoZoneHeadCountShow[eid] = true;
                 if (allHeads[eid].heads && allHeads[eid].heads.length > 0) window._hoZoneHeadCount[eid] = allHeads[eid].heads.length;
             }
-        } catch(e) { window._hoZoneGpmMap = {}; window._hoZoneGpmShow = {}; window._hoZoneHeadCountShow = {}; window._hoZoneHeadCount = {}; }
+            window._hoZoneSprinklerCat = {};
+            for (var eid2 in allHeads) {
+                var catResult = getSprinklerCategories(allHeads[eid2].heads);
+                if (catResult) window._hoZoneSprinklerCat[eid2] = catResult;
+            }
+        } catch(e) { window._hoZoneGpmMap = {}; window._hoZoneGpmShow = {}; window._hoZoneHeadCountShow = {}; window._hoZoneHeadCount = {}; window._hoZoneSprinklerCat = {}; }
         const data = await api('/zones');
         let zones = Array.isArray(data) ? data : (data.zones || []);
         // Filter by detected zone count (server already filters, but belt-and-suspenders)
@@ -1442,6 +1487,15 @@ async function loadZones() {
                     <span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;"
                           onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
                 </div>
+                ${(function() {
+                    var catData = window._hoZoneSprinklerCat && window._hoZoneSprinklerCat[z.entity_id];
+                    if (!catData) return '';
+                    if (catData.single) {
+                        return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 36) + '</div>';
+                    } else {
+                        return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 26) + getSprinklerSvg(catData.categories[1], 26) + '</div>';
+                    }
+                })()}
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
                 <div class="tile-actions" style="flex-wrap:wrap;">
                     ${isOn
