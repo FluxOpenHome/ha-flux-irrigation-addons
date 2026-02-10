@@ -5429,9 +5429,6 @@ async function renderMgmtNotifSettings() {
     html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Choose which events appear in the notification feed:</p>';
     html += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">';
     html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedNewIssue" ' + (feedPrefs.notify_new_issue !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">New Issues</span></label>';
-    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedAcknowledged" ' + (feedPrefs.notify_acknowledged !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Acknowledged</span></label>';
-    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedServiceScheduled" ' + (feedPrefs.notify_service_scheduled !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Service Scheduled</span></label>';
-    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedResolved" ' + (feedPrefs.notify_resolved !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Resolved</span></label>';
     html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedReturned" ' + (feedPrefs.notify_returned !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Returned by Homeowner</span></label>';
     html += '</div>';
     html += '<button class="btn btn-primary btn-sm" onclick="saveMgmtFeedPrefs()">Save Types</button>';
@@ -5530,9 +5527,6 @@ function saveBrowserNotifPrefs() {
 async function saveMgmtFeedPrefs() {
     var payload = {
         notify_new_issue: document.getElementById('mgmtFeedNewIssue').checked,
-        notify_acknowledged: document.getElementById('mgmtFeedAcknowledged').checked,
-        notify_service_scheduled: document.getElementById('mgmtFeedServiceScheduled').checked,
-        notify_resolved: document.getElementById('mgmtFeedResolved').checked,
         notify_returned: document.getElementById('mgmtFeedReturned').checked,
     };
     try {

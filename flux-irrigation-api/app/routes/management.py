@@ -1320,21 +1320,6 @@ async def acknowledge_customer_issue(customer_id: str, issue_id: str, request: R
                 nmsg += f" Note: {mnote}"
             await _notify_homeowner(conn, "service_appointments", ntitle, nmsg)
 
-        # Record to management notification store
-        try:
-            evt_type = "service_scheduled" if sd else "acknowledged"
-            evt_title = f"{'Service Scheduled' if sd else 'Acknowledged'}: {customer.name}"
-            evt_msg = issue_data.get("description", "")[:200]
-            management_notification_store.record_event(
-                event_type=evt_type,
-                customer_id=customer_id,
-                customer_name=customer.name,
-                title=evt_title,
-                message=evt_msg,
-                severity=issue_data.get("severity", ""),
-            )
-        except Exception:
-            pass  # Best-effort
     return data
 
 
@@ -1353,20 +1338,6 @@ async def resolve_customer_issue(customer_id: str, issue_id: str, request: Reque
     )
     if status_code != 200:
         return _proxy_error(status_code, data)
-
-    # Record to management notification store
-    try:
-        issue_data = data.get("issue", {}) if isinstance(data, dict) else {}
-        management_notification_store.record_event(
-            event_type="resolved",
-            customer_id=customer_id,
-            customer_name=customer.name,
-            title=f"Resolved: {customer.name}",
-            message=issue_data.get("description", "")[:200],
-            severity=issue_data.get("severity", ""),
-        )
-    except Exception:
-        pass  # Best-effort
 
     return data
 
@@ -1462,9 +1433,6 @@ async def discover_notify_services():
 
 class UpdateMgmtNotifPreferencesRequest(BaseModel):
     notify_new_issue: Optional[bool] = None
-    notify_acknowledged: Optional[bool] = None
-    notify_service_scheduled: Optional[bool] = None
-    notify_resolved: Optional[bool] = None
     notify_returned: Optional[bool] = None
 
 
@@ -1515,12 +1483,6 @@ async def update_mgmt_notification_preferences(body: UpdateMgmtNotifPreferencesR
     updates = {}
     if body.notify_new_issue is not None:
         updates["notify_new_issue"] = body.notify_new_issue
-    if body.notify_acknowledged is not None:
-        updates["notify_acknowledged"] = body.notify_acknowledged
-    if body.notify_service_scheduled is not None:
-        updates["notify_service_scheduled"] = body.notify_service_scheduled
-    if body.notify_resolved is not None:
-        updates["notify_resolved"] = body.notify_resolved
     if body.notify_returned is not None:
         updates["notify_returned"] = body.notify_returned
     return management_notification_store.update_preferences(updates)

@@ -26,9 +26,6 @@ MAX_EVENTS = 200  # Prune oldest beyond this
 # Valid notification event type keys
 EVENT_TYPES = [
     "new_issue",            # New issue reported by homeowner
-    "acknowledged",         # Issue acknowledged by management
-    "service_scheduled",    # Service date set/updated
-    "resolved",             # Issue resolved
     "returned",             # Homeowner returned a resolved issue
 ]
 
@@ -36,9 +33,6 @@ DEFAULT_DATA = {
     "version": 1,
     "preferences": {
         "notify_new_issue": True,
-        "notify_acknowledged": True,
-        "notify_service_scheduled": True,
-        "notify_resolved": True,
         "notify_returned": True,
     },
     "events": [],
