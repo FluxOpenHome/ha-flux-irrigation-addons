@@ -264,9 +264,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
     .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
 }
-.card-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: flex-start; }
+.card-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; }
 .card-row > .card { flex: 1; min-width: 0; margin-bottom: 0; }
-@media (max-width: 768px) { .card-row { flex-direction: column; } .card-row > .card { margin-bottom: 20px; } }
+.card-row > .card.card-collapsed { align-self: flex-start; }
+@media (max-width: 768px) { .card-row { flex-direction: column; } .card-row > .card { margin-bottom: 20px; width: 100%; } }
 </style>
 </head>
 <body>
@@ -833,6 +834,9 @@ function toggleCard(key) {
     if (header && header.classList.contains('card-header')) {
         header.style.borderBottom = isHidden ? '' : 'none';
     }
+    // Toggle card-collapsed class on parent .card for flexbox sizing
+    var card = body.closest('.card');
+    if (card) { if (isHidden) { card.classList.remove('card-collapsed'); } else { card.classList.add('card-collapsed'); } }
 }
 
 function lockCard(key, evt) {
@@ -850,10 +854,12 @@ function lockCard(key, evt) {
         var chevron = document.getElementById('cardChevron_' + key);
         if (chevron) chevron.style.transform = 'rotate(90deg)';
         if (lockIcon) { lockIcon.textContent = '\\u{1F512}'; lockIcon.title = 'Unlock (allow collapse)'; }
-        // Restore header border
+        // Restore header border + remove collapsed class
         if (body) {
             var header = body.previousElementSibling;
             if (header && header.classList.contains('card-header')) header.style.borderBottom = '';
+            var card = body.closest('.card');
+            if (card) card.classList.remove('card-collapsed');
         }
     }
     _saveMgmtCardLocks();
@@ -865,22 +871,26 @@ function initCardState(key, defaultCollapsed) {
     var lockIcon = document.getElementById('cardLock_' + key);
     if (!body) return;
     var header = body.previousElementSibling;
+    var card = body.closest('.card');
     if (_mgmtCardLocks[key]) {
         // Locked open
         body.style.display = 'block';
         if (chevron) chevron.style.transform = 'rotate(90deg)';
         if (lockIcon) { lockIcon.textContent = '\\u{1F512}'; lockIcon.title = 'Unlock (allow collapse)'; }
         if (header && header.classList.contains('card-header')) header.style.borderBottom = '';
+        if (card) card.classList.remove('card-collapsed');
     } else if (defaultCollapsed) {
         body.style.display = 'none';
         if (chevron) chevron.style.transform = 'rotate(0deg)';
         if (lockIcon) { lockIcon.textContent = '\\u{1F513}'; lockIcon.title = 'Lock open'; }
         if (header && header.classList.contains('card-header')) header.style.borderBottom = 'none';
+        if (card) card.classList.add('card-collapsed');
     } else {
         body.style.display = 'block';
         if (chevron) chevron.style.transform = 'rotate(90deg)';
         if (lockIcon) { lockIcon.textContent = '\\u{1F513}'; lockIcon.title = 'Lock open'; }
         if (header && header.classList.contains('card-header')) header.style.borderBottom = '';
+        if (card) card.classList.remove('card-collapsed');
     }
 }
 
