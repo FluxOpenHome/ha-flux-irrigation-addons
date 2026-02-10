@@ -309,6 +309,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
             <div class="card-header">
                 <h2>Properties</h2>
                 <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="mgmtShowPropertiesSettings()" title="Properties Settings" style="padding:4px 8px;">&#9881;&#65039;</button>
                     <button class="btn btn-secondary btn-sm" onclick="mgmtShowPortfolioReportModal()">&#128202; Portfolio Report</button>
                     <button class="btn btn-secondary btn-sm" onclick="refreshAll()">Refresh All</button>
                     <button class="btn btn-primary btn-sm" onclick="toggleAddForm()">+ Add Property</button>
@@ -922,6 +923,36 @@ let allCustomers = [];
 let geocodeCache = {};
 let leafletMap = null;
 
+// --- Properties Page Settings (persisted in localStorage) ---
+var _propSettings = JSON.parse(localStorage.getItem('flux_prop_settings') || '{}');
+if (_propSettings.showIssueDetails === undefined) _propSettings.showIssueDetails = true;
+
+function _savePropSettings() {
+    localStorage.setItem('flux_prop_settings', JSON.stringify(_propSettings));
+}
+
+function mgmtShowPropertiesSettings() {
+    var html = '<div style="max-height:70vh;overflow-y:auto;padding-right:6px;">';
+    html += '<h4 style="margin:0 0 12px;font-size:14px;color:var(--text);">Card Display</h4>';
+    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:13px;color:var(--text);">';
+    html += '<input type="checkbox" id="propSetIssueDetails"' + (_propSettings.showIssueDetails ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
+    html += '<div><strong>Show issue details on cards</strong><br><span style="font-size:12px;color:var(--text-muted);">Display issue descriptions and status below the card. Issue count badges always show.</span></div>';
+    html += '</label>';
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">';
+    html += '<button class="btn btn-secondary" onclick="closeMgmtDynamicModal()">Cancel</button>';
+    html += '<button class="btn btn-primary" onclick="mgmtSavePropertiesSettings()">Save</button>';
+    html += '</div></div>';
+    mgmtShowModal('Properties Settings', html, '420px');
+}
+
+function mgmtSavePropertiesSettings() {
+    _propSettings.showIssueDetails = !!document.getElementById('propSetIssueDetails').checked;
+    _savePropSettings();
+    closeMgmtDynamicModal();
+    showToast('Settings saved');
+    filterCustomers();
+}
+
 // --- Toast ---
 function showToast(msg, type = 'success') {
     const container = document.getElementById('toastContainer');
@@ -1097,7 +1128,7 @@ function renderCustomerGrid(customers) {
                 <div class="customer-stats">
                     ${zoneInfo}${stats}${gophrBadge}
                 </div>
-                ${issueCount > 0 ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">' +
+                ${issueCount > 0 && _propSettings.showIssueDetails ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">' +
                     (issueSummary.issues || []).slice(0, 3).map(function(issue) {
                         const iColor = issue.severity === 'severe' ? '#e74c3c' : issue.severity === 'annoyance' ? '#f39c12' : '#3498db';
                         const iLabel = issue.severity === 'severe' ? 'Severe' : issue.severity === 'annoyance' ? 'Annoyance' : 'Clarification';
