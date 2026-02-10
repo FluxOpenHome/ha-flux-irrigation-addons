@@ -1560,23 +1560,26 @@ function createMarkerIcon(c) {
     const size = 28;
     // Build SVG marker
     let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 28 28">';
-    svg += '<circle cx="14" cy="14" r="12" fill="' + color + '" stroke="#fff" stroke-width="2"' + (watering ? ' class="map-marker-watering"' : '') + '/>';
+    svg += '<circle cx="14" cy="14" r="12" fill="' + color + '" stroke="#fff" stroke-width="2"/>';
     if (down) {
         // X overlay for offline
         svg += '<line x1="9" y1="9" x2="19" y2="19" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>';
         svg += '<line x1="19" y1="9" x2="9" y2="19" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>';
     } else if (watering) {
-        // Water drop icon
-        svg += '<path d="M14 7 Q14 7 17 12 Q19 15 14 19 Q9 15 11 12 Z" fill="#fff" opacity="0.9"/>';
+        // Water drop icon — centered at (14,14) in the 28x28 viewBox
+        svg += '<path d="M14 8 Q17 13 17 15.5 Q17 19 14 19 Q11 19 11 15.5 Q11 13 14 8 Z" fill="#4AA3DF"/>';
     }
     svg += '</svg>';
-    return L.divIcon({
-        html: '<div style="display:flex;align-items:center;justify-content:center;' + (watering ? 'animation:mapMarkerPulse 2s ease-in-out infinite;' : '') + '">' + svg + '</div>',
-        className: '',
-        iconSize: [size, size],
-        iconAnchor: [size/2, size/2],
-        popupAnchor: [0, -size/2],
-    });
+    return {
+        icon: L.divIcon({
+            html: '<div style="display:flex;align-items:center;justify-content:center;' + (watering ? 'animation:mapMarkerPulse 2s ease-in-out infinite;' : '') + '">' + svg + '</div>',
+            className: '',
+            iconSize: [size, size],
+            iconAnchor: [size/2, size/2],
+            popupAnchor: [0, -size/2],
+        }),
+        zOffset: watering ? 1000 : 0,
+    };
 }
 
 function updatePropertyMapMarkers(filteredCustomers) {
@@ -1592,8 +1595,8 @@ function updatePropertyMapMarkers(filteredCustomers) {
     filteredCustomers.forEach(function(c) {
         const geo = propertyGeoCache[c.id];
         if (!geo) return;
-        const icon = createMarkerIcon(c);
-        const marker = L.marker([geo.lat, geo.lon], { icon: icon });
+        const mi = createMarkerIcon(c);
+        const marker = L.marker([geo.lat, geo.lon], { icon: mi.icon, zIndexOffset: mi.zOffset });
         // Tooltip with name
         const status = getCustomerStatus(c);
         const statusLabel = status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : status === 'revoked' ? 'Revoked' : 'Unknown';
