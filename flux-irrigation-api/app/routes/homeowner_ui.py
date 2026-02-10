@@ -4275,6 +4275,7 @@ var _activeSettingsSection = 'notifications';
 var _notifPrefs = {};
 var _notifEvents = [];
 var _notifUnreadCount = 0;
+var _haNotifSettings = {};
 
 function openSettings() {
     _notifSubView = 'main';
@@ -4318,10 +4319,12 @@ async function loadNotificationSettings() {
         var results = await Promise.all([
             api('/notification-preferences'),
             api('/notifications?limit=50'),
+            api('/ha-notification-settings'),
         ]);
         _notifPrefs = results[0] || {};
         _notifEvents = (results[1].events || []);
         _notifUnreadCount = results[1].unread_count || 0;
+        _haNotifSettings = results[2] || {};
         updateNotifBadge();
         renderSettingsSidebar();
         renderNotificationSettings();
@@ -4330,9 +4333,10 @@ async function loadNotificationSettings() {
     }
 }
 
-var _notifSubView = 'main'; // 'main', 'issues', 'system'
+var _notifSubView = 'main'; // 'main', 'issues', 'system', 'ha'
 
 function renderNotificationSettings() {
+    if (_notifSubView === 'ha') { renderNotifHA(); return; }
     if (_notifSubView === 'issues') { renderNotifIssues(); return; }
     if (_notifSubView === 'system') { renderNotifSystem(); return; }
     renderNotifMain();
@@ -4377,6 +4381,17 @@ function renderNotifMain() {
         html += '<div style="font-size:11px;color:var(--text-muted);">Weather, moisture, equipment &amp; more</div></div>';
         html += '</div>';
         html += '<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-muted);">' + sysCount + '/' + sysKeys.length + ' on</span><span style="color:var(--text-muted);">&#9654;</span></div>';
+        html += '</div>';
+
+        // HA Push Notifications card
+        var haStatus = _haNotifSettings.enabled ? 'On' : 'Off';
+        html += '<div onclick="_notifSubView=\\'ha\\';renderNotificationSettings();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
+        html += '<div style="display:flex;align-items:center;gap:10px;">';
+        html += '<span style="font-size:18px;">&#127968;</span>';
+        html += '<div><div style="font-size:13px;font-weight:600;color:var(--text-primary);">HA Push Notifications</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);">Send notifications through Home Assistant</div></div>';
+        html += '</div>';
+        html += '<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-muted);">' + haStatus + '</span><span style="color:var(--text-muted);">&#9654;</span></div>';
         html += '</div>';
     }
 
@@ -4448,6 +4463,137 @@ function renderNotifSystem() {
     html += _notifToggleRow('duration_changes', 'Zone Durations', 'When adjusted zone durations are applied or restored');
     html += _notifToggleRow('report_changes', 'Report Settings', 'When PDF report branding is changed');
     content.innerHTML = html;
+}
+
+function renderNotifHA() {
+    var content = document.getElementById('settingsContent');
+    var html = _notifBackBtn();
+    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">&#127968; HA Push Notifications</h4>';
+    html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 16px 0;">Send push notifications (mobile app, SMS, etc.) through your Home Assistant notification service when management makes changes.</p>';
+
+    // Enable toggle
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">';
+    html += '<input type="checkbox" id="hoHaNotifEnabled"' + (_haNotifSettings.enabled ? ' checked' : '') + '>';
+    html += '<span style="font-weight:600;color:var(--text-primary);">Enable HA Notifications</span></label>';
+
+    // Notify service selector
+    html += '<div style="margin-bottom:12px;">';
+    html += '<label style="font-size:13px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Notify Service</label>';
+    html += '<div style="display:flex;gap:6px;align-items:center;">';
+    html += '<select id="hoHaNotifyService" style="flex:1;padding:8px 12px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);">';
+    html += '<option value="">-- Select a notify service --</option>';
+    html += '</select>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="loadHomeownerNotifyServices()" title="Refresh service list" style="padding:6px 10px;font-size:16px;line-height:1;">&#8635;</button>';
+    html += '</div>';
+    html += '<div id="hoHaServiceHint" style="font-size:11px;color:var(--text-placeholder);margin-top:3px;">Auto-detected from Home Assistant</div>';
+    html += '</div>';
+
+    // Category toggles
+    html += '<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Category filters:</p>';
+    html += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">';
+    var cats = [
+        {key:'notify_service_appointments', label:'Service Appointments', color:'var(--text-primary)'},
+        {key:'notify_system_changes', label:'System Pause / Resume', color:'var(--text-primary)'},
+        {key:'notify_weather_changes', label:'Weather Rules', color:'var(--text-primary)'},
+        {key:'notify_moisture_changes', label:'Moisture Settings', color:'var(--text-primary)'},
+        {key:'notify_equipment_changes', label:'Equipment Settings', color:'var(--text-primary)'},
+        {key:'notify_duration_changes', label:'Zone Durations', color:'var(--text-primary)'},
+        {key:'notify_report_changes', label:'Report Settings', color:'var(--text-primary)'},
+    ];
+    cats.forEach(function(c) {
+        var chk = _haNotifSettings[c.key] ? ' checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="hoHa_' + c.key + '"' + chk + '><span style="font-weight:500;color:' + c.color + ';">' + esc(c.label) + '</span></label>';
+    });
+    html += '</div>';
+
+    // Action buttons
+    html += '<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;">';
+    html += '<button class="btn btn-secondary btn-sm" onclick="testHomeownerHANotification()">&#128172; Test</button>';
+    html += '<button class="btn btn-primary btn-sm" onclick="saveHomeownerHANotifSettings()">Save</button>';
+    html += '</div>';
+    html += '<div id="hoHaNotifStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>';
+
+    content.innerHTML = html;
+
+    // Load the services dropdown after rendering
+    loadHomeownerNotifyServices();
+}
+
+async function loadHomeownerNotifyServices() {
+    var sel = document.getElementById('hoHaNotifyService');
+    if (!sel) return;
+    var saved = _haNotifSettings.ha_notify_service || '';
+    var hint = document.getElementById('hoHaServiceHint');
+    hint.textContent = 'Loading services from Home Assistant...';
+    try {
+        var data = await api('/ha-notification-settings/services');
+        var services = data.services || [];
+        sel.innerHTML = '<option value="">-- Select a notify service --</option>';
+        services.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name + ' (notify.' + s.id + ')';
+            sel.appendChild(opt);
+        });
+        if (saved) sel.value = saved;
+        if (saved && sel.value !== saved) {
+            var opt = document.createElement('option');
+            opt.value = saved;
+            opt.textContent = saved + ' (saved)';
+            sel.appendChild(opt);
+            sel.value = saved;
+        }
+        hint.textContent = services.length ? services.length + ' service(s) found' : 'No notify services found in HA';
+    } catch (e) {
+        hint.textContent = 'Could not load services';
+    }
+}
+
+async function saveHomeownerHANotifSettings() {
+    var payload = {
+        enabled: document.getElementById('hoHaNotifEnabled').checked,
+        ha_notify_service: document.getElementById('hoHaNotifyService').value.trim(),
+        notify_service_appointments: document.getElementById('hoHa_notify_service_appointments').checked,
+        notify_system_changes: document.getElementById('hoHa_notify_system_changes').checked,
+        notify_weather_changes: document.getElementById('hoHa_notify_weather_changes').checked,
+        notify_moisture_changes: document.getElementById('hoHa_notify_moisture_changes').checked,
+        notify_equipment_changes: document.getElementById('hoHa_notify_equipment_changes').checked,
+        notify_duration_changes: document.getElementById('hoHa_notify_duration_changes').checked,
+        notify_report_changes: document.getElementById('hoHa_notify_report_changes').checked,
+    };
+    if (payload.enabled && !payload.ha_notify_service) {
+        showToast('Please select a notify service', true);
+        return;
+    }
+    try {
+        var result = await api('/ha-notification-settings', { method: 'PUT', body: JSON.stringify(payload) });
+        _haNotifSettings = result || {};
+        showToast('HA notification settings saved');
+        var st = document.getElementById('hoHaNotifStatus');
+        if (st) st.textContent = 'Settings saved';
+    } catch (e) {
+        showToast('Failed to save HA notification settings', true);
+    }
+}
+
+async function testHomeownerHANotification() {
+    var svc = document.getElementById('hoHaNotifyService').value.trim();
+    if (!svc) {
+        showToast('Select a notify service first', true);
+        return;
+    }
+    await saveHomeownerHANotifSettings();
+    try {
+        var result = await api('/ha-notification-settings/test', { method: 'POST' });
+        showToast(result.message || 'Test notification sent');
+        var st = document.getElementById('hoHaNotifStatus');
+        if (st) st.textContent = 'Test sent successfully';
+    } catch (e) {
+        var msg = (e.message || '').replace('Error: ', '');
+        showToast('Test failed: ' + msg, true);
+        var st = document.getElementById('hoHaNotifStatus');
+        if (st) st.textContent = 'Test failed \\u2014 check service name';
+    }
 }
 
 async function toggleNotifPref(key, enabled) {

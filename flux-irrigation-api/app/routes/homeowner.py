@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import re
+import httpx
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
@@ -110,6 +111,18 @@ class RecordNotificationRequest(BaseModel):
     event_type: str = Field(..., description="Notification category key")
     title: str = Field(..., max_length=200)
     message: str = Field("", max_length=1000)
+
+
+class UpdateHANotificationSettingsRequest(BaseModel):
+    enabled: Optional[bool] = None
+    ha_notify_service: Optional[str] = Field(None, max_length=200)
+    notify_service_appointments: Optional[bool] = None
+    notify_system_changes: Optional[bool] = None
+    notify_weather_changes: Optional[bool] = None
+    notify_moisture_changes: Optional[bool] = None
+    notify_equipment_changes: Optional[bool] = None
+    notify_duration_changes: Optional[bool] = None
+    notify_report_changes: Optional[bool] = None
 
 
 # --- Helper functions ---
@@ -1200,7 +1213,98 @@ async def record_notification(body: RecordNotificationRequest):
 
     The store checks preferences internally — if the homeowner has
     disabled this category, the event is silently dropped.
+
+    Also sends an HA push notification if configured.
     """
     import homeowner_notification_store as hns
     event = hns.record_event(body.event_type, body.title, body.message)
+
+    # Also send HA push notification if configured
+    try:
+        import homeowner_notification_config as hnc
+        if hnc.should_notify(body.event_type):
+            config = hnc.load_config()
+            service_name = config["ha_notify_service"]
+            await ha_client.call_service("notify", service_name, {
+                "message": body.message or body.title,
+                "title": "Flux: " + body.title,
+            })
+    except Exception:
+        pass  # Best-effort — never block the primary operation
+
     return {"recorded": event is not None, "event": event}
+
+
+# --- HA Notification Settings ---
+
+
+@router.get("/ha-notification-settings", summary="Get homeowner HA notification settings")
+async def get_ha_notification_settings():
+    """Get the current HA push notification configuration."""
+    import homeowner_notification_config as hnc
+    return hnc.get_settings()
+
+
+@router.put("/ha-notification-settings", summary="Update homeowner HA notification settings")
+async def update_ha_notification_settings(body: UpdateHANotificationSettingsRequest, request: Request):
+    """Update the HA push notification configuration."""
+    import homeowner_notification_config as hnc
+    result = hnc.update_settings(
+        enabled=body.enabled,
+        ha_notify_service=body.ha_notify_service,
+        notify_service_appointments=body.notify_service_appointments,
+        notify_system_changes=body.notify_system_changes,
+        notify_weather_changes=body.notify_weather_changes,
+        notify_moisture_changes=body.notify_moisture_changes,
+        notify_equipment_changes=body.notify_equipment_changes,
+        notify_duration_changes=body.notify_duration_changes,
+        notify_report_changes=body.notify_report_changes,
+    )
+    log_change(get_actor(request), "HA Notification Settings", "Updated HA notification settings")
+    return result
+
+
+@router.get("/ha-notification-settings/services", summary="Discover available HA notify services")
+async def discover_homeowner_notify_services():
+    """Query Home Assistant for all available notify.* services."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{ha_client.HA_BASE_URL}/services",
+            headers=ha_client._get_headers(),
+            timeout=10.0,
+        )
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="Failed to query HA services")
+
+    services = []
+    for domain_entry in response.json():
+        if domain_entry.get("domain") == "notify":
+            for svc_name, svc_info in domain_entry.get("services", {}).items():
+                if svc_name == "send_message":
+                    continue
+                label = svc_info.get("name") or svc_name.replace("_", " ").title()
+                services.append({"id": svc_name, "name": label})
+            break
+
+    return {"services": services}
+
+
+@router.post("/ha-notification-settings/test", summary="Send a test HA notification")
+async def test_homeowner_ha_notification():
+    """Send a test notification through the configured HA notify service."""
+    import homeowner_notification_config as hnc
+    settings = hnc.get_settings()
+    if not settings.get("ha_notify_service"):
+        raise HTTPException(status_code=400, detail="No HA notify service configured")
+
+    service_name = settings["ha_notify_service"]
+    success = await ha_client.call_service("notify", service_name, {
+        "message": "🧪 Test notification from Flux Open Home — HA notifications are working!",
+        "title": "Flux Open Home Test",
+    })
+    if not success:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to call notify.{service_name} — check that the service exists in Home Assistant",
+        )
+    return {"success": True, "message": f"Test notification sent via notify.{service_name}"}
