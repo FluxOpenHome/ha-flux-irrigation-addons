@@ -3718,40 +3718,71 @@ async function loadDetailControls(id) {
             aaEl.style.display = 'none';
         }
 
+        // Render Schedule card (also populates window._mgmtPumpMasterZones)
+        renderScheduleCard(id, scheduleByCategory, durData, multData);
+
         // Render Device Controls (excluding rain + expansion)
-        if (regularControls.length === 0) {
-            controlsEl.innerHTML = '<div class="empty-state"><p>No device controls found</p></div>';
-        } else {
-            const groups = {};
-            regularControls.forEach(e => {
-                const d = e.domain || 'unknown';
-                if (!groups[d]) groups[d] = [];
-                groups[d].push(e);
-            });
-            const domainLabels = {
-                'switch': 'Switches', 'number': 'Run Times', 'select': 'Selects',
-                'button': 'Buttons', 'text': 'Text Inputs', 'light': 'Lights'
-            };
-            const domainOrder = ['switch', 'number', 'select', 'text', 'button', 'light'];
-            const sortedDomains = Object.keys(groups).sort((a, b) => {
-                const ai = domainOrder.indexOf(a); const bi = domainOrder.indexOf(b);
-                return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-            });
+        {
             let html = '';
-            for (const domain of sortedDomains) {
-                const label = domainLabels[domain] || domain.charAt(0).toUpperCase() + domain.slice(1);
-                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
+            // Pump / Master Valve section at top (populated by renderScheduleCard)
+            const pmZones = window._mgmtPumpMasterZones || [];
+            if (pmZones.length > 0) {
+                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Pump / Master Valve</div>';
                 html += '<div class="tile-grid">';
-                for (const e of groups[domain]) {
-                    html += renderControlTile(id, e);
+                for (const pm of pmZones) {
+                    const mode = pm.mode;
+                    const modeVal = mode ? mode.state : '';
+                    const modeEid = mode ? mode.entity_id : '';
+                    const zNum = mode ? (modeEid.match(/zone[_]?(\\d+)/i) || [])[1] || '?' : '?';
+                    const label = getZoneLabel(zNum);
+                    const modeAttrs = mode ? (mode.attributes || {}) : {};
+                    const modeOptions = modeAttrs.options || [];
+                    const selId = 'pmmode_' + modeEid.replace(/[^a-zA-Z0-9]/g, '_');
+                    const optionsHtml = modeOptions.map(o =>
+                        '<option value="' + esc(o) + '"' + (o === modeVal ? ' selected' : '') + '>' + esc(o) + '</option>'
+                    ).join('');
+                    html += '<div class="tile">' +
+                        '<div class="tile-name">' + esc(label) + '</div>' +
+                        '<div class="tile-state" style="font-size:12px;color:var(--text-secondary);">' + esc(modeVal) + '</div>' +
+                        '<div class="tile-actions">' +
+                        '<select id="' + selId + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;background:var(--bg-input);color:var(--text-primary);" ' +
+                        'onchange="setEntityValue(\\'' + id + '\\',\\'' + modeEid +
+                        '\\',\\'select\\',{option:document.getElementById(\\'' + selId + '\\').value})">' +
+                        optionsHtml + '</select>' +
+                        '</div></div>';
                 }
                 html += '</div></div>';
             }
-            controlsEl.innerHTML = html;
+            if (regularControls.length === 0 && pmZones.length === 0) {
+                controlsEl.innerHTML = '<div class="empty-state"><p>No device controls found</p></div>';
+            } else {
+                const groups = {};
+                regularControls.forEach(e => {
+                    const d = e.domain || 'unknown';
+                    if (!groups[d]) groups[d] = [];
+                    groups[d].push(e);
+                });
+                const domainLabels = {
+                    'switch': 'Switches', 'number': 'Run Times', 'select': 'Selects',
+                    'button': 'Buttons', 'text': 'Text Inputs', 'light': 'Lights'
+                };
+                const domainOrder = ['switch', 'number', 'select', 'text', 'button', 'light'];
+                const sortedDomains = Object.keys(groups).sort((a, b) => {
+                    const ai = domainOrder.indexOf(a); const bi = domainOrder.indexOf(b);
+                    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+                });
+                for (const domain of sortedDomains) {
+                    const label = domainLabels[domain] || domain.charAt(0).toUpperCase() + domain.slice(1);
+                    html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + esc(label) + '</div>';
+                    html += '<div class="tile-grid">';
+                    for (const e of groups[domain]) {
+                        html += renderControlTile(id, e);
+                    }
+                    html += '</div></div>';
+                }
+                controlsEl.innerHTML = html;
+            }
         }
-
-        // Render Schedule card from classified entities
-        renderScheduleCard(id, scheduleByCategory, durData, multData);
 
     } catch (e) {
         controlsEl.innerHTML = '<div style="color:var(--color-danger);">Failed to load controls: ' + esc(e.message) + '</div>';
@@ -4108,12 +4139,6 @@ function renderScheduleCard(custId, sched, durData, multData) {
             }
         }
         var sortedZones = Object.keys(zoneMap).sort(function(a, b) {
-            // Normal zones first, Pump Start Relay / Master Valve last
-            var aMode = (zoneMap[a].mode && zoneMap[a].mode.state || '').toLowerCase();
-            var bMode = (zoneMap[b].mode && zoneMap[b].mode.state || '').toLowerCase();
-            var aSpecial = /pump|master|relay/.test(aMode) ? 1 : 0;
-            var bSpecial = /pump|master|relay/.test(bMode) ? 1 : 0;
-            if (aSpecial !== bSpecial) return aSpecial - bSpecial;
             return parseInt(a) - parseInt(b);
         });
         // Filter by detected zone count (expansion board limit)
@@ -4121,6 +4146,15 @@ function renderScheduleCard(custId, sched, durData, multData) {
         if (maxZones > 0) {
             sortedZones = sortedZones.filter(function(zn) { return parseInt(zn) <= maxZones; });
         }
+        // Separate pump/master valve zones — they go in Device Controls, not schedule
+        var pumpMasterZones = [];
+        sortedZones = sortedZones.filter(function(zn) {
+            var m = (zoneMap[zn].mode && zoneMap[zn].mode.state || '').toLowerCase();
+            if (/pump|master|relay/.test(m)) { pumpMasterZones.push(zn); return false; }
+            return true;
+        });
+        // Store for Device Controls card rendering
+        window._mgmtPumpMasterZones = pumpMasterZones.map(function(zn) { return zoneMap[zn]; });
         const hasMode = sortedZones.some(zn => zoneMap[zn].mode);
 
         html += '<table class="zone-settings-table"><thead><tr>' +
@@ -4129,9 +4163,6 @@ function renderScheduleCard(custId, sched, durData, multData) {
         for (const zn of sortedZones) {
             const { enable, duration, mode } = zoneMap[zn];
             const zoneLabel = getZoneLabel(zn);
-            // Check if this zone is a Pump Start Relay or Master Valve (no run duration)
-            const modeVal = mode ? mode.state.toLowerCase() : '';
-            const isPumpOrMaster = /pump|master|relay/.test(modeVal);
             html += '<tr><td><strong>' + esc(zoneLabel) + '</strong></td>';
             if (hasMode) {
                 if (mode) {
@@ -4150,9 +4181,7 @@ function renderScheduleCard(custId, sched, durData, multData) {
                     html += '<td style="color:var(--text-disabled);">-</td>';
                 }
             }
-            if (isPumpOrMaster) {
-                html += '<td style="color:var(--text-disabled);font-style:italic;">Firmware controlled</td>';
-            } else if (enable) {
+            if (enable) {
                 const isOn = enable.state === 'on';
                 html += '<td><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
                     'onclick="setEntityValue(\\'' + custId + '\\',\\'' + enable.entity_id + '\\',\\'switch\\',' +
@@ -4161,9 +4190,7 @@ function renderScheduleCard(custId, sched, durData, multData) {
             } else {
                 html += '<td style="color:var(--text-disabled);">-</td>';
             }
-            if (isPumpOrMaster) {
-                html += '<td style="color:var(--text-disabled);font-style:italic;">Firmware controlled</td>';
-            } else if (duration) {
+            if (duration) {
                 const attrs = duration.attributes || {};
                 const unit = attrs.unit_of_measurement || 'min';
                 const eid = duration.entity_id;
