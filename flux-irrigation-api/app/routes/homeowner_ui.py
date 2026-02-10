@@ -1155,7 +1155,7 @@ function getZoneDisplayName(z) {
         if (modes[zoneNum] && modes[zoneNum].state) {
             const modeVal = modes[zoneNum].state.toLowerCase();
             if (modeVal !== 'normal' && modeVal !== 'standard' && modeVal !== '' && modeVal !== 'unknown') {
-                return modes[zoneNum].state;
+                return 'Zone ' + zoneNum + ' - ' + modes[zoneNum].state;
             }
         }
         return 'Zone ' + zoneNum;
@@ -1173,7 +1173,7 @@ function resolveZoneName(entityId, fallbackName) {
         if (modes[zoneNum] && modes[zoneNum].state) {
             const modeVal = modes[zoneNum].state.toLowerCase();
             if (modeVal !== 'normal' && modeVal !== 'standard' && modeVal !== '' && modeVal !== 'unknown') {
-                return modes[zoneNum].state;
+                return 'Zone ' + zoneNum + ' - ' + modes[zoneNum].state;
             }
         }
         return 'Zone ' + zoneNum;
@@ -1191,7 +1191,7 @@ function getZoneLabel(zoneNum) {
     if (modes[zoneNum] && modes[zoneNum].state) {
         const modeVal = modes[zoneNum].state.toLowerCase();
         if (modeVal !== 'normal' && modeVal !== 'standard' && modeVal !== '' && modeVal !== 'unknown') {
-            return modes[zoneNum].state;
+            return 'Zone ' + zoneNum + ' - ' + modes[zoneNum].state;
         }
     }
     return 'Zone ' + zoneNum;
@@ -1389,9 +1389,9 @@ async function loadDashboard() {
     loadStatus();
     loadWeather();
     loadMoisture();
-    loadZones();
     await loadSensors();   // Must complete before loadControls — sets _expansionSensors / _detectedZoneCount
-    loadControls();
+    await loadControls();  // Must complete before loadZones — sets _zoneModes for pump/valve detection
+    loadZones();
     if (!_initialLoadDone) _initialLoadDone = true;
     loadHistory();
     loadEstGallons();
@@ -1919,17 +1919,17 @@ async function loadControls() {
         // Render Device Controls (excluding rain + expansion)
         {
             let html = '';
-            // Pump / Master Valve section at top (populated by renderScheduleCard)
+            // Zone Mode section at top (populated by renderScheduleCard — always includes highest zone)
             const pmZones = window._pumpMasterZones || [];
             if (pmZones.length > 0) {
-                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Pump / Master Valve</div>';
+                html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Zone Mode</div>';
                 html += '<div class="tile-grid">';
                 for (const pm of pmZones) {
                     const mode = pm.mode;
                     const modeVal = mode ? mode.state : '';
                     const modeEid = mode ? mode.entity_id : '';
                     const zNum = mode ? (modeEid.match(/zone[_]?(\\d+)/i) || [])[1] || '?' : '?';
-                    const label = getZoneLabel(zNum);
+                    const label = 'Zone ' + zNum;
                     const modeAttrs = mode ? (mode.attributes || {}) : {};
                     const modeOptions = modeAttrs.options || [];
                     const selId = 'pmmode_' + modeEid.replace(/[^a-zA-Z0-9]/g, '_');
@@ -2323,10 +2323,17 @@ function renderScheduleCard(sched, durData, multData) {
             sortedZones = sortedZones.filter(function(zn) { return parseInt(zn) <= maxZones; });
         }
         // Separate pump/master valve zones — they go in Device Controls, not schedule
+        // Always include the highest zone (6 or 8) since it's the configurable pump/valve zone
+        var highestZone = sortedZones.length > 0 ? sortedZones[sortedZones.length - 1] : null;
         var pumpMasterZones = [];
         sortedZones = sortedZones.filter(function(zn) {
             var m = (zoneMap[zn].mode && zoneMap[zn].mode.state || '').toLowerCase();
-            if (/pump|master|relay/.test(m)) { pumpMasterZones.push(zn); return false; }
+            var isPumpValve = /pump|master|relay/.test(m);
+            var isHighest = (zn === highestZone);
+            if (isPumpValve || (isHighest && zoneMap[zn].mode)) {
+                pumpMasterZones.push(zn);
+                return false;
+            }
             return true;
         });
         // Store for Device Controls card rendering
