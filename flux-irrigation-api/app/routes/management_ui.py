@@ -269,10 +269,11 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     .customer-stat { gap: 3px; }
     .customer-actions { flex-wrap: wrap; gap: 4px; margin-top: 5px; padding-top: 5px; }
     .customer-actions .btn-sm { padding: 3px 7px; font-size: 10px; }
-    .customer-card-body > div[style*="font-size:13px"] { font-size: 11px !important; margin-bottom: 1px !important; }
-    .customer-card-body > div[style*="font-size:12px"] { font-size: 11px !important; margin-bottom: 2px !important; }
-    .customer-card-body > div[style*="margin-top:8px"] { margin-top: 4px !important; padding-top: 4px !important; }
-    .customer-card-body > div[style*="margin-top:8px"] > div { font-size: 11px !important; margin-bottom: 3px !important; gap: 4px !important; }
+    .customer-card-body .card-contact { font-size: 11px !important; margin-bottom: 1px !important; }
+    .customer-card-body .card-phone { font-size: 11px !important; margin-bottom: 2px !important; }
+    .customer-card-body .card-notes { font-size: 11px !important; margin-bottom: 2px !important; }
+    .customer-card-body .card-issue-details { margin-top: 4px !important; padding-top: 4px !important; }
+    .customer-card-body .card-issue-details > div { font-size: 11px !important; margin-bottom: 3px !important; gap: 4px !important; }
     .zone-settings-table { table-layout: fixed; }
     .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
@@ -1121,14 +1122,14 @@ function renderCustomerGrid(customers) {
                         ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:var(--text-disabled);">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
                     </span>
                 </div>
-                ${contactName ? '<div style="font-size:13px;color:var(--text-secondary-alt);margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
+                ${contactName ? '<div class="card-contact" style="font-size:13px;color:var(--text-secondary-alt);margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
                 ${addr ? '<div class="customer-address" onclick="openAddressInMaps(\\''+encodeURIComponent(addr)+'\\');event.stopPropagation();" style="cursor:pointer;color:var(--color-link);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" title="Open in Maps">' + esc(addr) + '</div>' : ''}
-                ${c.phone ? '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:var(--color-link);text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
-                ${c.notes ? '<div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
+                ${c.phone ? '<div class="card-phone" style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:var(--color-link);text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
+                ${c.notes ? '<div class="card-notes" style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
                 <div class="customer-stats">
                     ${zoneInfo}${stats}${gophrBadge}
                 </div>
-                ${issueCount > 0 && _propSettings.showIssueDetails ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">' +
+                ${issueCount > 0 && _propSettings.showIssueDetails ? '<div class="card-issue-details" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">' +
                     (issueSummary.issues || []).slice(0, 3).map(function(issue) {
                         const iColor = issue.severity === 'severe' ? '#e74c3c' : issue.severity === 'annoyance' ? '#f39c12' : '#3498db';
                         const iLabel = issue.severity === 'severe' ? 'Severe' : issue.severity === 'annoyance' ? 'Annoyance' : 'Clarification';
