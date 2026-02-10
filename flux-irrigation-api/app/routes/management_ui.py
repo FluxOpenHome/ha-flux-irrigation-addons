@@ -1052,20 +1052,17 @@ function renderCustomerGrid(customers) {
             <div class="customer-card-body">
                 <div class="customer-card-header">
                     <span class="customer-name">${esc(c.name)}${issueBadgeHtml}</span>
-                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;">
-                        <span class="customer-status">
-                            <span class="status-dot ${status}"></span>
-                            ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:var(--text-disabled);">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
-                        </span>
-                        ${gophrBadge}
-                    </div>
+                    <span class="customer-status">
+                        <span class="status-dot ${status}"></span>
+                        ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:var(--text-disabled);">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
+                    </span>
                 </div>
                 ${contactName ? '<div style="font-size:13px;color:var(--text-secondary-alt);margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
                 ${addr ? '<div class="customer-address" onclick="openAddressInMaps(\\''+encodeURIComponent(addr)+'\\');event.stopPropagation();" style="cursor:pointer;color:var(--color-link);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" title="Open in Maps">' + esc(addr) + '</div>' : ''}
                 ${c.phone ? '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:var(--color-link);text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
                 ${c.notes ? '<div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
                 <div class="customer-stats">
-                    ${zoneInfo}${stats}
+                    ${zoneInfo}${stats}${gophrBadge}
                 </div>
                 ${issueCount > 0 ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">' +
                     (issueSummary.issues || []).slice(0, 3).map(function(issue) {
