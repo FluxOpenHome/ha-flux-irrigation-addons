@@ -143,6 +143,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tile-sprinkler-icon svg { opacity:0.45; transition:opacity 0.3s ease; }
 .tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
 @keyframes sprinklerPulse { 0%,100%{ opacity:0.5; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
+.tile-sprinkler-icon.pump-valve svg { opacity:0.45; }
+.tile.active .tile-sprinkler-icon.pump-valve svg { color:var(--color-info); opacity:0.85; animation:pumpPulse 2s ease-in-out infinite; }
+@keyframes pumpPulse { 0%,100%{ opacity:0.5; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
 .tile-actions { display: flex; gap: 6px; }
 
 /* Card Row — side-by-side cards */
@@ -644,7 +647,9 @@ function getSprinklerSvg(category, size) {
         'spray': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="10" y="15" width="4" height="7" rx="1"/><path d="M12 13 Q4 5 3 2.5 Q3 2 3.5 2 L20.5 2 Q21 2 21 2.5 Q20 5 12 13Z" opacity="0.65"/><circle cx="12" cy="14" r="2.5"/></svg>',
         'rotor': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="10" y="13" width="4" height="9" rx="1"/><circle cx="12" cy="11" r="3"/><path d="M14.5 8.5 Q17 4 19 2.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.6"/><path d="M15.5 9.5 Q19 6 21 5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4"/></svg>',
         'drip': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><path d="M12 2 C12 2 6 10 6 15 C6 18.3 8.7 21 12 21 C15.3 21 18 18.3 18 15 C18 10 12 2 12 2Z"/></svg>',
-        'micro': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="10.5" y="15" width="3" height="7" rx="1"/><circle cx="7" cy="6" r="1.5" opacity="0.5"/><circle cx="12" cy="4" r="1.5" opacity="0.5"/><circle cx="17" cy="6" r="1.5" opacity="0.5"/><circle cx="9" cy="9.5" r="1.3" opacity="0.4"/><circle cx="15" cy="9.5" r="1.3" opacity="0.4"/><circle cx="12" cy="12" r="1.8" opacity="0.65"/></svg>'
+        'micro': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="10.5" y="15" width="3" height="7" rx="1"/><circle cx="7" cy="6" r="1.5" opacity="0.5"/><circle cx="12" cy="4" r="1.5" opacity="0.5"/><circle cx="17" cy="6" r="1.5" opacity="0.5"/><circle cx="9" cy="9.5" r="1.3" opacity="0.4"/><circle cx="15" cy="9.5" r="1.3" opacity="0.4"/><circle cx="12" cy="12" r="1.8" opacity="0.65"/></svg>',
+        'pump': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><circle cx="10" cy="14" r="6" opacity="0.55"/><circle cx="10" cy="14" r="3.5"/><rect x="14" y="12" width="8" height="4" rx="1" opacity="0.7"/><rect x="1" y="12.5" width="4" height="3" rx="0.5" opacity="0.5"/><rect x="7" y="6" width="6" height="3" rx="1" opacity="0.4"/><rect x="9" y="3" width="2" height="3" rx="0.5" opacity="0.35"/></svg>',
+        'valve': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="1" y="13" width="22" height="5" rx="1.5" opacity="0.5"/><rect x="8" y="11" width="8" height="9" rx="2"/><rect x="11" y="4" width="2" height="7" rx="0.5"/><circle cx="12" cy="4" r="3" opacity="0.6"/><circle cx="12" cy="4" r="1.5"/></svg>'
     };
     return svgs[category] || '';
 }
@@ -1497,6 +1502,17 @@ async function loadZones() {
                     }
                 </div>
                 ${(function() {
+                    var zoneNum = extractZoneNumber(z.entity_id, 'zone');
+                    var modes = window._zoneModes || {};
+                    if (zoneNum && modes[zoneNum]) {
+                        var modeVal = (modes[zoneNum].state || '').toLowerCase();
+                        if (/pump|relay/.test(modeVal)) {
+                            return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('pump', 32) + '</div>';
+                        }
+                        if (/master|valve/.test(modeVal)) {
+                            return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('valve', 32) + '</div>';
+                        }
+                    }
                     var catData = window._hoZoneSprinklerCat && window._hoZoneSprinklerCat[z.entity_id];
                     if (!catData) return '';
                     if (catData.single) {
