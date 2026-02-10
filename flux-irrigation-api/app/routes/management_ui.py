@@ -215,7 +215,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 .filter-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .filter-count strong { color: var(--text-primary); }
 .search-bar .filter-row { display: contents; }
-.customer-address { font-size: 12px; color: var(--text-disabled); margin-bottom: 4px; }
+.customer-address { font-size: 11px; color: var(--text-disabled); margin-bottom: 4px; }
 .customer-meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 
 /* Empty States */
@@ -263,7 +263,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     .customer-name { font-size: 13px; }
     .customer-status { font-size: 11px; gap: 4px; }
     .status-dot { width: 6px; height: 6px; }
-    .customer-address { margin-bottom: 2px; font-size: 11px; }
+    .customer-address { margin-bottom: 2px; font-size: 10px; }
     .customer-stats { margin-top: 3px; gap: 8px; font-size: 11px; }
     .customer-stat { gap: 3px; }
     .customer-actions { flex-wrap: wrap; gap: 4px; margin-top: 5px; padding-top: 5px; }
@@ -377,6 +377,11 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                             <option value="annoyance">Annoyances</option>
                             <option value="clarification">Clarifications</option>
                             <option value="no_issues">No Issues</option>
+                        </select>
+                        <select id="filterProbes" onchange="filterCustomers()">
+                            <option value="">Gophr Probes</option>
+                            <option value="has_probes">Has Probes</option>
+                            <option value="no_probes">No Probes</option>
                         </select>
                         <select id="sortBy" onchange="filterCustomers()">
                             <option value="name">Sort: Name</option>
@@ -968,6 +973,8 @@ async function loadCustomers() {
         checkForNewIssues(allCustomers);
         // Verify "running" cards with live status (cached status can be stale)
         refreshRunningStatuses();
+        // Check which customers have Gophr probes
+        refreshProbeStatuses();
     } catch (e) {
         document.getElementById('customerGrid').innerHTML =
             '<div class="empty-state"><h3>Error loading properties</h3><p>' + e.message + '</p></div>';
@@ -999,10 +1006,25 @@ async function refreshRunningStatuses() {
     }
 }
 
+async function refreshProbeStatuses() {
+    // For each online customer, check if they have Gophr probes
+    const online = allCustomers.filter(c => getCustomerStatus(c) === 'online');
+    const checks = online.map(async c => {
+        try {
+            const data = await api('/customers/' + c.id + '/moisture/probes?t=' + Date.now());
+            c._has_probes = data && data.total && data.total > 0;
+        } catch(_) {
+            c._has_probes = false;
+        }
+    });
+    await Promise.all(checks);
+    filterCustomers();
+}
+
 function renderCustomerGrid(customers) {
     const grid = document.getElementById('customerGrid');
     if (customers.length === 0) {
-        const isFiltered = document.getElementById('searchInput').value || document.getElementById('filterState').value || document.getElementById('filterCity').value || document.getElementById('filterZones').value || document.getElementById('filterStatus').value || document.getElementById('filterSystemStatus').value || document.getElementById('filterIssues').value;
+        const isFiltered = document.getElementById('searchInput').value || document.getElementById('filterState').value || document.getElementById('filterCity').value || document.getElementById('filterZones').value || document.getElementById('filterStatus').value || document.getElementById('filterSystemStatus').value || document.getElementById('filterIssues').value || document.getElementById('filterProbes').value;
         grid.innerHTML = isFiltered
             ? '<div class="empty-state"><h3>No matching properties</h3><p>Try adjusting your search or filters.</p></div>'
             : '<div class="empty-state"><h3>No properties connected</h3><p>Click "+ Add Property" to connect a homeowner\\'s irrigation system.</p></div>';
@@ -1020,11 +1042,12 @@ function renderCustomerGrid(customers) {
         const issueCardClass = issueCount > 0 ? (issueMaxSev === 'severe' ? ' has-severe-issue' : issueMaxSev === 'annoyance' ? ' has-annoyance-issue' : ' has-clarification-issue') : '';
         const issueBadgeColor = issueMaxSev === 'severe' ? '#e74c3c' : issueMaxSev === 'annoyance' ? '#f39c12' : '#3498db';
         const issueBadgeHtml = issueCount > 0 ? '<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:8px;font-size:11px;font-weight:700;background:' + issueBadgeColor + '22;color:' + issueBadgeColor + ';">&#9888; ' + issueCount + '</span>' : '';
+        const gophrBadge = c._has_probes ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;background:#8b6f4722;color:#8b6f47;" title="Gophr moisture probe installed"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b6f47" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M8 6l4 4 4-4"/><circle cx="12" cy="18" r="4"/></svg>Gophr</span>' : '';
         return `
         <div class="customer-card ${status}${issueCardClass}" onclick="viewCustomer('${c.id}')">
             <div class="customer-card-body">
                 <div class="customer-card-header">
-                    <span class="customer-name">${esc(c.name)}${issueBadgeHtml}</span>
+                    <span class="customer-name">${esc(c.name)}${issueBadgeHtml}${gophrBadge}</span>
                     <span class="customer-status">
                         <span class="status-dot ${status}"></span>
                         ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:var(--text-disabled);">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
@@ -1132,6 +1155,7 @@ function filterCustomers() {
     const statusFilter = document.getElementById('filterStatus').value;
     const systemStatusFilter = document.getElementById('filterSystemStatus').value;
     const issuesFilter = document.getElementById('filterIssues').value;
+    const probesFilter = document.getElementById('filterProbes').value;
     const sortBy = document.getElementById('sortBy').value;
 
     let filtered = allCustomers;
@@ -1175,6 +1199,13 @@ function filterCustomers() {
             return true;
         });
     }
+    if (probesFilter) {
+        filtered = filtered.filter(c => {
+            if (probesFilter === 'has_probes') return c._has_probes === true;
+            if (probesFilter === 'no_probes') return c._has_probes !== true;
+            return true;
+        });
+    }
 
     // Sort
     filtered = [...filtered].sort((a, b) => {
@@ -1205,7 +1236,7 @@ function filterCustomers() {
     });
 
     // Update filter count and clear button
-    const hasFilters = search || stateFilter || cityFilter || zonesFilter || statusFilter || systemStatusFilter || issuesFilter;
+    const hasFilters = search || stateFilter || cityFilter || zonesFilter || statusFilter || systemStatusFilter || issuesFilter || probesFilter;
     const countEl = document.getElementById('filterCount');
     const clearBtn = document.getElementById('clearFiltersBtn');
     if (hasFilters) {
@@ -1227,6 +1258,7 @@ function clearAllFilters() {
     document.getElementById('filterStatus').value = '';
     document.getElementById('filterSystemStatus').value = '';
     document.getElementById('filterIssues').value = '';
+    document.getElementById('filterProbes').value = '';
     document.getElementById('sortBy').value = 'name';
     filterCustomers();
 }
