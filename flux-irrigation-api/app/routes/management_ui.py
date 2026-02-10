@@ -30,6 +30,7 @@ MANAGEMENT_HTML = """<!DOCTYPE html>
     --bg-warning: #fff3cd;
     --bg-success-light: #d4edda;
     --bg-danger-light: #f8d7da;
+    --bg-hover: #f5f6f8;
     --bg-revoked-card: #fafafa;
     --bg-key-preview: #e8f5e9;
     --border-key-preview: #c8e6c9;
@@ -60,6 +61,7 @@ MANAGEMENT_HTML = """<!DOCTYPE html>
     --color-danger-hover: #c0392b;
     --color-warning: #f39c12;
     --color-link: #3498db;
+    --color-info: #2196F3;
 
     --header-gradient: linear-gradient(135deg, #1a7a4c, #2ecc71);
     --shadow-card: 0 1px 4px rgba(0,0,0,0.08);
@@ -80,6 +82,7 @@ body.dark-mode {
     --bg-warning: #3a3020;
     --bg-success-light: #1b3a2a;
     --bg-danger-light: #3a2020;
+    --bg-hover: #1e2a45;
     --bg-revoked-card: #1a1a2e;
     --bg-key-preview: #1b3a2a;
     --border-key-preview: #2d7a4a;
@@ -104,6 +107,8 @@ body.dark-mode {
 
     --color-primary: #2ecc71;
     --color-primary-hover: #27ae60;
+    --color-link: #5dade2;
+    --color-info: #5dade2;
 
     --header-gradient: linear-gradient(135deg, #0f3460, #16213e);
     --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
@@ -251,14 +256,22 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     .start-times-grid { grid-template-columns: 1fr; }
     .system-controls-row { flex-direction: column; }
     .detail-header { flex-direction: column; gap: 8px; align-items: flex-start; }
-    .customer-card-body { padding: 12px; }
-    .customer-card-body { padding: 10px; }
-    .customer-card-header { margin-bottom: 4px; }
-    .customer-name { font-size: 14px; }
+    .customer-grid { gap: 8px; }
+    .customer-card { border-radius: 8px; border-left-width: 3px; }
+    .customer-card-body { padding: 8px 10px; }
+    .customer-card-header { margin-bottom: 2px; }
+    .customer-name { font-size: 13px; }
+    .customer-status { font-size: 11px; gap: 4px; }
+    .status-dot { width: 6px; height: 6px; }
     .customer-address { margin-bottom: 2px; font-size: 11px; }
-    .customer-stats { margin-top: 4px; gap: 10px; font-size: 12px; }
-    .customer-actions { flex-wrap: wrap; gap: 4px; margin-top: 6px; padding-top: 6px; }
-    .customer-grid { gap: 10px; }
+    .customer-stats { margin-top: 3px; gap: 8px; font-size: 11px; }
+    .customer-stat { gap: 3px; }
+    .customer-actions { flex-wrap: wrap; gap: 4px; margin-top: 5px; padding-top: 5px; }
+    .customer-actions .btn-sm { padding: 3px 7px; font-size: 10px; }
+    .customer-card-body > div[style*="font-size:13px"] { font-size: 11px !important; margin-bottom: 1px !important; }
+    .customer-card-body > div[style*="font-size:12px"] { font-size: 11px !important; margin-bottom: 2px !important; }
+    .customer-card-body > div[style*="margin-top:8px"] { margin-top: 4px !important; padding-top: 4px !important; }
+    .customer-card-body > div[style*="margin-top:8px"] > div { font-size: 11px !important; margin-bottom: 3px !important; gap: 4px !important; }
     .zone-settings-table { table-layout: fixed; }
     .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
@@ -3295,7 +3308,7 @@ async function loadDetailZones(id) {
                     ${esc(displayName)}
                     <span style="cursor:pointer;font-size:20px;color:var(--color-primary);margin-left:6px;"
                           onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
-                    <span style="cursor:pointer;font-size:20px;color:var(--color-info,#2196F3);margin-left:4px;"
+                    <span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;"
                           onclick="event.stopPropagation();mgmtShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
@@ -5434,7 +5447,7 @@ async function mgmtShowZoneDetailsModal(entityId, displayName) {
     var body = '<div style="margin-bottom:10px;">';
     body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
     body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
-    body += '<input type="number" id="mgmtHeadCount" min="0" max="50" value="' + (zoneData.heads.length || 0) + '" style="width:60px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+    body += '<input type="number" id="mgmtHeadCount" min="0" max="50" value="' + (zoneData.heads.length || 0) + '" style="width:60px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
     body += '<button class="btn btn-primary btn-sm" onclick="mgmtBuildHeadTable()" style="font-size:11px;">Update Table</button>';
     body += '</div>';
 
@@ -5442,7 +5455,7 @@ async function mgmtShowZoneDetailsModal(entityId, displayName) {
 
     body += '<div style="margin-top:10px;">';
     body += '<label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">Zone Notes:</label>';
-    body += '<textarea id="mgmtZoneNotes" rows="2" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;resize:vertical;background:var(--bg-input,#fff);color:var(--text-primary);">' + esc(zoneData.notes || '') + '</textarea>';
+    body += '<textarea id="mgmtZoneNotes" rows="2" style="width:100%;padding:6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;resize:vertical;background:var(--bg-input);color:var(--text-primary);">' + esc(zoneData.notes || '') + '</textarea>';
     body += '</div>';
 
     body += '<div style="margin-top:10px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">';
@@ -5456,7 +5469,7 @@ async function mgmtShowZoneDetailsModal(entityId, displayName) {
     body += '<span id="mgmtZoneSaveStatus" style="font-size:12px;color:var(--color-success);align-self:center;"></span>';
     body += '</div>';
 
-    body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover,#f8f9fa);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
+    body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
     body += '<strong>&#128161; Tip:</strong> Document each sprinkler head in the zone — type, flow rate (GPM), spray arc, and location. ';
     body += 'This helps professionals service the system and ensures accurate watering calculations.';
     body += '</div>';
@@ -5495,7 +5508,7 @@ function mgmtRenderHeadTable(heads) {
     var ref = _mgmtNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
 
     var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
-    html += '<thead><tr style="background:var(--bg-hover,#f5f5f5);">';
+    html += '<thead><tr style="background:var(--bg-hover);">';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">#</th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Name / Location</th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Head Type</th>';
@@ -5512,13 +5525,13 @@ function mgmtRenderHeadTable(heads) {
 
     for (var i = 0; i < heads.length; i++) {
         var h = heads[i] || {};
-        var rowBg = i % 2 === 0 ? '' : 'background:var(--bg-hover,#fafafa);';
+        var rowBg = i % 2 === 0 ? '' : 'background:var(--bg-hover);';
         html += '<tr style="' + rowBg + '">';
         html += '<td style="padding:4px 6px;border:1px solid var(--border-light);text-align:center;font-weight:600;">' + (i+1) + '</td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner" style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner" style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '" style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '" style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
         html += '<option value="">—</option>';
         for (var t = 0; t < ref.nozzle_types.length; t++) {
             var nt = ref.nozzle_types[t];
@@ -5526,7 +5539,7 @@ function mgmtRenderHeadTable(heads) {
         }
         html += '</select></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="brand" data-row="' + i + '" style="width:100%;min-width:70px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="brand" data-row="' + i + '" style="width:100%;min-width:70px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
         html += '<option value="">—</option>';
         for (var b = 0; b < ref.brands.length; b++) {
             html += '<option value="' + esc(ref.brands[b]) + '"' + (h.brand === ref.brands[b] ? ' selected' : '') + '>' + esc(ref.brands[b]) + '</option>';
@@ -5535,7 +5548,7 @@ function mgmtRenderHeadTable(heads) {
 
         // Model (picklist filtered by brand+type, with Custom option)
         html += '<td style="padding:2px;border:1px solid var(--border-light);">';
-        html += '<select data-field="model_select" data-row="' + i + '" style="width:100%;min-width:100px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<select data-field="model_select" data-row="' + i + '" style="width:100%;min-width:100px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
         html += '<option value="">—</option>';
         var selBrand = h.brand || '';
         var selType = h.nozzle_type || '';
@@ -5551,10 +5564,10 @@ function mgmtRenderHeadTable(heads) {
         html += '<option value="__custom__"' + (h.model && !foundModel && h.model !== '' ? ' selected' : '') + '>Custom...</option>';
         html += '</select>';
         var showCustom = (h.model && !foundModel && h.model !== '') ? '' : 'display:none;';
-        html += '<input type="text" data-field="model_custom" data-row="' + i + '" value="' + esc((!foundModel ? h.model : '') || '') + '" placeholder="Type model" style="' + showCustom + 'width:100%;margin-top:2px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<input type="text" data-field="model_custom" data-row="' + i + '" value="' + esc((!foundModel ? h.model : '') || '') + '" placeholder="Type model" style="' + showCustom + 'width:100%;margin-top:2px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
         html += '</td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="mount" data-row="' + i + '" style="width:100%;min-width:65px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="mount" data-row="' + i + '" style="width:100%;min-width:65px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
         html += '<option value="">—</option>';
         var mounts = ["Pop-Up","Stationary","Riser","Shrub","On-Grade"];
         for (var m = 0; m < mounts.length; m++) {
@@ -5562,13 +5575,13 @@ function mgmtRenderHeadTable(heads) {
         }
         html += '</select></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM" style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM" style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="arc_degrees" data-row="' + i + '" value="' + (h.arc_degrees || '') + '" min="0" max="360" step="1" placeholder="°" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="arc_degrees" data-row="' + i + '" value="' + (h.arc_degrees || '') + '" min="0" max="360" step="1" placeholder="°" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="radius_ft" data-row="' + i + '" value="' + (h.radius_ft || '') + '" min="0" max="200" step="0.5" placeholder="ft" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="radius_ft" data-row="' + i + '" value="' + (h.radius_ft || '') + '" min="0" max="200" step="0.5" placeholder="ft" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="popup_height" data-row="' + i + '" style="width:100%;min-width:50px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);">';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="popup_height" data-row="' + i + '" style="width:100%;min-width:50px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
         html += '<option value="">—</option>';
         var heights = ['2"','3"','4"','6"','12"'];
         var heightVals = ['2','3','4','6','12'];
@@ -5577,9 +5590,9 @@ function mgmtRenderHeadTable(heads) {
         }
         html += '</select></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
 
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes" style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input,#fff);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes" style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
 
         html += '</tr>';
     }
