@@ -21,6 +21,7 @@ DEFAULT_CONFIG = {
     "notify_clarification": False,
     "last_known_issues": {},       # customer_id → {"ids": [...]}
     "last_known_dismissed": {},    # customer_id → {"ids": [...]}
+    "last_known_returned": {},     # customer_id → {"ids": [...]}
 }
 
 

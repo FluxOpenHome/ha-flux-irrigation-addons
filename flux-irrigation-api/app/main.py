@@ -477,6 +477,7 @@ async def _check_and_notify_new_issues(customer_issues: dict):
         notif_config = notification_config.load_config()
         last_known = notif_config.get("last_known_issues", {})
         last_known_dismissed = notif_config.get("last_known_dismissed", {})
+        last_known_returned = notif_config.get("last_known_returned", {})
 
         ha_enabled = notif_config.get("enabled") and notif_config.get("ha_notify_service")
         service_name = notif_config.get("ha_notify_service", "")
@@ -485,6 +486,7 @@ async def _check_and_notify_new_issues(customer_issues: dict):
         # this cycle keep their issue IDs (prevents duplicate notifications)
         new_known = dict(last_known)
         new_known_dismissed = dict(last_known_dismissed)
+        new_known_returned = dict(last_known_returned)
 
         all_new_issues = []  # All new/returned issues (for management notification store)
         all_dismissed = []   # All newly dismissed issues
@@ -494,21 +496,27 @@ async def _check_and_notify_new_issues(customer_issues: dict):
             issues = data.get("issues", [])
             current_ids = [i["id"] for i in issues]
             dismissed_ids = data.get("dismissed_ids", [])
+            # Track which issues are currently in "returned" status
+            current_returned_ids = [i["id"] for i in issues if i.get("status") == "returned"]
             new_known[cust_id] = {"ids": current_ids}
             new_known_dismissed[cust_id] = {"ids": dismissed_ids}
+            new_known_returned[cust_id] = {"ids": current_returned_ids}
 
             prev_ids = set((last_known.get(cust_id) or {}).get("ids", []))
+            prev_returned = set((last_known_returned.get(cust_id) or {}).get("ids", []))
             for issue in issues:
-                if issue["id"] not in prev_ids:
-                    # New or returned issue detected
+                is_new = issue["id"] not in prev_ids
+                # Detect returned issues even if the ID was already tracked
+                # (resolve→return can happen within a single poll cycle)
+                is_returned = issue.get("status") == "returned" and issue["id"] not in prev_returned
+                if is_new or is_returned:
                     severity = issue.get("severity", "")
-                    is_returned = issue.get("status") == "returned"
                     new_issue_info = {
                         "customer_id": cust_id,
                         "customer_name": data["name"],
                         "severity": severity,
                         "description": issue.get("description", ""),
-                        "is_returned": is_returned,
+                        "is_returned": issue.get("status") == "returned",
                         "return_reason": issue.get("return_reason", ""),
                     }
                     all_new_issues.append(new_issue_info)
@@ -613,6 +621,7 @@ async def _check_and_notify_new_issues(customer_issues: dict):
         notification_config.update_last_known_issues(new_known)
         cfg = notification_config.load_config()
         cfg["last_known_dismissed"] = new_known_dismissed
+        cfg["last_known_returned"] = new_known_returned
         notification_config.save_config(cfg)
 
         if all_new_issues:
