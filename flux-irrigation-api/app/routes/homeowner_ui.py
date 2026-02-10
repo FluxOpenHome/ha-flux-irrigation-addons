@@ -1489,8 +1489,15 @@ async function loadZones() {
                     ${esc(displayName)}
                     <span style="cursor:pointer;font-size:20px;color:var(--color-primary);margin-left:6px;"
                           onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
-                    <span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;"
-                          onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
+                    ${(function() {
+                        var zn = extractZoneNumber(z.entity_id, 'zone');
+                        var modes = window._zoneModes || {};
+                        var mv = (zn && modes[zn]) ? (modes[zn].state || '').toLowerCase() : '';
+                        if (/pump|relay/.test(mv)) {
+                            return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings">&#9432;</span>';
+                        }
+                        return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'' + z.entity_id + '\\', decodeURIComponent(\\'' + encodeURIComponent(displayName) + '\\'))" title="Zone head details">&#9432;</span>';
+                    })()}
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
                 <div class="tile-actions" style="flex-wrap:wrap;">
@@ -1861,8 +1868,8 @@ async function loadControls() {
                         '<div class="tile-state" style="font-size:12px;color:var(--text-secondary);">' + esc(modeVal) + '</div>' +
                         '<div class="tile-actions">' +
                         '<select id="' + selId + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;" ' +
-                        'onchange="setEntityValue(\\'' + modeEid +
-                        '\\',\\'select\\',{option:document.getElementById(\\'' + selId + '\\').value})">' +
+                        'onchange="hoZoneModeChanged(\\'' + modeEid +
+                        '\\',document.getElementById(\\'' + selId + '\\').value)">' +
                         optionsHtml + '</select>' +
                         '</div></div>';
                 }
@@ -2270,8 +2277,8 @@ function renderScheduleCard(sched, durData, multData) {
                         '<option value="' + esc(o) + '"' + (o === mode.state ? ' selected' : '') + '>' + esc(o) + '</option>'
                     ).join('');
                     html += '<td><select id="' + selId + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;" ' +
-                        'onchange="setEntityValue(\\'' + modeEid +
-                        '\\',\\'select\\',{option:document.getElementById(\\'' + selId + '\\').value})">' +
+                        'onchange="hoZoneModeChanged(\\'' + modeEid +
+                        '\\',document.getElementById(\\'' + selId + '\\').value)">' +
                         optionsHtml + '</select></td>';
                 } else {
                     html += '<td style="color:var(--text-disabled);">-</td>';
@@ -2468,6 +2475,23 @@ async function setEntityValue(entityId, domain, bodyObj) {
         showToast('Updated ' + entityId.split('.').pop());
         setTimeout(() => { loadControls(); loadSensors(); }, 1000);
     } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function hoZoneModeChanged(modeEntityId, newMode) {
+    // Clear alias for this zone so mode name shows through
+    var zoneEid = modeEntityId.replace('select.', 'switch.').replace(/_mode$/, '');
+    var aliases = window._currentZoneAliases || {};
+    if (aliases[zoneEid]) {
+        delete aliases[zoneEid];
+        window._currentZoneAliases = aliases;
+        try {
+            await api('/zone_aliases', {
+                method: 'PUT',
+                body: JSON.stringify({ zone_aliases: aliases }),
+            });
+        } catch(e) {}
+    }
+    setEntityValue(modeEntityId, 'select', {option: newMode});
 }
 
 // --- History ---
