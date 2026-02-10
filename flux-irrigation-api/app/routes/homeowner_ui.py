@@ -180,9 +180,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     background: var(--bg-input); color: var(--text-primary); border-color: var(--border-input);
 }
 
-/* Settings gear & notification badge */
+/* Settings gear & notification bell */
 .settings-btn { position: relative; }
-.settings-btn .notif-badge {
+.notif-bell-btn { position: relative; }
+.notif-bell-btn .notif-badge {
     position: absolute; top: -4px; right: -4px;
     background: #e74c3c; color: white;
     font-size: 10px; font-weight: 700;
@@ -270,7 +271,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log">📋</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
         <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue">&#9888;&#65039;</button>
-        <button class="dark-toggle settings-btn" onclick="openSettings()" title="Settings">&#9881;&#65039;<span class="notif-badge" id="settingsBadge" style="display:none;">0</span></button>
+        <button class="dark-toggle notif-bell-btn" onclick="openNotificationsPanel()" title="Notifications">&#128276;<span class="notif-badge" id="notifBellBadge" style="display:none;">0</span></button>
+        <button class="dark-toggle settings-btn" onclick="openSettings()" title="Settings">&#9881;&#65039;</button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -575,6 +577,22 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <div class="settings-content" id="settingsContent">
                 <div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Notifications Panel Modal -->
+<div id="notifPanelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10001;align-items:center;justify-content:center;" onclick="if(event.target===this)closeNotificationsPanel()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:500px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128276; Notifications</h3>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button class="btn btn-secondary btn-sm" id="notifMarkAllBtn" onclick="markAllNotificationsRead()" style="font-size:11px;display:none;">Mark all read</button>
+                <button onclick="closeNotificationsPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+            </div>
+        </div>
+        <div id="notifPanelBody" style="padding:12px 20px;overflow-y:auto;flex:1;min-height:0;">
+            <div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>
         </div>
     </div>
 </div>
@@ -4268,14 +4286,106 @@ async function syncProbeSchedules() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+// --- Notifications Panel ---
+var _notifPanelEvents = [];
+var _notifUnreadCount = 0;
+
+async function openNotificationsPanel() {
+    var body = document.getElementById('notifPanelBody');
+    body.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>';
+    document.getElementById('notifPanelModal').style.display = 'flex';
+    try {
+        var data = await api('/notifications?limit=50');
+        _notifPanelEvents = data.events || [];
+        _notifUnreadCount = data.unread_count || 0;
+        updateNotifBadge();
+        renderNotificationFeed();
+    } catch(e) {
+        body.innerHTML = '<div style="color:#e74c3c;text-align:center;padding:40px;">Failed to load notifications.</div>';
+    }
+}
+
+function closeNotificationsPanel() {
+    document.getElementById('notifPanelModal').style.display = 'none';
+}
+
+function renderNotificationFeed() {
+    var body = document.getElementById('notifPanelBody');
+    var markAllBtn = document.getElementById('notifMarkAllBtn');
+    if (_notifUnreadCount > 0) {
+        markAllBtn.style.display = '';
+    } else {
+        markAllBtn.style.display = 'none';
+    }
+    if (_notifPanelEvents.length === 0) {
+        body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px;">No notifications yet. When your management company makes changes, they will appear here.</div>';
+        return;
+    }
+    var html = '';
+    _notifPanelEvents.forEach(function(ev) {
+        var dt = new Date(ev.created_at);
+        var timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+        var unreadCls = ev.read ? '' : ' unread';
+        html += '<div class="notif-item' + unreadCls + '" onclick="markNotificationRead(\\'' + ev.id + '\\')" style="cursor:pointer;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:baseline;">';
+        html += '<span style="font-size:13px;font-weight:' + (ev.read ? '400' : '600') + ';color:var(--text-primary);">' + esc(ev.title) + '</span>';
+        html += '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;margin-left:8px;">' + esc(timeStr) + '</span>';
+        html += '</div>';
+        if (ev.message) {
+            html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' + esc(ev.message) + '</div>';
+        }
+        if (!ev.read) {
+            html += '<div style="font-size:10px;color:var(--color-primary);margin-top:2px;font-weight:600;">NEW</div>';
+        }
+        html += '</div>';
+    });
+    body.innerHTML = html;
+}
+
+async function markNotificationRead(eventId) {
+    try {
+        await api('/notifications/' + eventId + '/read', { method: 'PUT' });
+        _notifPanelEvents.forEach(function(ev) { if (ev.id === eventId) ev.read = true; });
+        _notifUnreadCount = _notifPanelEvents.filter(function(e) { return !e.read; }).length;
+        updateNotifBadge();
+        renderNotificationFeed();
+    } catch(e) {}
+}
+
+async function markAllNotificationsRead() {
+    try {
+        await api('/notifications/read-all', { method: 'PUT' });
+        _notifPanelEvents.forEach(function(ev) { ev.read = true; });
+        _notifUnreadCount = 0;
+        updateNotifBadge();
+        renderNotificationFeed();
+    } catch(e) { showToast('Failed to mark all read', true); }
+}
+
+function updateNotifBadge() {
+    var badge = document.getElementById('notifBellBadge');
+    if (_notifUnreadCount > 0) {
+        badge.textContent = _notifUnreadCount > 99 ? '99+' : _notifUnreadCount;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+async function pollNotificationBadge() {
+    try {
+        var data = await api('/notifications?limit=1');
+        _notifUnreadCount = data.unread_count || 0;
+        updateNotifBadge();
+    } catch(e) {}
+}
+
 // --- Settings ---
 var _settingsSections = [
     { id: 'notifications', icon: '&#128276;', label: 'Notifications' },
 ];
 var _activeSettingsSection = 'notifications';
 var _notifPrefs = {};
-var _notifEvents = [];
-var _notifUnreadCount = 0;
 var _haNotifSettings = {};
 
 function openSettings() {
@@ -4296,9 +4406,6 @@ function renderSettingsSidebar() {
         var cls = s.id === _activeSettingsSection ? ' active' : '';
         html += '<div class="settings-sidebar-item' + cls + '" onclick="loadSettingsSection(\\'' + s.id + '\\')">';
         html += s.icon + ' ' + esc(s.label);
-        if (s.id === 'notifications' && _notifUnreadCount > 0) {
-            html += ' <span style="background:#e74c3c;color:white;font-size:10px;padding:1px 5px;border-radius:8px;font-weight:700;">' + _notifUnreadCount + '</span>';
-        }
         html += '</div>';
     });
     sb.innerHTML = html;
@@ -4319,14 +4426,10 @@ async function loadNotificationSettings() {
     try {
         var results = await Promise.all([
             api('/notification-preferences'),
-            api('/notifications?limit=50'),
             api('/ha-notification-settings'),
         ]);
         _notifPrefs = results[0] || {};
-        _notifEvents = (results[1].events || []);
-        _notifUnreadCount = results[1].unread_count || 0;
-        _haNotifSettings = results[2] || {};
-        updateNotifBadge();
+        _haNotifSettings = results[1] || {};
         renderSettingsSidebar();
         renderNotificationSettings();
     } catch(e) {
@@ -4394,36 +4497,6 @@ function renderNotifMain() {
         html += '</div>';
         html += '<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-muted);">' + haStatus + '</span><span style="color:var(--text-muted);">&#9654;</span></div>';
         html += '</div>';
-    }
-
-    // Recent notifications feed
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;margin-bottom:10px;">';
-    html += '<h4 style="font-size:14px;font-weight:600;margin:0;color:var(--text-primary);">Recent Notifications</h4>';
-    if (_notifUnreadCount > 0) {
-        html += '<button class="btn btn-secondary btn-sm" onclick="markAllNotificationsRead()" style="font-size:11px;">Mark all read</button>';
-    }
-    html += '</div>';
-
-    if (_notifEvents.length === 0) {
-        html += '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">No notifications yet. When your management company makes changes, they will appear here.</div>';
-    } else {
-        _notifEvents.forEach(function(ev) {
-            var dt = new Date(ev.created_at);
-            var timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
-            var unreadCls = ev.read ? '' : ' unread';
-            html += '<div class="notif-item' + unreadCls + '" onclick="markNotificationRead(\\'' + ev.id + '\\')" style="cursor:pointer;">';
-            html += '<div style="display:flex;justify-content:space-between;align-items:baseline;">';
-            html += '<span style="font-size:13px;font-weight:' + (ev.read ? '400' : '600') + ';color:var(--text-primary);">' + esc(ev.title) + '</span>';
-            html += '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;margin-left:8px;">' + esc(timeStr) + '</span>';
-            html += '</div>';
-            if (ev.message) {
-                html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' + esc(ev.message) + '</div>';
-            }
-            if (!ev.read) {
-                html += '<div style="font-size:10px;color:var(--color-primary);margin-top:2px;font-weight:600;">NEW</div>';
-            }
-            html += '</div>';
-        });
     }
 
     content.innerHTML = html;
@@ -4613,46 +4686,6 @@ async function toggleNotifPref(key, enabled) {
         showToast('Failed to update preference', true);
         renderNotificationSettings();
     }
-}
-
-async function markNotificationRead(eventId) {
-    try {
-        await api('/notifications/' + eventId + '/read', { method: 'PUT' });
-        _notifEvents.forEach(function(ev) { if (ev.id === eventId) ev.read = true; });
-        _notifUnreadCount = _notifEvents.filter(function(e) { return !e.read; }).length;
-        updateNotifBadge();
-        renderSettingsSidebar();
-        renderNotificationSettings();
-    } catch(e) {}
-}
-
-async function markAllNotificationsRead() {
-    try {
-        await api('/notifications/read-all', { method: 'PUT' });
-        _notifEvents.forEach(function(ev) { ev.read = true; });
-        _notifUnreadCount = 0;
-        updateNotifBadge();
-        renderSettingsSidebar();
-        renderNotificationSettings();
-    } catch(e) { showToast('Failed to mark all read', true); }
-}
-
-function updateNotifBadge() {
-    var badge = document.getElementById('settingsBadge');
-    if (_notifUnreadCount > 0) {
-        badge.textContent = _notifUnreadCount > 99 ? '99+' : _notifUnreadCount;
-        badge.style.display = 'flex';
-    } else {
-        badge.style.display = 'none';
-    }
-}
-
-async function pollNotificationBadge() {
-    try {
-        var data = await api('/notifications?limit=1');
-        _notifUnreadCount = data.unread_count || 0;
-        updateNotifBadge();
-    } catch(e) {}
 }
 
 // --- Dark Mode ---
@@ -5321,7 +5354,8 @@ function closeDynamicModal() {
 }
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-        if (document.getElementById('settingsModal').style.display === 'flex') closeSettings();
+        if (document.getElementById('notifPanelModal').style.display === 'flex') closeNotificationsPanel();
+        else if (document.getElementById('settingsModal').style.display === 'flex') closeSettings();
         else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
         else if (document.getElementById('dynamicModal').style.display === 'flex') closeDynamicModal();
     }
