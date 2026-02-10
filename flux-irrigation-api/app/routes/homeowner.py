@@ -96,6 +96,7 @@ class SaveZoneHeadsRequest(BaseModel):
 
 
 class UpdateNotificationPrefsRequest(BaseModel):
+    enabled: Optional[bool] = None
     service_appointments: Optional[bool] = None
     system_changes: Optional[bool] = None
     weather_changes: Optional[bool] = None

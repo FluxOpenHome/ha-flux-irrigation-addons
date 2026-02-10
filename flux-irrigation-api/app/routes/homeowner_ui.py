@@ -269,7 +269,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log">📋</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
         <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue">&#9888;&#65039;</button>
-        <button class="dark-toggle settings-btn" onclick="openSettings()" title="Settings">&#9881;<span class="notif-badge" id="settingsBadge" style="display:none;">0</span></button>
+        <button class="dark-toggle settings-btn" onclick="openSettings()" title="Settings">&#9881;&#65039;<span class="notif-badge" id="settingsBadge" style="display:none;">0</span></button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -4277,6 +4277,7 @@ var _notifEvents = [];
 var _notifUnreadCount = 0;
 
 function openSettings() {
+    _notifSubView = 'main';
     document.getElementById('settingsModal').style.display = 'flex';
     renderSettingsSidebar();
     loadSettingsSection('notifications');
@@ -4329,36 +4330,59 @@ async function loadNotificationSettings() {
     }
 }
 
+var _notifSubView = 'main'; // 'main', 'issues', 'system'
+
 function renderNotificationSettings() {
+    if (_notifSubView === 'issues') { renderNotifIssues(); return; }
+    if (_notifSubView === 'system') { renderNotifSystem(); return; }
+    renderNotifMain();
+}
+
+function renderNotifMain() {
     var content = document.getElementById('settingsContent');
     var html = '';
+    var masterEnabled = _notifPrefs.enabled !== false;
 
-    // Preferences section
-    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 6px 0;">Notification Preferences</h4>';
-    html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 14px 0;">Choose which management actions you want to be notified about.</p>';
+    // Master toggle
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border-light);margin-bottom:16px;">';
+    html += '<div><div style="font-size:14px;font-weight:600;color:var(--text-primary);">Management Notifications</div>';
+    html += '<div style="font-size:11px;color:var(--text-muted);">Receive in-app notifications when your management company makes changes</div></div>';
+    html += '<label class="toggle-switch"><input type="checkbox" onchange="toggleNotifPref(\\'enabled\\', this.checked)"' + (masterEnabled ? ' checked' : '') + '><span class="toggle-slider"></span></label>';
+    html += '</div>';
 
-    var cats = [
-        { key: 'service_appointments', label: 'Service Appointments', desc: 'When service is scheduled or rescheduled' },
-        { key: 'system_changes', label: 'System Pause/Resume', desc: 'When management pauses or resumes your system' },
-        { key: 'weather_changes', label: 'Weather Rules', desc: 'When weather adjustment rules are changed' },
-        { key: 'moisture_changes', label: 'Moisture Settings', desc: 'When moisture probe settings are updated' },
-        { key: 'equipment_changes', label: 'Equipment Settings', desc: 'When pump or water source settings change' },
-        { key: 'duration_changes', label: 'Zone Durations', desc: 'When adjusted durations are applied or restored' },
-        { key: 'report_changes', label: 'Report Settings', desc: 'When PDF report branding is changed' },
-    ];
+    if (!masterEnabled) {
+        html += '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">Notifications are disabled. Enable the toggle above to configure notification preferences.</div>';
+    } else {
+        // Sub-category cards
+        html += '<h4 style="font-size:14px;font-weight:600;margin:0 0 10px 0;color:var(--text-primary);">Categories</h4>';
 
-    cats.forEach(function(cat) {
-        var checked = !!_notifPrefs[cat.key];
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);">';
-        html += '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:500;color:var(--text-primary);">' + esc(cat.label) + '</div>';
-        html += '<div style="font-size:11px;color:var(--text-muted);">' + esc(cat.desc) + '</div></div>';
-        html += '<label class="toggle-switch"><input type="checkbox" onchange="toggleNotifPref(\\'' + cat.key + '\\', this.checked)"' + (checked ? ' checked' : '') + '><span class="toggle-slider"></span></label>';
+        // Issues Notifications card
+        var issueCount = [_notifPrefs.service_appointments].filter(Boolean).length;
+        html += '<div onclick="_notifSubView=\\'issues\\';renderNotificationSettings();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
+        html += '<div style="display:flex;align-items:center;gap:10px;">';
+        html += '<span style="font-size:18px;">&#128295;</span>';
+        html += '<div><div style="font-size:13px;font-weight:600;color:var(--text-primary);">Issue Notifications</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);">Service appointments &amp; issue updates</div></div>';
         html += '</div>';
-    });
+        html += '<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-muted);">' + issueCount + '/1 on</span><span style="color:var(--text-muted);">&#9654;</span></div>';
+        html += '</div>';
 
-    // Notifications list
+        // System Change Notifications card
+        var sysKeys = ['system_changes','weather_changes','moisture_changes','equipment_changes','duration_changes','report_changes'];
+        var sysCount = sysKeys.filter(function(k) { return !!_notifPrefs[k]; }).length;
+        html += '<div onclick="_notifSubView=\\'system\\';renderNotificationSettings();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
+        html += '<div style="display:flex;align-items:center;gap:10px;">';
+        html += '<span style="font-size:18px;">&#9881;</span>';
+        html += '<div><div style="font-size:13px;font-weight:600;color:var(--text-primary);">System Change Notifications</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);">Weather, moisture, equipment &amp; more</div></div>';
+        html += '</div>';
+        html += '<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-muted);">' + sysCount + '/' + sysKeys.length + ' on</span><span style="color:var(--text-muted);">&#9654;</span></div>';
+        html += '</div>';
+    }
+
+    // Recent notifications feed
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;margin-bottom:10px;">';
-    html += '<h4 style="font-size:15px;font-weight:600;margin:0;">Recent Notifications</h4>';
+    html += '<h4 style="font-size:14px;font-weight:600;margin:0;color:var(--text-primary);">Recent Notifications</h4>';
     if (_notifUnreadCount > 0) {
         html += '<button class="btn btn-secondary btn-sm" onclick="markAllNotificationsRead()" style="font-size:11px;">Mark all read</button>';
     }
@@ -4389,6 +4413,43 @@ function renderNotificationSettings() {
     content.innerHTML = html;
 }
 
+function _notifBackBtn() {
+    return '<div onclick="_notifSubView=\\'main\\';renderNotificationSettings();" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--color-primary);font-size:13px;font-weight:500;margin-bottom:12px;"><span style="font-size:16px;">&#9664;</span> Back to Notifications</div>';
+}
+
+function _notifToggleRow(key, label, desc) {
+    var checked = !!_notifPrefs[key];
+    var html = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-light);">';
+    html += '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:500;color:var(--text-primary);">' + esc(label) + '</div>';
+    html += '<div style="font-size:11px;color:var(--text-muted);">' + esc(desc) + '</div></div>';
+    html += '<label class="toggle-switch"><input type="checkbox" onchange="toggleNotifPref(\\'' + key + '\\', this.checked)"' + (checked ? ' checked' : '') + '><span class="toggle-slider"></span></label>';
+    html += '</div>';
+    return html;
+}
+
+function renderNotifIssues() {
+    var content = document.getElementById('settingsContent');
+    var html = _notifBackBtn();
+    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">&#128295; Issue Notifications</h4>';
+    html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px 0;">Notifications related to service appointments and issue tracking.</p>';
+    html += _notifToggleRow('service_appointments', 'Service Appointments', 'When a service visit is scheduled or rescheduled');
+    content.innerHTML = html;
+}
+
+function renderNotifSystem() {
+    var content = document.getElementById('settingsContent');
+    var html = _notifBackBtn();
+    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">&#9881; System Change Notifications</h4>';
+    html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px 0;">Notifications when management modifies your system settings.</p>';
+    html += _notifToggleRow('system_changes', 'System Pause / Resume', 'When management pauses or resumes your irrigation system');
+    html += _notifToggleRow('weather_changes', 'Weather Rules', 'When weather adjustment rules are changed');
+    html += _notifToggleRow('moisture_changes', 'Moisture Settings', 'When moisture probe settings are updated');
+    html += _notifToggleRow('equipment_changes', 'Equipment Settings', 'When pump or water source settings change');
+    html += _notifToggleRow('duration_changes', 'Zone Durations', 'When adjusted zone durations are applied or restored');
+    html += _notifToggleRow('report_changes', 'Report Settings', 'When PDF report branding is changed');
+    content.innerHTML = html;
+}
+
 async function toggleNotifPref(key, enabled) {
     try {
         var body = {};
@@ -4399,6 +4460,8 @@ async function toggleNotifPref(key, enabled) {
         });
         _notifPrefs[key] = enabled;
         showToast('Preference updated');
+        // Re-render if master toggle changed (shows/hides categories)
+        if (key === 'enabled') renderNotificationSettings();
     } catch(e) {
         showToast('Failed to update preference', true);
         renderNotificationSettings();

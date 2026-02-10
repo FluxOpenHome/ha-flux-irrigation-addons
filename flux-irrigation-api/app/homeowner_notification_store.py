@@ -35,6 +35,7 @@ NOTIFICATION_CATEGORIES = [
 DEFAULT_DATA = {
     "version": 1,
     "preferences": {
+        "enabled": True,                 # Master toggle — all management notifications
         "service_appointments": True,
         "system_changes": True,
         "weather_changes": False,
@@ -60,9 +61,12 @@ def _load_data() -> dict:
                     if key not in data:
                         data[key] = default
                 # Backfill missing preference keys
+                prefs = data.get("preferences", {})
+                if "enabled" not in prefs:
+                    prefs["enabled"] = True
                 for cat in NOTIFICATION_CATEGORIES:
-                    if cat not in data.get("preferences", {}):
-                        data["preferences"][cat] = DEFAULT_DATA["preferences"].get(cat, False)
+                    if cat not in prefs:
+                        prefs[cat] = DEFAULT_DATA["preferences"].get(cat, False)
                 return data
         except (json.JSONDecodeError, IOError):
             pass
@@ -88,7 +92,7 @@ def update_preferences(prefs: dict) -> dict:
     """Merge a partial preferences update. Returns the updated preferences."""
     data = _load_data()
     for key, value in prefs.items():
-        if key in NOTIFICATION_CATEGORIES and isinstance(value, bool):
+        if isinstance(value, bool) and (key in NOTIFICATION_CATEGORIES or key == "enabled"):
             data["preferences"][key] = value
     _save_data(data)
     return dict(data["preferences"])
@@ -120,9 +124,12 @@ def record_event(event_type: str, title: str, message: str = "") -> dict | None:
         return None
 
     data = _load_data()
+    prefs = data.get("preferences", {})
 
-    # Check if this category is enabled
-    if not data.get("preferences", {}).get(event_type, False):
+    # Check master toggle first, then category-specific toggle
+    if not prefs.get("enabled", True):
+        return None
+    if not prefs.get(event_type, False):
         return None
 
     event = {
