@@ -1493,6 +1493,14 @@ async def mark_all_mgmt_notifications_read():
     return {"success": True, "marked": count}
 
 
+@router.delete("/api/mgmt-notifications/clear", summary="Clear all notifications")
+async def clear_all_mgmt_notifications():
+    """Remove all management notification events."""
+    _require_management_mode()
+    count = management_notification_store.clear_all()
+    return {"success": True, "cleared": count}
+
+
 @router.get("/api/mgmt-notification-preferences", summary="Get management notification preferences")
 async def get_mgmt_notification_preferences():
     """Get preferences for which event types should appear in the notification feed."""

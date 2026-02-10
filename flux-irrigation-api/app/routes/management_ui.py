@@ -776,7 +776,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128276; Notifications</h3>
             <div style="display:flex;align-items:center;gap:6px;">
                 <button onclick="showMgmtNotifSettings()" title="Notification Settings" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&#9881;&#65039;</button>
-                <button onclick="markAllMgmtNotifsRead()" class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 8px;">Mark all read</button>
+                <button onclick="markAllMgmtNotifsRead()" class="btn btn-secondary btn-sm" id="mgmtNotifMarkAllBtn" style="font-size:11px;padding:4px 8px;">Mark all read</button>
+                <button onclick="clearAllMgmtNotifications()" class="btn btn-secondary btn-sm" id="mgmtNotifClearBtn" style="font-size:11px;padding:4px 8px;">Clear</button>
                 <button onclick="closeMgmtNotifPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
             </div>
         </div>
@@ -5300,10 +5301,16 @@ async function loadMgmtNotifFeed() {
 }
 
 function renderMgmtNotifPanel() {
+    var markAllBtn = document.getElementById('mgmtNotifMarkAllBtn');
+    var clearBtn = document.getElementById('mgmtNotifClearBtn');
     if (_mgmtNotifPanelView === 'settings') {
+        if (markAllBtn) markAllBtn.style.display = 'none';
+        if (clearBtn) clearBtn.style.display = 'none';
         renderMgmtNotifSettings();
         return;
     }
+    if (markAllBtn) markAllBtn.style.display = _mgmtNotifUnread > 0 ? '' : 'none';
+    if (clearBtn) clearBtn.style.display = _mgmtNotifEvents.length > 0 ? '' : 'none';
     var body = document.getElementById('mgmtNotifPanelBody');
     if (_mgmtNotifEvents.length === 0) {
         body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">No notifications yet.</div>';
@@ -5354,6 +5361,18 @@ async function markAllMgmtNotifsRead() {
         renderMgmtNotifPanel();
         showToast('All notifications marked as read');
     } catch (e) { showToast('Failed to mark all read', 'error'); }
+}
+
+async function clearAllMgmtNotifications() {
+    if (!confirm('Clear all notifications? This cannot be undone.')) return;
+    try {
+        await api('/mgmt-notifications/clear', { method: 'DELETE' });
+        _mgmtNotifEvents = [];
+        _mgmtNotifUnread = 0;
+        updateMgmtNotifBadge();
+        renderMgmtNotifPanel();
+        showToast('Notifications cleared');
+    } catch (e) { showToast('Failed to clear notifications', 'error'); }
 }
 
 function updateMgmtNotifBadge() {

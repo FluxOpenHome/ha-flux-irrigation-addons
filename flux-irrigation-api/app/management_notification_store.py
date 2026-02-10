@@ -179,3 +179,12 @@ def mark_all_read() -> int:
     if count > 0:
         _save_data(data)
     return count
+
+
+def clear_all() -> int:
+    """Remove all notification events. Returns count of events removed."""
+    data = _load_data()
+    count = len(data.get("events", []))
+    data["events"] = []
+    _save_data(data)
+    return count

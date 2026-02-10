@@ -1207,6 +1207,14 @@ async def mark_all_notifications_read():
     return {"success": True, "marked": count}
 
 
+@router.delete("/notifications/clear", summary="Clear all notifications")
+async def clear_all_notifications():
+    """Remove all notification events."""
+    import homeowner_notification_store as hns
+    count = hns.clear_all()
+    return {"success": True, "cleared": count}
+
+
 @router.post("/notifications/record", summary="Record a notification event")
 async def record_notification(body: RecordNotificationRequest):
     """Record a notification event (called by management proxy).

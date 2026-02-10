@@ -570,6 +570,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <div style="display:flex;align-items:center;gap:6px;">
                 <button onclick="showNotifSettingsView()" title="Notification Settings" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&#9881;&#65039;</button>
                 <button class="btn btn-secondary btn-sm" id="notifMarkAllBtn" onclick="markAllNotificationsRead()" style="font-size:11px;display:none;">Mark all read</button>
+                <button class="btn btn-secondary btn-sm" id="notifClearAllBtn" onclick="clearAllNotifications()" style="font-size:11px;display:none;">Clear</button>
                 <button onclick="closeNotificationsPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
             </div>
         </div>
@@ -4358,11 +4359,13 @@ function renderNotifPanelContent() {
 function renderNotificationFeed() {
     var body = document.getElementById('notifPanelBody');
     var markAllBtn = document.getElementById('notifMarkAllBtn');
+    var clearAllBtn = document.getElementById('notifClearAllBtn');
     if (_notifUnreadCount > 0) {
         markAllBtn.style.display = '';
     } else {
         markAllBtn.style.display = 'none';
     }
+    clearAllBtn.style.display = _notifPanelEvents.length > 0 ? '' : 'none';
     if (_notifPanelEvents.length === 0) {
         body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px;">No notifications yet. When your management company makes changes, they will appear here.</div>';
         return;
@@ -4409,6 +4412,18 @@ async function markAllNotificationsRead() {
     } catch(e) { showToast('Failed to mark all read', true); }
 }
 
+async function clearAllNotifications() {
+    if (!confirm('Clear all notifications? This cannot be undone.')) return;
+    try {
+        await api('/notifications/clear', { method: 'DELETE' });
+        _notifPanelEvents = [];
+        _notifUnreadCount = 0;
+        updateNotifBadge();
+        renderNotificationFeed();
+        showToast('Notifications cleared');
+    } catch(e) { showToast('Failed to clear notifications', 'error'); }
+}
+
 function updateNotifBadge() {
     var badge = document.getElementById('notifBellBadge');
     if (_notifUnreadCount > 0) {
@@ -4432,6 +4447,7 @@ function showNotifSettingsView() {
     _notifPanelView = 'settings';
     _notifSubView = 'main';
     document.getElementById('notifMarkAllBtn').style.display = 'none';
+    document.getElementById('notifClearAllBtn').style.display = 'none';
     loadNotificationSettings();
 }
 
