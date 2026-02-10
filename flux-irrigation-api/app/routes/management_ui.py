@@ -3749,7 +3749,7 @@ function getZoneDisplayName(z) {
         if (modes[zoneNum] && modes[zoneNum].state) {
             const modeVal = modes[zoneNum].state.toLowerCase();
             if (modeVal !== 'normal' && modeVal !== 'standard' && modeVal !== '' && modeVal !== 'unknown') {
-                return 'Zone ' + zoneNum + ' - ' + modes[zoneNum].state;
+                return modes[zoneNum].state;
             }
         }
         return 'Zone ' + zoneNum;
@@ -3768,7 +3768,7 @@ function resolveZoneName(entityId, fallbackName) {
         if (modes[zoneNum] && modes[zoneNum].state) {
             const modeVal = modes[zoneNum].state.toLowerCase();
             if (modeVal !== 'normal' && modeVal !== 'standard' && modeVal !== '' && modeVal !== 'unknown') {
-                return 'Zone ' + zoneNum + ' - ' + modes[zoneNum].state;
+                return modes[zoneNum].state;
             }
         }
         return 'Zone ' + zoneNum;
