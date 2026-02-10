@@ -309,6 +309,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
             <div class="card-header">
                 <h2>Properties</h2>
                 <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="mgmtShowPortfolioReportModal()">&#128202; Portfolio Report</button>
                     <button class="btn btn-secondary btn-sm" onclick="refreshAll()">Refresh All</button>
                     <button class="btn btn-primary btn-sm" onclick="toggleAddForm()">+ Add Property</button>
                 </div>
@@ -1922,6 +1923,169 @@ async function mgmtSaveReportSettings() {
     } catch (e) {
         showToast(e.message, 'error');
     }
+}
+
+// --- Portfolio Report Modal ---
+var _portfolioReportSettings = null;
+
+async function mgmtShowPortfolioReportModal() {
+    try {
+        _portfolioReportSettings = await api('/portfolio_report/settings?t=' + Date.now());
+    } catch (e) {
+        _portfolioReportSettings = { company_name: '', custom_footer: '', accent_color: '#1a7a4c', has_custom_logo: false, hidden_sections: [] };
+    }
+    var rs = _portfolioReportSettings;
+    var hidden = rs.hidden_sections || [];
+    var sections = [
+        { key: 'portfolio_overview', label: 'Portfolio Overview' },
+        { key: 'irrigation_activity', label: 'Irrigation Activity' },
+        { key: 'water_usage', label: 'Water Usage Estimates' },
+        { key: 'weather_impact', label: 'Weather Impact Analysis' },
+        { key: 'moisture_analytics', label: 'Moisture Probe Analytics (Gophr)' },
+        { key: 'system_health', label: 'System Health & Issues' },
+        { key: 'property_comparison', label: 'Property Comparison Table' },
+        { key: 'recommendations', label: 'Recommendations' }
+    ];
+    var sectionHtml = '';
+    for (var i = 0; i < sections.length; i++) {
+        var s = sections[i];
+        var checked = hidden.indexOf(s.key) === -1 ? ' checked' : '';
+        sectionHtml += '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px;color:var(--text);"><input type="checkbox" id="pfSec_' + s.key + '"' + checked + ' style="accent-color:var(--color-primary);"> ' + esc(s.label) + '</label>';
+    }
+    var logoPreview = '';
+    if (rs.has_custom_logo) {
+        logoPreview = '<div id="pfLogoPreview" style="margin-top:8px;"><img src="' + BASE + '/portfolio_report/settings/logo?t=' + Date.now() + '" style="max-width:200px;max-height:80px;border-radius:6px;border:1px solid var(--border);" onerror="this.parentElement.innerHTML=\\'<span style=color:var(--text-muted);font-size:12px>Failed to load preview</span>\\'"><br><button class="btn btn-danger btn-sm" onclick="mgmtRemovePortfolioLogo()" style="margin-top:6px;">Remove Logo</button></div>';
+    } else {
+        logoPreview = '<div id="pfLogoPreview" style="margin-top:8px;font-size:12px;color:var(--text-muted);font-style:italic;">Using default Flux Open Home logo</div>';
+    }
+    var html = '<div style="max-height:70vh;overflow-y:auto;padding-right:6px;">';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Report Period</h4>';
+    html += '<select id="pfReportHours" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:13px;">';
+    html += '<option value="24">Last 24 Hours</option>';
+    html += '<option value="168">Last 7 Days</option>';
+    html += '<option value="720" selected>Last 30 Days</option>';
+    html += '<option value="2160">Last 90 Days</option>';
+    html += '<option value="8760">Last Year</option>';
+    html += '</select></div>';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Company Branding</h4>';
+    html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Company Name</label>';
+    html += '<input type="text" id="pfCompanyName" value="' + esc(rs.company_name || '') + '" placeholder="Your Company Name" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:13px;box-sizing:border-box;">';
+    html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin:10px 0 4px;">Company Logo</label>';
+    html += '<div style="display:flex;align-items:center;gap:10px;">';
+    html += '<input type="file" id="pfLogoFile" accept="image/*" style="font-size:12px;" onchange="mgmtPreviewPortfolioLogo(this)">';
+    html += '<button class="btn btn-primary btn-sm" onclick="mgmtUploadPortfolioLogo()">Upload</button>';
+    html += '</div>';
+    html += logoPreview;
+    html += '<div style="margin-top:6px;font-size:11px;color:var(--text-muted);font-style:italic;">Flux Open Home + Gophr logos will always appear in the report.</div>';
+    html += '</div>';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Accent Color</h4>';
+    html += '<div style="display:flex;align-items:center;gap:10px;">';
+    html += '<input type="color" id="pfAccentColor" value="' + esc(rs.accent_color || '#1a7a4c') + '" style="width:40px;height:32px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px;">';
+    html += '<span style="font-size:12px;color:var(--text-muted);">Cover page, section headers, and table headers</span>';
+    html += '</div></div>';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Report Sections</h4>';
+    html += '<div style="display:flex;flex-direction:column;gap:2px;">' + sectionHtml + '</div></div>';
+    html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Footer Text</h4>';
+    html += '<input type="text" id="pfCustomFooter" value="' + esc(rs.custom_footer || '') + '" placeholder="Powered by Flux Open Home &amp; Gophr" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:13px;box-sizing:border-box;">';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">';
+    html += '<button class="btn btn-secondary" onclick="closeMgmtDynamicModal()">Cancel</button>';
+    html += '<button class="btn btn-secondary" onclick="mgmtSavePortfolioSettings()">Save Settings</button>';
+    html += '<button class="btn btn-primary" onclick="mgmtGeneratePortfolioReport()">Generate Report</button>';
+    html += '</div></div>';
+    mgmtShowModal('Portfolio Statistics Report', html, '520px');
+}
+
+function mgmtPreviewPortfolioLogo(input) {
+    if (!input.files || !input.files[0]) return;
+    var file = input.files[0];
+    if (file.size > 2 * 1024 * 1024) {
+        showToast('Logo file too large (max 2MB)', 'error');
+        input.value = '';
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var preview = document.getElementById('pfLogoPreview');
+        if (preview) {
+            preview.innerHTML = '<img src="' + e.target.result + '" style="max-width:200px;max-height:80px;border-radius:6px;border:1px solid var(--border);"><br><span style="font-size:11px;color:var(--text-muted);">Click Upload to save</span>';
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+async function mgmtUploadPortfolioLogo() {
+    var input = document.getElementById('pfLogoFile');
+    if (!input || !input.files || !input.files[0]) {
+        showToast('Select an image file first', 'error');
+        return;
+    }
+    var formData = new FormData();
+    formData.append('logo', input.files[0]);
+    try {
+        var resp = await fetch(BASE + '/portfolio_report/settings/logo', {
+            method: 'POST',
+            body: formData
+        });
+        if (!resp.ok) {
+            var err = await resp.json().catch(function() { return { error: 'Upload failed' }; });
+            throw new Error(err.error || err.detail || 'Upload failed');
+        }
+        showToast('Logo uploaded successfully');
+        var preview = document.getElementById('pfLogoPreview');
+        if (preview) {
+            preview.innerHTML = '<img src="' + BASE + '/portfolio_report/settings/logo?t=' + Date.now() + '" style="max-width:200px;max-height:80px;border-radius:6px;border:1px solid var(--border);"><br><button class="btn btn-danger btn-sm" onclick="mgmtRemovePortfolioLogo()" style="margin-top:6px;">Remove Logo</button>';
+        }
+        if (_portfolioReportSettings) _portfolioReportSettings.has_custom_logo = true;
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function mgmtRemovePortfolioLogo() {
+    if (!confirm('Remove the custom logo? The default Flux Open Home logo will be used.')) return;
+    try {
+        await api('/portfolio_report/settings/logo', { method: 'DELETE' });
+        showToast('Logo removed');
+        var preview = document.getElementById('pfLogoPreview');
+        if (preview) {
+            preview.innerHTML = '<span style="font-size:12px;color:var(--text-muted);font-style:italic;">Using default Flux Open Home logo</span>';
+        }
+        if (_portfolioReportSettings) _portfolioReportSettings.has_custom_logo = false;
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function mgmtSavePortfolioSettings() {
+    var sectionKeys = ['portfolio_overview', 'irrigation_activity', 'water_usage', 'weather_impact', 'moisture_analytics', 'system_health', 'property_comparison', 'recommendations'];
+    var hiddenSections = [];
+    for (var i = 0; i < sectionKeys.length; i++) {
+        var cb = document.getElementById('pfSec_' + sectionKeys[i]);
+        if (cb && !cb.checked) hiddenSections.push(sectionKeys[i]);
+    }
+    var payload = {
+        company_name: (document.getElementById('pfCompanyName').value || '').trim(),
+        custom_footer: (document.getElementById('pfCustomFooter').value || '').trim(),
+        accent_color: document.getElementById('pfAccentColor').value || '#1a7a4c',
+        hidden_sections: hiddenSections
+    };
+    try {
+        await api('/portfolio_report/settings', {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+        showToast('Portfolio report settings saved');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+function mgmtGeneratePortfolioReport() {
+    var hours = document.getElementById('pfReportHours').value || '720';
+    showToast('Generating portfolio report... This may take a moment.', 'success');
+    window.open(BASE + '/portfolio_report/pdf?hours=' + hours + '&t=' + Date.now(), '_blank');
+    closeMgmtDynamicModal();
 }
 
 // --- Location Map ---
@@ -5390,6 +5554,12 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">Click the <strong>&#9881;&#65039;</strong> gear icon next to the Generate button to customize the PDF report for each customer:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Company Logo</strong> &mdash; Upload your company logo to replace the Flux Open Home logo on the cover page. The Flux logo moves to a smaller &ldquo;Powered by&rdquo; placement below. Max 2MB, any common image format.</li><li style="margin-bottom:4px;"><strong>Company Name</strong> &mdash; Shown on the cover page and in page headers (replaces &ldquo;Flux Open Home&rdquo;)</li><li style="margin-bottom:4px;"><strong>Accent Color</strong> &mdash; Change the green theme color used on the cover page, section headers, and table headers to match your company branding</li><li style="margin-bottom:4px;"><strong>Report Sections</strong> &mdash; Toggle individual sections on/off to customize what appears in the generated report</li><li style="margin-bottom:4px;"><strong>Footer Text</strong> &mdash; Replace the default &ldquo;Powered by Flux Open Home &amp; Gophr&rdquo; footer with your own text</li></ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; Report settings are stored on the customer&rsquo;s system and persist across sessions. Only management can configure branding &mdash; homeowners see the branded report but cannot change settings. With no settings configured, the report uses the default Flux Open Home branding.</div>
+
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Portfolio Statistics Report</h4>
+<p style="margin-bottom:10px;">Click the <strong>&#128202; Portfolio Report</strong> button in the Properties card header to generate a cross-customer analysis PDF. This report aggregates data from all connected properties and provides comparative statistics, tables, and actionable recommendations.</p>
+<ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Portfolio Overview</strong> &mdash; Total properties, zone counts, probe coverage, and connectivity status at a glance</li><li style="margin-bottom:4px;"><strong>Irrigation Activity</strong> &mdash; Run frequency, average durations, most/least active properties, per-property run summary</li><li style="margin-bottom:4px;"><strong>Water Usage Estimates</strong> &mdash; Total gallons across the portfolio, per-property breakdown, water source types</li><li style="margin-bottom:4px;"><strong>Weather Impact</strong> &mdash; Weather control adoption, average weather factors, rain skip and freeze protection status</li><li style="margin-bottom:4px;"><strong>Moisture Probe Analytics</strong> &mdash; Gophr probe coverage, mapped zones, per-property probe breakdown</li><li style="margin-bottom:4px;"><strong>System Health</strong> &mdash; Issue counts by severity, most common issue types, healthy vs. problem properties</li><li style="margin-bottom:4px;"><strong>Property Comparison</strong> &mdash; Side-by-side table comparing all key metrics across every property</li><li style="margin-bottom:4px;"><strong>Recommendations</strong> &mdash; Auto-generated suggestions: add probes, enable weather control, address issues, reduce water usage</li></ul>
+<p style="margin-bottom:10px;">The report modal lets you configure <strong>branding</strong> (company logo + name), <strong>accent color</strong>, <strong>section visibility</strong>, <strong>footer text</strong>, and <strong>time period</strong>. Settings persist between sessions. Flux Open Home and Gophr logos always appear in the report.</p>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The portfolio report gathers data from all customer systems in parallel. If some properties are offline, they appear as &quot;Offline&quot; in the report without blocking generation.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Notes &amp; Zone Aliases</h4>
 <p style="margin-bottom:10px;">Customize how properties and zones appear in your dashboard:</p>

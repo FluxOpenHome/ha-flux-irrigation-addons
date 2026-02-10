@@ -1734,3 +1734,218 @@ async def get_customer_report_logo(customer_id: str):
     if status_code != 200:
         raise HTTPException(status_code, "Failed to fetch logo")
     return FastResponse(content=raw_bytes, media_type="image/png")
+
+
+# ----------  Portfolio Report  ----------
+
+
+@router.get(
+    "/api/portfolio_report/settings",
+    summary="Get portfolio report settings",
+)
+async def get_portfolio_report_settings():
+    """Get the portfolio report branding & section settings."""
+    _require_management_mode()
+    import portfolio_report_settings as prs
+    return prs.get_settings()
+
+
+@router.put(
+    "/api/portfolio_report/settings",
+    summary="Save portfolio report settings",
+)
+async def save_portfolio_report_settings(request: Request):
+    """Save portfolio report branding & section settings."""
+    _require_management_mode()
+    import portfolio_report_settings as prs
+    body = await request.json()
+    return prs.save_settings(body)
+
+
+@router.post(
+    "/api/portfolio_report/settings/logo",
+    summary="Upload portfolio report logo",
+)
+async def upload_portfolio_report_logo(request: Request):
+    """Upload a custom company logo for the portfolio report cover page."""
+    _require_management_mode()
+    import portfolio_report_settings as prs
+    form = await request.form()
+    file = form.get("logo")
+    if not file:
+        raise HTTPException(400, "No logo file provided")
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(400, "Logo file too large (max 2MB)")
+    prs.save_logo(contents)
+    return {"success": True, "message": "Logo uploaded"}
+
+
+@router.delete(
+    "/api/portfolio_report/settings/logo",
+    summary="Remove portfolio report logo",
+)
+async def delete_portfolio_report_logo():
+    """Remove the custom logo for the portfolio report."""
+    _require_management_mode()
+    import portfolio_report_settings as prs
+    prs.delete_logo()
+    return {"success": True, "message": "Logo removed"}
+
+
+@router.get(
+    "/api/portfolio_report/settings/logo",
+    summary="Get portfolio report logo",
+)
+async def get_portfolio_report_logo():
+    """Serve the custom logo image for the portfolio report, or 404 if none."""
+    from fastapi.responses import Response as FastResponse
+    _require_management_mode()
+    import portfolio_report_settings as prs
+    path = prs.get_logo_path()
+    if not path:
+        raise HTTPException(404, "No custom logo")
+    with open(path, "rb") as f:
+        logo_bytes = f.read()
+    return FastResponse(content=logo_bytes, media_type="image/png")
+
+
+async def _gather_portfolio_data(customers: list, hours: int) -> list:
+    """Fetch status, zones, issues, history, moisture, weather from each customer in parallel."""
+    import asyncio
+
+    async def _fetch_one(customer) -> dict:
+        conn = _customer_connection(customer)
+        result = {
+            "customer": {
+                "id": customer.id,
+                "name": customer.name,
+                "address": getattr(customer, "address", ""),
+                "city": getattr(customer, "city", ""),
+                "state": getattr(customer, "state", ""),
+            },
+            "online": False,
+            "status": {},
+            "zones": [],
+            "zone_aliases": {},
+            "zone_heads": {},
+            "issues": [],
+            "history": [],
+            "moisture": {},
+            "weather": {},
+            "water_settings": {},
+            "sensors": [],
+        }
+        try:
+            tasks = {
+                "status": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/status"),
+                "zones": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/zones"),
+                "zone_aliases": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/zone_aliases"),
+                "zone_heads": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/zone_heads"),
+                "issues": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/issues"),
+                "history": management_client.proxy_request(
+                    conn, "GET", "/admin/api/homeowner/history/runs",
+                    params={"hours": str(hours)},
+                ),
+                "moisture": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/moisture/settings"),
+                "weather": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/weather"),
+                "water_settings": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/water_settings"),
+                "sensors": management_client.proxy_request(conn, "GET", "/admin/api/homeowner/sensors"),
+            }
+            keys = list(tasks.keys())
+            responses = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+            for key, resp in zip(keys, responses):
+                if isinstance(resp, Exception):
+                    continue
+                sc, data = resp
+                if sc == 200 and data:
+                    if key == "sensors" and isinstance(data, dict):
+                        result[key] = data.get("sensors", [])
+                    elif key == "issues" and isinstance(data, dict):
+                        result[key] = data.get("issues", []) if "issues" in data else []
+                    elif key == "history" and isinstance(data, dict):
+                        result[key] = data.get("events", []) if "events" in data else []
+                    else:
+                        result[key] = data
+
+            result["online"] = True
+        except Exception as e:
+            print(f"[PORTFOLIO] Failed to fetch data for {customer.name}: {e}")
+
+        return result
+
+    sem = asyncio.Semaphore(10)
+
+    async def _limited_fetch(c):
+        async with sem:
+            return await _fetch_one(c)
+
+    results = await asyncio.gather(*[_limited_fetch(c) for c in customers])
+    return list(results)
+
+
+@router.get(
+    "/api/portfolio_report/pdf",
+    summary="Generate portfolio statistics PDF",
+)
+async def generate_portfolio_report_pdf(
+    hours: int = Query(720, ge=1, le=8760),
+):
+    """Generate a cross-customer portfolio statistics PDF report.
+
+    Gathers data from all connected customer instances in parallel,
+    aggregates the results, and builds a multi-page PDF.
+    """
+    import traceback
+    import io
+    from datetime import datetime as dt
+    from fastapi.responses import Response as FastResponse, JSONResponse
+
+    _require_management_mode()
+
+    import portfolio_report_settings as prs
+    from portfolio_report import build_portfolio_report
+
+    try:
+        settings = prs.get_settings()
+        logo_path = prs.get_logo_path()
+        custom_logo_bytes = None
+        if logo_path:
+            with open(logo_path, "rb") as f:
+                custom_logo_bytes = f.read()
+
+        # Load all customers
+        customers = customer_store.load_customers()
+        if not customers:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No customers configured"},
+            )
+
+        # Fetch data from all customers in parallel
+        customer_data = await _gather_portfolio_data(customers, hours)
+
+        pdf = build_portfolio_report(
+            customer_data=customer_data,
+            hours=hours,
+            report_settings=settings,
+            custom_logo_bytes=custom_logo_bytes,
+        )
+
+        pdf_bytes = bytes(pdf.output())
+        timestamp = dt.now().strftime("%Y%m%d_%H%M")
+        return FastResponse(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="portfolio_report_{timestamp}.pdf"',
+            },
+        )
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(f"[PORTFOLIO REPORT PDF] Error generating report: {e}\n{tb}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to generate portfolio report: {str(e)}"},
+        )
