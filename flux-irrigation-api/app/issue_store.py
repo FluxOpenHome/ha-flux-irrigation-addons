@@ -196,15 +196,23 @@ def resolve_issue(issue_id: str) -> dict | None:
 
 
 def get_issue_summary() -> dict:
-    """Return a lightweight summary of active issues for health check polling."""
-    active = get_active_issues()
-    if not active:
-        return {"active_count": 0, "max_severity": None, "issues": []}
+    """Return a lightweight summary of active issues for health check polling.
 
-    max_sev = max(active, key=lambda i: SEVERITY_ORDER.get(i.get("severity", ""), 0))
-    return {
+    Also includes recently dismissed issues (resolved + homeowner_dismissed=True)
+    so management can detect when a homeowner accepts a resolution.
+    """
+    data = _load_data()
+    active = get_active_issues()
+
+    # Recently dismissed: resolved + homeowner_dismissed, for management notification
+    dismissed = [
+        i for i in data["issues"]
+        if i.get("status") == "resolved" and i.get("homeowner_dismissed")
+    ]
+
+    summary = {
         "active_count": len(active),
-        "max_severity": max_sev.get("severity"),
+        "max_severity": None,
         "issues": [
             {
                 "id": i["id"],
@@ -217,4 +225,11 @@ def get_issue_summary() -> dict:
             }
             for i in active
         ],
+        "dismissed_ids": [i["id"] for i in dismissed],
     }
+
+    if active:
+        max_sev = max(active, key=lambda i: SEVERITY_ORDER.get(i.get("severity", ""), 0))
+        summary["max_severity"] = max_sev.get("severity")
+
+    return summary

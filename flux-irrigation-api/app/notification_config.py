@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "notify_annoyance": True,
     "notify_clarification": False,
     "last_known_issues": {},       # customer_id → {"ids": [...]}
+    "last_known_dismissed": {},    # customer_id → {"ids": [...]}
 }
 
 

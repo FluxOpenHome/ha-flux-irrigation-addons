@@ -2,11 +2,11 @@
 Flux Open Home - Management Notification Store
 ================================================
 Manages management notification preferences and in-app notification events
-for the management dashboard. Tracks issue lifecycle events (new issue,
-acknowledged, service scheduled, resolved) across all customers.
+for the management dashboard. Tracks homeowner-initiated issue lifecycle
+events (new issue, returned, dismissed) across all customers.
 
-Events are recorded by the server-side health check loop (new issues)
-and by management API endpoints (acknowledge, schedule, resolve).
+Events are recorded by the server-side health check loop which polls
+homeowner instances every 5 minutes for issue changes.
 The store checks preferences internally — if an event type is disabled,
 the event is silently dropped.
 
@@ -27,6 +27,7 @@ MAX_EVENTS = 200  # Prune oldest beyond this
 EVENT_TYPES = [
     "new_issue",            # New issue reported by homeowner
     "returned",             # Homeowner returned a resolved issue
+    "dismissed",            # Homeowner dismissed (accepted) a resolved issue
 ]
 
 DEFAULT_DATA = {
@@ -34,6 +35,7 @@ DEFAULT_DATA = {
     "preferences": {
         "notify_new_issue": True,
         "notify_returned": True,
+        "notify_dismissed": True,
     },
     "events": [],
 }

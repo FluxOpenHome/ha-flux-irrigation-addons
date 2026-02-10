@@ -443,6 +443,7 @@ async def _periodic_customer_health_check():
                                     customer_issues[customer.id] = {
                                         "name": customer.name,
                                         "issues": issue_data.get("issues", []),
+                                        "dismissed_ids": issue_data.get("dismissed_ids", []),
                                     }
                             except Exception:
                                 pass  # Don't fail health check over issue polling
@@ -460,35 +461,50 @@ async def _periodic_customer_health_check():
 
 
 async def _check_and_notify_new_issues(customer_issues: dict):
-    """Compare current issues against last known state, send HA notifications for new ones."""
+    """Compare current issues against last known state, send HA notifications for new ones.
+
+    Also detects newly dismissed issues (homeowner accepted a resolution) by
+    comparing dismissed_ids from the issue summary against last_known_dismissed.
+    """
     try:
         import notification_config
         import ha_client
 
         notif_config = notification_config.load_config()
         last_known = notif_config.get("last_known_issues", {})
+        last_known_dismissed = notif_config.get("last_known_dismissed", {})
 
         if not notif_config.get("enabled") or not notif_config.get("ha_notify_service"):
             # Still update last known so when enabled, we don't flood.
             # Preserve entries for customers not in this cycle (health check failed).
             new_known = dict(last_known)
+            new_known_dismissed = dict(last_known_dismissed)
             for cust_id, data in customer_issues.items():
                 new_known[cust_id] = {"ids": [i["id"] for i in data.get("issues", [])]}
+                new_known_dismissed[cust_id] = {"ids": data.get("dismissed_ids", [])}
             notification_config.update_last_known_issues(new_known)
+            # Save dismissed state too
+            cfg = notification_config.load_config()
+            cfg["last_known_dismissed"] = new_known_dismissed
+            notification_config.save_config(cfg)
             return
 
         service_name = notif_config["ha_notify_service"]
         # Start with last_known so customers whose health check failed
         # this cycle keep their issue IDs (prevents duplicate notifications)
         new_known = dict(last_known)
+        new_known_dismissed = dict(last_known_dismissed)
         notifications_to_send = []
 
         all_new_issues = []  # All new issues (for management notification store)
+        all_dismissed = []   # All newly dismissed issues
 
         for cust_id, data in customer_issues.items():
             issues = data.get("issues", [])
             current_ids = [i["id"] for i in issues]
+            dismissed_ids = data.get("dismissed_ids", [])
             new_known[cust_id] = {"ids": current_ids}
+            new_known_dismissed[cust_id] = {"ids": dismissed_ids}
 
             prev_ids = set((last_known.get(cust_id) or {}).get("ids", []))
             for issue in issues:
@@ -508,7 +524,17 @@ async def _check_and_notify_new_issues(customer_issues: dict):
                     if notification_config.should_notify(severity):
                         notifications_to_send.append(new_issue_info)
 
-        # Send HA notifications
+            # Detect newly dismissed issues
+            prev_dismissed = set((last_known_dismissed.get(cust_id) or {}).get("ids", []))
+            for did in dismissed_ids:
+                if did not in prev_dismissed:
+                    all_dismissed.append({
+                        "customer_id": cust_id,
+                        "customer_name": data["name"],
+                        "issue_id": did,
+                    })
+
+        # Send HA notifications for new/returned issues
         severity_emojis = {"severe": "🔴", "annoyance": "🟡", "clarification": "🔵"}
         for notif in notifications_to_send:
             emoji = severity_emojis.get(notif["severity"], "⚠️")
@@ -536,6 +562,17 @@ async def _check_and_notify_new_issues(customer_issues: dict):
             except Exception as e:
                 print(f"[MAIN] HA notification failed: {e}")
 
+        # Send HA notifications for dismissed issues
+        for dismissed_info in all_dismissed:
+            try:
+                await ha_client.call_service("notify", service_name, {
+                    "message": f"👍 {dismissed_info['customer_name']} accepted the resolution for an issue.",
+                    "title": "Flux Open Home — Issue Dismissed",
+                })
+                print(f"[MAIN] HA notification sent: dismissed issue from {dismissed_info['customer_name']}")
+            except Exception as e:
+                print(f"[MAIN] HA dismissed notification failed: {e}")
+
         # Record ALL new/returned issues to management notification store (in-app feed)
         # This is independent of HA notification severity settings
         try:
@@ -561,14 +598,31 @@ async def _check_and_notify_new_issues(customer_issues: dict):
                     message=evt_msg,
                     severity=issue_info["severity"],
                 )
+
+            # Record dismissed events to management notification store
+            for dismissed_info in all_dismissed:
+                mns.record_event(
+                    event_type="dismissed",
+                    customer_id=dismissed_info["customer_id"],
+                    customer_name=dismissed_info["customer_name"],
+                    title=f"Issue Dismissed: {dismissed_info['customer_name']}",
+                    message="Homeowner accepted the resolution and dismissed the issue.",
+                    severity="",
+                )
         except Exception as e:
             print(f"[MAIN] Management notification store error: {e}")
 
         # Update last known state
         notification_config.update_last_known_issues(new_known)
+        # Save dismissed state
+        cfg = notification_config.load_config()
+        cfg["last_known_dismissed"] = new_known_dismissed
+        notification_config.save_config(cfg)
 
         if notifications_to_send:
             print(f"[MAIN] Sent {len(notifications_to_send)} HA notification(s) for new issues")
+        if all_dismissed:
+            print(f"[MAIN] Sent {len(all_dismissed)} HA notification(s) for dismissed issues")
     except Exception as e:
         print(f"[MAIN] HA notification check error: {e}")
 

@@ -1434,6 +1434,7 @@ async def discover_notify_services():
 class UpdateMgmtNotifPreferencesRequest(BaseModel):
     notify_new_issue: Optional[bool] = None
     notify_returned: Optional[bool] = None
+    notify_dismissed: Optional[bool] = None
 
 
 @router.get("/api/mgmt-notifications", summary="Get management notification feed")
@@ -1485,6 +1486,8 @@ async def update_mgmt_notification_preferences(body: UpdateMgmtNotifPreferencesR
         updates["notify_new_issue"] = body.notify_new_issue
     if body.notify_returned is not None:
         updates["notify_returned"] = body.notify_returned
+    if body.notify_dismissed is not None:
+        updates["notify_dismissed"] = body.notify_dismissed
     return management_notification_store.update_preferences(updates)
 
 

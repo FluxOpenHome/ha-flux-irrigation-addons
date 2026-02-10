@@ -5326,11 +5326,15 @@ function renderMgmtNotifPanel() {
         var timeAgo = diffH < 1 ? 'Just now' : diffH < 24 ? diffH + 'h ago' : Math.floor(diffH / 24) + 'd ago';
         var readStyle = ev.read ? 'opacity:0.6;' : '';
         var newBadge = ev.read ? '' : '<span style="background:#e74c3c;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:6px;">NEW</span>';
-        var typeLabels = {new_issue:'New Issue',acknowledged:'Acknowledged',service_scheduled:'Service Scheduled',resolved:'Resolved',returned:'Returned'};
+        var typeLabels = {new_issue:'New Issue',acknowledged:'Acknowledged',service_scheduled:'Service Scheduled',resolved:'Resolved',returned:'\\ud83d\\udc4e Not Resolved',dismissed:'\\ud83d\\udc4d Dismissed'};
         var typeLabel = typeLabels[ev.type] || ev.type;
+        var badgeBg, badgeColor;
+        if (ev.type === 'returned') { badgeBg = '#e74c3c22'; badgeColor = '#e74c3c'; }
+        else if (ev.type === 'dismissed') { badgeBg = '#27ae6022'; badgeColor = '#27ae60'; }
+        else { badgeBg = color + '22'; badgeColor = color; }
         html += '<div style="padding:12px 20px;border-bottom:1px solid var(--border-light);cursor:pointer;' + readStyle + '" onclick="markMgmtNotifRead(\\'' + ev.id + '\\')">';
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
-        html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;background:' + color + '22;color:' + color + ';white-space:nowrap;">' + esc(typeLabel) + '</span>';
+        html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;background:' + badgeBg + ';color:' + badgeColor + ';white-space:nowrap;">' + esc(typeLabel) + '</span>';
         html += '<span style="font-size:13px;font-weight:600;color:var(--color-primary);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeMgmtNotifPanel();viewCustomer(\\'' + ev.customer_id + '\\')">' + esc(ev.customer_name) + '</span>';
         html += newBadge;
         html += '</div>';
@@ -5429,7 +5433,8 @@ async function renderMgmtNotifSettings() {
     html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Choose which events appear in the notification feed:</p>';
     html += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">';
     html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedNewIssue" ' + (feedPrefs.notify_new_issue !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">New Issues</span></label>';
-    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedReturned" ' + (feedPrefs.notify_returned !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Returned by Homeowner</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedReturned" ' + (feedPrefs.notify_returned !== false ? 'checked' : '') + '><span style="font-weight:500;color:#e74c3c;">\\ud83d\\udc4e Not Resolved</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedDismissed" ' + (feedPrefs.notify_dismissed !== false ? 'checked' : '') + '><span style="font-weight:500;color:#27ae60;">\\ud83d\\udc4d Dismissed</span></label>';
     html += '</div>';
     html += '<button class="btn btn-primary btn-sm" onclick="saveMgmtFeedPrefs()">Save Types</button>';
 
@@ -5528,6 +5533,7 @@ async function saveMgmtFeedPrefs() {
     var payload = {
         notify_new_issue: document.getElementById('mgmtFeedNewIssue').checked,
         notify_returned: document.getElementById('mgmtFeedReturned').checked,
+        notify_dismissed: document.getElementById('mgmtFeedDismissed').checked,
     };
     try {
         await api('/mgmt-notification-preferences', { method: 'PUT', body: JSON.stringify(payload) });
