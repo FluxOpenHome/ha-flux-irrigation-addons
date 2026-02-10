@@ -1150,6 +1150,39 @@ async def _get_probe_sensor_states(probes: dict) -> dict:
     return result
 
 
+def get_cached_sensor_states(probes: dict) -> dict:
+    """Build sensor states from the in-memory/disk cache (sync, no HA calls).
+
+    Used by run_log.py to compute moisture multipliers without async HA calls.
+    Returns the same format as _get_probe_sensor_states() but sourced entirely
+    from the sensor cache that is kept fresh by the async poller.
+    """
+    _load_sensor_cache()
+    result = {}
+    for probe in probes.values():
+        for depth, eid in probe.get("sensors", {}).items():
+            if not eid:
+                continue
+            if eid in _sensor_cache:
+                cached = _sensor_cache[eid]
+                result[eid] = {
+                    "state": cached["state"],
+                    "raw_state": cached.get("raw_state", str(cached["state"])),
+                    "last_updated": cached.get("last_updated", ""),
+                    "friendly_name": cached.get("friendly_name", eid),
+                    "cached": True,
+                }
+            else:
+                result[eid] = {
+                    "state": None,
+                    "raw_state": "unknown",
+                    "last_updated": "",
+                    "friendly_name": eid,
+                    "cached": False,
+                }
+    return result
+
+
 def _is_stale(last_updated: str, threshold_minutes: int) -> bool:
     """Check if a sensor reading is older than the stale threshold."""
     if not last_updated:

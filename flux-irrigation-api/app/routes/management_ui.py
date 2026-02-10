@@ -114,6 +114,7 @@ body.dark-mode {
     --shadow-card: 0 1px 3px rgba(0,0,0,0.3);
     --shadow-header: 0 2px 8px rgba(0,0,0,0.4);
 }
+.gophr-hole { fill: var(--bg-hover); }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-body); color: var(--text-primary); }
 body.dark-mode input, body.dark-mode select, body.dark-mode textarea { background: var(--bg-input); color: var(--text-primary); border-color: var(--border-input); }
@@ -1046,7 +1047,7 @@ function renderCustomerGrid(customers) {
         const issueCardClass = issueCount > 0 ? (issueMaxSev === 'severe' ? ' has-severe-issue' : issueMaxSev === 'annoyance' ? ' has-annoyance-issue' : ' has-clarification-issue') : '';
         const issueBadgeColor = issueMaxSev === 'severe' ? '#e74c3c' : issueMaxSev === 'annoyance' ? '#f39c12' : '#3498db';
         const issueBadgeHtml = issueCount > 0 ? '<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:8px;font-size:11px;font-weight:700;background:' + issueBadgeColor + '22;color:' + issueBadgeColor + ';">&#9888; ' + issueCount + '</span>' : '';
-        const gophrBadge = c._has_probes ? '<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;background:#8b6f4722;color:#8b6f47;" title="Gophr moisture probe installed"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8b6f47" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M8 6l4 4 4-4"/><circle cx="12" cy="18" r="4"/></svg>Gophr</span>' : '';
+        const gophrBadge = c._has_probes ? '<span style="display:inline-flex;align-items:center;padding:2px 6px;border-radius:6px;background:var(--bg-hover);color:var(--text-primary);" title="Gophr moisture probe installed"><svg width="40" height="16" viewBox="160 174 726 286" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M322,282C323,289 324,295 324,302C324,331 325,361 324,390C323,421 306,443 277,451C252,458 228,457 205,444C194,438 186,428 180,416C179,415 179,414 179,413C193,405 207,397 221,388C223,399 227,406 236,411C242,415 249,415 255,414C269,410 280,400 277,375C268,377 260,379 251,380C213,383 177,356 170,318C162,276 188,237 230,228C249,224 268,225 285,233C306,242 318,259 322,282M217,286C209,302 212,317 225,329C237,340 255,341 268,333C283,323 289,306 283,291C277,277 267,269 253,267C237,265 225,272 217,286z"/><path fill="currentColor" d="M506,276C520,244 544,228 578,226C611,224 638,237 655,267C676,304 660,352 620,370C597,381 573,381 549,371C548,371 547,371 546,371C546,390 546,409 546,428C531,428 516,428 501,428C501,426 501,425 501,423C501,383 501,343 501,303C501,294 504,285 506,276M598,334C625,320 627,288 602,272C590,264 573,264 560,274C548,283 542,298 547,312C553,331 576,344 598,334z"/><path fill="currentColor" d="M671,182C671,180 671,179 671,177C686,177 700,177 715,177C715,197 715,218 715,239C716,238 717,238 717,238C735,223 755,223 776,230C791,236 798,249 802,264C803,271 804,279 804,286C804,315 804,344 804,374C789,374 775,374 760,374C760,372 760,370 760,368C760,341 760,314 759,288C759,271 747,263 731,267C723,269 717,276 716,285C716,288 716,292 716,295C715,320 716,344 716,369C716,370 716,372 716,374C701,374 686,374 671,374C671,310 671,246 671,182z"/><path fill="currentColor" d="M441,230C467,239 484,257 492,283C500,312 489,342 464,361C432,386 382,384 354,355C319,320 325,265 367,239C390,224 415,222 441,230M419,267C393,263 370,286 377,310C381,327 398,339 416,338C434,336 449,321 450,303C451,286 437,271 419,267z"/><path fill="currentColor" d="M856,323C856,340 856,357 856,374C841,374 826,374 811,374C811,372 811,370 811,368C811,340 811,312 811,284C812,277 813,268 816,261C823,240 839,230 860,227C868,226 876,226 884,226C884,241 884,254 884,268C883,268 882,268 882,268C867,263 857,270 856,285C856,298 856,310 856,323z"/><path fill="#6DAC39" d="M397,392C428,392 459,392 491,392C491,405 491,417 491,430C438,430 386,430 333,430C333,417 333,405 333,392C354,392 375,392 397,392z"/><path class="gophr-hole" fill="#fff" d="M217,286C225,272 237,265 253,267C267,269 277,277 283,291C289,306 283,323 268,333C255,341 237,340 225,329C212,317 209,302 217,286z"/><path class="gophr-hole" fill="#fff" d="M598,334C576,344 553,331 547,312C542,298 548,283 560,274C573,264 590,264 602,272C627,288 625,320 598,334z"/><path class="gophr-hole" fill="#fff" d="M419,267C437,271 451,286 450,303C449,321 434,336 416,338C398,339 381,327 377,310C370,286 393,263 419,267z"/></svg></span>' : '';
         return `
         <div class="customer-card ${status}${issueCardClass}" onclick="viewCustomer('${c.id}')">
             <div class="customer-card-body">
@@ -4432,15 +4433,8 @@ async function loadDetailHistory(id) {
                         if (parts.length > 0) {
                             mFactorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">' + parts.join(' ') + '</div>';
                         }
-                    } else {
-                        // No probe data — show weather factor as fallback
-                        const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : null;
-                        if (wMult != null) {
-                            const fc = wMult === 1.0 ? 'var(--color-success)' : wMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
-                            mFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + wMult + 'x</span>';
-                            mFactorCell += '<div style="font-size:10px;color:var(--text-muted);">weather</div>';
-                        }
                     }
+                    // No probe data — leave as "—" (moisture column is probe-only)
                 }
                 const srcLabel = e.source && e.source !== 'schedule' && e.source !== 'moisture_probe' ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
                 // State display: handle skip, probe wake, and moisture skip events

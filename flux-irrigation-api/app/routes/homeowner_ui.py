@@ -2333,15 +2333,8 @@ async function loadHistory() {
                         if (parts.length > 0) {
                             mFactorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">' + parts.join(' ') + '</div>';
                         }
-                    } else {
-                        // No probe data — show weather factor as fallback
-                        const wMult = wx.watering_multiplier != null ? wx.watering_multiplier : null;
-                        if (wMult != null) {
-                            const fc = wMult === 1.0 ? 'var(--color-success)' : wMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
-                            mFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + wMult + 'x</span>';
-                            mFactorCell += '<div style="font-size:10px;color:var(--text-muted);">weather</div>';
-                        }
                     }
+                    // No probe data — leave as "—" (moisture column is probe-only)
                 }
                 const srcLabel = e.source && e.source !== 'schedule' && e.source !== 'moisture_probe' ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
                 // State display: handle skip, probe wake, and moisture skip events

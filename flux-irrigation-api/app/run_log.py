@@ -80,7 +80,11 @@ def log_zone_event(
 
     # Capture moisture context at this moment
     try:
-        from routes.moisture import _load_data as _load_moisture_data, calculate_zone_moisture_multiplier, _get_probe_sensor_states
+        from routes.moisture import (
+            _load_data as _load_moisture_data,
+            calculate_zone_moisture_multiplier,
+            get_cached_sensor_states,
+        )
         moisture_data = _load_moisture_data()
         if moisture_data.get("enabled") and moisture_data.get("probes") and entity_id != "system":
             # Check if this zone has any mapped probes (sync-safe check)
@@ -95,23 +99,45 @@ def log_zone_event(
                     "last_evaluation": moisture_data.get("last_evaluation"),
                     "duration_adjustment_active": moisture_data.get("duration_adjustment_active", False),
                 }
-                # Include adjusted duration info if active
+                # Compute moisture multiplier live from cached sensor data
+                # (adjusted_durations may be empty/stale — this is always fresh)
+                sensor_states = get_cached_sensor_states(moisture_data.get("probes", {}))
+                zone_result = calculate_zone_moisture_multiplier(
+                    entity_id, moisture_data, sensor_states,
+                )
+                moisture_mult = zone_result.get("multiplier")
+                if moisture_mult is not None:
+                    entry["moisture"]["moisture_multiplier"] = round(moisture_mult, 3)
+                    entry["moisture"]["profile"] = zone_result.get("profile", "")
+                    entry["moisture"]["reason"] = zone_result.get("reason", "")
+                    entry["moisture"]["skip"] = zone_result.get("skip", False)
+                    # Capture sensor readings (T/M/B) from probe details
+                    for detail in zone_result.get("probe_details", []):
+                        readings = detail.get("depth_readings", {})
+                        if readings:
+                            sr = {}
+                            if "shallow" in readings:
+                                sr["T"] = round(readings["shallow"].get("value", 0), 1)
+                            if "mid" in readings:
+                                sr["M"] = round(readings["mid"].get("value", 0), 1)
+                            if "deep" in readings:
+                                sr["B"] = round(readings["deep"].get("value", 0), 1)
+                            if sr:
+                                entry["moisture"]["sensor_readings"] = sr
+                            break  # Use first probe's readings
+                # Also include adjusted duration info if available
                 adjusted = moisture_data.get("adjusted_durations", {})
                 for dur_eid, adj in adjusted.items():
                     zone_suffix = entity_id.split(".", 1)[1] if "." in entity_id else entity_id
                     if zone_suffix in dur_eid:
-                        entry["moisture"]["moisture_multiplier"] = adj.get("moisture_multiplier")
                         entry["moisture"]["combined_multiplier"] = adj.get("combined_multiplier")
                         entry["moisture"]["original_duration"] = adj.get("original")
                         entry["moisture"]["adjusted_duration"] = adj.get("adjusted")
-                        # Sensor readings and profile for run history display
-                        if adj.get("sensor_readings"):
-                            entry["moisture"]["sensor_readings"] = adj["sensor_readings"]
-                        if adj.get("profile"):
-                            entry["moisture"]["profile"] = adj["profile"]
                         break
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[RUN_LOG] Moisture context capture error: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Track start times for duration calculation
     if state in ("on", "open"):
