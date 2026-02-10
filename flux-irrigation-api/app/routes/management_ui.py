@@ -380,8 +380,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                             <option value="no_issues">No Issues</option>
                         </select>
                         <select id="filterProbes" onchange="filterCustomers()">
-                            <option value="">Gophr Probes</option>
-                            <option value="has_probes">Has Probes</option>
+                            <option value="">Gophr Probes: All</option>
+                            <option value="has_probes">Probes</option>
                             <option value="no_probes">No Probes</option>
                         </select>
                         <select id="sortBy" onchange="filterCustomers()">
