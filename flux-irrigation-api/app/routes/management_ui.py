@@ -828,6 +828,11 @@ function toggleCard(key) {
     var isHidden = body.style.display === 'none';
     body.style.display = isHidden ? 'block' : 'none';
     if (chevron) chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+    // Toggle border on the card-header when collapsed
+    var header = body.previousElementSibling;
+    if (header && header.classList.contains('card-header')) {
+        header.style.borderBottom = isHidden ? '' : 'none';
+    }
 }
 
 function lockCard(key, evt) {
@@ -845,6 +850,11 @@ function lockCard(key, evt) {
         var chevron = document.getElementById('cardChevron_' + key);
         if (chevron) chevron.style.transform = 'rotate(90deg)';
         if (lockIcon) { lockIcon.textContent = '\\u{1F512}'; lockIcon.title = 'Unlock (allow collapse)'; }
+        // Restore header border
+        if (body) {
+            var header = body.previousElementSibling;
+            if (header && header.classList.contains('card-header')) header.style.borderBottom = '';
+        }
     }
     _saveMgmtCardLocks();
 }
@@ -854,19 +864,23 @@ function initCardState(key, defaultCollapsed) {
     var chevron = document.getElementById('cardChevron_' + key);
     var lockIcon = document.getElementById('cardLock_' + key);
     if (!body) return;
+    var header = body.previousElementSibling;
     if (_mgmtCardLocks[key]) {
         // Locked open
         body.style.display = 'block';
         if (chevron) chevron.style.transform = 'rotate(90deg)';
         if (lockIcon) { lockIcon.textContent = '\\u{1F512}'; lockIcon.title = 'Unlock (allow collapse)'; }
+        if (header && header.classList.contains('card-header')) header.style.borderBottom = '';
     } else if (defaultCollapsed) {
         body.style.display = 'none';
         if (chevron) chevron.style.transform = 'rotate(0deg)';
         if (lockIcon) { lockIcon.textContent = '\\u{1F513}'; lockIcon.title = 'Lock open'; }
+        if (header && header.classList.contains('card-header')) header.style.borderBottom = 'none';
     } else {
         body.style.display = 'block';
         if (chevron) chevron.style.transform = 'rotate(90deg)';
         if (lockIcon) { lockIcon.textContent = '\\u{1F513}'; lockIcon.title = 'Lock open'; }
+        if (header && header.classList.contains('card-header')) header.style.borderBottom = '';
     }
 }
 
