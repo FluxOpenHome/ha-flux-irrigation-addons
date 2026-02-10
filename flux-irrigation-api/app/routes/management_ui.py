@@ -1007,17 +1007,21 @@ async function refreshRunningStatuses() {
 }
 
 async function refreshProbeStatuses() {
-    // For each online customer, check if they have Gophr probes
-    const online = allCustomers.filter(c => getCustomerStatus(c) === 'online');
-    const checks = online.map(async c => {
+    // Only check online customers — offline ones aren't reachable
+    const reachable = allCustomers.filter(c => getCustomerStatus(c) === 'online');
+    console.log('[PROBES] Checking ' + reachable.length + ' online customers for Gophr probes');
+    const checks = reachable.map(async c => {
         try {
             const data = await api('/customers/' + c.id + '/moisture/probes?t=' + Date.now());
-            c._has_probes = data && data.total && data.total > 0;
-        } catch(_) {
+            console.log('[PROBES] ' + c.name + ': total=' + (data && data.total));
+            c._has_probes = !!(data && data.total && data.total > 0);
+        } catch(e) {
+            console.log('[PROBES] ' + c.name + ': error — ' + e.message);
             c._has_probes = false;
         }
     });
     await Promise.all(checks);
+    console.log('[PROBES] Done. Customers with probes: ' + allCustomers.filter(c => c._has_probes).map(c => c.name).join(', '));
     filterCustomers();
 }
 
@@ -1042,16 +1046,19 @@ function renderCustomerGrid(customers) {
         const issueCardClass = issueCount > 0 ? (issueMaxSev === 'severe' ? ' has-severe-issue' : issueMaxSev === 'annoyance' ? ' has-annoyance-issue' : ' has-clarification-issue') : '';
         const issueBadgeColor = issueMaxSev === 'severe' ? '#e74c3c' : issueMaxSev === 'annoyance' ? '#f39c12' : '#3498db';
         const issueBadgeHtml = issueCount > 0 ? '<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:8px;font-size:11px;font-weight:700;background:' + issueBadgeColor + '22;color:' + issueBadgeColor + ';">&#9888; ' + issueCount + '</span>' : '';
-        const gophrBadge = c._has_probes ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;background:#8b6f4722;color:#8b6f47;" title="Gophr moisture probe installed"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b6f47" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M8 6l4 4 4-4"/><circle cx="12" cy="18" r="4"/></svg>Gophr</span>' : '';
+        const gophrBadge = c._has_probes ? '<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;background:#8b6f4722;color:#8b6f47;" title="Gophr moisture probe installed"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8b6f47" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="M8 6l4 4 4-4"/><circle cx="12" cy="18" r="4"/></svg>Gophr</span>' : '';
         return `
         <div class="customer-card ${status}${issueCardClass}" onclick="viewCustomer('${c.id}')">
             <div class="customer-card-body">
                 <div class="customer-card-header">
-                    <span class="customer-name">${esc(c.name)}${issueBadgeHtml}${gophrBadge}</span>
-                    <span class="customer-status">
-                        <span class="status-dot ${status}"></span>
-                        ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:var(--text-disabled);">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
-                    </span>
+                    <span class="customer-name">${esc(c.name)}${issueBadgeHtml}</span>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;">
+                        <span class="customer-status">
+                            <span class="status-dot ${status}"></span>
+                            ${status === 'online' ? 'Online' : status === 'revoked' ? '<span style="color:var(--text-disabled);">Access Revoked</span>' : status === 'offline' ? 'Offline' : 'Unknown'}
+                        </span>
+                        ${gophrBadge}
+                    </div>
                 </div>
                 ${contactName ? '<div style="font-size:13px;color:var(--text-secondary-alt);margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
                 ${addr ? '<div class="customer-address" onclick="openAddressInMaps(\\''+encodeURIComponent(addr)+'\\');event.stopPropagation();" style="cursor:pointer;color:var(--color-link);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" title="Open in Maps">' + esc(addr) + '</div>' : ''}
