@@ -39,6 +39,7 @@ def _load_data() -> dict:
                 # Backfill missing fields from older versions
                 for issue in data.get("issues", []):
                     issue.setdefault("homeowner_dismissed", False)
+                    issue.setdefault("service_date_updated_at", None)
                 return data
         except (json.JSONDecodeError, IOError):
             pass
@@ -73,6 +74,7 @@ def create_issue(severity: str, description: str) -> dict:
         "service_date": None,
         "resolved_at": None,
         "homeowner_dismissed": False,
+        "service_date_updated_at": None,
     }
     data["issues"].append(issue)
     _save_data(data)
@@ -144,7 +146,11 @@ def acknowledge_issue(issue_id: str, note: str | None = None, service_date: str 
             if note is not None:
                 issue["management_note"] = note.strip()[:500] if note else None
             if service_date is not None:
+                old_service_date = issue.get("service_date")
                 issue["service_date"] = service_date
+                # Track whether this is an update (not first-time set)
+                if old_service_date is not None and old_service_date != service_date:
+                    issue["service_date_updated_at"] = datetime.now(timezone.utc).isoformat()
             _save_data(data)
             return issue
     return None

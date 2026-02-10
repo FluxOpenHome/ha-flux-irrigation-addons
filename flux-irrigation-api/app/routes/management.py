@@ -88,6 +88,30 @@ def _get_customer_or_404(customer_id: str) -> customer_store.Customer:
     return customer
 
 
+async def _notify_homeowner(
+    conn: ConnectionKeyData,
+    event_type: str,
+    title: str,
+    message: str,
+):
+    """Best-effort notification recording on the homeowner instance.
+
+    Failures are silently ignored — notification recording should never
+    block or break the primary management operation.
+    """
+    try:
+        await management_client.proxy_request(
+            conn, "POST", "/admin/api/homeowner/notifications/record",
+            json_body={
+                "event_type": event_type,
+                "title": title,
+                "message": message,
+            },
+        )
+    except Exception:
+        pass
+
+
 def _customer_connection(customer: customer_store.Customer) -> ConnectionKeyData:
     print(f"[MGMT] Building connection for {customer.name}: url='{customer.url}', mode='{customer.connection_mode}', ha_token={'SET' if customer.ha_token else 'EMPTY'}")
     return ConnectionKeyData(
@@ -480,6 +504,8 @@ async def pause_customer_system(customer_id: str):
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
+    await _notify_homeowner(conn, "system_changes", "System Paused",
+                            "Your irrigation system was paused by management.")
     return data
 
 
@@ -497,6 +523,8 @@ async def resume_customer_system(customer_id: str):
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
+    await _notify_homeowner(conn, "system_changes", "System Resumed",
+                            "Your irrigation system was resumed by management.")
     return data
 
 
@@ -578,6 +606,8 @@ async def update_customer_weather_rules(customer_id: str, request: Request):
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
+    await _notify_homeowner(conn, "weather_changes", "Weather Rules Updated",
+                            "Management updated your weather adjustment rules.")
     return data
 
 
@@ -823,6 +853,8 @@ async def update_customer_moisture_settings(customer_id: str, request: Request):
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to update moisture settings"}
+    await _notify_homeowner(conn, "moisture_changes", "Moisture Settings Updated",
+                            "Management updated your moisture probe settings.")
     return data
 
 
@@ -1130,6 +1162,8 @@ async def apply_customer_moisture_durations(customer_id: str):
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to apply durations"}
+    await _notify_homeowner(conn, "duration_changes", "Adjusted Durations Applied",
+                            "Management applied adjusted zone durations to your schedule.")
     return data
 
 
@@ -1148,6 +1182,8 @@ async def restore_customer_moisture_durations(customer_id: str):
     )
     if status_code != 200:
         return {"success": False, "error": "Failed to restore durations"}
+    await _notify_homeowner(conn, "duration_changes", "Base Durations Restored",
+                            "Management restored your base zone durations.")
     return data
 
 
@@ -1266,6 +1302,21 @@ async def acknowledge_customer_issue(customer_id: str, issue_id: str, request: R
     )
     if status_code != 200:
         return _proxy_error(status_code, data)
+    # Notify homeowner about service date if present
+    if status_code == 200 and isinstance(data, dict):
+        issue_data = data.get("issue", {})
+        sd = issue_data.get("service_date")
+        if sd:
+            if issue_data.get("service_date_updated_at"):
+                ntitle = "Service Date Updated"
+                nmsg = f"Your service appointment has been rescheduled to {sd}."
+            else:
+                ntitle = "Service Scheduled"
+                nmsg = f"A service appointment has been scheduled for {sd}."
+            mnote = issue_data.get("management_note")
+            if mnote:
+                nmsg += f" Note: {mnote}"
+            await _notify_homeowner(conn, "service_appointments", ntitle, nmsg)
     return data
 
 
@@ -1553,6 +1604,8 @@ async def save_customer_pump_settings(customer_id: str, request: Request):
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
+    await _notify_homeowner(conn, "equipment_changes", "Pump Settings Updated",
+                            "Management updated your pump configuration.")
     return data
 
 
@@ -1617,6 +1670,8 @@ async def save_customer_water_settings(customer_id: str, request: Request):
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
+    await _notify_homeowner(conn, "equipment_changes", "Water Settings Updated",
+                            "Management updated your water source settings.")
     return data
 
 
@@ -1660,6 +1715,8 @@ async def save_customer_report_settings(customer_id: str, request: Request):
     )
     if status_code != 200:
         raise _proxy_error(status_code, data)
+    await _notify_homeowner(conn, "report_changes", "Report Settings Updated",
+                            "Management updated your PDF report branding settings.")
     return data
 
 

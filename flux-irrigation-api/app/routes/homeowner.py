@@ -95,6 +95,22 @@ class SaveZoneHeadsRequest(BaseModel):
     show_head_count_on_card: bool = Field(False, description="Show head count on zone card")
 
 
+class UpdateNotificationPrefsRequest(BaseModel):
+    service_appointments: Optional[bool] = None
+    system_changes: Optional[bool] = None
+    weather_changes: Optional[bool] = None
+    moisture_changes: Optional[bool] = None
+    equipment_changes: Optional[bool] = None
+    duration_changes: Optional[bool] = None
+    report_changes: Optional[bool] = None
+
+
+class RecordNotificationRequest(BaseModel):
+    event_type: str = Field(..., description="Notification category key")
+    title: str = Field(..., max_length=200)
+    message: str = Field("", max_length=1000)
+
+
 # --- Helper functions ---
 
 def _zone_name(entity_id: str) -> str:
@@ -1129,3 +1145,61 @@ async def get_report_logo():
     return FileResponse(path, media_type="image/png")
 
 
+# --- Notification Preferences ---
+
+
+@router.get("/notification-preferences", summary="Get notification preferences")
+async def get_notification_preferences():
+    """Get homeowner notification preferences."""
+    import homeowner_notification_store as hns
+    return hns.get_preferences()
+
+
+@router.put("/notification-preferences", summary="Update notification preferences")
+async def update_notification_preferences(body: UpdateNotificationPrefsRequest, request: Request):
+    """Update homeowner notification preferences (partial merge)."""
+    import homeowner_notification_store as hns
+    updated = hns.update_preferences(body.dict(exclude_none=True))
+    log_change(get_actor(request), "Notification Preferences", "Updated notification preferences")
+    return updated
+
+
+# --- Notifications ---
+
+
+@router.get("/notifications", summary="Get recent notifications")
+async def get_notifications(limit: int = Query(50, ge=1, le=200)):
+    """Get recent notification events with unread count."""
+    import homeowner_notification_store as hns
+    events = hns.get_events(limit=limit)
+    unread_count = hns.get_unread_count()
+    return {"events": events, "unread_count": unread_count}
+
+
+@router.put("/notifications/{event_id}/read", summary="Mark notification as read")
+async def mark_notification_read(event_id: str):
+    """Mark a single notification event as read."""
+    import homeowner_notification_store as hns
+    if not hns.mark_read(event_id):
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True}
+
+
+@router.put("/notifications/read-all", summary="Mark all notifications as read")
+async def mark_all_notifications_read():
+    """Mark all notification events as read."""
+    import homeowner_notification_store as hns
+    count = hns.mark_all_read()
+    return {"success": True, "marked": count}
+
+
+@router.post("/notifications/record", summary="Record a notification event")
+async def record_notification(body: RecordNotificationRequest):
+    """Record a notification event (called by management proxy).
+
+    The store checks preferences internally — if the homeowner has
+    disabled this category, the event is silently dropped.
+    """
+    import homeowner_notification_store as hns
+    event = hns.record_event(body.event_type, body.title, body.message)
+    return {"recorded": event is not None, "event": event}

@@ -180,6 +180,51 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     background: var(--bg-input); color: var(--text-primary); border-color: var(--border-input);
 }
 
+/* Settings gear & notification badge */
+.settings-btn { position: relative; }
+.settings-btn .notif-badge {
+    position: absolute; top: -4px; right: -4px;
+    background: #e74c3c; color: white;
+    font-size: 10px; font-weight: 700;
+    min-width: 16px; height: 16px;
+    border-radius: 8px; display: flex;
+    align-items: center; justify-content: center;
+    padding: 0 4px; line-height: 1;
+}
+/* Settings panel sidebar */
+.settings-sidebar {
+    width: 180px; min-width: 180px; border-right: 1px solid var(--border-light);
+    padding: 12px 0; overflow-y: auto;
+}
+.settings-sidebar-item {
+    padding: 10px 16px; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-secondary); transition: background 0.15s;
+}
+.settings-sidebar-item:hover { background: var(--bg-tile); }
+.settings-sidebar-item.active {
+    background: var(--bg-tile); color: var(--color-primary);
+    font-weight: 600; border-left: 3px solid var(--color-primary);
+}
+.settings-content { flex: 1; padding: 20px 24px; overflow-y: auto; }
+/* Notification event list */
+.notif-item { padding: 10px 0; border-bottom: 1px solid var(--border-light); }
+.notif-item.unread { background: rgba(26,122,76,0.06); border-radius: 6px; padding: 10px; margin-bottom: 4px; }
+/* Toggle switch */
+.toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute; inset: 0; background: var(--border-light);
+    border-radius: 22px; cursor: pointer; transition: 0.2s;
+}
+.toggle-slider::before {
+    content: ''; position: absolute; height: 16px; width: 16px;
+    left: 3px; bottom: 3px; background: white;
+    border-radius: 50%; transition: 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--color-primary); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+
 /* Responsive */
 @media (max-width: 600px) {
     .tile-grid { grid-template-columns: 1fr; }
@@ -200,6 +245,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
     .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
+    .settings-sidebar { width: 100%; min-width: 100%; border-right: none; border-bottom: 1px solid var(--border-light); padding: 8px 0; display: flex; overflow-x: auto; gap: 0; }
+    .settings-sidebar-item { white-space: nowrap; padding: 8px 12px; border-left: none !important; }
+    .settings-sidebar-item.active { border-bottom: 2px solid var(--color-primary); border-left: none !important; }
+    .settings-content { padding: 14px 16px; }
 }
 </style>
 </head>
@@ -220,6 +269,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log">📋</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
         <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue">&#9888;&#65039;</button>
+        <button class="dark-toggle settings-btn" onclick="openSettings()" title="Settings">&#9881;<span class="notif-badge" id="settingsBadge" style="display:none;">0</span></button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -512,6 +562,22 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     </div>
 </div>
 
+<!-- Settings Modal -->
+<div id="settingsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;" onclick="if(event.target===this)closeSettings()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:800px;height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#9881; Settings</h3>
+            <button onclick="closeSettings()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div style="display:flex;flex:1;overflow:hidden;" id="settingsLayout">
+            <div class="settings-sidebar" id="settingsSidebar"></div>
+            <div class="settings-content" id="settingsContent">
+                <div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Calendar Picker Modal (iOS) -->
 <div id="calendarPickerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:flex-end;justify-content:center;" onclick="if(event.target===this)closeCalendarPicker()">
     <div style="background:var(--bg-card);border-radius:16px 16px 0 0;padding:0;width:100%;max-width:500px;box-shadow:0 -4px 24px rgba(0,0,0,0.2);animation:slideUp 0.25s ease-out;">
@@ -724,7 +790,11 @@ function renderUpcomingService(issues) {
     _upcomingServiceData = next;
     const dt = new Date(next.service_date + 'T12:00:00');
     const dateStr = dt.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
-    document.getElementById('upcomingServiceDate').textContent = 'Upcoming Service: ' + dateStr;
+    var dateLabel = 'Upcoming Service: ' + dateStr;
+    if (next.service_date_updated_at) {
+        dateLabel += ' (Updated)';
+    }
+    document.getElementById('upcomingServiceDate').textContent = dateLabel;
     const noteEl = document.getElementById('upcomingServiceNote');
     if (next.management_note) {
         noteEl.textContent = next.management_note;
@@ -1156,6 +1226,7 @@ async function loadDashboard() {
     loadEstGallons();
     loadPumpMonitor();
     loadActiveIssues();
+    pollNotificationBadge();
 }
 
 async function refreshDashboard() {
@@ -4196,6 +4267,184 @@ async function syncProbeSchedules() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
+// --- Settings ---
+var _settingsSections = [
+    { id: 'notifications', icon: '&#128276;', label: 'Notifications' },
+];
+var _activeSettingsSection = 'notifications';
+var _notifPrefs = {};
+var _notifEvents = [];
+var _notifUnreadCount = 0;
+
+function openSettings() {
+    document.getElementById('settingsModal').style.display = 'flex';
+    renderSettingsSidebar();
+    loadSettingsSection('notifications');
+}
+
+function closeSettings() {
+    document.getElementById('settingsModal').style.display = 'none';
+}
+
+function renderSettingsSidebar() {
+    var sb = document.getElementById('settingsSidebar');
+    var html = '';
+    _settingsSections.forEach(function(s) {
+        var cls = s.id === _activeSettingsSection ? ' active' : '';
+        html += '<div class="settings-sidebar-item' + cls + '" onclick="loadSettingsSection(\\'' + s.id + '\\')">';
+        html += s.icon + ' ' + esc(s.label);
+        if (s.id === 'notifications' && _notifUnreadCount > 0) {
+            html += ' <span style="background:#e74c3c;color:white;font-size:10px;padding:1px 5px;border-radius:8px;font-weight:700;">' + _notifUnreadCount + '</span>';
+        }
+        html += '</div>';
+    });
+    sb.innerHTML = html;
+}
+
+async function loadSettingsSection(sectionId) {
+    _activeSettingsSection = sectionId;
+    renderSettingsSidebar();
+    var content = document.getElementById('settingsContent');
+    if (sectionId === 'notifications') {
+        content.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>';
+        await loadNotificationSettings();
+    }
+}
+
+async function loadNotificationSettings() {
+    var content = document.getElementById('settingsContent');
+    try {
+        var results = await Promise.all([
+            api('/notification-preferences'),
+            api('/notifications?limit=50'),
+        ]);
+        _notifPrefs = results[0] || {};
+        _notifEvents = (results[1].events || []);
+        _notifUnreadCount = results[1].unread_count || 0;
+        updateNotifBadge();
+        renderSettingsSidebar();
+        renderNotificationSettings();
+    } catch(e) {
+        content.innerHTML = '<div style="color:#e74c3c;text-align:center;padding:40px;">Failed to load notification settings.</div>';
+    }
+}
+
+function renderNotificationSettings() {
+    var content = document.getElementById('settingsContent');
+    var html = '';
+
+    // Preferences section
+    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 6px 0;">Notification Preferences</h4>';
+    html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 14px 0;">Choose which management actions you want to be notified about.</p>';
+
+    var cats = [
+        { key: 'service_appointments', label: 'Service Appointments', desc: 'When service is scheduled or rescheduled' },
+        { key: 'system_changes', label: 'System Pause/Resume', desc: 'When management pauses or resumes your system' },
+        { key: 'weather_changes', label: 'Weather Rules', desc: 'When weather adjustment rules are changed' },
+        { key: 'moisture_changes', label: 'Moisture Settings', desc: 'When moisture probe settings are updated' },
+        { key: 'equipment_changes', label: 'Equipment Settings', desc: 'When pump or water source settings change' },
+        { key: 'duration_changes', label: 'Zone Durations', desc: 'When adjusted durations are applied or restored' },
+        { key: 'report_changes', label: 'Report Settings', desc: 'When PDF report branding is changed' },
+    ];
+
+    cats.forEach(function(cat) {
+        var checked = !!_notifPrefs[cat.key];
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);">';
+        html += '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:500;color:var(--text-primary);">' + esc(cat.label) + '</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);">' + esc(cat.desc) + '</div></div>';
+        html += '<label class="toggle-switch"><input type="checkbox" onchange="toggleNotifPref(\\'' + cat.key + '\\', this.checked)"' + (checked ? ' checked' : '') + '><span class="toggle-slider"></span></label>';
+        html += '</div>';
+    });
+
+    // Notifications list
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;margin-bottom:10px;">';
+    html += '<h4 style="font-size:15px;font-weight:600;margin:0;">Recent Notifications</h4>';
+    if (_notifUnreadCount > 0) {
+        html += '<button class="btn btn-secondary btn-sm" onclick="markAllNotificationsRead()" style="font-size:11px;">Mark all read</button>';
+    }
+    html += '</div>';
+
+    if (_notifEvents.length === 0) {
+        html += '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">No notifications yet. When your management company makes changes, they will appear here.</div>';
+    } else {
+        _notifEvents.forEach(function(ev) {
+            var dt = new Date(ev.created_at);
+            var timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+            var unreadCls = ev.read ? '' : ' unread';
+            html += '<div class="notif-item' + unreadCls + '" onclick="markNotificationRead(\\'' + ev.id + '\\')" style="cursor:pointer;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:baseline;">';
+            html += '<span style="font-size:13px;font-weight:' + (ev.read ? '400' : '600') + ';color:var(--text-primary);">' + esc(ev.title) + '</span>';
+            html += '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;margin-left:8px;">' + esc(timeStr) + '</span>';
+            html += '</div>';
+            if (ev.message) {
+                html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' + esc(ev.message) + '</div>';
+            }
+            if (!ev.read) {
+                html += '<div style="font-size:10px;color:var(--color-primary);margin-top:2px;font-weight:600;">NEW</div>';
+            }
+            html += '</div>';
+        });
+    }
+
+    content.innerHTML = html;
+}
+
+async function toggleNotifPref(key, enabled) {
+    try {
+        var body = {};
+        body[key] = enabled;
+        await api('/notification-preferences', {
+            method: 'PUT',
+            body: JSON.stringify(body),
+        });
+        _notifPrefs[key] = enabled;
+        showToast('Preference updated');
+    } catch(e) {
+        showToast('Failed to update preference', true);
+        renderNotificationSettings();
+    }
+}
+
+async function markNotificationRead(eventId) {
+    try {
+        await api('/notifications/' + eventId + '/read', { method: 'PUT' });
+        _notifEvents.forEach(function(ev) { if (ev.id === eventId) ev.read = true; });
+        _notifUnreadCount = _notifEvents.filter(function(e) { return !e.read; }).length;
+        updateNotifBadge();
+        renderSettingsSidebar();
+        renderNotificationSettings();
+    } catch(e) {}
+}
+
+async function markAllNotificationsRead() {
+    try {
+        await api('/notifications/read-all', { method: 'PUT' });
+        _notifEvents.forEach(function(ev) { ev.read = true; });
+        _notifUnreadCount = 0;
+        updateNotifBadge();
+        renderSettingsSidebar();
+        renderNotificationSettings();
+    } catch(e) { showToast('Failed to mark all read', true); }
+}
+
+function updateNotifBadge() {
+    var badge = document.getElementById('settingsBadge');
+    if (_notifUnreadCount > 0) {
+        badge.textContent = _notifUnreadCount > 99 ? '99+' : _notifUnreadCount;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+async function pollNotificationBadge() {
+    try {
+        var data = await api('/notifications?limit=1');
+        _notifUnreadCount = data.unread_count || 0;
+        updateNotifBadge();
+    } catch(e) {}
+}
+
 // --- Dark Mode ---
 function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
@@ -4862,8 +5111,9 @@ function closeDynamicModal() {
 }
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-        if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
-        if (document.getElementById('dynamicModal').style.display === 'flex') closeDynamicModal();
+        if (document.getElementById('settingsModal').style.display === 'flex') closeSettings();
+        else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
+        else if (document.getElementById('dynamicModal').style.display === 'flex') closeDynamicModal();
     }
 });
 </script>
