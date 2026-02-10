@@ -2329,20 +2329,35 @@ async function loadHistory() {
                         }
                     }
                 }
-                const srcLabel = e.source && e.source !== 'schedule' ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
-                // State display: handle skip events
+                const srcLabel = e.source && e.source !== 'schedule' && e.source !== 'moisture_probe' ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
+                // State display: handle skip, probe wake, and moisture skip events
                 let stateCell;
-                if (e.state === 'skip') {
+                let isProbeEvent = e.source === 'moisture_probe';
+                if (e.state === 'probe_wake') {
+                    stateCell = '<span style="color:var(--color-link);font-weight:600;">Awake</span>';
+                } else if (e.state === 'moisture_skip') {
+                    stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span>';
+                    if (e.mid_sensor_pct != null) {
+                        stateCell += '<div style="font-size:10px;color:var(--text-muted);">Mid: ' + e.mid_sensor_pct + '%</div>';
+                    }
+                } else if (e.state === 'skip') {
                     stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span><br><span style="color:var(--text-disabled);font-size:11px;">OFF</span>';
                 } else if (e.state === 'on' || e.state === 'open') {
                     stateCell = '<span style="color:var(--color-success);">ON</span>';
                 } else {
                     stateCell = '<span style="color:var(--text-disabled);">OFF</span>';
                 }
+                // Zone name display — probe events use zone_name directly (contains probe + zone info)
+                let zoneDisplay;
+                if (isProbeEvent) {
+                    zoneDisplay = esc(e.zone_name || e.skip_text || e.probe_name || e.probe_id || '');
+                } else {
+                    zoneDisplay = esc(resolveZoneName(e.entity_id, e.zone_name));
+                }
                 // GPM and Estimated Gallons cells
                 let gpmCell = '-';
                 let estGalCell = '-';
-                if (hasGpmData) {
+                if (hasGpmData && !isProbeEvent) {
                     const zGpm = gpmMap[e.entity_id];
                     if (zGpm > 0) {
                         gpmCell = zGpm.toFixed(1);
@@ -2353,8 +2368,8 @@ async function loadHistory() {
                         }
                     }
                 }
-                return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' ? 'opacity:0.7;' : ''}">
-                <td style="padding:6px;">${esc(resolveZoneName(e.entity_id, e.zone_name))}${srcLabel}</td>
+                return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' || e.state === 'moisture_skip' ? 'opacity:0.7;' : ''}${isProbeEvent ? 'background:var(--bg-tile);' : ''}">
+                <td style="padding:6px;">${zoneDisplay}${srcLabel}</td>
                 <td style="padding:6px;">${stateCell}</td>
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>

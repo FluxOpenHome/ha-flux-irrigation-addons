@@ -352,6 +352,39 @@ async def _handle_prepped_wake(
             print(f"[MOISTURE] Schedule skip: zone {zone_num} saturated but "
                   f"no enable_zone switch found")
 
+        # Log moisture skip event to run history
+        try:
+            import run_log
+            # Extract mid sensor reading from probe_details
+            mid_pct = None
+            probe_details = zone_result.get("probe_details", [])
+            for pd in probe_details:
+                dr = pd.get("depth_readings", {})
+                mid_info = dr.get("mid", {})
+                if mid_info.get("value") is not None:
+                    mid_pct = round(mid_info["value"], 1)
+                    break
+            probe_num_match = re.search(r'(\d+)', probe_id)
+            probe_num = probe_num_match.group(1) if probe_num_match else probe_id
+            mult = zone_result.get("multiplier", 0)
+            mid_text = f" (Mid: {mid_pct}%)" if mid_pct is not None else ""
+            run_log.log_probe_event(
+                probe_id=probe_id,
+                event_type="moisture_skip",
+                display_name=display_name,
+                zone_entity_id=zone_eid,
+                zone_name=f"Zone {zone_num}",
+                details={
+                    "mid_sensor_pct": mid_pct,
+                    "moisture_multiplier": mult,
+                    "reason": zone_result.get("reason", "saturated"),
+                    "probe_num": probe_num,
+                    "skip_text": f"Probe {probe_num} skipped Zone {zone_num}{mid_text}",
+                },
+            )
+        except Exception as e:
+            print(f"[MOISTURE] Failed to log moisture skip event: {e}")
+
         # Check if there's a next mapped zone in this schedule to prep for
         prep["state"] = "checking_next"
         await _prep_next_mapped_zone(probe_id, probe, zone_eid, prep, timeline)
@@ -4386,6 +4419,30 @@ async def on_probe_wake(probe_id: str):
     _probe_awake_cache[probe_id] = True
 
     display_name = probe.get("display_name", probe_id)
+
+    # Log probe wake event to run history
+    try:
+        import run_log
+        mapped_zones = probe.get("zone_mappings", [])
+        # Build zone names list for the log entry
+        zone_names = []
+        for zeid in mapped_zones:
+            znum_match = re.search(r'zone[_]?(\d+)', zeid, re.IGNORECASE)
+            zone_names.append(f"Zone {znum_match.group(1)}" if znum_match else zeid)
+        zones_text = ", ".join(zone_names) if zone_names else "no mapped zones"
+        # Extract probe number from probe_id (e.g. "gophr_1" → "1")
+        probe_num_match = re.search(r'(\d+)', probe_id)
+        probe_num = probe_num_match.group(1) if probe_num_match else probe_id
+        run_log.log_probe_event(
+            probe_id=probe_id,
+            event_type="probe_wake",
+            display_name=display_name,
+            zone_name=f"Probe {probe_num} woke — mapped to {zones_text}",
+            details={"mapped_zones": mapped_zones},
+        )
+    except Exception as e:
+        print(f"[MOISTURE] Failed to log probe wake event: {e}")
+
     pending_duration = probe.get("pending_sleep_duration")
     pending_disabled = probe.get("pending_sleep_disabled")
     has_pending = pending_duration is not None or pending_disabled is not None

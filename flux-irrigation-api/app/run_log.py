@@ -134,6 +134,45 @@ def log_zone_event(
         print(f"[RUN_LOG] Failed to write: {e}")
 
 
+def log_probe_event(
+    probe_id: str,
+    event_type: str,
+    display_name: str = "",
+    zone_entity_id: str = "",
+    zone_name: str = "",
+    details: Optional[dict] = None,
+):
+    """Log a moisture probe event (wake, moisture_skip, etc.).
+
+    Args:
+        probe_id: The probe identifier (e.g. "gophr_1")
+        event_type: "probe_wake", "moisture_skip", etc.
+        display_name: Human-readable probe name/alias
+        zone_entity_id: The zone entity this event relates to (if any)
+        zone_name: Human-readable zone name
+        details: Extra context (sensor readings, multiplier, etc.)
+    """
+    now = datetime.now(timezone.utc)
+    entry = {
+        "timestamp": now.isoformat(),
+        "entity_id": zone_entity_id or f"probe.{probe_id}",
+        "zone_name": zone_name,
+        "state": event_type,
+        "source": "moisture_probe",
+        "probe_id": probe_id,
+        "probe_name": display_name or probe_id,
+    }
+    if details:
+        entry.update(details)
+
+    try:
+        os.makedirs(os.path.dirname(RUN_LOG_FILE), exist_ok=True)
+        with open(RUN_LOG_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        print(f"[RUN_LOG] Failed to write probe event: {e}")
+
+
 def get_run_history(hours: int = 24, zone_id: Optional[str] = None, limit: int = 5000) -> list[dict]:
     """Read run history entries from the JSONL log.
 
@@ -169,10 +208,14 @@ def get_run_history(hours: int = 24, zone_id: Optional[str] = None, limit: int =
                     entry = json.loads(line)
                     if cutoff and entry.get("timestamp", "") < cutoff:
                         continue
+                    is_probe_event = entry.get("source") == "moisture_probe"
                     if zone_id and entry.get("entity_id") != zone_id:
-                        continue
+                        # Allow probe events through if they relate to the filtered zone
+                        if not is_probe_event:
+                            continue
                     # Skip hidden zones beyond detected expansion board count
-                    if max_zones > 0:
+                    # (but never filter out probe events)
+                    if max_zones > 0 and not is_probe_event:
                         zn = _extract_zone_number(entry.get("entity_id", ""))
                         if zn > max_zones:
                             continue
