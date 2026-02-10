@@ -493,13 +493,16 @@ async def _check_and_notify_new_issues(customer_issues: dict):
             prev_ids = set((last_known.get(cust_id) or {}).get("ids", []))
             for issue in issues:
                 if issue["id"] not in prev_ids:
-                    # New issue detected
+                    # New or returned issue detected
                     severity = issue.get("severity", "")
+                    is_returned = issue.get("status") == "returned"
                     new_issue_info = {
                         "customer_id": cust_id,
                         "customer_name": data["name"],
                         "severity": severity,
                         "description": issue.get("description", ""),
+                        "is_returned": is_returned,
+                        "return_reason": issue.get("return_reason", ""),
                     }
                     all_new_issues.append(new_issue_info)
                     if notification_config.should_notify(severity):
@@ -510,31 +513,52 @@ async def _check_and_notify_new_issues(customer_issues: dict):
         for notif in notifications_to_send:
             emoji = severity_emojis.get(notif["severity"], "⚠️")
             sev_label = notif["severity"].capitalize()
-            message = (
-                f"{emoji} New {sev_label} from {notif['customer_name']}: "
-                f"{notif['description'][:200]}"
-            )
+            if notif.get("is_returned"):
+                message = (
+                    f"{emoji} Returned {sev_label} from {notif['customer_name']}: "
+                    f"{notif['description'][:150]}"
+                )
+                if notif.get("return_reason"):
+                    message += f" | Reason: {notif['return_reason'][:100]}"
+                title = f"Flux Open Home — Returned {sev_label} Issue"
+            else:
+                message = (
+                    f"{emoji} New {sev_label} from {notif['customer_name']}: "
+                    f"{notif['description'][:200]}"
+                )
+                title = f"Flux Open Home — {sev_label} Issue"
             try:
                 await ha_client.call_service("notify", service_name, {
                     "message": message,
-                    "title": f"Flux Open Home — {sev_label} Issue",
+                    "title": title,
                 })
                 print(f"[MAIN] HA notification sent: {sev_label} from {notif['customer_name']}")
             except Exception as e:
                 print(f"[MAIN] HA notification failed: {e}")
 
-        # Record ALL new issues to management notification store (in-app feed)
+        # Record ALL new/returned issues to management notification store (in-app feed)
         # This is independent of HA notification severity settings
         try:
             import management_notification_store as mns
             for issue_info in all_new_issues:
                 sev_label = issue_info["severity"].capitalize() or "Issue"
+                if issue_info.get("is_returned"):
+                    evt_type = "returned"
+                    evt_title = f"Returned {sev_label}: {issue_info['customer_name']}"
+                    reason = issue_info.get("return_reason", "")
+                    evt_msg = issue_info["description"][:150]
+                    if reason:
+                        evt_msg += f" | Homeowner: {reason[:200]}"
+                else:
+                    evt_type = "new_issue"
+                    evt_title = f"New {sev_label}: {issue_info['customer_name']}"
+                    evt_msg = issue_info["description"][:200]
                 mns.record_event(
-                    event_type="new_issue",
+                    event_type=evt_type,
                     customer_id=issue_info["customer_id"],
                     customer_name=issue_info["customer_name"],
-                    title=f"New {sev_label}: {issue_info['customer_name']}",
-                    message=issue_info["description"][:200],
+                    title=evt_title,
+                    message=evt_msg,
                     severity=issue_info["severity"],
                 )
         except Exception as e:

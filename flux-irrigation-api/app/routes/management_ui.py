@@ -5025,7 +5025,7 @@ async function switchToHomeowner() {
 // --- Issue Management ---
 const SEV_COLORS = {severe: '#e74c3c', annoyance: '#f39c12', clarification: '#3498db'};
 const SEV_LABELS = {severe: 'Severe Issue', annoyance: 'Annoyance', clarification: 'Clarification'};
-const ISSUE_STATUS_LABELS = {open: 'Open', acknowledged: 'Acknowledged', scheduled: 'Service Scheduled', resolved: 'Resolved'};
+const ISSUE_STATUS_LABELS = {open: 'Open', acknowledged: 'Acknowledged', scheduled: 'Service Scheduled', resolved: 'Resolved', returned: 'Returned by Homeowner'};
 let _ackCustId = null, _ackIssueId = null;
 
 function updateAlertBadge(customers) {
@@ -5085,9 +5085,12 @@ function loadAlertsPanel() {
             html += '<div style="flex:1;min-width:0;">';
             html += '<div style="font-size:13px;color:var(--text-primary);word-break:break-word;">' + esc(issue.description) + '</div>';
             html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + esc(timeAgo) + ' &middot; ' + esc(ISSUE_STATUS_LABELS[issue.status] || issue.status) + '</div>';
+            if (issue.return_reason && issue.status === 'returned') {
+                html += '<div style="font-size:12px;color:#e74c3c;margin-top:2px;word-break:break-word;">&#9888;&#65039; ' + esc(issue.return_reason) + '</div>';
+            }
             html += '</div>';
             html += '<div style="display:flex;gap:4px;flex-shrink:0;">';
-            if (issue.status === 'open') {
+            if (issue.status === 'open' || issue.status === 'returned') {
                 html += '<button class="btn btn-primary btn-sm" onclick="openAckModal(\\'' + c.id + '\\', \\'' + issue.id + '\\')">Acknowledge</button>';
             }
             if (issue.status !== 'resolved') {
@@ -5131,9 +5134,12 @@ async function loadDetailIssues(custId) {
             if (issue.service_date) {
                 html += '<div style="font-size:12px;color:var(--color-success);margin-top:2px;">&#128197; Service: ' + esc(issue.service_date) + '</div>';
             }
+            if (issue.return_reason) {
+                html += '<div style="font-size:12px;color:#e74c3c;margin-top:4px;padding:4px 8px;background:#e74c3c11;border-radius:4px;border-left:3px solid #e74c3c;">&#9888;&#65039; <strong>Homeowner:</strong> ' + esc(issue.return_reason) + '</div>';
+            }
             html += '</div>';
             html += '<div style="display:flex;gap:4px;flex-shrink:0;">';
-            if (issue.status === 'open') {
+            if (issue.status === 'open' || issue.status === 'returned') {
                 html += '<button class="btn btn-primary btn-sm" onclick="openAckModal(\\'' + custId + '\\', \\'' + issue.id + '\\')">Acknowledge</button>';
             } else if (issue.status === 'acknowledged' || issue.status === 'scheduled') {
                 html += '<button class="btn btn-secondary btn-sm" onclick="openAckModal(\\'' + custId + '\\', \\'' + issue.id + '\\')">Update</button>';
@@ -5313,7 +5319,7 @@ function renderMgmtNotifPanel() {
         var timeAgo = diffH < 1 ? 'Just now' : diffH < 24 ? diffH + 'h ago' : Math.floor(diffH / 24) + 'd ago';
         var readStyle = ev.read ? 'opacity:0.6;' : '';
         var newBadge = ev.read ? '' : '<span style="background:#e74c3c;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:6px;">NEW</span>';
-        var typeLabels = {new_issue:'New Issue',acknowledged:'Acknowledged',service_scheduled:'Service Scheduled',resolved:'Resolved'};
+        var typeLabels = {new_issue:'New Issue',acknowledged:'Acknowledged',service_scheduled:'Service Scheduled',resolved:'Resolved',returned:'Returned'};
         var typeLabel = typeLabels[ev.type] || ev.type;
         html += '<div style="padding:12px 20px;border-bottom:1px solid var(--border-light);cursor:pointer;' + readStyle + '" onclick="markMgmtNotifRead(\\'' + ev.id + '\\')">';
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
@@ -5407,6 +5413,7 @@ async function renderMgmtNotifSettings() {
     html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedAcknowledged" ' + (feedPrefs.notify_acknowledged !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Acknowledged</span></label>';
     html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedServiceScheduled" ' + (feedPrefs.notify_service_scheduled !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Service Scheduled</span></label>';
     html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedResolved" ' + (feedPrefs.notify_resolved !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Resolved</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedReturned" ' + (feedPrefs.notify_returned !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Returned by Homeowner</span></label>';
     html += '</div>';
     html += '<button class="btn btn-primary btn-sm" onclick="saveMgmtFeedPrefs()">Save Types</button>';
 
@@ -5507,6 +5514,7 @@ async function saveMgmtFeedPrefs() {
         notify_acknowledged: document.getElementById('mgmtFeedAcknowledged').checked,
         notify_service_scheduled: document.getElementById('mgmtFeedServiceScheduled').checked,
         notify_resolved: document.getElementById('mgmtFeedResolved').checked,
+        notify_returned: document.getElementById('mgmtFeedReturned').checked,
     };
     try {
         await api('/mgmt-notification-preferences', { method: 'PUT', body: JSON.stringify(payload) });

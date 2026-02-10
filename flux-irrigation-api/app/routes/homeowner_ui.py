@@ -529,6 +529,26 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     </div>
 </div>
 
+<!-- Return Issue Modal -->
+<div id="returnIssueModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;" onclick="if(event.target===this)closeReturnModal()">
+    <div style="background:var(--bg-card);border-radius:16px;width:90%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,0.2);overflow:hidden;">
+        <div style="padding:20px 24px 0 24px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:18px;font-weight:600;color:var(--text-primary);">Issue Not Resolved</span>
+                <button onclick="closeReturnModal()" style="background:none;border:none;font-size:24px;color:var(--text-muted);cursor:pointer;">&times;</button>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0 0;">Please explain why this issue is not resolved. Management will review your note.</p>
+        </div>
+        <div style="padding:16px 24px 24px 24px;">
+            <textarea id="returnReasonText" rows="4" maxlength="1000" placeholder="Describe why the issue is not resolved..." style="width:100%;border:1px solid var(--border-light);border-radius:8px;padding:10px;font-size:14px;resize:vertical;background:var(--bg-tile);color:var(--text-primary);box-sizing:border-box;font-family:inherit;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button onclick="closeReturnModal()" class="btn btn-secondary" style="flex:1;">Cancel</button>
+                <button id="returnSubmitBtn" onclick="submitReturnIssue()" class="btn" style="flex:1;background:#e74c3c;color:#fff;border:none;">Submit</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Generic Dynamic Modal -->
@@ -736,6 +756,9 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && document.getElementById('reportIssueModal').style.display === 'flex') {
         closeReportIssue();
     }
+    if (e.key === 'Escape' && document.getElementById('returnIssueModal').style.display === 'flex') {
+        closeReturnModal();
+    }
 });
 document.getElementById('reportIssueModal').addEventListener('click', function(e) {
     if (e.target === this) closeReportIssue();
@@ -920,17 +943,20 @@ function renderActiveIssuesBanner(issues) {
     if (issues.length === 0) { container.style.display = 'none'; return; }
     const sevColors = {severe: '#e74c3c', annoyance: '#f39c12', clarification: '#3498db'};
     const sevLabels = {severe: 'Severe Issue', annoyance: 'Annoyance', clarification: 'Clarification'};
-    const statusLabels = {open: 'Submitted', acknowledged: 'Acknowledged', scheduled: 'Service Scheduled', resolved: 'Resolved'};
+    const statusLabels = {open: 'Submitted', acknowledged: 'Acknowledged', scheduled: 'Service Scheduled', resolved: 'Resolved', returned: 'Returned - Under Review'};
     let html = '<div style="background:var(--bg-card);border-radius:12px;padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">';
     html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">Your Reported Issues</div>';
     issues.forEach(function(issue) {
         const color = sevColors[issue.severity] || '#999';
         const isResolved = issue.status === 'resolved';
+        const isReturned = issue.status === 'returned';
         const dt = new Date(issue.created_at);
         const timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
         html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);' + (isResolved ? 'opacity:0.85;' : '') + '">';
         if (isResolved) {
             html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#27ae6022;color:#27ae60;white-space:nowrap;">&#10003; Resolved</span>';
+        } else if (isReturned) {
+            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#e74c3c22;color:#e74c3c;white-space:nowrap;">&#8635; Returned</span>';
         } else {
             html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:' + color + '22;color:' + color + ';white-space:nowrap;">' + esc(sevLabels[issue.severity] || issue.severity) + '</span>';
         }
@@ -940,8 +966,14 @@ function renderActiveIssuesBanner(issues) {
         if (issue.management_note) {
             html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;padding:6px 10px;background:var(--bg-tile);border-radius:6px;border-left:3px solid var(--color-primary);">&#128172; <strong>Management:</strong> ' + esc(issue.management_note) + '</div>';
         }
+        if (issue.return_reason) {
+            html += '<div style="font-size:12px;color:#e74c3c;margin-top:4px;padding:6px 10px;background:#e74c3c11;border-radius:6px;border-left:3px solid #e74c3c;">&#9888;&#65039; <strong>Your note:</strong> ' + esc(issue.return_reason) + '</div>';
+        }
         if (isResolved) {
-            html += '<div style="margin-top:6px;"><button onclick="dismissIssue(\\''+issue.id+'\\')" class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 10px;">Dismiss</button></div>';
+            html += '<div style="margin-top:6px;display:flex;gap:6px;">';
+            html += '<button onclick="dismissIssue(\\''+issue.id+'\\')" class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 10px;">Dismiss</button>';
+            html += '<button onclick="openReturnModal(\\''+issue.id+'\\')" class="btn btn-sm" style="font-size:11px;padding:3px 10px;background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c44;">Not Resolved</button>';
+            html += '</div>';
         }
         html += '</div></div>';
     });
@@ -958,6 +990,45 @@ async function dismissIssue(issueId) {
         loadActiveIssues();
     } catch (e) {
         showToast(e.message, 'error');
+    }
+}
+
+// --- Return Issue (Not Resolved) ---
+let _returnIssueId = null;
+
+function openReturnModal(issueId) {
+    _returnIssueId = issueId;
+    document.getElementById('returnReasonText').value = '';
+    document.getElementById('returnIssueModal').style.display = 'flex';
+}
+
+function closeReturnModal() {
+    document.getElementById('returnIssueModal').style.display = 'none';
+    _returnIssueId = null;
+}
+
+async function submitReturnIssue() {
+    if (!_returnIssueId) return;
+    var reason = document.getElementById('returnReasonText').value.trim();
+    if (!reason) { showToast('Please provide a reason', 'error'); return; }
+    var btn = document.getElementById('returnSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    try {
+        var resp = await fetch(ISSUE_BASE + '/' + _returnIssueId + '/return', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ return_reason: reason }),
+        });
+        if (!resp.ok) throw new Error('Failed to return issue');
+        showToast('Issue returned to management for review');
+        closeReturnModal();
+        loadActiveIssues();
+    } catch (e) {
+        showToast(e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Submit';
     }
 }
 

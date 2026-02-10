@@ -6,6 +6,7 @@ Persists issue data in /data/issues.json.
 
 Issue lifecycle:
   open → acknowledged → scheduled (if service_date set) → resolved → dismissed
+  resolved → returned (homeowner contests resolution) → acknowledged → ... → resolved
 """
 
 import json
@@ -40,6 +41,8 @@ def _load_data() -> dict:
                 for issue in data.get("issues", []):
                     issue.setdefault("homeowner_dismissed", False)
                     issue.setdefault("service_date_updated_at", None)
+                    issue.setdefault("return_reason", None)
+                    issue.setdefault("returned_at", None)
                 return data
         except (json.JSONDecodeError, IOError):
             pass
@@ -75,6 +78,8 @@ def create_issue(severity: str, description: str) -> dict:
         "resolved_at": None,
         "homeowner_dismissed": False,
         "service_date_updated_at": None,
+        "return_reason": None,
+        "returned_at": None,
     }
     data["issues"].append(issue)
     _save_data(data)
@@ -116,6 +121,28 @@ def dismiss_issue(issue_id: str) -> dict | None:
             if issue.get("status") != "resolved":
                 return None  # Can only dismiss resolved issues
             issue["homeowner_dismissed"] = True
+            _save_data(data)
+            return issue
+    return None
+
+
+def return_issue(issue_id: str, return_reason: str) -> dict | None:
+    """Homeowner returns a resolved issue, contesting the resolution.
+
+    Sets status back to 'returned' so it reappears as active for management.
+    """
+    if not return_reason or len(return_reason) > 1000:
+        raise ValueError("Return reason must be 1-1000 characters")
+
+    data = _load_data()
+    for issue in data["issues"]:
+        if issue["id"] == issue_id:
+            if issue.get("status") != "resolved":
+                return None  # Can only return resolved issues
+            issue["status"] = "returned"
+            issue["return_reason"] = return_reason.strip()
+            issue["returned_at"] = datetime.now(timezone.utc).isoformat()
+            issue["homeowner_dismissed"] = False
             _save_data(data)
             return issue
     return None
@@ -185,6 +212,8 @@ def get_issue_summary() -> dict:
                 "description": i["description"][:200],  # Truncate for summary
                 "status": i["status"],
                 "created_at": i["created_at"],
+                "return_reason": i.get("return_reason"),
+                "returned_at": i.get("returned_at"),
             }
             for i in active
         ],

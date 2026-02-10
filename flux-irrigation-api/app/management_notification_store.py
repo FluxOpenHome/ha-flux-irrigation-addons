@@ -29,6 +29,7 @@ EVENT_TYPES = [
     "acknowledged",         # Issue acknowledged by management
     "service_scheduled",    # Service date set/updated
     "resolved",             # Issue resolved
+    "returned",             # Homeowner returned a resolved issue
 ]
 
 DEFAULT_DATA = {
@@ -38,6 +39,7 @@ DEFAULT_DATA = {
         "notify_acknowledged": True,
         "notify_service_scheduled": True,
         "notify_resolved": True,
+        "notify_returned": True,
     },
     "events": [],
 }

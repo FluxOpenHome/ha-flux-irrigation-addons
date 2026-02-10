@@ -36,6 +36,10 @@ class AcknowledgeIssueRequest(BaseModel):
     service_date: Optional[str] = Field(None, description="Scheduled service date (YYYY-MM-DD)")
 
 
+class ReturnIssueRequest(BaseModel):
+    return_reason: str = Field(..., min_length=1, max_length=1000, description="Reason the issue is not resolved")
+
+
 # --- Endpoints ---
 
 @router.post("/", summary="Report a new issue")
@@ -234,4 +238,19 @@ async def dismiss_issue(issue_id: str, request: Request):
 
     log_change(get_actor(request), "Issues",
                f"Dismissed resolved issue ({issue['severity']}): {issue['description'][:100]}")
+    return {"issue": issue}
+
+
+@router.put("/{issue_id}/return", summary="Return a resolved issue")
+async def return_issue(issue_id: str, body: ReturnIssueRequest, request: Request):
+    """Homeowner contests a resolution — issue goes back to active."""
+    try:
+        issue = issue_store.return_issue(issue_id, body.return_reason)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if issue is None:
+        raise HTTPException(status_code=404, detail="Issue not found or not yet resolved")
+
+    log_change(get_actor(request), "Issues",
+               f"Returned issue ({issue['severity']}): {issue['description'][:100]}")
     return {"issue": issue}
