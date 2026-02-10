@@ -939,6 +939,8 @@ let leafletMap = null;
 // --- Properties Page Settings (persisted in localStorage) ---
 var _propSettings = JSON.parse(localStorage.getItem('flux_prop_settings') || '{}');
 if (_propSettings.showIssueDetails === undefined) _propSettings.showIssueDetails = true;
+if (_propSettings.defaultMapOpen === undefined) _propSettings.defaultMapOpen = false;
+if (_propSettings.defaultMapUnlocked === undefined) _propSettings.defaultMapUnlocked = false;
 
 function _savePropSettings() {
     localStorage.setItem('flux_prop_settings', JSON.stringify(_propSettings));
@@ -951,6 +953,15 @@ function mgmtShowPropertiesSettings() {
     html += '<input type="checkbox" id="propSetIssueDetails"' + (_propSettings.showIssueDetails ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
     html += '<div><strong>Show issue details on cards</strong><br><span style="font-size:12px;color:var(--text-muted);">Display issue descriptions and status below the card. Issue count badges always show.</span></div>';
     html += '</label>';
+    html += '<h4 style="margin:16px 0 12px;font-size:14px;color:var(--text);">Map</h4>';
+    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:13px;color:var(--text);">';
+    html += '<input type="checkbox" id="propSetDefaultMapOpen"' + (_propSettings.defaultMapOpen ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
+    html += '<div><strong>Open map by default</strong><br><span style="font-size:12px;color:var(--text-muted);">Automatically show the property map when the page loads.</span></div>';
+    html += '</label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:13px;color:var(--text);">';
+    html += '<input type="checkbox" id="propSetDefaultMapUnlocked"' + (_propSettings.defaultMapUnlocked ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
+    html += '<div><strong>Unlock map by default</strong><br><span style="font-size:12px;color:var(--text-muted);">Map starts unlocked with zoom and drag enabled. When locked, scrolling passes through to the page.</span></div>';
+    html += '</label>';
     html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">';
     html += '<button class="btn btn-secondary" onclick="closeMgmtDynamicModal()">Cancel</button>';
     html += '<button class="btn btn-primary" onclick="mgmtSavePropertiesSettings()">Save</button>';
@@ -960,6 +971,8 @@ function mgmtShowPropertiesSettings() {
 
 function mgmtSavePropertiesSettings() {
     _propSettings.showIssueDetails = !!document.getElementById('propSetIssueDetails').checked;
+    _propSettings.defaultMapOpen = !!document.getElementById('propSetDefaultMapOpen').checked;
+    _propSettings.defaultMapUnlocked = !!document.getElementById('propSetDefaultMapUnlocked').checked;
     _savePropSettings();
     closeMgmtDynamicModal();
     showToast('Settings saved');
@@ -1007,6 +1020,8 @@ async function api(path, options = {}) {
 }
 
 // --- Customer List ---
+let _propMapAutoOpened = false;
+
 async function loadCustomers() {
     try {
         const data = await api('/customers');
@@ -1019,6 +1034,11 @@ async function loadCustomers() {
         updateAlertBadge(allCustomers);
         checkForNewIssues(allCustomers);
         pollMgmtNotifBadge();
+        // Auto-open map on first load if setting enabled
+        if (!_propMapAutoOpened && _propSettings.defaultMapOpen && allCustomers.length > 0) {
+            _propMapAutoOpened = true;
+            openPropertyMap();
+        }
         // Verify "running" cards with live status (cached status can be stale)
         refreshRunningStatuses();
         // Check which customers have Gophr probes
@@ -1356,6 +1376,19 @@ let propertyMapVisible = false;
 let propertyGeoCache = {};  // id -> {lat, lon}
 let _pendingGeocodes = 0;
 let _lastFilteredCustomers = null;
+let propMapLocked = true;
+let propMapRecenterControl = null;
+
+function openPropertyMap() {
+    if (propertyMapVisible) return;
+    propertyMapVisible = true;
+    const container = document.getElementById('propertyMapContainer');
+    const btn = document.getElementById('mapViewBtn');
+    container.style.display = 'block';
+    btn.classList.remove('btn-secondary');
+    btn.classList.add('btn-primary');
+    initPropertyMap();
+}
 
 function togglePropertyMap() {
     propertyMapVisible = !propertyMapVisible;
@@ -1378,22 +1411,92 @@ function initPropertyMap() {
     const mapEl = document.getElementById('propertyMap');
     if (propertyMap) { propertyMap.remove(); propertyMap = null; }
     propertyMapMarkers = [];
+    propMapRecenterControl = null;
+    // Start locked or unlocked based on setting
+    propMapLocked = !_propSettings.defaultMapUnlocked;
+    const unlocked = !propMapLocked;
     propertyMap = L.map('propertyMap', {
-        scrollWheelZoom: true,
-        dragging: true,
-        touchZoom: true,
-        doubleClickZoom: true,
-        zoomControl: true,
+        scrollWheelZoom: unlocked,
+        dragging: unlocked,
+        touchZoom: unlocked,
+        doubleClickZoom: unlocked,
+        boxZoom: unlocked,
+        keyboard: unlocked,
+        zoomControl: unlocked,
     }).setView([39.8, -98.5], 4);  // US center default
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19,
     }).addTo(propertyMap);
+    // Lock/unlock toggle control
+    const PropMapLockControl = L.Control.extend({
+        options: { position: 'topright' },
+        onAdd: function() {
+            const btn = L.DomUtil.create('div', 'leaflet-bar');
+            btn.id = 'propMapLockBtn';
+            const icon = propMapLocked ? '&#128274;' : '&#128275;';
+            const title = propMapLocked ? 'Unlock map interaction' : 'Lock map interaction';
+            btn.innerHTML = '<a href="#" title="' + title + '" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">' + icon + '</a>';
+            btn.style.cursor = 'pointer';
+            L.DomEvent.on(btn, 'click', function(e) {
+                L.DomEvent.stop(e);
+                togglePropMapLock();
+            });
+            return btn;
+        }
+    });
+    propertyMap.addControl(new PropMapLockControl());
+    // If starting unlocked, add zoom + recenter controls
+    if (unlocked) {
+        L.control.zoom({ position: 'topleft' }).addTo(propertyMap);
+    }
     setTimeout(() => { if (propertyMap) propertyMap.invalidateSize(); }, 200);
     // Geocode and place all customers, then update with current filter
     geocodeAllCustomers(function() {
         updatePropertyMapMarkers();
     });
+}
+
+function togglePropMapLock() {
+    if (!propertyMap) return;
+    propMapLocked = !propMapLocked;
+    const btn = document.getElementById('propMapLockBtn');
+    if (propMapLocked) {
+        propertyMap.scrollWheelZoom.disable();
+        propertyMap.dragging.disable();
+        propertyMap.touchZoom.disable();
+        propertyMap.doubleClickZoom.disable();
+        propertyMap.boxZoom.disable();
+        propertyMap.keyboard.disable();
+        if (propertyMap.zoomControl) { try { propertyMap.zoomControl.remove(); } catch(e){} }
+        if (propMapRecenterControl) { propertyMap.removeControl(propMapRecenterControl); propMapRecenterControl = null; }
+        if (btn) btn.innerHTML = '<a href="#" title="Unlock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128274;</a>';
+    } else {
+        propertyMap.scrollWheelZoom.enable();
+        propertyMap.dragging.enable();
+        propertyMap.touchZoom.enable();
+        propertyMap.doubleClickZoom.enable();
+        propertyMap.boxZoom.enable();
+        propertyMap.keyboard.enable();
+        L.control.zoom({ position: 'topleft' }).addTo(propertyMap);
+        // Add recenter button
+        const RecenterControl = L.Control.extend({
+            options: { position: 'topleft' },
+            onAdd: function() {
+                const b = L.DomUtil.create('div', 'leaflet-bar');
+                b.innerHTML = '<a href="#" title="Fit all properties" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#8982;</a>';
+                b.style.cursor = 'pointer';
+                L.DomEvent.on(b, 'click', function(e) {
+                    L.DomEvent.stop(e);
+                    updatePropertyMapMarkers();
+                });
+                return b;
+            }
+        });
+        propMapRecenterControl = new RecenterControl();
+        propertyMap.addControl(propMapRecenterControl);
+        if (btn) btn.innerHTML = '<a href="#" title="Lock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128275;</a>';
+    }
 }
 
 function geocodeAllCustomers(callback) {
