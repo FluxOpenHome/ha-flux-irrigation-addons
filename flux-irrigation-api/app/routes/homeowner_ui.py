@@ -133,13 +133,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-icon { padding: 6px 10px; }
 
 /* Zone/Sensor Tiles */
-.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px; border: 1px solid var(--border-light); min-height: 120px; }
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px 14px 42px 14px; border: 1px solid var(--border-light); min-height: 140px; position: relative; }
 .tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
-.tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; padding-right: 70px; }
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
 .tile-state.on { color: var(--color-success); font-weight: 500; }
-.tile-sprinkler-icon { position:absolute; bottom:10px; right:12px; display:flex; align-items:center; gap:3px; color:var(--text-muted); }
+.tile-sprinkler-icon { position:absolute; bottom:10px; right:12px; display:flex; align-items:center; gap:3px; color:var(--text-muted); pointer-events:none; }
 .tile-sprinkler-icon svg { opacity:0.45; transition:opacity 0.3s ease; }
 .tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
 @keyframes sprinklerPulse { 0%,100%{ opacity:0.5; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
@@ -1541,7 +1541,7 @@ async function loadZones() {
             const isOn = z.state === 'on';
             const displayName = getZoneDisplayName(z);
             return `
-            <div class="tile ${isOn ? 'active' : ''}" style="position:relative;">
+            <div class="tile ${isOn ? 'active' : ''}">
                 ${(function() {
                     var badges = '';
                     var hasGpm = window._hoZoneGpmShow && window._hoZoneGpmShow[z.entity_id] && window._hoZoneGpmMap && window._hoZoneGpmMap[z.entity_id];
