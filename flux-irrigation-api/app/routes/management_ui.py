@@ -159,6 +159,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 .status-dot.offline { background: #e74c3c; }
 .status-dot.revoked { background: #95a5a6; }
 .status-dot.unknown { background: #f39c12; }
+@keyframes mapMarkerPulse { 0%,100%{ transform:scale(1); opacity:0.9; } 50%{ transform:scale(1.35); opacity:1; } }
+.map-marker-watering { animation: mapMarkerPulse 2s ease-in-out infinite; }
 .customer-stats { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); margin-top: 8px; }
 .customer-stat { display: flex; align-items: center; gap: 4px; }
 .customer-stat strong { color: var(--text-primary); }
@@ -317,6 +319,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
             <div class="card-header">
                 <h2>Properties</h2>
                 <div style="display:flex;gap:8px;">
+                    <button id="mapViewBtn" class="btn btn-secondary btn-sm" onclick="togglePropertyMap()" title="Map View">&#128506; Map</button>
                     <button class="btn btn-secondary btn-sm" onclick="mgmtShowPropertiesSettings()" title="Properties Settings" style="padding:4px 8px;">&#9881;&#65039;</button>
                     <button class="btn btn-secondary btn-sm" onclick="mgmtShowPortfolioReportModal()">&#128202; Portfolio Report</button>
                     <button class="btn btn-secondary btn-sm" onclick="refreshAll()">Refresh All</button>
@@ -406,6 +409,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
                     </div>
                     <span id="filterCount" class="filter-count"></span>
                     <button id="clearFiltersBtn" class="btn btn-secondary btn-sm" onclick="clearAllFilters()" style="display:none;">Clear Filters</button>
+                </div>
+
+                <div id="propertyMapContainer" style="display:none;margin-bottom:16px;">
+                    <div id="propertyMap" style="height:450px;border-radius:12px;overflow:hidden;border:1px solid var(--border-light);"></div>
                 </div>
 
                 <div id="customerGrid" class="customer-grid">
@@ -1323,7 +1330,9 @@ function filterCustomers() {
         clearBtn.style.display = 'none';
     }
 
+    _lastFilteredCustomers = filtered;
     renderCustomerGrid(filtered);
+    if (propertyMapVisible) updatePropertyMapMarkers(filtered);
 }
 
 function clearAllFilters() {
@@ -1337,6 +1346,172 @@ function clearAllFilters() {
     document.getElementById('filterProbes').value = '';
     document.getElementById('sortBy').value = 'name';
     filterCustomers();
+}
+
+// --- Property Map View ---
+let propertyMap = null;
+let propertyMapMarkers = [];
+let propertyMapVisible = false;
+let propertyGeoCache = {};  // id -> {lat, lon}
+let _pendingGeocodes = 0;
+let _lastFilteredCustomers = null;
+
+function togglePropertyMap() {
+    propertyMapVisible = !propertyMapVisible;
+    const container = document.getElementById('propertyMapContainer');
+    const btn = document.getElementById('mapViewBtn');
+    if (propertyMapVisible) {
+        container.style.display = 'block';
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-primary');
+        initPropertyMap();
+    } else {
+        container.style.display = 'none';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-secondary');
+        if (propertyMap) { propertyMap.remove(); propertyMap = null; }
+    }
+}
+
+function initPropertyMap() {
+    const mapEl = document.getElementById('propertyMap');
+    if (propertyMap) { propertyMap.remove(); propertyMap = null; }
+    propertyMapMarkers = [];
+    propertyMap = L.map('propertyMap', {
+        scrollWheelZoom: true,
+        dragging: true,
+        touchZoom: true,
+        doubleClickZoom: true,
+        zoomControl: true,
+    }).setView([39.8, -98.5], 4);  // US center default
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+    }).addTo(propertyMap);
+    setTimeout(() => { if (propertyMap) propertyMap.invalidateSize(); }, 200);
+    // Geocode and place all customers, then update with current filter
+    geocodeAllCustomers(function() {
+        updatePropertyMapMarkers();
+    });
+}
+
+function geocodeAllCustomers(callback) {
+    // Geocode all customers that have addresses but no cached coords
+    const toGeocode = allCustomers.filter(c => {
+        if (propertyGeoCache[c.id]) return false;
+        return formatAddress(c);
+    });
+    if (toGeocode.length === 0) {
+        if (callback) callback();
+        return;
+    }
+    _pendingGeocodes = toGeocode.length;
+    toGeocode.forEach(function(c) {
+        const addr = formatAddress(c);
+        // Check shared geocodeCache first
+        if (geocodeCache[addr]) {
+            propertyGeoCache[c.id] = { lat: geocodeCache[addr].lat, lon: geocodeCache[addr].lon };
+            _pendingGeocodes--;
+            if (_pendingGeocodes <= 0 && callback) callback();
+            return;
+        }
+        api('/geocode?q=' + encodeURIComponent(addr)).then(function(geo) {
+            if (geo && geo.lat !== null && geo.lon !== null) {
+                propertyGeoCache[c.id] = { lat: geo.lat, lon: geo.lon };
+                geocodeCache[addr] = { lat: geo.lat, lon: geo.lon };
+            }
+        }).catch(function() {}).finally(function() {
+            _pendingGeocodes--;
+            if (_pendingGeocodes <= 0 && callback) callback();
+        });
+    });
+}
+
+function getMarkerColor(c) {
+    const status = getCustomerStatus(c);
+    if (status === 'offline' || status === 'unknown' || status === 'revoked') return '#e74c3c';
+    // Check issue severity (highest wins)
+    const iss = c.issue_summary;
+    if (iss && iss.active_count > 0) {
+        if (iss.issues && iss.issues.some(i => i.severity === 'severe')) return '#e74c3c';
+        if (iss.issues && iss.issues.some(i => i.severity === 'annoyance')) return '#f39c12';
+        if (iss.issues && iss.issues.some(i => i.severity === 'clarification')) return '#3498db';
+    }
+    return '#2ecc71';  // online, no issues
+}
+
+function isWatering(c) {
+    return getCustomerStatus(c) === 'online' && c.last_status && c.last_status.system_status && c.last_status.system_status.active_zones > 0;
+}
+
+function isOfflineOrDown(c) {
+    const st = getCustomerStatus(c);
+    return st === 'offline' || st === 'unknown' || st === 'revoked';
+}
+
+function createMarkerIcon(c) {
+    const color = getMarkerColor(c);
+    const watering = isWatering(c);
+    const down = isOfflineOrDown(c);
+    const size = 28;
+    // Build SVG marker
+    let svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 28 28">';
+    svg += '<circle cx="14" cy="14" r="12" fill="' + color + '" stroke="#fff" stroke-width="2"' + (watering ? ' class="map-marker-watering"' : '') + '/>';
+    if (down) {
+        // X overlay for offline
+        svg += '<line x1="9" y1="9" x2="19" y2="19" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>';
+        svg += '<line x1="19" y1="9" x2="9" y2="19" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>';
+    } else if (watering) {
+        // Water drop icon
+        svg += '<path d="M14 7 Q14 7 17 12 Q19 15 14 19 Q9 15 11 12 Z" fill="#fff" opacity="0.9"/>';
+    }
+    svg += '</svg>';
+    return L.divIcon({
+        html: '<div style="display:flex;align-items:center;justify-content:center;' + (watering ? 'animation:mapMarkerPulse 2s ease-in-out infinite;' : '') + '">' + svg + '</div>',
+        className: '',
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
+        popupAnchor: [0, -size/2],
+    });
+}
+
+function updatePropertyMapMarkers(filteredCustomers) {
+    if (!propertyMap) return;
+    // Clear existing markers
+    propertyMapMarkers.forEach(function(m) { propertyMap.removeLayer(m); });
+    propertyMapMarkers = [];
+    // If no filtered list passed, get from current filter state
+    if (!filteredCustomers) {
+        filteredCustomers = _lastFilteredCustomers || allCustomers;
+    }
+    const bounds = [];
+    filteredCustomers.forEach(function(c) {
+        const geo = propertyGeoCache[c.id];
+        if (!geo) return;
+        const icon = createMarkerIcon(c);
+        const marker = L.marker([geo.lat, geo.lon], { icon: icon });
+        // Tooltip with name
+        const status = getCustomerStatus(c);
+        const statusLabel = status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : status === 'revoked' ? 'Revoked' : 'Unknown';
+        let tooltipHtml = '<strong>' + esc(c.name) + '</strong><br><span style="font-size:11px;color:#666;">' + statusLabel;
+        if (isWatering(c)) tooltipHtml += ' &bull; Watering';
+        const iss = c.issue_summary;
+        if (iss && iss.active_count > 0) {
+            tooltipHtml += '<br>' + iss.active_count + ' issue' + (iss.active_count > 1 ? 's' : '') + ' (' + (iss.max_severity || '') + ')';
+        }
+        tooltipHtml += '</span>';
+        marker.bindTooltip(tooltipHtml, { direction: 'top', offset: [0, -8] });
+        marker.on('click', function() { viewCustomer(c.id); });
+        marker.addTo(propertyMap);
+        propertyMapMarkers.push(marker);
+        bounds.push([geo.lat, geo.lon]);
+    });
+    // Fit bounds
+    if (bounds.length > 1) {
+        propertyMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    } else if (bounds.length === 1) {
+        propertyMap.setView(bounds[0], 14);
+    }
 }
 
 function getCustomerStatus(c) {
