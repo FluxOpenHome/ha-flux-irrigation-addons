@@ -1294,12 +1294,16 @@ async function initDetailMap(addrData) {
 }
 
 let mapLocked = true;
+let mapCenter = null;
+let mapRecenterControl = null;
 
 function showMap(lat, lon, label) {
     const mapEl = document.getElementById('detailMap');
     mapEl.style.display = 'block';
     if (leafletMap) { leafletMap.remove(); leafletMap = null; }
     mapLocked = true;
+    mapCenter = { lat, lon };
+    mapRecenterControl = null;
     // Delay Leaflet init until after the container is visible and laid out
     requestAnimationFrame(() => {
         leafletMap = L.map('detailMap', {
@@ -1348,7 +1352,8 @@ function toggleMapLock() {
         leafletMap.doubleClickZoom.disable();
         leafletMap.boxZoom.disable();
         leafletMap.keyboard.disable();
-        leafletMap.zoomControl && leafletMap.zoomControl.remove();
+        if (leafletMap.zoomControl) { leafletMap.zoomControl.remove(); }
+        if (mapRecenterControl) { leafletMap.removeControl(mapRecenterControl); mapRecenterControl = null; }
         if (btn) btn.innerHTML = '<a href="#" title="Unlock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128274;</a>';
     } else {
         leafletMap.scrollWheelZoom.enable();
@@ -1358,6 +1363,22 @@ function toggleMapLock() {
         leafletMap.boxZoom.enable();
         leafletMap.keyboard.enable();
         L.control.zoom({ position: 'topleft' }).addTo(leafletMap);
+        // Add recenter button
+        const RecenterControl = L.Control.extend({
+            options: { position: 'topleft' },
+            onAdd: function() {
+                const b = L.DomUtil.create('div', 'leaflet-bar');
+                b.innerHTML = '<a href="#" title="Recenter map" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#8982;</a>';
+                b.style.cursor = 'pointer';
+                L.DomEvent.on(b, 'click', function(e) {
+                    L.DomEvent.stop(e);
+                    if (leafletMap && mapCenter) leafletMap.setView([mapCenter.lat, mapCenter.lon], 16);
+                });
+                return b;
+            }
+        });
+        mapRecenterControl = new RecenterControl();
+        leafletMap.addControl(mapRecenterControl);
         if (btn) btn.innerHTML = '<a href="#" title="Lock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128275;</a>';
     }
 }
