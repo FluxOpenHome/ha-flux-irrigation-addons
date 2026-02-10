@@ -5271,33 +5271,91 @@ function hoRenderHeadTable(heads) {
     // Brand / Type change: re-filter model picklist
     var brandSels = wrap.querySelectorAll('select[data-field="brand"]');
     var typeSels = wrap.querySelectorAll('select[data-field="nozzle_type"]');
-    function hoRefreshModelOptions(row) {
-        var brandEl = wrap.querySelector('select[data-field="brand"][data-row="' + row + '"]');
-        var typeEl = wrap.querySelector('select[data-field="nozzle_type"][data-row="' + row + '"]');
-        var modelSel = wrap.querySelector('select[data-field="model_select"][data-row="' + row + '"]');
-        if (!brandEl || !typeEl || !modelSel) return;
-        var sb = brandEl.value || '';
-        var st = typeEl.value || '';
-        var allModels = (ref.models || []).filter(function(md) {
-            return (!sb || md.brand === sb) && (!st || md.nozzle_type === st);
-        });
-        var curVal = modelSel.value;
-        var opts = '<option value="">—</option>';
-        for (var q = 0; q < allModels.length; q++) {
-            opts += '<option value="' + esc(allModels[q].model) + '" data-gpm="' + (allModels[q].gpm || '') + '">' + esc(allModels[q].model) + '</option>';
-        }
-        opts += '<option value="__custom__">Custom...</option>';
-        modelSel.innerHTML = opts;
-        // Try to re-select previous value
-        modelSel.value = curVal;
-        if (modelSel.value !== curVal) modelSel.value = '';
-    }
     for (var bi = 0; bi < brandSels.length; bi++) {
         brandSels[bi].addEventListener('change', function() { hoRefreshModelOptions(this.getAttribute('data-row')); });
     }
     for (var ti = 0; ti < typeSels.length; ti++) {
         typeSels[ti].addEventListener('change', function() { hoRefreshModelOptions(this.getAttribute('data-row')); });
     }
+}
+
+function hoRefreshModelOptions(row) {
+    var wrap = document.getElementById('hoHeadTableWrap');
+    var ref = _hoNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
+    var brandEl = wrap.querySelector('select[data-field="brand"][data-row="' + row + '"]');
+    var typeEl = wrap.querySelector('select[data-field="nozzle_type"][data-row="' + row + '"]');
+    var modelSel = wrap.querySelector('select[data-field="model_select"][data-row="' + row + '"]');
+    if (!brandEl || !typeEl || !modelSel) return;
+    var sb = brandEl.value || '';
+    var st = typeEl.value || '';
+    var allModels = (ref.models || []).filter(function(md) {
+        return (!sb || md.brand === sb) && (!st || md.nozzle_type === st);
+    });
+    var curVal = modelSel.value;
+    var opts = '<option value="">\\u2014</option>';
+    for (var q = 0; q < allModels.length; q++) {
+        opts += '<option value="' + esc(allModels[q].model) + '" data-gpm="' + (allModels[q].gpm || '') + '">' + esc(allModels[q].model) + '</option>';
+    }
+    opts += '<option value="__custom__">Custom...</option>';
+    modelSel.innerHTML = opts;
+    // Try to re-select previous value
+    modelSel.value = curVal;
+    if (modelSel.value !== curVal) modelSel.value = '';
+}
+
+function hoCopyHeadDown(sourceRow) {
+    var wrap = document.getElementById('hoHeadTableWrap');
+    if (!wrap) return;
+    var rows = wrap.querySelectorAll('tbody tr');
+    if (sourceRow >= rows.length - 1) { showToast('No rows below to copy to'); return; }
+
+    // Fields to copy (skip name — location is unique per head)
+    var copyFields = ['nozzle_type','brand','mount','gpm','arc_degrees','radius_ft','popup_height','psi','head_notes'];
+    var srcRow = rows[sourceRow];
+    var srcVals = {};
+    copyFields.forEach(function(f) {
+        var el = srcRow.querySelector('[data-field="' + f + '"]');
+        if (el) srcVals[f] = el.value;
+    });
+    // Handle model (select + custom)
+    var srcModelSel = srcRow.querySelector('[data-field="model_select"]');
+    var srcModelCustom = srcRow.querySelector('[data-field="model_custom"]');
+    var srcModelSelVal = srcModelSel ? srcModelSel.value : '';
+    var srcModelCustomVal = srcModelCustom ? srcModelCustom.value : '';
+
+    var count = 0;
+    for (var i = sourceRow + 1; i < rows.length; i++) {
+        copyFields.forEach(function(f) {
+            var el = rows[i].querySelector('[data-field="' + f + '"]');
+            if (el && srcVals[f] !== undefined) el.value = srcVals[f];
+        });
+        // Refresh model options after brand/type change, then set model
+        hoRefreshModelOptions(i);
+        var modelSel = rows[i].querySelector('[data-field="model_select"]');
+        var modelCustom = rows[i].querySelector('[data-field="model_custom"]');
+        if (modelSel) {
+            modelSel.value = srcModelSelVal;
+            if (modelSel.value !== srcModelSelVal) modelSel.value = '';
+        }
+        if (modelCustom) {
+            modelCustom.value = srcModelCustomVal;
+            modelCustom.style.display = srcModelSelVal === '__custom__' ? '' : 'none';
+        }
+        count++;
+    }
+    hoUpdateGpmSummary();
+    showToast('Copied to ' + count + ' row' + (count > 1 ? 's' : '') + ' below');
+}
+
+function hoDuplicateHead(sourceRow) {
+    var heads = hoCollectHeadData();
+    if (sourceRow >= heads.length) return;
+    var clone = JSON.parse(JSON.stringify(heads[sourceRow]));
+    clone.name = '';
+    heads.push(clone);
+    document.getElementById('hoHeadCount').value = String(heads.length);
+    hoRenderHeadTable(heads);
+    showToast('Row duplicated');
 }
 
 function hoUpdateGpmSummary() {

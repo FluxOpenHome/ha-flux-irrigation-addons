@@ -6003,6 +6003,7 @@ function mgmtRenderHeadTable(heads) {
 
     var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
     html += '<thead><tr style="background:var(--bg-hover);">';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;width:50px;"></th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">#</th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Name / Location</th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Head Type</th>';
@@ -6021,6 +6022,10 @@ function mgmtRenderHeadTable(heads) {
         var h = heads[i] || {};
         var rowBg = i % 2 === 0 ? '' : 'background:var(--bg-hover);';
         html += '<tr style="' + rowBg + '">';
+        html += '<td style="padding:2px 4px;border:1px solid var(--border-light);text-align:center;white-space:nowrap;">';
+        html += '<button onclick="mgmtCopyHeadDown(' + i + ')" title="Copy to rows below" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">\\u2b07</button>';
+        html += '<button onclick="mgmtDuplicateHead(' + i + ')" title="Duplicate row" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">+</button>';
+        html += '</td>';
         html += '<td style="padding:4px 6px;border:1px solid var(--border-light);text-align:center;font-weight:600;">' + (i+1) + '</td>';
 
         html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner" style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
@@ -6129,32 +6134,87 @@ function mgmtRenderHeadTable(heads) {
     // Brand / Type change: re-filter model picklist
     var brandSels = wrap.querySelectorAll('select[data-field="brand"]');
     var typeSels = wrap.querySelectorAll('select[data-field="nozzle_type"]');
-    function mgmtRefreshModelOptions(row) {
-        var brandEl = wrap.querySelector('select[data-field="brand"][data-row="' + row + '"]');
-        var typeEl = wrap.querySelector('select[data-field="nozzle_type"][data-row="' + row + '"]');
-        var modelSel = wrap.querySelector('select[data-field="model_select"][data-row="' + row + '"]');
-        if (!brandEl || !typeEl || !modelSel) return;
-        var sb = brandEl.value || '';
-        var st = typeEl.value || '';
-        var allModels = (ref.models || []).filter(function(md) {
-            return (!sb || md.brand === sb) && (!st || md.nozzle_type === st);
-        });
-        var curVal = modelSel.value;
-        var opts = '<option value="">—</option>';
-        for (var q = 0; q < allModels.length; q++) {
-            opts += '<option value="' + esc(allModels[q].model) + '" data-gpm="' + (allModels[q].gpm || '') + '">' + esc(allModels[q].model) + '</option>';
-        }
-        opts += '<option value="__custom__">Custom...</option>';
-        modelSel.innerHTML = opts;
-        modelSel.value = curVal;
-        if (modelSel.value !== curVal) modelSel.value = '';
-    }
     for (var bi = 0; bi < brandSels.length; bi++) {
         brandSels[bi].addEventListener('change', function() { mgmtRefreshModelOptions(this.getAttribute('data-row')); });
     }
     for (var ti = 0; ti < typeSels.length; ti++) {
         typeSels[ti].addEventListener('change', function() { mgmtRefreshModelOptions(this.getAttribute('data-row')); });
     }
+}
+
+function mgmtRefreshModelOptions(row) {
+    var wrap = document.getElementById('mgmtHeadTableWrap');
+    var ref = _mgmtNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
+    var brandEl = wrap.querySelector('select[data-field="brand"][data-row="' + row + '"]');
+    var typeEl = wrap.querySelector('select[data-field="nozzle_type"][data-row="' + row + '"]');
+    var modelSel = wrap.querySelector('select[data-field="model_select"][data-row="' + row + '"]');
+    if (!brandEl || !typeEl || !modelSel) return;
+    var sb = brandEl.value || '';
+    var st = typeEl.value || '';
+    var allModels = (ref.models || []).filter(function(md) {
+        return (!sb || md.brand === sb) && (!st || md.nozzle_type === st);
+    });
+    var curVal = modelSel.value;
+    var opts = '<option value="">\\u2014</option>';
+    for (var q = 0; q < allModels.length; q++) {
+        opts += '<option value="' + esc(allModels[q].model) + '" data-gpm="' + (allModels[q].gpm || '') + '">' + esc(allModels[q].model) + '</option>';
+    }
+    opts += '<option value="__custom__">Custom...</option>';
+    modelSel.innerHTML = opts;
+    modelSel.value = curVal;
+    if (modelSel.value !== curVal) modelSel.value = '';
+}
+
+function mgmtCopyHeadDown(sourceRow) {
+    var wrap = document.getElementById('mgmtHeadTableWrap');
+    if (!wrap) return;
+    var rows = wrap.querySelectorAll('tbody tr');
+    if (sourceRow >= rows.length - 1) { showToast('No rows below to copy to'); return; }
+
+    var copyFields = ['nozzle_type','brand','mount','gpm','arc_degrees','radius_ft','popup_height','psi','head_notes'];
+    var srcRow = rows[sourceRow];
+    var srcVals = {};
+    copyFields.forEach(function(f) {
+        var el = srcRow.querySelector('[data-field="' + f + '"]');
+        if (el) srcVals[f] = el.value;
+    });
+    var srcModelSel = srcRow.querySelector('[data-field="model_select"]');
+    var srcModelCustom = srcRow.querySelector('[data-field="model_custom"]');
+    var srcModelSelVal = srcModelSel ? srcModelSel.value : '';
+    var srcModelCustomVal = srcModelCustom ? srcModelCustom.value : '';
+
+    var count = 0;
+    for (var i = sourceRow + 1; i < rows.length; i++) {
+        copyFields.forEach(function(f) {
+            var el = rows[i].querySelector('[data-field="' + f + '"]');
+            if (el && srcVals[f] !== undefined) el.value = srcVals[f];
+        });
+        mgmtRefreshModelOptions(i);
+        var modelSel = rows[i].querySelector('[data-field="model_select"]');
+        var modelCustom = rows[i].querySelector('[data-field="model_custom"]');
+        if (modelSel) {
+            modelSel.value = srcModelSelVal;
+            if (modelSel.value !== srcModelSelVal) modelSel.value = '';
+        }
+        if (modelCustom) {
+            modelCustom.value = srcModelCustomVal;
+            modelCustom.style.display = srcModelSelVal === '__custom__' ? '' : 'none';
+        }
+        count++;
+    }
+    mgmtUpdateGpmSummary();
+    showToast('Copied to ' + count + ' row' + (count > 1 ? 's' : '') + ' below');
+}
+
+function mgmtDuplicateHead(sourceRow) {
+    var heads = mgmtCollectHeadData();
+    if (sourceRow >= heads.length) return;
+    var clone = JSON.parse(JSON.stringify(heads[sourceRow]));
+    clone.name = '';
+    heads.push(clone);
+    document.getElementById('mgmtHeadCount').value = String(heads.length);
+    mgmtRenderHeadTable(heads);
+    showToast('Row duplicated');
 }
 
 function mgmtUpdateGpmSummary() {
