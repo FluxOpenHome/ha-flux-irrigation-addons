@@ -2598,6 +2598,9 @@ async function loadDetailData(id) {
     loadDetailEstGallons(id);
     loadDetailPumpMonitor(id);
     loadDetailIssues(id);
+    // Poll notification badge — loadDetailIssues triggers real-time
+    // issue detection server-side, so badge updates quickly
+    pollMgmtNotifBadge();
 }
 
 // --- Detail: Weather ---

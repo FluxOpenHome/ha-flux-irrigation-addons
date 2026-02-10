@@ -460,6 +460,63 @@ async def _periodic_customer_health_check():
         await asyncio.sleep(300)  # Every 5 minutes
 
 
+async def _periodic_issue_poll():
+    """Fast issue-only poll — runs every 60s to detect new issues quickly.
+
+    Only fetches the lightweight issue summary from each reachable customer.
+    Does NOT run full health checks (connectivity, system status, etc.).
+    The 5-minute health check still handles full status updates.
+    """
+    await asyncio.sleep(30)  # Stagger from the health check start
+    while True:
+        try:
+            config = get_config()
+            if config.mode == "management":
+                from customer_store import load_customers, update_customer_issue_summary
+                from connection_key import ConnectionKeyData
+                import management_client
+
+                customers = load_customers()
+                customer_issues = {}
+
+                for customer in customers:
+                    # Skip customers with no successful health check yet
+                    if not customer.last_status:
+                        continue
+                    if not (customer.last_status.get("reachable") and customer.last_status.get("authenticated")):
+                        continue
+                    try:
+                        conn = ConnectionKeyData(
+                            url=customer.url,
+                            key=customer.api_key,
+                            ha_token=customer.ha_token or None,
+                            mode=customer.connection_mode or "direct",
+                        )
+                        status_code, data = await management_client.proxy_request(
+                            conn, "GET", "/admin/api/homeowner/issues/summary"
+                        )
+                        if status_code == 200:
+                            customer_issues[customer.id] = {
+                                "name": customer.name,
+                                "issues": data.get("issues", []),
+                                "dismissed_ids": data.get("dismissed_ids", []),
+                            }
+                            # Update cached issue_summary for property cards
+                            try:
+                                update_customer_issue_summary(customer.id, data)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass  # Silent — health check will report errors
+
+                if customer_issues:
+                    await _check_and_notify_new_issues(customer_issues)
+
+        except Exception as e:
+            print(f"[MAIN] Issue poll error: {e}")
+        await asyncio.sleep(60)  # Every 60 seconds
+
+
 async def _check_and_notify_new_issues(customer_issues: dict):
     """Compare current issues against last known state and send notifications.
 
@@ -693,12 +750,14 @@ async def lifespan(app: FastAPI):
     # Start background tasks
     cleanup_task = asyncio.create_task(_periodic_log_cleanup())
     health_task = None
+    issue_poll_task = None
     weather_task = None
     moisture_task = None
     zone_watcher_task = None
     entity_refresh_task = None
     if config.mode == "management":
         health_task = asyncio.create_task(_periodic_customer_health_check())
+        issue_poll_task = asyncio.create_task(_periodic_issue_poll())
     if config.mode == "homeowner" and config.allowed_zone_entities:
         from run_log import watch_zone_states
         zone_watcher_task = asyncio.create_task(watch_zone_states())
@@ -737,6 +796,8 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     if health_task:
         health_task.cancel()
+    if issue_poll_task:
+        issue_poll_task.cancel()
     if weather_task:
         weather_task.cancel()
     if moisture_task:

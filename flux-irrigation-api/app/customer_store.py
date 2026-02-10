@@ -248,3 +248,18 @@ def update_customer_status(customer_id: str, status: dict):
 
             save_customers(customers)
             return
+
+
+def update_customer_issue_summary(customer_id: str, issue_summary: dict):
+    """Update only the cached issue_summary for a customer.
+
+    Called from management endpoints that fetch live issue data,
+    so property cards reflect the latest issue state without waiting
+    for the next 5-minute health check poll.
+    """
+    customers = load_customers()
+    for c in customers:
+        if c.id == customer_id:
+            c.issue_summary = issue_summary
+            save_customers(customers)
+            return

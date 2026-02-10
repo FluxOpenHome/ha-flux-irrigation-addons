@@ -1272,7 +1272,12 @@ async def get_customer_issues(customer_id: str):
     summary="Get customer active issues",
 )
 async def get_customer_active_issues(customer_id: str):
-    """Get active (non-resolved) issues from a customer."""
+    """Get active (non-resolved) issues from a customer.
+
+    Also fetches the issue summary and runs real-time notification
+    detection so management gets near-instant bell notifications
+    instead of waiting for the 5-minute health check poll.
+    """
     _require_management_mode()
     customer = _get_customer_or_404(customer_id)
     conn = _customer_connection(customer)
@@ -1281,7 +1286,116 @@ async def get_customer_active_issues(customer_id: str):
     )
     if status_code != 200:
         return {"issues": [], "total": 0}
+
+    # Real-time notification detection: fetch summary and check for new issues
+    try:
+        sum_status, sum_data = await management_client.proxy_request(
+            conn, "GET", "/admin/api/homeowner/issues/summary"
+        )
+        if sum_status == 200:
+            _check_issues_realtime(customer_id, customer.name, sum_data)
+            # Also update the cached issue_summary on the customer so
+            # property cards reflect the latest data immediately
+            try:
+                customer_store.update_customer_issue_summary(customer_id, sum_data)
+            except Exception:
+                pass
+    except Exception:
+        pass  # Don't fail the response over notification check
+
     return data
+
+
+def _check_issues_realtime(customer_id: str, customer_name: str, summary_data: dict):
+    """Compare a single customer's issues against last known state and record notifications.
+
+    Called from the active-issues endpoint for near-instant detection
+    instead of waiting for the 5-minute health check poll cycle.
+    """
+    try:
+        notif_config = notification_config.load_config()
+        last_known = notif_config.get("last_known_issues", {})
+        last_known_dismissed = notif_config.get("last_known_dismissed", {})
+        last_known_returned = notif_config.get("last_known_returned", {})
+
+        issues = summary_data.get("issues", [])
+        current_ids = [i["id"] for i in issues]
+        dismissed_ids = summary_data.get("dismissed_ids", [])
+        current_returned_ids = [i["id"] for i in issues if i.get("status") == "returned"]
+
+        prev_ids = set((last_known.get(customer_id) or {}).get("ids", []))
+        prev_returned = set((last_known_returned.get(customer_id) or {}).get("ids", []))
+        prev_dismissed = set((last_known_dismissed.get(customer_id) or {}).get("ids", []))
+
+        new_issues = []
+        for issue in issues:
+            is_new = issue["id"] not in prev_ids
+            is_returned = issue.get("status") == "returned" and issue["id"] not in prev_returned
+            if is_new or is_returned:
+                new_issues.append(issue)
+
+        new_dismissed = [did for did in dismissed_ids if did not in prev_dismissed]
+
+        if not new_issues and not new_dismissed:
+            return  # Nothing new
+
+        # Record to management notification store (bell feed)
+        for issue in new_issues:
+            sev = issue.get("severity", "")
+            sev_label = sev.capitalize() or "Issue"
+            is_ret = issue.get("status") == "returned"
+            if is_ret:
+                evt_type = "returned"
+                title = f"Returned {sev_label}: {customer_name}"
+                reason = issue.get("return_reason", "")
+                msg = issue.get("description", "")[:150]
+                if reason:
+                    msg += f" | Homeowner: {reason[:200]}"
+            else:
+                evt_type = "new_issue"
+                title = f"New {sev_label}: {customer_name}"
+                msg = issue.get("description", "")[:200]
+            management_notification_store.record_event(
+                event_type=evt_type,
+                customer_id=customer_id,
+                customer_name=customer_name,
+                title=title,
+                message=msg,
+                severity=sev,
+            )
+
+        for _did in new_dismissed:
+            management_notification_store.record_event(
+                event_type="dismissed",
+                customer_id=customer_id,
+                customer_name=customer_name,
+                title=f"Issue Dismissed: {customer_name}",
+                message="Homeowner accepted the resolution and dismissed the issue.",
+                severity="",
+            )
+
+        # Update last known state for this customer
+        cfg = notification_config.load_config()
+        lk = cfg.get("last_known_issues", {})
+        lk[customer_id] = {"ids": current_ids}
+        cfg["last_known_issues"] = lk
+
+        ld = cfg.get("last_known_dismissed", {})
+        ld[customer_id] = {"ids": dismissed_ids}
+        cfg["last_known_dismissed"] = ld
+
+        lr = cfg.get("last_known_returned", {})
+        lr[customer_id] = {"ids": current_returned_ids}
+        cfg["last_known_returned"] = lr
+
+        notification_config.save_config(cfg)
+
+        if new_issues:
+            print(f"[MGMT] Real-time: detected {len(new_issues)} new/returned issue(s) from {customer_name}")
+        if new_dismissed:
+            print(f"[MGMT] Real-time: detected {len(new_dismissed)} dismissed issue(s) from {customer_name}")
+    except Exception as e:
+        print(f"[MGMT] Real-time issue check error: {e}")
 
 
 @router.put(
