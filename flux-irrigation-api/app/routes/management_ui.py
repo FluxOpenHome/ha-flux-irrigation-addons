@@ -122,7 +122,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 .header h1 { font-size: 20px; font-weight: 600; }
 .header-actions { display: flex; gap: 10px; align-items: center; }
 .mode-badge { background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.container { max-width: 1600px; margin: 0 auto; padding: 24px; }
 .card { background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-card); margin-bottom: 20px; overflow: hidden; }
 .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
 .card-header h2 { font-size: 16px; font-weight: 600; }
