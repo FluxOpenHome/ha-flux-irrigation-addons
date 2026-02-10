@@ -192,8 +192,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     padding: 0 4px; line-height: 1;
 }
 /* Notification event list */
-.notif-item { padding: 10px 0; border-bottom: 1px solid var(--border-light); }
-.notif-item.unread { background: rgba(26,122,76,0.06); border-radius: 6px; padding: 10px; margin-bottom: 4px; }
+.notif-item { padding: 12px 20px; border-bottom: 1px solid var(--border-light); }
+.notif-item.unread { background: rgba(26,122,76,0.06); padding: 12px 20px; }
 /* Toggle switch */
 .toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -4299,18 +4299,19 @@ function renderNotificationFeed() {
     var html = '';
     _notifPanelEvents.forEach(function(ev) {
         var dt = new Date(ev.created_at);
-        var timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
-        var unreadCls = ev.read ? '' : ' unread';
-        html += '<div class="notif-item' + unreadCls + '" onclick="markNotificationRead(\\'' + ev.id + '\\')" style="cursor:pointer;">';
-        html += '<div style="display:flex;justify-content:space-between;align-items:baseline;">';
-        html += '<span style="font-size:13px;font-weight:' + (ev.read ? '400' : '600') + ';color:var(--text-primary);">' + esc(ev.title) + '</span>';
-        html += '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;margin-left:8px;">' + esc(timeStr) + '</span>';
+        var now = new Date();
+        var diffMs = now - dt;
+        var diffH = Math.floor(diffMs / 3600000);
+        var timeAgo = diffH < 1 ? 'Just now' : diffH < 24 ? diffH + 'h ago' : Math.floor(diffH / 24) + 'd ago';
+        var readOpacity = ev.read ? 'opacity:0.65;' : '';
+        var newBadge = ev.read ? '' : '<span style="display:inline-block;background:var(--color-primary);color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:6px;vertical-align:middle;">NEW</span>';
+        html += '<div class="notif-item' + (ev.read ? '' : ' unread') + '" onclick="markNotificationRead(\\'' + ev.id + '\\')" style="cursor:pointer;' + readOpacity + '">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">';
+        html += '<span style="font-size:13px;font-weight:' + (ev.read ? '400' : '600') + ';color:var(--text-primary);min-width:0;word-break:break-word;">' + esc(ev.title) + newBadge + '</span>';
+        html += '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;">' + esc(timeAgo) + '</span>';
         html += '</div>';
         if (ev.message) {
-            html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' + esc(ev.message) + '</div>';
-        }
-        if (!ev.read) {
-            html += '<div style="font-size:10px;color:var(--color-primary);margin-top:2px;font-weight:600;">NEW</div>';
+            html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;word-break:break-word;line-height:1.4;">' + esc(ev.message) + '</div>';
         }
         html += '</div>';
     });
