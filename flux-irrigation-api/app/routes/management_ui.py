@@ -264,7 +264,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
     .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
 }
-.card-row { display: flex; gap: 20px; margin-bottom: 20px; }
+.card-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: flex-start; }
 .card-row > .card { flex: 1; min-width: 0; margin-bottom: 0; }
 @media (max-width: 768px) { .card-row { flex-direction: column; } .card-row > .card { margin-bottom: 20px; } }
 </style>

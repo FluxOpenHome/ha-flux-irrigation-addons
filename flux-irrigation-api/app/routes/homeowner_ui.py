@@ -138,7 +138,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tile-actions { display: flex; gap: 6px; }
 
 /* Card Row — side-by-side cards */
-.card-row { display: flex; gap: 20px; margin-bottom: 20px; }
+.card-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: flex-start; }
 .card-row > .card { flex: 1; min-width: 0; margin-bottom: 0; }
 @media (max-width: 768px) { .card-row { flex-direction: column; } .card-row > .card { margin-bottom: 20px; } }
 
