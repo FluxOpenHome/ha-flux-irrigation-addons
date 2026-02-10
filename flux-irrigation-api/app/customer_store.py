@@ -227,6 +227,7 @@ def update_customer_status(customer_id: str, status: dict):
     customers = load_customers()
     for c in customers:
         if c.id == customer_id:
+            status["checked_at"] = datetime.now(timezone.utc).isoformat()
             c.last_status = status
             if status.get("reachable") and status.get("authenticated"):
                 c.last_seen_online = datetime.now(timezone.utc).isoformat()

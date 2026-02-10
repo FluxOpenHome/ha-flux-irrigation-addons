@@ -1142,6 +1142,7 @@ function renderCustomerGrid(customers) {
                 <div class="customer-stats">
                     ${zoneInfo}${stats}${gophrBadge}
                 </div>
+                ${c.last_status && c.last_status.checked_at ? '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Checked ' + timeAgo(c.last_status.checked_at) + '</div>' : ''}
                 ${issueCount > 0 && _propSettings.showIssueDetails ? '<div class="card-issue-details" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">' +
                     (issueSummary.issues || []).slice(0, 3).map(function(issue) {
                         const iColor = issue.severity === 'severe' ? '#e74c3c' : issue.severity === 'annoyance' ? '#f39c12' : '#3498db';
@@ -1547,6 +1548,17 @@ function esc(str) {
     const d = document.createElement('div');
     d.textContent = str;
     return d.innerHTML;
+}
+
+function timeAgo(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d)) return '';
+    const s = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
 }
 
 // --- Unit Conversion Helpers ---
