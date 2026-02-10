@@ -186,16 +186,16 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 .detail-header h2 { font-size: 22px; font-weight: 600; }
 
 /* Zone/Sensor Tiles */
-.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
-.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px; border: 1px solid var(--border-light); }
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px; border: 1px solid var(--border-light); min-height: 120px; }
 .tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
 .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
 .tile-state.on { color: var(--color-success); font-weight: 500; }
-.tile-sprinkler-icon { display:flex; justify-content:center; align-items:center; gap:4px; margin:8px 0; color:var(--text-muted); min-height:36px; }
-.tile-sprinkler-icon svg { opacity:0.7; transition:opacity 0.3s ease; }
-.tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:1; animation:sprinklerPulse 2s ease-in-out infinite; }
-@keyframes sprinklerPulse { 0%,100%{ opacity:0.6; transform:scale(1); } 50%{ opacity:1; transform:scale(1.08); } }
+.tile-sprinkler-icon { position:absolute; bottom:10px; right:12px; display:flex; align-items:center; gap:3px; color:var(--text-muted); }
+.tile-sprinkler-icon svg { opacity:0.45; transition:opacity 0.3s ease; }
+.tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
+@keyframes sprinklerPulse { 0%,100%{ opacity:0.5; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
 .tile-actions { display: flex; gap: 6px; }
 
 /* Schedule (entity-based) */
@@ -3616,15 +3616,6 @@ async function loadDetailZones(id) {
                     <span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;"
                           onclick="event.stopPropagation();mgmtShowZoneDetailsModal(\\'${z.entity_id}\\', decodeURIComponent(\\'${encodeURIComponent(displayName)}\\'))" title="Zone head details">&#9432;</span>
                 </div>
-                ${(function() {
-                    var catData = window._mgmtZoneSprinklerCat && window._mgmtZoneSprinklerCat[z.entity_id];
-                    if (!catData) return '';
-                    if (catData.single) {
-                        return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 36) + '</div>';
-                    } else {
-                        return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 26) + getSprinklerSvg(catData.categories[1], 26) + '</div>';
-                    }
-                })()}
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
                 <div class="tile-actions" style="flex-wrap:wrap;">
                     ${isOn
@@ -3634,6 +3625,15 @@ async function loadDetailZones(id) {
                           '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + id + '\\',\\'' + zId + '\\', document.getElementById(\\'dur_' + zId + '\\').value)">Timed</button></span>'
                     }
                 </div>
+                ${(function() {
+                    var catData = window._mgmtZoneSprinklerCat && window._mgmtZoneSprinklerCat[z.entity_id];
+                    if (!catData) return '';
+                    if (catData.single) {
+                        return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 32) + '</div>';
+                    } else {
+                        return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 22) + getSprinklerSvg(catData.categories[1], 22) + '</div>';
+                    }
+                })()}
             </div>`;
         }).join('') + '</div>';
     } catch (e) {

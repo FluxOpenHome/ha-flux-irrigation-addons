@@ -803,23 +803,25 @@ def _csv_escape(value: str) -> str:
 
 
 @router.delete("/weather/log", summary="Clear weather event log")
-async def homeowner_clear_weather_log():
+async def homeowner_clear_weather_log(request: Request):
     """Clear the weather event log."""
     from routes.weather import WEATHER_LOG_FILE
     try:
         if os.path.exists(WEATHER_LOG_FILE):
             os.remove(WEATHER_LOG_FILE)
+        log_change(get_actor(request), "Weather", "Cleared weather event log")
         return {"success": True, "message": "Weather log cleared"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
 @router.delete("/history/runs", summary="Clear run history")
-async def homeowner_clear_history():
+async def homeowner_clear_history(request: Request):
     """Clear the local run history log."""
     _require_homeowner_mode()
     success = run_log.clear_run_history()
     if success:
+        log_change(get_actor(request), "Run History", "Cleared all run history")
         return {"success": True, "message": "Run history cleared"}
     return {"success": False, "error": "Failed to clear run history"}
 
