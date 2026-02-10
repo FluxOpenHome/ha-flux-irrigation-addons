@@ -5124,6 +5124,7 @@ function hoRenderHeadTable(heads) {
 
     var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
     html += '<thead><tr style="background:var(--bg-hover);">';
+    html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;width:50px;"></th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">#</th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Name / Location</th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Head Type</th>';
@@ -5142,6 +5143,10 @@ function hoRenderHeadTable(heads) {
         var h = heads[i] || {};
         var rowBg = i % 2 === 0 ? '' : 'background:var(--bg-hover);';
         html += '<tr style="' + rowBg + '">';
+        html += '<td style="padding:2px 4px;border:1px solid var(--border-light);text-align:center;white-space:nowrap;">';
+        html += '<button onclick="hoCopyHeadDown(' + i + ')" title="Copy to rows below" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">\\u2b07</button>';
+        html += '<button onclick="hoDuplicateHead(' + i + ')" title="Duplicate row" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">+</button>';
+        html += '</td>';
         html += '<td style="padding:4px 6px;border:1px solid var(--border-light);text-align:center;font-weight:600;">' + (i+1) + '</td>';
 
         // Name / Location
