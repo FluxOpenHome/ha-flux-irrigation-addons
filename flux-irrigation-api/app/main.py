@@ -483,6 +483,8 @@ async def _check_and_notify_new_issues(customer_issues: dict):
         new_known = dict(last_known)
         notifications_to_send = []
 
+        all_new_issues = []  # All new issues (for management notification store)
+
         for cust_id, data in customer_issues.items():
             issues = data.get("issues", [])
             current_ids = [i["id"] for i in issues]
@@ -493,14 +495,17 @@ async def _check_and_notify_new_issues(customer_issues: dict):
                 if issue["id"] not in prev_ids:
                     # New issue detected
                     severity = issue.get("severity", "")
+                    new_issue_info = {
+                        "customer_id": cust_id,
+                        "customer_name": data["name"],
+                        "severity": severity,
+                        "description": issue.get("description", ""),
+                    }
+                    all_new_issues.append(new_issue_info)
                     if notification_config.should_notify(severity):
-                        notifications_to_send.append({
-                            "customer_name": data["name"],
-                            "severity": severity,
-                            "description": issue.get("description", ""),
-                        })
+                        notifications_to_send.append(new_issue_info)
 
-        # Send notifications
+        # Send HA notifications
         severity_emojis = {"severe": "🔴", "annoyance": "🟡", "clarification": "🔵"}
         for notif in notifications_to_send:
             emoji = severity_emojis.get(notif["severity"], "⚠️")
@@ -517,6 +522,23 @@ async def _check_and_notify_new_issues(customer_issues: dict):
                 print(f"[MAIN] HA notification sent: {sev_label} from {notif['customer_name']}")
             except Exception as e:
                 print(f"[MAIN] HA notification failed: {e}")
+
+        # Record ALL new issues to management notification store (in-app feed)
+        # This is independent of HA notification severity settings
+        try:
+            import management_notification_store as mns
+            for issue_info in all_new_issues:
+                sev_label = issue_info["severity"].capitalize() or "Issue"
+                mns.record_event(
+                    event_type="new_issue",
+                    customer_id=issue_info["customer_id"],
+                    customer_name=issue_info["customer_name"],
+                    title=f"New {sev_label}: {issue_info['customer_name']}",
+                    message=issue_info["description"][:200],
+                    severity=issue_info["severity"],
+                )
+        except Exception as e:
+            print(f"[MAIN] Management notification store error: {e}")
 
         # Update last known state
         notification_config.update_last_known_issues(new_known)

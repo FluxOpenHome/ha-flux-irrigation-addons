@@ -297,7 +297,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <span class="mode-badge">Management Mode</span>
         <button class="btn btn-secondary btn-sm" onclick="switchToHomeowner()">Homeowner</button>
         <button class="dark-toggle" onclick="showAlertsPanel()" title="Customer Issues" id="alertBadgeBtn" style="position:relative;display:none;">&#9888;&#65039;<span id="alertBadgeCount" style="position:absolute;top:-4px;right:-4px;background:#e74c3c;color:white;font-size:10px;font-weight:700;border-radius:50%;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 4px;"></span></button>
-        <button class="dark-toggle" onclick="showNotifPrefs()" title="Notification Settings">&#9881;&#65039;</button>
+        <button class="dark-toggle" onclick="showMgmtNotifPanel()" title="Notifications" id="mgmtNotifBellBtn" style="position:relative;">&#128276;<span id="mgmtNotifBadge" style="position:absolute;top:-4px;right:-4px;background:#e74c3c;color:white;font-size:10px;font-weight:700;border-radius:50%;min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 4px;display:none;"></span></button>
         <button class="dark-toggle" id="darkModeBtn" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
     </div>
@@ -740,7 +740,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#9888;&#65039; Customer Issues</h3>
             <div style="display:flex;align-items:center;gap:8px;">
-                <button onclick="showNotifPrefs()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;" title="Notification Preferences">&#9881;&#65039;</button>
+                <button onclick="closeAlertsPanel();showMgmtNotifPanel();setTimeout(showMgmtNotifSettings,100);" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;" title="Notification Settings">&#9881;&#65039;</button>
                 <button onclick="closeAlertsPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
             </div>
         </div>
@@ -769,59 +769,18 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
     </div>
 </div>
 
-<!-- Notification Preferences Modal -->
-<div id="notifPrefsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10002;align-items:center;justify-content:center;">
-    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:460px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;max-height:90vh;overflow-y:auto;">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
-            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128276; Notification Preferences</h3>
-            <button onclick="closeNotifPrefs()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
-        </div>
-        <div style="padding:20px 24px 24px 24px;">
-            <!-- Browser Notifications Section -->
-            <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">&#127760; Browser Notifications</p>
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Choose which issue severities trigger browser notifications:</p>
-            <div style="display:flex;flex-direction:column;gap:10px;">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifSevere" checked><span style="font-weight:600;color:#e74c3c;">Severe Issues</span></label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifAnnoyance" checked><span style="font-weight:600;color:#f39c12;">Annoyances</span></label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifClarification"><span style="font-weight:600;color:#3498db;">Clarifications</span></label>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:16px;justify-content:space-between;align-items:center;">
-                <button class="btn btn-secondary btn-sm" onclick="requestNotifPermission()">Enable Notifications</button>
-                <button class="btn btn-primary btn-sm" onclick="saveNotifPrefs()">Save</button>
-            </div>
-            <div id="notifPermStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
-
-            <!-- HA Notification Section -->
-            <div style="border-top:1px solid var(--border-light);margin-top:20px;padding-top:20px;">
-                <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">&#127968; Home Assistant Notifications</p>
-                <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Send push notifications (SMS, mobile app, etc.) through your HA notification service when customers report new issues.</p>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">
-                    <input type="checkbox" id="haNotifEnabled">
-                    <span style="font-weight:600;color:var(--text-primary);">Enable HA Notifications</span>
-                </label>
-                <div style="margin-bottom:12px;">
-                    <label style="font-size:13px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Notify Service</label>
-                    <div style="display:flex;gap:6px;align-items:center;">
-                        <select id="haNotifyService" style="flex:1;padding:8px 12px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);">
-                            <option value="">-- Select a notify service --</option>
-                        </select>
-                        <button class="btn btn-secondary btn-sm" onclick="loadNotifyServices()" title="Refresh service list" style="padding:6px 10px;font-size:16px;line-height:1;">&#8635;</button>
-                    </div>
-                    <div id="haNotifyServiceHint" style="font-size:11px;color:var(--text-placeholder);margin-top:3px;">Auto-detected from Home Assistant</div>
-                </div>
-                <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Severity filters:</p>
-                <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
-                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifSevere" checked><span style="font-weight:600;color:#e74c3c;">Severe Issues</span></label>
-                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifAnnoyance" checked><span style="font-weight:600;color:#f39c12;">Annoyances</span></label>
-                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifClarification"><span style="font-weight:600;color:#3498db;">Clarifications</span></label>
-                </div>
-                <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;">
-                    <button class="btn btn-secondary btn-sm" onclick="testHANotification()">&#128172; Test</button>
-                    <button class="btn btn-primary btn-sm" onclick="saveHANotifSettings()">Save</button>
-                </div>
-                <div id="haNotifStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
+<!-- Management Notification Bell Panel -->
+<div id="mgmtNotifPanelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10002;align-items:center;justify-content:center;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:92%;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;max-height:90vh;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);flex-shrink:0;">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128276; Notifications</h3>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <button onclick="showMgmtNotifSettings()" title="Notification Settings" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&#9881;&#65039;</button>
+                <button onclick="markAllMgmtNotifsRead()" class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 8px;">Mark all read</button>
+                <button onclick="closeMgmtNotifPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
             </div>
         </div>
+        <div id="mgmtNotifPanelBody" style="overflow-y:auto;flex:1;min-height:0;padding:0;"></div>
     </div>
 </div>
 
@@ -1006,6 +965,7 @@ async function loadCustomers() {
         filterCustomers();
         updateAlertBadge(allCustomers);
         checkForNewIssues(allCustomers);
+        pollMgmtNotifBadge();
         // Verify "running" cards with live status (cached status can be stale)
         refreshRunningStatuses();
         // Check which customers have Gophr probes
@@ -5307,57 +5267,265 @@ function checkForNewIssues(customers) {
     localStorage.setItem('flux_last_known_issues', JSON.stringify(newKnown));
 }
 
-// --- Notification Preferences ---
-function showNotifPrefs() {
-    const prefs = JSON.parse(localStorage.getItem('flux_notification_prefs') || '{"severe":true,"annoyance":true,"clarification":false}');
-    document.getElementById('notifSevere').checked = !!prefs.severe;
-    document.getElementById('notifAnnoyance').checked = !!prefs.annoyance;
-    document.getElementById('notifClarification').checked = !!prefs.clarification;
-    const statusEl = document.getElementById('notifPermStatus');
-    if (typeof Notification !== 'undefined') {
-        statusEl.textContent = 'Browser notification permission: ' + Notification.permission;
-    } else {
-        statusEl.textContent = 'Browser notifications not supported';
+// --- Management Notification Bell Panel ---
+var _mgmtNotifPanelView = 'feed';  // 'feed' or 'settings'
+var _mgmtNotifEvents = [];
+var _mgmtNotifUnread = 0;
+
+function showMgmtNotifPanel() {
+    _mgmtNotifPanelView = 'feed';
+    loadMgmtNotifFeed();
+    document.getElementById('mgmtNotifPanelModal').style.display = 'flex';
+}
+function closeMgmtNotifPanel() {
+    document.getElementById('mgmtNotifPanelModal').style.display = 'none';
+}
+
+async function loadMgmtNotifFeed() {
+    try {
+        var data = await api('/mgmt-notifications?limit=50&t=' + Date.now());
+        _mgmtNotifEvents = data.events || [];
+        _mgmtNotifUnread = data.unread_count || 0;
+        updateMgmtNotifBadge();
+        renderMgmtNotifPanel();
+    } catch (e) {
+        document.getElementById('mgmtNotifPanelBody').innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">Could not load notifications.</div>';
     }
-    // Load HA notification settings from server
-    loadHANotifSettings();
-    document.getElementById('notifPrefsModal').style.display = 'flex';
 }
-function closeNotifPrefs() {
-    document.getElementById('notifPrefsModal').style.display = 'none';
+
+function renderMgmtNotifPanel() {
+    if (_mgmtNotifPanelView === 'settings') {
+        renderMgmtNotifSettings();
+        return;
+    }
+    var body = document.getElementById('mgmtNotifPanelBody');
+    if (_mgmtNotifEvents.length === 0) {
+        body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">No notifications yet.</div>';
+        return;
+    }
+    var html = '';
+    _mgmtNotifEvents.forEach(function(ev) {
+        var color = SEV_COLORS[ev.severity] || '#999';
+        var dt = new Date(ev.created_at);
+        var now = new Date();
+        var diffMs = now - dt;
+        var diffH = Math.floor(diffMs / 3600000);
+        var timeAgo = diffH < 1 ? 'Just now' : diffH < 24 ? diffH + 'h ago' : Math.floor(diffH / 24) + 'd ago';
+        var readStyle = ev.read ? 'opacity:0.6;' : '';
+        var newBadge = ev.read ? '' : '<span style="background:#e74c3c;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:6px;">NEW</span>';
+        var typeLabels = {new_issue:'New Issue',acknowledged:'Acknowledged',service_scheduled:'Service Scheduled',resolved:'Resolved'};
+        var typeLabel = typeLabels[ev.type] || ev.type;
+        html += '<div style="padding:12px 20px;border-bottom:1px solid var(--border-light);cursor:pointer;' + readStyle + '" onclick="markMgmtNotifRead(\\'' + ev.id + '\\')">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
+        html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;background:' + color + '22;color:' + color + ';white-space:nowrap;">' + esc(typeLabel) + '</span>';
+        html += '<span style="font-size:13px;font-weight:600;color:var(--color-primary);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeMgmtNotifPanel();viewCustomer(\\'' + ev.customer_id + '\\')">' + esc(ev.customer_name) + '</span>';
+        html += newBadge;
+        html += '</div>';
+        html += '<div style="font-size:13px;color:var(--text-primary);margin-bottom:2px;">' + esc(ev.title) + '</div>';
+        if (ev.message) html += '<div style="font-size:12px;color:var(--text-muted);word-break:break-word;">' + esc(ev.message).substring(0, 150) + '</div>';
+        html += '<div style="font-size:11px;color:var(--text-hint);margin-top:3px;">' + esc(timeAgo) + '</div>';
+        html += '</div>';
+    });
+    body.innerHTML = html;
 }
-function saveNotifPrefs() {
-    const prefs = {
-        severe: document.getElementById('notifSevere').checked,
-        annoyance: document.getElementById('notifAnnoyance').checked,
-        clarification: document.getElementById('notifClarification').checked,
-    };
-    localStorage.setItem('flux_notification_prefs', JSON.stringify(prefs));
-    showToast('Notification preferences saved');
-    closeNotifPrefs();
+
+async function markMgmtNotifRead(eventId) {
+    try {
+        await api('/mgmt-notifications/' + eventId + '/read', { method: 'PUT' });
+        _mgmtNotifEvents.forEach(function(ev) { if (ev.id === eventId) ev.read = true; });
+        _mgmtNotifUnread = Math.max(0, _mgmtNotifUnread - 1);
+        updateMgmtNotifBadge();
+        renderMgmtNotifPanel();
+    } catch (e) { /* silent */ }
 }
+
+async function markAllMgmtNotifsRead() {
+    try {
+        await api('/mgmt-notifications/read-all', { method: 'PUT' });
+        _mgmtNotifEvents.forEach(function(ev) { ev.read = true; });
+        _mgmtNotifUnread = 0;
+        updateMgmtNotifBadge();
+        renderMgmtNotifPanel();
+        showToast('All notifications marked as read');
+    } catch (e) { showToast('Failed to mark all read', 'error'); }
+}
+
+function updateMgmtNotifBadge() {
+    var badge = document.getElementById('mgmtNotifBadge');
+    if (_mgmtNotifUnread > 0) {
+        badge.textContent = _mgmtNotifUnread > 99 ? '99+' : _mgmtNotifUnread;
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+async function pollMgmtNotifBadge() {
+    try {
+        var data = await api('/mgmt-notifications?limit=1&t=' + Date.now());
+        _mgmtNotifUnread = data.unread_count || 0;
+        updateMgmtNotifBadge();
+    } catch (e) { /* silent */ }
+}
+
+// --- Notification Settings (inside bell panel) ---
+function showMgmtNotifSettings() {
+    _mgmtNotifPanelView = 'settings';
+    renderMgmtNotifSettings();
+}
+
+function backToMgmtNotifFeed() {
+    _mgmtNotifPanelView = 'feed';
+    renderMgmtNotifPanel();
+}
+
+async function renderMgmtNotifSettings() {
+    var body = document.getElementById('mgmtNotifPanelBody');
+    body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">Loading settings...</div>';
+
+    // Load all settings in parallel
+    var browserPrefs = JSON.parse(localStorage.getItem('flux_notification_prefs') || '{"severe":true,"annoyance":true,"clarification":false}');
+    var haSettings = {};
+    var feedPrefs = {};
+    try {
+        var results = await Promise.all([
+            api('/notification-settings?t=' + Date.now()),
+            api('/mgmt-notification-preferences?t=' + Date.now()),
+        ]);
+        haSettings = results[0] || {};
+        feedPrefs = results[1] || {};
+    } catch (e) { /* use defaults */ }
+
+    var html = '<div style="padding:16px 20px 20px 20px;">';
+    html += '<div style="margin-bottom:16px;"><a href="#" onclick="event.preventDefault();backToMgmtNotifFeed()" style="font-size:13px;color:var(--color-primary);text-decoration:none;">&laquo; Back to Notifications</a></div>';
+
+    // --- Notification Types Section ---
+    html += '<p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">&#128203; Notification Types</p>';
+    html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Choose which events appear in the notification feed:</p>';
+    html += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedNewIssue" ' + (feedPrefs.notify_new_issue !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">New Issues</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedAcknowledged" ' + (feedPrefs.notify_acknowledged !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Acknowledged</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedServiceScheduled" ' + (feedPrefs.notify_service_scheduled !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Service Scheduled</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="mgmtFeedResolved" ' + (feedPrefs.notify_resolved !== false ? 'checked' : '') + '><span style="font-weight:500;color:var(--text-primary);">Resolved</span></label>';
+    html += '</div>';
+    html += '<button class="btn btn-primary btn-sm" onclick="saveMgmtFeedPrefs()">Save Types</button>';
+
+    // --- Browser Notifications Section ---
+    html += '<div style="border-top:1px solid var(--border-light);margin-top:20px;padding-top:20px;">';
+    html += '<p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">&#127760; Browser Notifications</p>';
+    html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Choose which issue severities trigger browser notifications:</p>';
+    html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifSevere" ' + (browserPrefs.severe ? 'checked' : '') + '><span style="font-weight:600;color:#e74c3c;">Severe Issues</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifAnnoyance" ' + (browserPrefs.annoyance ? 'checked' : '') + '><span style="font-weight:600;color:#f39c12;">Annoyances</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="notifClarification" ' + (browserPrefs.clarification ? 'checked' : '') + '><span style="font-weight:600;color:#3498db;">Clarifications</span></label>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px;margin-top:14px;justify-content:space-between;align-items:center;">';
+    html += '<button class="btn btn-secondary btn-sm" onclick="requestNotifPermission()">Enable Notifications</button>';
+    html += '<button class="btn btn-primary btn-sm" onclick="saveBrowserNotifPrefs()">Save</button>';
+    html += '</div>';
+    html += '<div id="notifPermStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;">';
+    if (typeof Notification !== 'undefined') html += 'Browser notification permission: ' + Notification.permission;
+    else html += 'Browser notifications not supported';
+    html += '</div>';
+    html += '</div>';
+
+    // --- HA Notification Section ---
+    html += '<div style="border-top:1px solid var(--border-light);margin-top:20px;padding-top:20px;">';
+    html += '<p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">&#127968; Home Assistant Notifications</p>';
+    html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Send push notifications through your HA notification service when customers report new issues.</p>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">';
+    html += '<input type="checkbox" id="haNotifEnabled" ' + (haSettings.enabled ? 'checked' : '') + '>';
+    html += '<span style="font-weight:600;color:var(--text-primary);">Enable HA Notifications</span>';
+    html += '</label>';
+    html += '<div style="margin-bottom:12px;">';
+    html += '<label style="font-size:13px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Notify Service</label>';
+    html += '<div style="display:flex;gap:6px;align-items:center;min-width:0;">';
+    html += '<select id="haNotifyService" style="flex:1;min-width:0;padding:8px 10px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;max-width:100%;">';
+    html += '<option value="">-- Select a notify service --</option>';
+    html += '</select>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="loadNotifyServices()" title="Refresh" style="padding:6px 10px;font-size:16px;line-height:1;flex-shrink:0;">&#8635;</button>';
+    html += '</div>';
+    html += '<div id="haNotifyServiceHint" style="font-size:11px;color:var(--text-placeholder);margin-top:3px;">Auto-detected from Home Assistant</div>';
+    html += '</div>';
+    html += '<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Severity filters:</p>';
+    html += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifSevere" ' + (haSettings.notify_severe !== false ? 'checked' : '') + '><span style="font-weight:600;color:#e74c3c;">Severe Issues</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifAnnoyance" ' + (haSettings.notify_annoyance !== false ? 'checked' : '') + '><span style="font-weight:600;color:#f39c12;">Annoyances</span></label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" id="haNotifClarification" ' + (haSettings.notify_clarification ? 'checked' : '') + '><span style="font-weight:600;color:#3498db;">Clarifications</span></label>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;">';
+    html += '<button class="btn btn-secondary btn-sm" onclick="testHANotification()">&#128172; Test</button>';
+    html += '<button class="btn btn-primary btn-sm" onclick="saveHANotifSettings()">Save</button>';
+    html += '</div>';
+    html += '<div id="haNotifStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>';
+    html += '</div>';
+
+    html += '</div>';
+    body.innerHTML = html;
+
+    // Load the HA services dropdown and set saved value
+    await loadNotifyServices();
+    if (haSettings.ha_notify_service) {
+        var sel = document.getElementById('haNotifyService');
+        sel.value = haSettings.ha_notify_service;
+        if (sel.value !== haSettings.ha_notify_service) {
+            var opt = document.createElement('option');
+            opt.value = haSettings.ha_notify_service;
+            opt.textContent = haSettings.ha_notify_service + ' (saved)';
+            sel.appendChild(opt);
+            sel.value = haSettings.ha_notify_service;
+        }
+    }
+}
+
 function requestNotifPermission() {
     if (typeof Notification === 'undefined') {
         showToast('Browser notifications not supported', 'error');
         return;
     }
     Notification.requestPermission().then(function(perm) {
-        document.getElementById('notifPermStatus').textContent = 'Browser notification permission: ' + perm;
+        var el = document.getElementById('notifPermStatus');
+        if (el) el.textContent = 'Browser notification permission: ' + perm;
         if (perm === 'granted') showToast('Notifications enabled');
         else showToast('Notification permission ' + perm, 'error');
     });
 }
 
+function saveBrowserNotifPrefs() {
+    var prefs = {
+        severe: document.getElementById('notifSevere').checked,
+        annoyance: document.getElementById('notifAnnoyance').checked,
+        clarification: document.getElementById('notifClarification').checked,
+    };
+    localStorage.setItem('flux_notification_prefs', JSON.stringify(prefs));
+    showToast('Browser notification preferences saved');
+}
+
+async function saveMgmtFeedPrefs() {
+    var payload = {
+        notify_new_issue: document.getElementById('mgmtFeedNewIssue').checked,
+        notify_acknowledged: document.getElementById('mgmtFeedAcknowledged').checked,
+        notify_service_scheduled: document.getElementById('mgmtFeedServiceScheduled').checked,
+        notify_resolved: document.getElementById('mgmtFeedResolved').checked,
+    };
+    try {
+        await api('/mgmt-notification-preferences', { method: 'PUT', body: JSON.stringify(payload) });
+        showToast('Notification type preferences saved');
+    } catch (e) {
+        showToast('Failed to save preferences', 'error');
+    }
+}
+
 // --- HA Notification Settings ---
 async function loadNotifyServices() {
     var sel = document.getElementById('haNotifyService');
+    if (!sel) return;
     var saved = sel.value;
     var hint = document.getElementById('haNotifyServiceHint');
-    hint.textContent = 'Loading services from Home Assistant...';
+    if (hint) hint.textContent = 'Loading services from Home Assistant...';
     try {
         var data = await api('/notification-settings/services');
         var services = data.services || [];
-        // Keep the first placeholder option, clear the rest
         sel.innerHTML = '<option value="">-- Select a notify service --</option>';
         services.forEach(function(s) {
             var opt = document.createElement('option');
@@ -5365,9 +5533,7 @@ async function loadNotifyServices() {
             opt.textContent = s.name + ' (notify.' + s.id + ')';
             sel.appendChild(opt);
         });
-        // Restore previously saved value
         if (saved) sel.value = saved;
-        // If saved value not in list, add it as a custom option so it's not lost
         if (saved && sel.value !== saved) {
             var opt = document.createElement('option');
             opt.value = saved;
@@ -5375,35 +5541,9 @@ async function loadNotifyServices() {
             sel.appendChild(opt);
             sel.value = saved;
         }
-        hint.textContent = services.length ? services.length + ' service(s) found' : 'No notify services found in HA';
+        if (hint) hint.textContent = services.length ? services.length + ' service(s) found' : 'No notify services found in HA';
     } catch (e) {
-        hint.textContent = 'Could not load services — you can type a name manually';
-    }
-}
-async function loadHANotifSettings() {
-    try {
-        var data = await api('/notification-settings');
-        document.getElementById('haNotifEnabled').checked = !!data.enabled;
-        document.getElementById('haNotifSevere').checked = !!data.notify_severe;
-        document.getElementById('haNotifAnnoyance').checked = !!data.notify_annoyance;
-        document.getElementById('haNotifClarification').checked = !!data.notify_clarification;
-        document.getElementById('haNotifStatus').textContent = '';
-        // Load services dropdown, then set the saved value
-        await loadNotifyServices();
-        if (data.ha_notify_service) {
-            var sel = document.getElementById('haNotifyService');
-            sel.value = data.ha_notify_service;
-            // If saved value not in dropdown, add it
-            if (sel.value !== data.ha_notify_service) {
-                var opt = document.createElement('option');
-                opt.value = data.ha_notify_service;
-                opt.textContent = data.ha_notify_service + ' (saved)';
-                sel.appendChild(opt);
-                sel.value = data.ha_notify_service;
-            }
-        }
-    } catch (e) {
-        document.getElementById('haNotifStatus').textContent = 'Could not load HA notification settings';
+        if (hint) hint.textContent = 'Could not load services';
     }
 }
 async function saveHANotifSettings() {
@@ -5421,7 +5561,8 @@ async function saveHANotifSettings() {
     try {
         await api('/notification-settings', { method: 'PUT', body: JSON.stringify(payload) });
         showToast('HA notification settings saved');
-        document.getElementById('haNotifStatus').textContent = 'Settings saved';
+        var el = document.getElementById('haNotifStatus');
+        if (el) el.textContent = 'Settings saved';
     } catch (e) {
         showToast('Failed to save HA notification settings', 'error');
     }
@@ -5432,16 +5573,17 @@ async function testHANotification() {
         showToast('Select a notify service first', 'error');
         return;
     }
-    // Save first so the test uses current values
     await saveHANotifSettings();
     try {
         const result = await api('/notification-settings/test', { method: 'POST' });
         showToast(result.message || 'Test notification sent');
-        document.getElementById('haNotifStatus').textContent = 'Test sent successfully';
+        var el = document.getElementById('haNotifStatus');
+        if (el) el.textContent = 'Test sent successfully';
     } catch (e) {
         const msg = (e.message || '').replace('Error: ', '');
         showToast('Test failed: ' + msg, 'error');
-        document.getElementById('haNotifStatus').textContent = 'Test failed — check service name';
+        var el = document.getElementById('haNotifStatus');
+        if (el) el.textContent = 'Test failed — check service name';
     }
 }
 
@@ -6117,7 +6259,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close modals on backdrop click or Escape
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-            if (document.getElementById('notifPrefsModal').style.display === 'flex') closeNotifPrefs();
+            if (document.getElementById('mgmtNotifPanelModal').style.display === 'flex') closeMgmtNotifPanel();
             else if (document.getElementById('ackModal').style.display === 'flex') closeAckModal();
             else if (document.getElementById('alertsPanelModal').style.display === 'flex') closeAlertsPanel();
             else if (document.getElementById('qrScanModal').style.display === 'flex') closeQRScanner();
@@ -6143,8 +6285,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('ackModal').addEventListener('click', function(e) {
         if (e.target === this) closeAckModal();
     });
-    document.getElementById('notifPrefsModal').addEventListener('click', function(e) {
-        if (e.target === this) closeNotifPrefs();
+    document.getElementById('mgmtNotifPanelModal').addEventListener('click', function(e) {
+        if (e.target === this) closeMgmtNotifPanel();
     });
 });
 </script>

@@ -181,7 +181,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 }
 
 /* Settings gear & notification bell */
-.settings-btn { position: relative; }
 .notif-bell-btn { position: relative; }
 .notif-bell-btn .notif-badge {
     position: absolute; top: -4px; right: -4px;
@@ -192,22 +191,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     align-items: center; justify-content: center;
     padding: 0 4px; line-height: 1;
 }
-/* Settings panel sidebar */
-.settings-sidebar {
-    width: 180px; min-width: 180px; border-right: 1px solid var(--border-light);
-    padding: 12px 0; overflow-y: auto;
-}
-.settings-sidebar-item {
-    padding: 10px 16px; font-size: 13px; cursor: pointer;
-    display: flex; align-items: center; gap: 8px;
-    color: var(--text-secondary); transition: background 0.15s;
-}
-.settings-sidebar-item:hover { background: var(--bg-tile); }
-.settings-sidebar-item.active {
-    background: var(--bg-tile); color: var(--color-primary);
-    font-weight: 600; border-left: 3px solid var(--color-primary);
-}
-.settings-content { flex: 1; padding: 20px 24px; overflow-y: auto; }
 /* Notification event list */
 .notif-item { padding: 10px 0; border-bottom: 1px solid var(--border-light); }
 .notif-item.unread { background: rgba(26,122,76,0.06); border-radius: 6px; padding: 10px; margin-bottom: 4px; }
@@ -246,11 +229,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
     .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
-    #settingsLayout { flex-direction: column !important; }
-    .settings-sidebar { width: 100%; min-width: 100%; border-right: none; border-bottom: 1px solid var(--border-light); padding: 8px 0; display: flex; overflow-x: auto; gap: 0; flex-shrink: 0; }
-    .settings-sidebar-item { white-space: nowrap; padding: 8px 12px; border-left: none !important; }
-    .settings-sidebar-item.active { border-bottom: 2px solid var(--color-primary); border-left: none !important; }
-    .settings-content { padding: 14px 16px; overflow-y: auto; flex: 1; min-height: 0; }
 }
 </style>
 </head>
@@ -272,7 +250,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
         <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue">&#9888;&#65039;</button>
         <button class="dark-toggle notif-bell-btn" onclick="openNotificationsPanel()" title="Notifications">&#128276;<span class="notif-badge" id="notifBellBadge" style="display:none;">0</span></button>
-        <button class="dark-toggle settings-btn" onclick="openSettings()" title="Settings">&#9881;&#65039;</button>
         <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
@@ -565,33 +542,18 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     </div>
 </div>
 
-<!-- Settings Modal -->
-<div id="settingsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;" onclick="if(event.target===this)closeSettings()">
-    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:800px;height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
-            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#9881; Settings</h3>
-            <button onclick="closeSettings()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
-        </div>
-        <div style="display:flex;flex:1;overflow:hidden;" id="settingsLayout">
-            <div class="settings-sidebar" id="settingsSidebar"></div>
-            <div class="settings-content" id="settingsContent">
-                <div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Notifications Panel Modal -->
+<!-- Notifications Panel Modal (with settings inside) -->
 <div id="notifPanelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10001;align-items:center;justify-content:center;" onclick="if(event.target===this)closeNotificationsPanel()">
-    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:500px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:92%;max-width:500px;max-height:85vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);flex-shrink:0;">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128276; Notifications</h3>
-            <div style="display:flex;align-items:center;gap:8px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <button onclick="showNotifSettingsView()" title="Notification Settings" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&#9881;&#65039;</button>
                 <button class="btn btn-secondary btn-sm" id="notifMarkAllBtn" onclick="markAllNotificationsRead()" style="font-size:11px;display:none;">Mark all read</button>
                 <button onclick="closeNotificationsPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
             </div>
         </div>
-        <div id="notifPanelBody" style="padding:12px 20px;overflow-y:auto;flex:1;min-height:0;">
+        <div id="notifPanelBody" style="overflow-y:auto;flex:1;min-height:0;padding:0;">
             <div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>
         </div>
     </div>
@@ -4286,11 +4248,16 @@ async function syncProbeSchedules() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
-// --- Notifications Panel ---
+// --- Notifications Panel (with settings inside) ---
 var _notifPanelEvents = [];
 var _notifUnreadCount = 0;
+var _notifPanelView = 'feed';  // 'feed' or 'settings'
+var _notifPrefs = {};
+var _haNotifSettings = {};
+var _notifSubView = 'main'; // 'main', 'issues', 'system', 'ha'
 
 async function openNotificationsPanel() {
+    _notifPanelView = 'feed';
     var body = document.getElementById('notifPanelBody');
     body.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>';
     document.getElementById('notifPanelModal').style.display = 'flex';
@@ -4299,7 +4266,7 @@ async function openNotificationsPanel() {
         _notifPanelEvents = data.events || [];
         _notifUnreadCount = data.unread_count || 0;
         updateNotifBadge();
-        renderNotificationFeed();
+        renderNotifPanelContent();
     } catch(e) {
         body.innerHTML = '<div style="color:#e74c3c;text-align:center;padding:40px;">Failed to load notifications.</div>';
     }
@@ -4307,6 +4274,14 @@ async function openNotificationsPanel() {
 
 function closeNotificationsPanel() {
     document.getElementById('notifPanelModal').style.display = 'none';
+}
+
+function renderNotifPanelContent() {
+    if (_notifPanelView === 'settings') {
+        renderNotifSettingsView();
+        return;
+    }
+    renderNotificationFeed();
 }
 
 function renderNotificationFeed() {
@@ -4380,49 +4355,22 @@ async function pollNotificationBadge() {
     } catch(e) {}
 }
 
-// --- Settings ---
-var _settingsSections = [
-    { id: 'notifications', icon: '&#128276;', label: 'Notifications' },
-];
-var _activeSettingsSection = 'notifications';
-var _notifPrefs = {};
-var _haNotifSettings = {};
-
-function openSettings() {
+// --- Notification Settings (inside bell panel) ---
+function showNotifSettingsView() {
+    _notifPanelView = 'settings';
     _notifSubView = 'main';
-    document.getElementById('settingsModal').style.display = 'flex';
-    renderSettingsSidebar();
-    loadSettingsSection('notifications');
+    document.getElementById('notifMarkAllBtn').style.display = 'none';
+    loadNotificationSettings();
 }
 
-function closeSettings() {
-    document.getElementById('settingsModal').style.display = 'none';
-}
-
-function renderSettingsSidebar() {
-    var sb = document.getElementById('settingsSidebar');
-    var html = '';
-    _settingsSections.forEach(function(s) {
-        var cls = s.id === _activeSettingsSection ? ' active' : '';
-        html += '<div class="settings-sidebar-item' + cls + '" onclick="loadSettingsSection(\\'' + s.id + '\\')">';
-        html += s.icon + ' ' + esc(s.label);
-        html += '</div>';
-    });
-    sb.innerHTML = html;
-}
-
-async function loadSettingsSection(sectionId) {
-    _activeSettingsSection = sectionId;
-    renderSettingsSidebar();
-    var content = document.getElementById('settingsContent');
-    if (sectionId === 'notifications') {
-        content.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>';
-        await loadNotificationSettings();
-    }
+function backToNotifFeed() {
+    _notifPanelView = 'feed';
+    renderNotifPanelContent();
 }
 
 async function loadNotificationSettings() {
-    var content = document.getElementById('settingsContent');
+    var body = document.getElementById('notifPanelBody');
+    body.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Loading...</div>';
     try {
         var results = await Promise.all([
             api('/notification-preferences'),
@@ -4430,16 +4378,13 @@ async function loadNotificationSettings() {
         ]);
         _notifPrefs = results[0] || {};
         _haNotifSettings = results[1] || {};
-        renderSettingsSidebar();
-        renderNotificationSettings();
+        renderNotifSettingsView();
     } catch(e) {
-        content.innerHTML = '<div style="color:#e74c3c;text-align:center;padding:40px;">Failed to load notification settings.</div>';
+        body.innerHTML = '<div style="color:#e74c3c;text-align:center;padding:40px;">Failed to load notification settings.</div>';
     }
 }
 
-var _notifSubView = 'main'; // 'main', 'issues', 'system', 'ha'
-
-function renderNotificationSettings() {
+function renderNotifSettingsView() {
     if (_notifSubView === 'ha') { renderNotifHA(); return; }
     if (_notifSubView === 'issues') { renderNotifIssues(); return; }
     if (_notifSubView === 'system') { renderNotifSystem(); return; }
@@ -4447,8 +4392,10 @@ function renderNotificationSettings() {
 }
 
 function renderNotifMain() {
-    var content = document.getElementById('settingsContent');
-    var html = '';
+    var body = document.getElementById('notifPanelBody');
+    var html = '<div style="padding:16px 20px 20px 20px;">';
+    html += '<div style="margin-bottom:16px;"><a href="#" onclick="event.preventDefault();backToNotifFeed()" style="font-size:13px;color:var(--color-primary);text-decoration:none;">&laquo; Back to Notifications</a></div>';
+
     var masterEnabled = _notifPrefs.enabled !== false;
 
     // Master toggle
@@ -4466,7 +4413,7 @@ function renderNotifMain() {
 
         // Issues Notifications card
         var issueCount = [_notifPrefs.service_appointments].filter(Boolean).length;
-        html += '<div onclick="_notifSubView=\\'issues\\';renderNotificationSettings();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
+        html += '<div onclick="_notifSubView=\\'issues\\';renderNotifSettingsView();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
         html += '<div style="display:flex;align-items:center;gap:10px;">';
         html += '<span style="font-size:18px;">&#128295;</span>';
         html += '<div><div style="font-size:13px;font-weight:600;color:var(--text-primary);">Issue Notifications</div>';
@@ -4478,7 +4425,7 @@ function renderNotifMain() {
         // System Change Notifications card
         var sysKeys = ['system_changes','weather_changes','moisture_changes','equipment_changes','duration_changes','report_changes'];
         var sysCount = sysKeys.filter(function(k) { return !!_notifPrefs[k]; }).length;
-        html += '<div onclick="_notifSubView=\\'system\\';renderNotificationSettings();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
+        html += '<div onclick="_notifSubView=\\'system\\';renderNotifSettingsView();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
         html += '<div style="display:flex;align-items:center;gap:10px;">';
         html += '<span style="font-size:18px;">&#9881;</span>';
         html += '<div><div style="font-size:13px;font-weight:600;color:var(--text-primary);">System Change Notifications</div>';
@@ -4489,7 +4436,7 @@ function renderNotifMain() {
 
         // HA Push Notifications card
         var haStatus = _haNotifSettings.enabled ? 'On' : 'Off';
-        html += '<div onclick="_notifSubView=\\'ha\\';renderNotificationSettings();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
+        html += '<div onclick="_notifSubView=\\'ha\\';renderNotifSettingsView();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
         html += '<div style="display:flex;align-items:center;gap:10px;">';
         html += '<span style="font-size:18px;">&#127968;</span>';
         html += '<div><div style="font-size:13px;font-weight:600;color:var(--text-primary);">HA Push Notifications</div>';
@@ -4499,11 +4446,12 @@ function renderNotifMain() {
         html += '</div>';
     }
 
-    content.innerHTML = html;
+    html += '</div>';
+    body.innerHTML = html;
 }
 
 function _notifBackBtn() {
-    return '<div onclick="_notifSubView=\\'main\\';renderNotificationSettings();" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--color-primary);font-size:13px;font-weight:500;margin-bottom:12px;"><span style="font-size:16px;">&#9664;</span> Back to Notifications</div>';
+    return '<div onclick="_notifSubView=\\'main\\';renderNotifSettingsView();" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--color-primary);font-size:13px;font-weight:500;margin-bottom:12px;"><span style="font-size:16px;">&#9664;</span> Back</div>';
 }
 
 function _notifToggleRow(key, label, desc) {
@@ -4517,17 +4465,20 @@ function _notifToggleRow(key, label, desc) {
 }
 
 function renderNotifIssues() {
-    var content = document.getElementById('settingsContent');
-    var html = _notifBackBtn();
+    var body = document.getElementById('notifPanelBody');
+    var html = '<div style="padding:16px 20px 20px 20px;">';
+    html += _notifBackBtn();
     html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">&#128295; Issue Notifications</h4>';
     html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px 0;">Notifications related to service appointments and issue tracking.</p>';
     html += _notifToggleRow('service_appointments', 'Service Appointments', 'When a service visit is scheduled or rescheduled');
-    content.innerHTML = html;
+    html += '</div>';
+    body.innerHTML = html;
 }
 
 function renderNotifSystem() {
-    var content = document.getElementById('settingsContent');
-    var html = _notifBackBtn();
+    var body = document.getElementById('notifPanelBody');
+    var html = '<div style="padding:16px 20px 20px 20px;">';
+    html += _notifBackBtn();
     html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">&#9881; System Change Notifications</h4>';
     html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px 0;">Notifications when management modifies your system settings.</p>';
     html += _notifToggleRow('system_changes', 'System Pause / Resume', 'When management pauses or resumes your irrigation system');
@@ -4536,12 +4487,14 @@ function renderNotifSystem() {
     html += _notifToggleRow('equipment_changes', 'Equipment Settings', 'When pump or water source settings change');
     html += _notifToggleRow('duration_changes', 'Zone Durations', 'When adjusted zone durations are applied or restored');
     html += _notifToggleRow('report_changes', 'Report Settings', 'When PDF report branding is changed');
-    content.innerHTML = html;
+    html += '</div>';
+    body.innerHTML = html;
 }
 
 function renderNotifHA() {
-    var content = document.getElementById('settingsContent');
-    var html = _notifBackBtn();
+    var body = document.getElementById('notifPanelBody');
+    var html = '<div style="padding:16px 20px 20px 20px;">';
+    html += _notifBackBtn();
     html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">&#127968; HA Push Notifications</h4>';
     html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 16px 0;">Send push notifications (mobile app, SMS, etc.) through your Home Assistant notification service when management makes changes.</p>';
 
@@ -4553,11 +4506,11 @@ function renderNotifHA() {
     // Notify service selector
     html += '<div style="margin-bottom:12px;">';
     html += '<label style="font-size:13px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Notify Service</label>';
-    html += '<div style="display:flex;gap:6px;align-items:center;">';
-    html += '<select id="hoHaNotifyService" style="flex:1;padding:8px 12px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);">';
+    html += '<div style="display:flex;gap:6px;align-items:center;min-width:0;">';
+    html += '<select id="hoHaNotifyService" style="flex:1;min-width:0;padding:8px 10px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;max-width:100%;">';
     html += '<option value="">-- Select a notify service --</option>';
     html += '</select>';
-    html += '<button class="btn btn-secondary btn-sm" onclick="loadHomeownerNotifyServices()" title="Refresh service list" style="padding:6px 10px;font-size:16px;line-height:1;">&#8635;</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="loadHomeownerNotifyServices()" title="Refresh" style="padding:6px 10px;font-size:16px;line-height:1;flex-shrink:0;">&#8635;</button>';
     html += '</div>';
     html += '<div id="hoHaServiceHint" style="font-size:11px;color:var(--text-placeholder);margin-top:3px;">Auto-detected from Home Assistant</div>';
     html += '</div>';
@@ -4587,7 +4540,8 @@ function renderNotifHA() {
     html += '</div>';
     html += '<div id="hoHaNotifStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>';
 
-    content.innerHTML = html;
+    html += '</div>';
+    body.innerHTML = html;
 
     // Load the services dropdown after rendering
     loadHomeownerNotifyServices();
@@ -5355,7 +5309,6 @@ function closeDynamicModal() {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         if (document.getElementById('notifPanelModal').style.display === 'flex') closeNotificationsPanel();
-        else if (document.getElementById('settingsModal').style.display === 'flex') closeSettings();
         else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
         else if (document.getElementById('dynamicModal').style.display === 'flex') closeDynamicModal();
     }
