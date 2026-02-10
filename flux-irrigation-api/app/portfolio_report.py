@@ -579,10 +579,20 @@ def build_portfolio_report(
                 pass
 
     pdf._is_first_page = False
+    _first_section = True  # First section after cover always gets a new page
+
+    def _section_break():
+        nonlocal _first_section
+        if _first_section:
+            pdf.add_page()
+            _first_section = False
+        else:
+            pdf.spacer(2)
+            pdf.divider()
 
     # ── Section: Portfolio Overview ───────────────────────────────
     if "portfolio_overview" not in hidden_sections:
-        pdf.add_page()
+        _section_break()
         pdf.section_header("Portfolio Overview")
 
         # Stat tiles row
@@ -617,7 +627,7 @@ def build_portfolio_report(
 
     # ── Section: Irrigation Activity ─────────────────────────────
     if "irrigation_activity" not in hidden_sections:
-        pdf.add_page()
+        _section_break()
         pdf.section_header("Irrigation Activity")
 
         pdf.key_value("Total Runs (all properties)", str(stats["total_runs"]))
@@ -656,7 +666,7 @@ def build_portfolio_report(
 
     # ── Section: Water Usage ─────────────────────────────────────
     if "water_usage" not in hidden_sections:
-        pdf.add_page()
+        _section_break()
         pdf.section_header("Estimated Water Usage")
 
         pdf.key_value("Total Est. Gallons (portfolio)", f"{stats['total_gallons']:,.0f} gal")
@@ -691,7 +701,7 @@ def build_portfolio_report(
 
     # ── Section: Weather Impact ──────────────────────────────────
     if "weather_impact" not in hidden_sections:
-        pdf.add_page()
+        _section_break()
         pdf.section_header("Weather Impact Analysis")
 
         pdf.key_value("Weather Control Enabled", f"{stats['weather_enabled_count']} of {stats['total_properties']} properties")
@@ -734,7 +744,7 @@ def build_portfolio_report(
 
     # ── Section: Moisture Analytics ──────────────────────────────
     if "moisture_analytics" not in hidden_sections:
-        pdf.add_page()
+        _section_break()
 
         # Section header with Gophr logo
         pdf._ensure_space(20)
@@ -812,7 +822,7 @@ def build_portfolio_report(
 
     # ── Section: System Health ───────────────────────────────────
     if "system_health" not in hidden_sections:
-        pdf.add_page()
+        _section_break()
         pdf.section_header("System Health & Issues")
 
         pdf.key_value("Total Open Issues", str(stats["total_issues"]))
@@ -855,7 +865,7 @@ def build_portfolio_report(
 
     # ── Section: Property Comparison ─────────────────────────────
     if "property_comparison" not in hidden_sections:
-        pdf.add_page()
+        _section_break()
         pdf.section_header("Property Comparison")
 
         cols = _scale_cols([
@@ -883,7 +893,7 @@ def build_portfolio_report(
 
     # ── Section: Recommendations ─────────────────────────────────
     if "recommendations" not in hidden_sections:
-        pdf.add_page()
+        _section_break()
         pdf.section_header("Recommendations")
 
         recommendations = []
