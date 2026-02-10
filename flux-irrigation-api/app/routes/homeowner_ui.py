@@ -245,10 +245,11 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
     .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
-    .settings-sidebar { width: 100%; min-width: 100%; border-right: none; border-bottom: 1px solid var(--border-light); padding: 8px 0; display: flex; overflow-x: auto; gap: 0; }
+    #settingsLayout { flex-direction: column !important; }
+    .settings-sidebar { width: 100%; min-width: 100%; border-right: none; border-bottom: 1px solid var(--border-light); padding: 8px 0; display: flex; overflow-x: auto; gap: 0; flex-shrink: 0; }
     .settings-sidebar-item { white-space: nowrap; padding: 8px 12px; border-left: none !important; }
     .settings-sidebar-item.active { border-bottom: 2px solid var(--color-primary); border-left: none !important; }
-    .settings-content { padding: 14px 16px; }
+    .settings-content { padding: 14px 16px; overflow-y: auto; flex: 1; min-height: 0; }
 }
 </style>
 </head>
