@@ -1293,21 +1293,73 @@ async function initDetailMap(addrData) {
     }
 }
 
+let mapLocked = true;
+
 function showMap(lat, lon, label) {
     const mapEl = document.getElementById('detailMap');
     mapEl.style.display = 'block';
     if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    mapLocked = true;
     // Delay Leaflet init until after the container is visible and laid out
     requestAnimationFrame(() => {
-        leafletMap = L.map('detailMap').setView([lat, lon], 16);
+        leafletMap = L.map('detailMap', {
+            scrollWheelZoom: false,
+            dragging: false,
+            touchZoom: false,
+            doubleClickZoom: false,
+            boxZoom: false,
+            keyboard: false,
+            zoomControl: false,
+        }).setView([lat, lon], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors',
             maxZoom: 19,
         }).addTo(leafletMap);
-        L.marker([lat, lon]).addTo(leafletMap).bindPopup(esc(label)).openPopup();
+        L.marker([lat, lon]).addTo(leafletMap);
+        // Lock/unlock toggle control
+        const LockControl = L.Control.extend({
+            options: { position: 'topright' },
+            onAdd: function() {
+                const btn = L.DomUtil.create('div', 'leaflet-bar');
+                btn.id = 'mapLockBtn';
+                btn.innerHTML = '<a href="#" title="Unlock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128274;</a>';
+                btn.style.cursor = 'pointer';
+                L.DomEvent.on(btn, 'click', function(e) {
+                    L.DomEvent.stop(e);
+                    toggleMapLock();
+                });
+                return btn;
+            }
+        });
+        leafletMap.addControl(new LockControl());
         setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 300);
         setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 1000);
     });
+}
+
+function toggleMapLock() {
+    if (!leafletMap) return;
+    mapLocked = !mapLocked;
+    const btn = document.getElementById('mapLockBtn');
+    if (mapLocked) {
+        leafletMap.scrollWheelZoom.disable();
+        leafletMap.dragging.disable();
+        leafletMap.touchZoom.disable();
+        leafletMap.doubleClickZoom.disable();
+        leafletMap.boxZoom.disable();
+        leafletMap.keyboard.disable();
+        leafletMap.zoomControl && leafletMap.zoomControl.remove();
+        if (btn) btn.innerHTML = '<a href="#" title="Unlock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128274;</a>';
+    } else {
+        leafletMap.scrollWheelZoom.enable();
+        leafletMap.dragging.enable();
+        leafletMap.touchZoom.enable();
+        leafletMap.doubleClickZoom.enable();
+        leafletMap.boxZoom.enable();
+        leafletMap.keyboard.enable();
+        L.control.zoom({ position: 'topleft' }).addTo(leafletMap);
+        if (btn) btn.innerHTML = '<a href="#" title="Lock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128275;</a>';
+    }
 }
 
 // --- Dashboard Loading ---
