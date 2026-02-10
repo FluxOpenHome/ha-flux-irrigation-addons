@@ -966,6 +966,7 @@ async function loadCustomers() {
     try {
         const data = await api('/customers');
         allCustomers = data.customers || [];
+        _restoreProbeCache();  // Instant badge rendering from cached probe statuses
         populateStateFilter(allCustomers);
         populateCityFilter(allCustomers);
         document.getElementById('searchBar').style.display = allCustomers.length > 0 ? 'flex' : 'none';
@@ -1007,6 +1008,27 @@ async function refreshRunningStatuses() {
     }
 }
 
+function _restoreProbeCache() {
+    // Restore probe statuses from sessionStorage for instant badge rendering
+    try {
+        const cached = sessionStorage.getItem('_probeStatusCache');
+        if (cached) {
+            const map = JSON.parse(cached);
+            for (const c of allCustomers) {
+                if (map[c.id] !== undefined) c._has_probes = map[c.id];
+            }
+        }
+    } catch(_) {}
+}
+function _saveProbeCache() {
+    try {
+        const map = {};
+        for (const c of allCustomers) {
+            if (c._has_probes !== undefined) map[c.id] = c._has_probes;
+        }
+        sessionStorage.setItem('_probeStatusCache', JSON.stringify(map));
+    } catch(_) {}
+}
 async function refreshProbeStatuses() {
     // Only check online customers — offline ones aren't reachable
     const reachable = allCustomers.filter(c => getCustomerStatus(c) === 'online');
@@ -1014,14 +1036,13 @@ async function refreshProbeStatuses() {
     const checks = reachable.map(async c => {
         try {
             const data = await api('/customers/' + c.id + '/moisture/probes?t=' + Date.now());
-            console.log('[PROBES] ' + c.name + ': total=' + (data && data.total));
             c._has_probes = !!(data && data.total && data.total > 0);
         } catch(e) {
-            console.log('[PROBES] ' + c.name + ': error — ' + e.message);
             c._has_probes = false;
         }
     });
     await Promise.all(checks);
+    _saveProbeCache();
     console.log('[PROBES] Done. Customers with probes: ' + allCustomers.filter(c => c._has_probes).map(c => c.name).join(', '));
     filterCustomers();
 }
