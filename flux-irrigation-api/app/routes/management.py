@@ -100,7 +100,7 @@ async def _notify_homeowner(
     block or break the primary management operation.
     """
     try:
-        await management_client.proxy_request(
+        status_code, resp_data = await management_client.proxy_request(
             conn, "POST", "/admin/api/homeowner/notifications/record",
             json_body={
                 "event_type": event_type,
@@ -108,8 +108,9 @@ async def _notify_homeowner(
                 "message": message,
             },
         )
-    except Exception:
-        pass
+        print(f"[NOTIFY_HOMEOWNER] {event_type} → {title} | proxy status={status_code}, resp={resp_data}")
+    except Exception as exc:
+        print(f"[NOTIFY_HOMEOWNER] {event_type} → {title} | EXCEPTION: {exc}")
 
 
 def _customer_connection(customer: customer_store.Customer) -> ConnectionKeyData:
@@ -1303,9 +1304,11 @@ async def acknowledge_customer_issue(customer_id: str, issue_id: str, request: R
     if status_code != 200:
         return _proxy_error(status_code, data)
     # Notify homeowner about service date if present
+    print(f"[ACK_ISSUE] status={status_code}, data_type={type(data).__name__}, data_keys={list(data.keys()) if isinstance(data, dict) else 'N/A'}")
     if status_code == 200 and isinstance(data, dict):
         issue_data = data.get("issue", {})
         sd = issue_data.get("service_date")
+        print(f"[ACK_ISSUE] service_date={sd}, service_date_updated_at={issue_data.get('service_date_updated_at')}")
         if sd:
             if issue_data.get("service_date_updated_at"):
                 ntitle = "Service Date Updated"

@@ -1218,19 +1218,24 @@ async def record_notification(body: RecordNotificationRequest):
     """
     import homeowner_notification_store as hns
     event = hns.record_event(body.event_type, body.title, body.message)
+    print(f"[RECORD_NOTIF] event_type={body.event_type}, title={body.title}, recorded={event is not None}")
 
     # Also send HA push notification if configured
     try:
         import homeowner_notification_config as hnc
-        if hnc.should_notify(body.event_type):
+        should = hnc.should_notify(body.event_type)
+        print(f"[RECORD_NOTIF] should_notify({body.event_type}) = {should}")
+        if should:
             config = hnc.load_config()
             service_name = config["ha_notify_service"]
-            await ha_client.call_service("notify", service_name, {
+            print(f"[RECORD_NOTIF] Sending HA notification via notify.{service_name}")
+            result = await ha_client.call_service("notify", service_name, {
                 "message": body.message or body.title,
                 "title": "Flux: " + body.title,
             })
-    except Exception:
-        pass  # Best-effort — never block the primary operation
+            print(f"[RECORD_NOTIF] HA notification result: {result}")
+    except Exception as exc:
+        print(f"[RECORD_NOTIF] HA notification EXCEPTION: {exc}")
 
     return {"recorded": event is not None, "event": event}
 
