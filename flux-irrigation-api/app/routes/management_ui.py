@@ -188,8 +188,8 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea { backgroun
 .detail-header h2 { font-size: 22px; font-weight: 600; }
 
 /* Zone/Sensor Tiles */
-.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px 14px 42px 14px; border: 1px solid var(--border-light); min-height: 140px; position: relative; }
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px 14px 36px 14px; border: 1px solid var(--border-light); min-height: 130px; position: relative; }
 .tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
 .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; padding-right: 70px; }
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
@@ -1136,7 +1136,7 @@ function renderCustomerGrid(customers) {
                     </span>
                 </div>
                 ${contactName ? '<div class="card-contact" style="font-size:13px;color:var(--text-secondary-alt);margin-bottom:2px;">&#128100; ' + esc(contactName) + '</div>' : ''}
-                ${addr ? '<div class="customer-address" onclick="openAddressInMaps(\\''+encodeURIComponent(addr)+'\\');event.stopPropagation();" style="cursor:pointer;color:var(--color-link);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;" title="Open in Maps">' + esc(addr) + '</div>' : ''}
+                ${addr ? '<div class="customer-address" style="font-size:13px;color:var(--text-muted);margin-bottom:2px;">' + esc(addr) + '</div>' : ''}
                 ${c.phone ? '<div class="card-phone" style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">&#128222; <a href="tel:' + esc(c.phone) + '" style="color:var(--color-link);text-decoration:none;" onclick="event.stopPropagation();">' + esc(c.phone) + '</a></div>' : ''}
                 ${c.notes ? '<div class="card-notes" style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">' + esc(c.notes) + '</div>' : ''}
                 <div class="customer-stats">
