@@ -190,6 +190,12 @@ async def _awake_poll_loop():
                 was_awake = _probe_awake_cache.get(probe_id, False)
                 now_awake = await _check_probe_awake(probe_id)
 
+                # Log state transitions (not every poll — only changes)
+                if now_awake != was_awake:
+                    display = probe.get("display_name", probe_id)
+                    transition = "SLEEPING → AWAKE" if now_awake else "AWAKE → SLEEPING"
+                    print(f"[MOISTURE] Probe {display} state change: {transition}")
+
                 # --- Schedule-aware prep: time-based trigger ---
                 prep = probe_prep.get(probe_id)
                 if prep and prep.get("state") == "idle":
