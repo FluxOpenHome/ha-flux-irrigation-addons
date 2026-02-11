@@ -149,7 +149,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
 .tile-state.on { color: var(--color-success); font-weight: 500; }
 .tile-actions { display: flex; gap: 6px; margin-top:auto; }
-.tile-sprinkler-icon { position:absolute; bottom:14px; right:14px; display:flex; align-items:flex-end; gap:3px; color:var(--text-muted); pointer-events:none; }
+.tile-sprinkler-icon { position:absolute; bottom:14px; right:6px; display:flex; align-items:flex-end; gap:3px; color:var(--text-muted); pointer-events:none; }
 .tile-sprinkler-icon svg { opacity:0.45; transition:opacity 0.3s ease; }
 .tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
 @keyframes sprinklerPulse { 0%,100%{ opacity:0.5; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
