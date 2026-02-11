@@ -135,6 +135,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Zone/Sensor Tiles */
 .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 .tile { background: var(--bg-tile); border-radius: 8px; padding: 14px; border: 1px solid var(--border-light); min-height: 130px; position: relative; display:flex; flex-direction:column; }
+#cardBody_status .tile { min-height: auto; flex-direction:row; align-items:center; gap:12px; }
+#cardBody_status .tile .status-tile-text { flex:1; min-width:0; }
+#cardBody_status .tile .status-tile-text .tile-name { padding-right:0; margin-bottom:2px; }
+#cardBody_status .tile .status-tile-text .tile-state { margin-bottom:0; }
+.status-tile-icon { flex-shrink:0; color:var(--text-muted); opacity:0.4; }
+.status-tile-icon.icon-on { color:var(--color-success); opacity:0.75; }
+.status-tile-icon.icon-warn { color:var(--color-warning,#f39c12); opacity:0.75; }
+.status-tile-icon.icon-off { color:var(--color-danger); opacity:0.7; }
 .tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
 .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; padding-right: 70px; }
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
@@ -655,6 +663,47 @@ function getSprinklerSvg(category, size) {
         'valve': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor"><rect x="1" y="13" width="22" height="5" rx="1.5" opacity="0.5"/><rect x="8" y="11" width="8" height="9" rx="2"/><rect x="11" y="4" width="2" height="7" rx="0.5"/><circle cx="12" cy="4" r="3" opacity="0.6"/><circle cx="12" cy="4" r="1.5"/></svg>'
     };
     return svgs[category] || '';
+}
+
+function getStatusTileSvg(key, size) {
+    var s = size || 32;
+    var svgs = {
+        'connection': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
+            + '<path d="M12 18.5 C12.8 18.5 13.5 19.2 13.5 20 C13.5 20.8 12.8 21.5 12 21.5 C11.2 21.5 10.5 20.8 10.5 20 C10.5 19.2 11.2 18.5 12 18.5Z"/>'
+            + '<path d="M8.5 15.5 Q12 12.5 15.5 15.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7"/>'
+            + '<path d="M5.5 12 Q12 7 18.5 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"/>'
+            + '<path d="M2.5 8.5 Q12 2 21.5 8.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.35"/>'
+            + '</svg>',
+        'system': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
+            + '<circle cx="12" cy="12" r="10" opacity="0.15"/>'
+            + '<circle cx="12" cy="12" r="7" opacity="0.25"/>'
+            + '<path d="M12 5 L12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>'
+            + '<path d="M8 6.5 Q6 8 5.5 10.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"/>'
+            + '<path d="M16 6.5 Q18 8 18.5 10.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"/>'
+            + '</svg>',
+        'zones': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
+            + '<rect x="2" y="2" width="8.5" height="8.5" rx="2" opacity="0.6"/>'
+            + '<rect x="13.5" y="2" width="8.5" height="8.5" rx="2" opacity="0.4"/>'
+            + '<rect x="2" y="13.5" width="8.5" height="8.5" rx="2" opacity="0.4"/>'
+            + '<rect x="13.5" y="13.5" width="8.5" height="8.5" rx="2" opacity="0.25"/>'
+            + '</svg>',
+        'sensors': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
+            + '<rect x="10" y="3" width="4" height="15" rx="2" opacity="0.3"/>'
+            + '<rect x="10.5" y="10" width="3" height="7.5" rx="1.5" opacity="0.65"/>'
+            + '<circle cx="12" cy="18.5" r="3.5" opacity="0.6"/>'
+            + '<circle cx="12" cy="18.5" r="2"/>'
+            + '<path d="M6 10 L9.5 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>'
+            + '<path d="M6 13 L9.5 13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>'
+            + '<path d="M6 7 L9.5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>'
+            + '</svg>',
+        'rain': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
+            + '<path d="M19 11 Q21 11 21 13 Q21 15 19 15 L6 15 Q3 15 3 12.5 Q3 10 6 10 Q6 6 10 5 Q14 4 16 7 Q19 7 19 11Z" opacity="0.45"/>'
+            + '<path d="M7.5 17.5 L6 21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>'
+            + '<path d="M11.5 17.5 L10 21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>'
+            + '<path d="M15.5 17.5 L14 21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>'
+            + '</svg>'
+    };
+    return svgs[key] || '';
 }
 
 // --- Collapsible Cards ---
@@ -1450,11 +1499,23 @@ async function loadStatus() {
 
         el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
-            <div class="tile"><div class="tile-name">Connection</div><div class="tile-state ${s.ha_connected ? 'on' : ''}">${s.ha_connected ? 'Connected' : 'Disconnected'}</div></div>
-            <div class="tile"><div class="tile-name">System</div><div class="tile-state ${s.system_paused ? '' : 'on'}">${s.system_paused ? 'Paused' : 'Active'}</div></div>
-            <div class="tile"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
-            <div class="tile"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
-            ${s.rain_delay_active ? '<div class="tile"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div>' : ''}
+            <div class="tile">
+                <div class="status-tile-icon ${s.ha_connected ? 'icon-on' : 'icon-off'}">${getStatusTileSvg('connection', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">Connection</div><div class="tile-state ${s.ha_connected ? 'on' : ''}">${s.ha_connected ? 'Connected' : 'Disconnected'}</div></div>
+            </div>
+            <div class="tile">
+                <div class="status-tile-icon ${s.system_paused ? 'icon-warn' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused ? '' : 'on'}">${s.system_paused ? 'Paused' : 'Active'}</div></div>
+            </div>
+            <div class="tile">
+                <div class="status-tile-icon ${s.active_zones > 0 ? 'icon-on' : ''}">${getStatusTileSvg('zones', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">Zones</div><div class="tile-state ${s.active_zones > 0 ? 'on' : ''}">${s.active_zones > 0 ? esc(resolveZoneName(s.active_zone_entity_id, s.active_zone_name)) + ' running' : 'Idle (' + (s.total_zones || 0) + ' zones)'}</div></div>
+            </div>
+            <div class="tile">
+                <div class="status-tile-icon">${getStatusTileSvg('sensors', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">Sensors</div><div class="tile-state">${s.total_sensors || 0} total</div></div>
+            </div>
+            ${s.rain_delay_active ? '<div class="tile"><div class="status-tile-icon icon-warn">' + getStatusTileSvg('rain', 32) + '</div><div class="status-tile-text"><div class="tile-name">Rain Delay</div><div class="tile-state">Until ' + esc(s.rain_delay_until || 'unknown') + '</div></div></div>' : ''}
         </div>`;
         // Report mini-card — below status tiles
         el.innerHTML += `
