@@ -235,10 +235,6 @@ async def list_devices(show_all: bool = False):
     Pass ?show_all=true to return every device.
     """
     config = get_config()
-    if config.mode != "homeowner":
-        raise HTTPException(
-            status_code=400, detail="Device management is only available in homeowner mode."
-        )
     import ha_client
 
     try:
@@ -305,10 +301,6 @@ async def list_devices(show_all: bool = False):
 async def select_device(body: DeviceSelect):
     """Select the irrigation controller device and resolve its entities."""
     config = get_config()
-    if config.mode != "homeowner":
-        raise HTTPException(
-            status_code=400, detail="Device management is only available in homeowner mode."
-        )
     import ha_client
 
     # Verify the device exists and get its entities
@@ -482,24 +474,7 @@ async def update_general_settings(body: SettingsUpdate):
 # --- Mode Switch ---
 
 
-class ModeSwitch(BaseModel):
-    mode: str = Field(pattern=r"^(homeowner|management)$")
-
-
-@router.put("/api/mode", summary="Switch operating mode")
-async def switch_mode(body: ModeSwitch):
-    """Switch between homeowner and management mode."""
-    options = _load_options()
-    options["mode"] = body.mode
-    await _save_options(options)
-    return {
-        "success": True,
-        "mode": body.mode,
-        "message": f"Switched to {body.mode} mode. Reload the page.",
-    }
-
-
-# --- Contact Info (Homeowner Mode) ---
+# --- Contact Info ---
 
 
 class ContactInfoRequest(BaseModel):
@@ -580,11 +555,6 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     from connection_key import ConnectionKeyData, encode_connection_key
 
     config = get_config()
-    if config.mode != "homeowner":
-        raise HTTPException(
-            status_code=400,
-            detail="Connection keys can only be generated in homeowner mode.",
-        )
 
     # Validate URL before saving
     url = body.url.strip()
@@ -794,11 +764,6 @@ async def revoke_management_access():
     The homeowner can re-generate a new connection key later if needed.
     """
     config = get_config()
-    if config.mode != "homeowner":
-        raise HTTPException(
-            status_code=400,
-            detail="This endpoint is only available in homeowner mode.",
-        )
 
     options = _load_options()
     existing_keys = options.get("api_keys", [])
@@ -921,19 +886,7 @@ async def get_connection_key_info():
 
 @router.get("", response_class=HTMLResponse, include_in_schema=False)
 async def admin_ui(request: Request):
-    """Serve the admin settings UI (mode-dependent)."""
-    config = get_config()
-    if config.mode == "management":
-        from routes.management_ui import MANAGEMENT_HTML
-        return HTMLResponse(
-            content=MANAGEMENT_HTML,
-            headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0",
-            },
-        )
-    # Homeowner mode: check view param
+    """Serve the admin settings UI."""
     view = request.query_params.get("view", "")
     no_cache = {
         "Cache-Control": "no-cache, no-store, must-revalidate",

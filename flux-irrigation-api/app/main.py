@@ -1,9 +1,11 @@
 """
 Flux Open Home Irrigation Control
 ====================================
-A Home Assistant add-on that supports two modes:
-- Homeowner: Exposes a secure, scoped API for irrigation management
-- Management: Dashboard to monitor and control multiple homeowner systems
+A Home Assistant add-on for homeowner irrigation management.
+Exposes a secure, scoped API and dashboard for controlling zones,
+sensors, schedules, weather rules, and moisture probes.
+
+Management features have been moved to the Flux Management Server (cloud).
 
 Author: Brandon / Flux Open Home
 """
@@ -22,7 +24,7 @@ import os
 
 from config import get_config, async_initialize
 from audit_log import cleanup_old_logs
-from routes import zones, sensors, entities, history, system, admin, management, homeowner, weather, moisture, issues, dashboard_clone, report_pdf
+from routes import zones, sensors, entities, history, system, admin, homeowner, weather, moisture, issues, dashboard_clone, report_pdf
 
 
 PROXY_SERVICE_NAMES = [
@@ -331,22 +333,21 @@ async def _periodic_moisture_evaluation():
     while True:
         try:
             config = get_config()
-            if config.mode == "homeowner":
-                from routes.moisture import run_moisture_evaluation, calculate_irrigation_timeline
-                result = await run_moisture_evaluation()
-                if not result.get("skipped"):
-                    print(f"[MAIN] Moisture evaluation: {result.get('applied', 0)} zone(s) adjusted")
+            from routes.moisture import run_moisture_evaluation, calculate_irrigation_timeline
+            result = await run_moisture_evaluation()
+            if not result.get("skipped"):
+                print(f"[MAIN] Moisture evaluation: {result.get('applied', 0)} zone(s) adjusted")
 
-                # Recalculate schedule timeline (replaces old sync_schedule_times_to_probes)
-                try:
-                    timeline = await calculate_irrigation_timeline()
-                    sched_count = len(timeline.get("schedules", []))
-                    prep_count = len(timeline.get("probe_prep", {}))
-                    if prep_count > 0:
-                        print(f"[MAIN] Schedule timeline: {sched_count} schedule(s), "
-                              f"{prep_count} probe(s) with prep timing")
-                except Exception as tl_err:
-                    print(f"[MAIN] Schedule timeline error: {tl_err}")
+            # Recalculate schedule timeline (replaces old sync_schedule_times_to_probes)
+            try:
+                timeline = await calculate_irrigation_timeline()
+                sched_count = len(timeline.get("schedules", []))
+                prep_count = len(timeline.get("probe_prep", {}))
+                if prep_count > 0:
+                    print(f"[MAIN] Schedule timeline: {sched_count} schedule(s), "
+                          f"{prep_count} probe(s) with prep timing")
+            except Exception as tl_err:
+                print(f"[MAIN] Schedule timeline error: {tl_err}")
         except Exception as e:
             print(f"[MAIN] Moisture evaluation error: {e}")
 
@@ -411,293 +412,11 @@ async def _periodic_entity_refresh():
             print(f"[MAIN] Entity refresh error: {e}")
 
 
-async def _periodic_customer_health_check():
-    """Periodically check connectivity to all customers (management mode only)."""
-    while True:
-        try:
-            config = get_config()
-            if config.mode == "management":
-                from customer_store import load_customers, update_customer_status
-                from management_client import check_homeowner_connection
-                from connection_key import ConnectionKeyData
-
-                customers = load_customers()
-                # Collect issue data for HA notification check
-                customer_issues = {}  # customer_id → {name, issues: [...]}
-
-                for customer in customers:
-                    try:
-                        conn = ConnectionKeyData(
-                            url=customer.url,
-                            key=customer.api_key,
-                            ha_token=customer.ha_token or None,
-                            mode=customer.connection_mode or "direct",
-                        )
-                        result = await check_homeowner_connection(conn)
-
-                        # Also fetch issue summary if customer is reachable
-                        if result.get("reachable") and result.get("authenticated"):
-                            try:
-                                import management_client
-                                issue_status, issue_data = await management_client.proxy_request(
-                                    conn, "GET", "/admin/api/homeowner/issues/summary"
-                                )
-                                if issue_status == 200:
-                                    result["issue_summary"] = issue_data
-                                    customer_issues[customer.id] = {
-                                        "name": customer.name,
-                                        "issues": issue_data.get("issues", []),
-                                        "dismissed_ids": issue_data.get("dismissed_ids", []),
-                                    }
-                            except Exception:
-                                pass  # Don't fail health check over issue polling
-
-                        update_customer_status(customer.id, result)
-                    except Exception as e:
-                        print(f"[MAIN] Health check failed for {customer.name}: {e}")
-
-                # Check for new issues and send HA notifications
-                await _check_and_notify_new_issues(customer_issues)
-
-        except Exception as e:
-            print(f"[MAIN] Customer health check error: {e}")
-        await asyncio.sleep(300)  # Every 5 minutes
-
-
-async def _periodic_issue_poll():
-    """Fast issue-only poll — runs every 60s to detect new issues quickly.
-
-    Only fetches the lightweight issue summary from each reachable customer.
-    Does NOT run full health checks (connectivity, system status, etc.).
-    The 5-minute health check still handles full status updates.
-    """
-    await asyncio.sleep(30)  # Stagger from the health check start
-    while True:
-        try:
-            config = get_config()
-            if config.mode == "management":
-                from customer_store import load_customers, update_customer_issue_summary
-                from connection_key import ConnectionKeyData
-                import management_client
-
-                customers = load_customers()
-                customer_issues = {}
-
-                for customer in customers:
-                    # Skip customers with no successful health check yet
-                    if not customer.last_status:
-                        continue
-                    if not (customer.last_status.get("reachable") and customer.last_status.get("authenticated")):
-                        continue
-                    try:
-                        conn = ConnectionKeyData(
-                            url=customer.url,
-                            key=customer.api_key,
-                            ha_token=customer.ha_token or None,
-                            mode=customer.connection_mode or "direct",
-                        )
-                        status_code, data = await management_client.proxy_request(
-                            conn, "GET", "/admin/api/homeowner/issues/summary"
-                        )
-                        if status_code == 200:
-                            customer_issues[customer.id] = {
-                                "name": customer.name,
-                                "issues": data.get("issues", []),
-                                "dismissed_ids": data.get("dismissed_ids", []),
-                            }
-                            # Update cached issue_summary for property cards
-                            try:
-                                update_customer_issue_summary(customer.id, data)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass  # Silent — health check will report errors
-
-                if customer_issues:
-                    await _check_and_notify_new_issues(customer_issues)
-
-        except Exception as e:
-            print(f"[MAIN] Issue poll error: {e}")
-        await asyncio.sleep(60)  # Every 60 seconds
-
-
-async def _check_and_notify_new_issues(customer_issues: dict):
-    """Compare current issues against last known state and send notifications.
-
-    Always records events to the management notification store (in-app bell feed)
-    regardless of HA notification settings. HA push notifications are only sent
-    when enabled and configured.
-
-    Also detects newly dismissed issues (homeowner accepted a resolution) by
-    comparing dismissed_ids from the issue summary against last_known_dismissed.
-    """
-    try:
-        import notification_config
-        import ha_client
-
-        notif_config = notification_config.load_config()
-        last_known = notif_config.get("last_known_issues", {})
-        last_known_dismissed = notif_config.get("last_known_dismissed", {})
-        last_known_returned = notif_config.get("last_known_returned", {})
-
-        ha_enabled = notif_config.get("enabled") and notif_config.get("ha_notify_service")
-        service_name = notif_config.get("ha_notify_service", "")
-
-        # Start with last_known so customers whose health check failed
-        # this cycle keep their issue IDs (prevents duplicate notifications)
-        new_known = dict(last_known)
-        new_known_dismissed = dict(last_known_dismissed)
-        new_known_returned = dict(last_known_returned)
-
-        all_new_issues = []  # All new/returned issues (for management notification store)
-        all_dismissed = []   # All newly dismissed issues
-        ha_notifications = []  # Issues that pass HA severity filter
-
-        for cust_id, data in customer_issues.items():
-            issues = data.get("issues", [])
-            current_ids = [i["id"] for i in issues]
-            dismissed_ids = data.get("dismissed_ids", [])
-            # Track which issues are currently in "returned" status
-            current_returned_ids = [i["id"] for i in issues if i.get("status") == "returned"]
-            new_known[cust_id] = {"ids": current_ids}
-            new_known_dismissed[cust_id] = {"ids": dismissed_ids}
-            new_known_returned[cust_id] = {"ids": current_returned_ids}
-
-            prev_ids = set((last_known.get(cust_id) or {}).get("ids", []))
-            prev_returned = set((last_known_returned.get(cust_id) or {}).get("ids", []))
-            for issue in issues:
-                is_new = issue["id"] not in prev_ids
-                # Detect returned issues even if the ID was already tracked
-                # (resolve→return can happen within a single poll cycle)
-                is_returned = issue.get("status") == "returned" and issue["id"] not in prev_returned
-                if is_new or is_returned:
-                    severity = issue.get("severity", "")
-                    new_issue_info = {
-                        "customer_id": cust_id,
-                        "customer_name": data["name"],
-                        "severity": severity,
-                        "description": issue.get("description", ""),
-                        "is_returned": issue.get("status") == "returned",
-                        "return_reason": issue.get("return_reason", ""),
-                    }
-                    all_new_issues.append(new_issue_info)
-                    if ha_enabled and notification_config.should_notify(severity):
-                        ha_notifications.append(new_issue_info)
-
-            # Detect newly dismissed issues
-            prev_dismissed = set((last_known_dismissed.get(cust_id) or {}).get("ids", []))
-            for did in dismissed_ids:
-                if did not in prev_dismissed:
-                    all_dismissed.append({
-                        "customer_id": cust_id,
-                        "customer_name": data["name"],
-                        "issue_id": did,
-                    })
-
-        # --- Management notification store (in-app bell feed) ---
-        # Always record events regardless of HA notification settings
-        try:
-            import management_notification_store as mns
-            for issue_info in all_new_issues:
-                sev_label = issue_info["severity"].capitalize() or "Issue"
-                if issue_info.get("is_returned"):
-                    evt_type = "returned"
-                    evt_title = f"Returned {sev_label}: {issue_info['customer_name']}"
-                    reason = issue_info.get("return_reason", "")
-                    evt_msg = issue_info["description"][:150]
-                    if reason:
-                        evt_msg += f" | Homeowner: {reason[:200]}"
-                else:
-                    evt_type = "new_issue"
-                    evt_title = f"New {sev_label}: {issue_info['customer_name']}"
-                    evt_msg = issue_info["description"][:200]
-                mns.record_event(
-                    event_type=evt_type,
-                    customer_id=issue_info["customer_id"],
-                    customer_name=issue_info["customer_name"],
-                    title=evt_title,
-                    message=evt_msg,
-                    severity=issue_info["severity"],
-                )
-
-            # Record dismissed events
-            for dismissed_info in all_dismissed:
-                mns.record_event(
-                    event_type="dismissed",
-                    customer_id=dismissed_info["customer_id"],
-                    customer_name=dismissed_info["customer_name"],
-                    title=f"Issue Dismissed: {dismissed_info['customer_name']}",
-                    message="Homeowner accepted the resolution and dismissed the issue.",
-                    severity="",
-                )
-        except Exception as e:
-            print(f"[MAIN] Management notification store error: {e}")
-
-        # --- HA push notifications (only when enabled) ---
-        if ha_enabled:
-            severity_emojis = {"severe": "🔴", "annoyance": "🟡", "clarification": "🔵"}
-            for notif in ha_notifications:
-                emoji = severity_emojis.get(notif["severity"], "⚠️")
-                sev_label = notif["severity"].capitalize()
-                if notif.get("is_returned"):
-                    message = (
-                        f"{emoji} Returned {sev_label} from {notif['customer_name']}: "
-                        f"{notif['description'][:150]}"
-                    )
-                    if notif.get("return_reason"):
-                        message += f" | Reason: {notif['return_reason'][:100]}"
-                    title = f"Flux Open Home — Returned {sev_label} Issue"
-                else:
-                    message = (
-                        f"{emoji} New {sev_label} from {notif['customer_name']}: "
-                        f"{notif['description'][:200]}"
-                    )
-                    title = f"Flux Open Home — {sev_label} Issue"
-                try:
-                    await ha_client.call_service("notify", service_name, {
-                        "message": message,
-                        "title": title,
-                    })
-                    print(f"[MAIN] HA notification sent: {sev_label} from {notif['customer_name']}")
-                except Exception as e:
-                    print(f"[MAIN] HA notification failed: {e}")
-
-            # Send HA notifications for dismissed issues
-            for dismissed_info in all_dismissed:
-                try:
-                    await ha_client.call_service("notify", service_name, {
-                        "message": f"👍 {dismissed_info['customer_name']} accepted the resolution for an issue.",
-                        "title": "Flux Open Home — Issue Dismissed",
-                    })
-                    print(f"[MAIN] HA notification sent: dismissed issue from {dismissed_info['customer_name']}")
-                except Exception as e:
-                    print(f"[MAIN] HA dismissed notification failed: {e}")
-
-            if ha_notifications:
-                print(f"[MAIN] Sent {len(ha_notifications)} HA notification(s) for new issues")
-            if all_dismissed:
-                print(f"[MAIN] Sent {len(all_dismissed)} HA notification(s) for dismissed issues")
-
-        # --- Update last known state (always) ---
-        notification_config.update_last_known_issues(new_known)
-        cfg = notification_config.load_config()
-        cfg["last_known_dismissed"] = new_known_dismissed
-        cfg["last_known_returned"] = new_known_returned
-        notification_config.save_config(cfg)
-
-        if all_new_issues:
-            print(f"[MAIN] Detected {len(all_new_issues)} new/returned issue(s)")
-        if all_dismissed:
-            print(f"[MAIN] Detected {len(all_dismissed)} dismissed issue(s)")
-    except Exception as e:
-        print(f"[MAIN] Issue notification check error: {e}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     config = await async_initialize()
-    print(f"[MAIN] Flux Open Home Irrigation Control starting in {config.mode.upper()} mode...")
+    print("[MAIN] Flux Open Home Irrigation Control starting...")
 
     # Ensure configuration.yaml has the packages include — eliminates manual setup step
     _ensure_packages_include()
@@ -714,15 +433,10 @@ async def lifespan(app: FastAPI):
     print(f"[MAIN] Resolved sensors: {len(config.allowed_sensor_entities)}")
     print(f"[MAIN] Resolved controls: {len(config.allowed_control_entities)}")
 
-    if config.mode == "homeowner":
-        print(f"[MAIN] Rate limit: {config.rate_limit_per_minute}/min")
-        print(f"[MAIN] Audit logging: {'enabled' if config.enable_audit_log else 'disabled'}")
-        if config.homeowner_url:
-            print(f"[MAIN] External URL: {config.homeowner_url}")
-    else:
-        from customer_store import load_customers
-        customers = load_customers()
-        print(f"[MAIN] Management mode: {len(customers)} customer(s) configured")
+    print(f"[MAIN] Rate limit: {config.rate_limit_per_minute}/min")
+    print(f"[MAIN] Audit logging: {'enabled' if config.enable_audit_log else 'disabled'}")
+    if config.homeowner_url:
+        print(f"[MAIN] External URL: {config.homeowner_url}")
 
     # Moisture probe startup recovery: handle adjusted durations from prior session
     try:
@@ -753,16 +467,11 @@ async def lifespan(app: FastAPI):
 
     # Start background tasks
     cleanup_task = asyncio.create_task(_periodic_log_cleanup())
-    health_task = None
-    issue_poll_task = None
     weather_task = None
     moisture_task = None
     zone_watcher_task = None
     entity_refresh_task = None
-    if config.mode == "management":
-        health_task = asyncio.create_task(_periodic_customer_health_check())
-        issue_poll_task = asyncio.create_task(_periodic_issue_poll())
-    if config.mode == "homeowner" and config.allowed_zone_entities:
+    if config.allowed_zone_entities:
         from run_log import watch_zone_states
         zone_watcher_task = asyncio.create_task(watch_zone_states())
         print(f"[MAIN] Zone state watcher active: monitoring {len(config.allowed_zone_entities)} zone(s)")
@@ -774,26 +483,25 @@ async def lifespan(app: FastAPI):
         source_label = "Built-In NWS (address)" if config.weather_source == "nws" else f"entity={config.weather_entity_id}"
         print(f"[MAIN] Weather control active: source={source_label}, "
               f"interval={config.weather_check_interval_minutes}min")
-    if config.mode == "homeowner":
-        from routes.moisture import _load_data as _load_moisture_data
-        moisture_data = _load_moisture_data()
-        if moisture_data.get("enabled"):
-            moisture_task = asyncio.create_task(_periodic_moisture_evaluation())
-            probe_count = len(moisture_data.get("probes", {}))
-            print(f"[MAIN] Moisture probe evaluation active: {probe_count} probe(s), "
-                  f"interval={config.weather_check_interval_minutes}min")
-            # Start awake status poller for Gophr probes
-            if probe_count > 0:
-                from routes.moisture import start_awake_poller, calculate_irrigation_timeline
-                start_awake_poller()
-                # Calculate initial schedule timeline for probe-aware irrigation
-                try:
-                    timeline = await calculate_irrigation_timeline()
-                    prep_count = len(timeline.get("probe_prep", {}))
-                    if prep_count > 0:
-                        print(f"[MAIN] Initial schedule timeline: {prep_count} probe(s) with prep timing")
-                except Exception as tl_err:
-                    print(f"[MAIN] Initial timeline calculation error: {tl_err}")
+    from routes.moisture import _load_data as _load_moisture_data
+    moisture_data = _load_moisture_data()
+    if moisture_data.get("enabled"):
+        moisture_task = asyncio.create_task(_periodic_moisture_evaluation())
+        probe_count = len(moisture_data.get("probes", {}))
+        print(f"[MAIN] Moisture probe evaluation active: {probe_count} probe(s), "
+              f"interval={config.weather_check_interval_minutes}min")
+        # Start awake status poller for Gophr probes
+        if probe_count > 0:
+            from routes.moisture import start_awake_poller, calculate_irrigation_timeline
+            start_awake_poller()
+            # Calculate initial schedule timeline for probe-aware irrigation
+            try:
+                timeline = await calculate_irrigation_timeline()
+                prep_count = len(timeline.get("probe_prep", {}))
+                if prep_count > 0:
+                    print(f"[MAIN] Initial schedule timeline: {prep_count} probe(s) with prep timing")
+            except Exception as tl_err:
+                print(f"[MAIN] Initial timeline calculation error: {tl_err}")
     if config.irrigation_device_id:
         entity_refresh_task = asyncio.create_task(_periodic_entity_refresh())
         print(f"[MAIN] Entity auto-refresh active: checking every 5 minutes for newly enabled/disabled entities")
@@ -802,10 +510,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     cleanup_task.cancel()
-    if health_task:
-        health_task.cancel()
-    if issue_poll_task:
-        issue_poll_task.cancel()
     if weather_task:
         weather_task.cancel()
     if moisture_task:
@@ -826,9 +530,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Flux Open Home Irrigation Control",
     description=(
-        "Dual-mode irrigation management for Flux Open Home. "
-        "Homeowners expose a secure API; management companies monitor "
-        "and control multiple properties from a single dashboard."
+        "Homeowner irrigation management for Flux Open Home. "
+        "Exposes a secure API for controlling zones, sensors, schedules, "
+        "weather rules, and moisture probes."
     ),
     version="1.0.0",
     lifespan=lifespan,
@@ -871,7 +575,6 @@ app.include_router(entities.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(admin.router)
-app.include_router(management.router)
 app.include_router(homeowner.router)
 app.include_router(weather.router)
 app.include_router(moisture.router)
