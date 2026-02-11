@@ -664,7 +664,8 @@ async def homeowner_geocode(q: str = Query(..., min_length=3, description="Addre
 async def homeowner_weather():
     """Get current weather conditions and active adjustments for the dashboard."""
     config = get_config()
-    if not config.weather_enabled or not config.weather_entity_id:
+    weather_configured = config.weather_entity_id or config.weather_source == "nws"
+    if not config.weather_enabled or not weather_configured:
         return {"weather_enabled": False, "weather": {"error": "Not configured"}}
 
     from routes.weather import get_weather_data, _load_weather_rules

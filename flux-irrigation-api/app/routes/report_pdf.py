@@ -178,7 +178,8 @@ async def _get_sensors() -> list:
 
 async def _get_weather() -> dict:
     config = get_config()
-    if not config.weather_enabled or not config.weather_entity_id:
+    weather_configured = config.weather_entity_id or config.weather_source == "nws"
+    if not config.weather_enabled or not weather_configured:
         return {"weather_enabled": False}
     try:
         from routes.weather import get_weather_data, _load_weather_rules
