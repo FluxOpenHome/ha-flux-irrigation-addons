@@ -272,7 +272,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     </div>
     <div class="header-actions">
         <div class="nav-tabs">
-            <span class="nav-tab active">Homeowner</span>
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
@@ -280,7 +279,6 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
         <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue">&#9888;&#65039;</button>
         <button class="dark-toggle notif-bell-btn" onclick="openNotificationsPanel()" title="Notifications">&#128276;<span class="notif-badge" id="notifBellBadge" style="display:none;">0</span></button>
-        <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
 
@@ -1193,21 +1191,6 @@ async function submitReturnIssue() {
         btn.disabled = false;
         btn.textContent = 'Submit';
     }
-}
-
-// --- Mode Switch ---
-async function switchToManagement() {
-    if (!confirm('Switch to Management mode? The homeowner dashboard will no longer be available until you switch back.')) return;
-    try {
-        const BASE = window.location.pathname.replace(/\\/+$/, '');
-        await fetch(BASE + '/api/mode', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ mode: 'management' }),
-        });
-        showToast('Switching to management mode...');
-        setTimeout(() => window.location.reload(), 1000);
-    } catch(e) { showToast(e.message, 'error'); }
 }
 
 // --- API Helper ---

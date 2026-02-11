@@ -16,7 +16,7 @@ For irrigation management companies, the companion [Flux Management Server](http
 - [Homeowner Setup](#homeowner-setup)
   - [Step 1: Install and Start](#step-1-install-and-start)
   - [Step 2: Select Your Irrigation Device](#step-2-select-your-irrigation-device)
-  - [Step 3: One-Time configuration.yaml Setup (Nabu Casa Only)](#step-3-one-time-configurationyaml-setup-nabu-casa-only)
+  - [Step 3: Automatic Proxy Setup (Nabu Casa Only)](#step-3-automatic-proxy-setup-nabu-casa-only)
   - [Step 4: Create a Long-Lived Access Token (Nabu Casa Only)](#step-4-create-a-long-lived-access-token-nabu-casa-only)
   - [Step 5: Generate a Connection Key](#step-5-generate-a-connection-key)
   - [Step 6: Set Up Weather-Based Control (Optional)](#step-6-set-up-weather-based-control-optional)
@@ -83,25 +83,16 @@ On the Configuration page:
 
 > **Important:** Only entities belonging to the selected device are exposed through the API. No other Home Assistant devices, entities, or data are accessible.
 
-### Step 3: One-Time configuration.yaml Setup (Nabu Casa Only)
+### Step 3: Automatic Proxy Setup (Nabu Casa Only)
 
-If you plan to use **Nabu Casa** for remote management connectivity, you need to add the following to your Home Assistant `configuration.yaml` file **once**:
+When using **Nabu Casa** for remote management connectivity, the add-on automatically:
 
-```yaml
-homeassistant:
-  packages: !include_dir_named packages
-```
+1. Adds the `packages` include directive to your `configuration.yaml` (if not already present)
+2. Creates the proxy configuration file in `/config/packages/`
 
-**How to edit configuration.yaml:**
-1. In Home Assistant, go to **Settings → Add-ons**
-2. Install and open the **File Editor** add-on (or use **Studio Code Server**)
-3. Open `/config/configuration.yaml`
-4. Add the two lines above (if `homeassistant:` already exists, just add the `packages:` line under it)
-5. **Restart Home Assistant** (Settings → System → Restart)
+**After installing the add-on for the first time, restart Home Assistant once** (Settings → System → Restart) so that the proxy services register. The proxy file is regenerated automatically on each add-on startup.
 
-The add-on automatically creates a proxy configuration file in `/config/packages/` that enables Nabu Casa connectivity. This only needs to be done once — the file is regenerated automatically on each add-on startup.
-
-> **Note:** If you are using **Direct Connection** mode (port forwarding, Cloudflare Tunnel, etc.), you can skip this step.
+> **Note:** If you are using **Direct Connection** mode (port forwarding, Cloudflare Tunnel, etc.), no proxy setup is needed.
 
 ### Step 4: Create a Long-Lived Access Token (Nabu Casa Only)
 
@@ -384,13 +375,8 @@ The easiest way to connect homeowners to management companies. Uses your existin
 
 **Required one-time setup on the homeowner side:**
 
-1. Add to `configuration.yaml`:
-   ```yaml
-   homeassistant:
-     packages: !include_dir_named packages
-   ```
-2. Restart Home Assistant
-3. Create a Long-Lived Access Token (see [Step 4](#step-4-create-a-long-lived-access-token-nabu-casa-only))
+1. Install the add-on and restart Home Assistant once (the add-on automatically configures `configuration.yaml` and creates the proxy package)
+2. Create a Long-Lived Access Token (see [Step 4](#step-4-create-a-long-lived-access-token-nabu-casa-only))
 
 **How it works:** The add-on writes a proxy file to `/config/packages/` that creates `rest_command` services in HA. The management company's requests are routed through the HA REST API → `rest_command` → the add-on running on `localhost:8099`. All traffic goes through Nabu Casa's encrypted tunnel.
 
@@ -534,7 +520,7 @@ The add-on fires custom events that your HA automations can listen for:
 
 ### Connection key doesn't work for management company
 
-- **Nabu Casa:** Make sure you completed [Step 3](#step-3-one-time-configurationyaml-setup-nabu-casa-only) (configuration.yaml) and restarted HA
+- **Nabu Casa:** Make sure you restarted Home Assistant after installing the add-on (see [Step 3](#step-3-automatic-proxy-setup-nabu-casa-only))
 - **Nabu Casa:** Verify the Long-Lived Access Token is entered and valid — the add-on will reject key generation if the token is missing or truncated
 - **Direct:** Verify port 8099 is enabled in the add-on's Network settings and is accessible externally
 - Use the **Test URL** button on the Configuration page to diagnose connectivity

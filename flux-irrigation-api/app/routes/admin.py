@@ -1237,11 +1237,10 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
     <div class="header-nav" style="display:flex;gap:8px;align-items:center;">
-        <a href="?" style="color:white;text-decoration:none;padding:6px 14px;background:rgba(255,255,255,0.15);border-radius:8px;font-size:13px;">&#8592; Homeowner</a>
+        <a href="?" style="color:white;text-decoration:none;padding:6px 14px;background:rgba(255,255,255,0.15);border-radius:8px;font-size:13px;">&#8592; Dashboard</a>
         <span style="background:rgba(255,255,255,0.25);padding:4px 12px;border-radius:12px;font-size:12px;font-weight:500;">Configuration</span>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">❓</button>
-        <button class="btn btn-secondary btn-sm" onclick="switchToManagement()">Management</button>
     </div>
 </div>
 
@@ -1342,13 +1341,10 @@ ADMIN_HTML = """<!DOCTYPE html>
                     </p>
                 </div>
                 <div style="background:var(--bg-active-tile);border:1px solid var(--border-active);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">
-                    <strong style="color:var(--color-primary);">&#9989; One-time setup required</strong><br>
+                    <strong style="color:var(--color-primary);">&#9989; Automatic setup</strong><br>
                     <span style="color:var(--text-secondary);">
-                        After generating the connection key, add this to your HA <strong>configuration.yaml</strong>
-                        (if not already present):<br>
-                        <code style="background:var(--bg-tile);padding:2px 6px;border-radius:3px;display:inline-block;margin-top:4px;">homeassistant:</code><br>
-                        <code style="background:var(--bg-tile);padding:2px 6px;border-radius:3px;display:inline-block;margin-left:16px;">packages: !include_dir_named packages</code><br>
-                        <span style="font-size:11px;color:var(--text-hint);margin-top:4px;display:block;">Then restart Home Assistant once. The add-on automatically creates the needed proxy configuration.</span>
+                        The add-on automatically configures <code style="background:var(--bg-tile);padding:2px 6px;border-radius:3px;">configuration.yaml</code> and creates the proxy package on startup.
+                        <span style="font-size:11px;color:var(--text-hint);margin-top:4px;display:block;">After generating the connection key, restart Home Assistant once for the proxy services to register.</span>
                     </span>
                 </div>
             </div>
@@ -2402,20 +2398,6 @@ ADMIN_HTML = """<!DOCTYPE html>
         } catch (e) {
             content.innerHTML = '<span style="color:var(--color-danger);">Failed to load weather data</span>';
         }
-    }
-
-    // --- Mode Switch ---
-    async function switchToManagement() {
-        if (!confirm('Switch to Management mode? The homeowner settings will no longer be available until you switch back.')) return;
-        try {
-            await fetch(`${BASE}/mode`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ mode: 'management' }),
-            });
-            showToast('Switching to management mode...');
-            setTimeout(() => window.location.reload(), 1000);
-        } catch(e) { showToast(e.message, 'error'); }
     }
 
     // --- Moisture Probes ---

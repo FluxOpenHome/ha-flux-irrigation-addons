@@ -71,10 +71,9 @@ async def _check_rest_command_service(config):
                         print(f"[MAIN]   → Restart Home Assistant to pick up the updated packages file")
                 else:
                     print(f"[MAIN] ✗ rest_command domain is NOT registered in HA!")
-                    print(f"[MAIN]   → Check that configuration.yaml has:")
-                    print(f"[MAIN]     homeassistant:")
-                    print(f"[MAIN]       packages: !include_dir_named packages")
-                    print(f"[MAIN]   → Then fully restart Home Assistant (not just reload)")
+                    print(f"[MAIN]   → The add-on auto-configures configuration.yaml on startup")
+                    print(f"[MAIN]   → Fully restart Home Assistant (Settings → System → Restart)")
+                    print(f"[MAIN]   → The proxy services will register after the restart")
             else:
                 print(f"[MAIN] Could not check services: HTTP {resp.status_code}")
     except Exception as e:
