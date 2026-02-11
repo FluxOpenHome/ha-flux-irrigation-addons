@@ -3,7 +3,9 @@
 > **This add-on requires the Flux Open Home Irrigation Controller.**
 > Purchase yours at [www.fluxopenhome.com](https://www.fluxopenhome.com).
 
-A Home Assistant add-on that provides dual-mode irrigation management for the Flux Open Home Irrigation Controller. Homeowners get a local dashboard with zone control, scheduling, weather intelligence, and sensor monitoring. Management companies get a multi-property dashboard to monitor and control all their customers' irrigation systems from a single interface.
+A Home Assistant add-on that provides a complete homeowner irrigation control dashboard for the Flux Open Home Irrigation Controller. Control zones, manage schedules, configure weather-based smart irrigation, monitor Gophr moisture probes, track water usage, generate PDF reports, and more — all running locally on your Home Assistant instance.
+
+For irrigation management companies, the companion [Flux Management Server](https://github.com/FluxOpenHome/flux-management-server) provides a cloud-based multi-property dashboard that connects to homeowner add-ons via connection keys.
 
 ---
 
@@ -169,15 +171,19 @@ You can disconnect a management company at any time from the Configuration page:
 
 ## Management Company Setup
 
-1. Install the same add-on on your Home Assistant instance (see [Installation](#installation))
-2. Open the add-on panel and click **Switch to Management** (or go to the add-on's Configuration tab and set **mode** to `management`, then restart)
+The management dashboard is a separate cloud-hosted application — the [Flux Management Server](https://github.com/FluxOpenHome/flux-management-server). It connects to homeowner add-ons via connection keys.
+
+1. Sign up for a management account at the Flux Management Server
+2. Log in to the management dashboard
 3. Click **+ Add Property**
-4. Either **paste the connection key** provided by a homeowner, or click **Scan QR Code** to scan the homeowner's QR code with your camera
-5. The property will appear in the dashboard with live status, zone control, sensors, schedules, and weather conditions
+4. Either **paste the connection key** provided by a homeowner, or click **📷 Scan QR Code** to scan the homeowner's QR code with your camera
+5. The property will appear in the dashboard with live status, zone control, sensors, schedules, weather conditions, and more
 
-The management dashboard automatically checks connectivity to all properties every 5 minutes and shows online/offline status.
+The management server automatically checks connectivity to all properties every 5 minutes and shows online/offline status. A faster 15-second poll detects irrigation zone activity and issue changes in near real-time.
 
-**Updating a connection key:** If a homeowner regenerates their connection key, you don't need to delete and re-add the property. Click the **Update Key** button on the property card, paste the new key, and all your notes, aliases, and metadata are preserved.
+**Updating a connection key:** If a homeowner regenerates their connection key, you don't need to delete and re-add the property. Click the **🔑 Update Key** button in the property detail view, paste the new key, and all your notes, aliases, and metadata are preserved.
+
+See the [Flux Management Server README](https://github.com/FluxOpenHome/flux-management-server/blob/main/README.md) for full management dashboard documentation.
 
 ---
 
@@ -209,37 +215,20 @@ The management dashboard automatically checks connectivity to all properties eve
 - ⚡ **Pump Monitor** — Automatically detected when a zone is configured as "Pump Start Relay"; displays a dedicated card alongside Estimated Gallons showing total pump cycles, run hours, power used (kWh), and estimated electricity cost; configurable time range (24h, 30d, 90d, 1yr); settings gear for pump specs (brand, HP/kW with auto-conversion, voltage, year installed, electricity cost $/kWh, peak rate); pump age calculated automatically from year installed; when no pump relay is detected, the Estimated Gallons card stays full-width
 - ❓ **In-app help** — Button on every page opens a condensed, page-specific help modal covering the features and controls visible on that screen. For the complete documentation, see this README
 
-### Management
+### Management (Cloud Server)
 
-- 🏢 **Management Dashboard** — Multi-property grid view with click-to-expand detail cards for each property
-- 📷 **QR code scanning** — Scan a homeowner's QR code with your camera to add a property instantly, instead of pasting the connection key
-- 🔐 **Update connection key** — Swap a customer's connection key without losing notes, aliases, or metadata
-- 🔍 **Customer search and filtering** — Search properties by name, contact, address, phone, or notes; filter by status (online, offline, revoked) and by state or city
-- 📝 **Customer notes** — Add and edit notes on property cards
-- 🔄 **Live contact sync** — Homeowner name, phone, and address are synced automatically on every health check, even if added after the connection key was generated
-- 🕐 **Customer local time** — Property detail view shows the customer's local time and timezone abbreviation (e.g., "2:30 PM EST"), derived from the customer's state address
-- 💧 **Remote zone control** — Start, stop, and emergency-stop zones on any connected property; Auto Advance toggle at the top of the zone card lets you start the first zone and have it automatically advance through all enabled zones
-- 🔩 **Remote zone head details** — View and edit sprinkler head inventory on customer zones: head type, brand & model from a filtered picklist with GPM auto-fill, mount, spray arc, radius, pop-up height, PSI, and location notes; total zone flow calculated automatically and displayed on zone cards; model database in `sprinkler_models.json` for easy extension
-- ☀️ **Remote weather management** — View and configure weather rules on customer systems
-- 🌱 **Remote moisture management** — Configure Gophr moisture probe settings (enable/disable, thresholds, depth weights), view live probe data with device status (WiFi, battery, sleep), assign zones to probes, and manage duration adjustments on customer systems
-- 🔀 **Remote Multi-Probe Conflict Resolution** — Configure how multiple probes on the same zone are aggregated on customer systems: Conservative, Average, or Optimistic mode
-- 🌧️ **Remote rain sensor management** — View and control rain sensor settings (enable/disable, sensor type, rain delay) on customer systems
-- 🔌 **Remote expansion board status** — View detected zones, expansion board I2C addresses, and trigger rescans on customer controllers
-- ⚠️ **Issue Management** — View and manage homeowner-reported issues across all properties; color-coded alerts on property cards; dedicated alerts panel with all active issues; acknowledge issues with notes and schedule service dates; browser notifications and HA push notifications (mobile app, SMS, etc.) when new issues are reported
-- 📍 **Clickable Addresses** — Click any property address on cards or detail views to open it in Apple Maps or Google Maps for easy navigation to the property
-- 📅 **Remote schedule management** — View and update irrigation schedules (entity-based, driven by the Flux Open Home controller's ESPHome configuration)
-- 📚 **Run history and CSV export** — View and export zone run history and weather logs for each property
-- 📄 **PDF System Report** — Generate a branded PDF system report for any customer property: system status, zones with head details, schedule, weather, moisture, sensors, estimated gallons, and run history with selectable time range (24h–1yr)
-- 🎨 **PDF Report Branding** — Upload your company logo (replaces Flux Open Home on cover page with "Powered by" placement), set company name for headers, choose a custom accent color theme, toggle report sections on/off, and set custom footer text — all configured per-customer from the management dashboard
-- 💧 **Remote Water Source & Cost** — View and configure water source settings (City/Reclaimed/Well) and cost per 1,000 gallons on customer properties; water costs appear on the Estimated Gallons card and in PDF system reports
-- ⚡ **Remote Pump Monitor** — View pump usage statistics on customer properties with a pump start relay: total cycles, run hours, power consumption (kWh), and estimated cost; configure pump settings (brand, HP/kW, voltage, year installed, electricity rates) remotely; pump age displayed automatically
-- 📖 **Interactive API docs** — Built-in Swagger UI accessible from the management dashboard for API testing and exploration
-- 🌙 **Dark mode** — Toggle between light and dark themes; preference is saved per-device independently from the homeowner dashboard
-- ❓ **In-app help** — Button opens a condensed help modal covering all management features on that page. For full documentation and setup guides, see this README
+The management dashboard runs on the separate [Flux Management Server](https://github.com/FluxOpenHome/flux-management-server). See its README for full feature documentation. Key capabilities include:
+
+- 🏢 **Multi-property dashboard** — Grid view with interactive map, click-to-expand detail cards, and real-time status
+- 📷 **QR code scanning** — Scan a homeowner's QR code to add a property instantly
+- 🔍 **Search and filtering** — Search by name, address, phone, notes; filter by status, state, city, zone count
+- 💧 **Full remote control** — Zones, schedules, weather rules, moisture probes, rain sensor, expansion boards
+- ⚠️ **Issue management** — Track and resolve homeowner-reported issues with alerts and browser notifications
+- 📄 **PDF reports** — Per-property system reports and cross-portfolio analytics with custom branding
+- 👥 **Team accounts** — Multi-user access with admin and technician roles
+- 📊 **Portfolio CSV export** — Export all customer data for reporting
 
 ### Platform
-
-- 🔀 **Dual-mode operation** — Same add-on works for homeowners and management companies
 - 🛡️ **Scoped access** — Only irrigation zones and sensors are exposed — no access to lights, locks, cameras, or any other HA entities
 - 🔐 **Management access control** — Generate a connection key that grants your management company full access to all devices (irrigation zones, moisture probes, weather, schedules, sensors); revoke access instantly with one click
 - 📋 **Audit logging** — Every API action is logged with timestamp, API key, action, and details

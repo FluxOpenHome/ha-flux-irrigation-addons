@@ -2580,7 +2580,17 @@ async function loadHistory() {
     try {
         const hoursRaw = document.getElementById('historyRange') ? document.getElementById('historyRange').value : '24';
         const hours = parseInt(hoursRaw, 10) || 24;
-        const data = await api('/history/runs?hours=' + hours);
+        // Fetch run history and current probe names in parallel
+        const [data, probeNameMap] = await Promise.all([
+            api('/history/runs?hours=' + hours),
+            mapi('/probes').then(pd => {
+                const m = {};
+                for (const [pid, p] of Object.entries(pd.probes || {})) {
+                    m[pid] = p.display_name || pid;
+                }
+                return m;
+            }).catch(() => ({})),
+        ]);
         // Filter out bare OFF/closed events with no duration from schedule source —
         // these are state snapshots from add-on restarts, not actual runs.
         // Keep weather_pause, system_pause, moisture_skip, skip, etc.
@@ -2636,9 +2646,9 @@ async function loadHistory() {
                         wxCell += '<div style="font-size:10px;color:var(--text-warning);margin-top:2px;">' + rules.map(r => r.replace(/_/g, ' ')).join(', ') + '</div>';
                     }
                 }
-                // Moisture Factor column — moisture probe value for schedule-triggered events
+                // Moisture Factor column — show for any event that has moisture data
                 let mFactorCell = '<span style="color:var(--text-disabled);">—</span>';
-                if (e.source === 'schedule' || e.source === 'moisture_cutoff') {
+                {
                     const mo = e.moisture || {};
                     const mMult = mo.moisture_multiplier != null ? mo.moisture_multiplier : null;
                     if (e.state === 'skip') {
@@ -2660,13 +2670,14 @@ async function loadHistory() {
                             mFactorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">' + parts.join(' ') + '</div>';
                         }
                     }
-                    // No probe data — leave as "—" (moisture column is probe-only)
                 }
                 const srcLabel = e.source && e.source !== 'schedule' && e.source !== 'moisture_probe' ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
                 // State display: handle skip, probe wake, and moisture skip events
                 let stateCell;
                 let isProbeEvent = e.source === 'moisture_probe';
-                if (e.state === 'probe_wake') {
+                if (e.state === 'scheduled_wake') {
+                    stateCell = '<span style="color:var(--color-warning);font-weight:600;">Scheduled Wake</span>';
+                } else if (e.state === 'probe_wake') {
                     stateCell = '<span style="color:var(--color-link);font-weight:600;">Awake</span>';
                 } else if (e.state === 'moisture_skip') {
                     stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span>';
@@ -2680,10 +2691,17 @@ async function loadHistory() {
                 } else {
                     stateCell = '<span style="color:var(--text-disabled);">OFF</span>';
                 }
-                // Zone name display — probe events use zone_name directly (contains probe + zone info)
+                // Zone name display — probe events resolve current probe name
                 let zoneDisplay;
                 if (isProbeEvent) {
-                    zoneDisplay = esc(e.zone_name || e.skip_text || e.probe_name || e.probe_id || '');
+                    // Use current probe display_name from probeNameMap, falling back to stored name
+                    const currentName = (e.probe_id && probeNameMap[e.probe_id]) || e.probe_name || e.probe_id || '';
+                    // Replace "Probe N" prefix in zone_name with the current display name
+                    let text = e.zone_name || e.skip_text || currentName;
+                    if (e.probe_id && probeNameMap[e.probe_id]) {
+                        text = text.replace(/^Probe\\s*\\d+/i, probeNameMap[e.probe_id]);
+                    }
+                    zoneDisplay = esc(text);
                 } else {
                     zoneDisplay = esc(resolveZoneName(e.entity_id, e.zone_name));
                 }

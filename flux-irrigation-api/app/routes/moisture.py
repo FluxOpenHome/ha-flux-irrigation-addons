@@ -215,11 +215,13 @@ async def _awake_poll_loop():
 
                 # --- Wake transition detection ---
                 if now_awake and not was_awake:
-                    print(f"[MOISTURE] Awake poll detected wake: {probe_id}")
-                    asyncio.create_task(on_probe_wake(probe_id))
+                    is_scheduled = prep and prep.get("state") == "prep_pending"
+                    print(f"[MOISTURE] Awake poll detected wake: {probe_id}"
+                          f"{' (scheduled wake)' if is_scheduled else ''}")
+                    asyncio.create_task(on_probe_wake(probe_id, scheduled=is_scheduled))
 
                     # Schedule-aware: check if this is a prepped wake
-                    if prep and prep.get("state") == "prep_pending":
+                    if is_scheduled:
                         asyncio.create_task(
                             _handle_prepped_wake(probe_id, probe, prep, timeline)
                         )
@@ -4442,12 +4444,17 @@ async def check_skip_factor_transition(entity_id: str, new_state: str, old_state
     return False
 
 
-async def on_probe_wake(probe_id: str):
+async def on_probe_wake(probe_id: str, scheduled: bool = False):
     """Called when a probe's status LED transitions from OFF to ON (sleeping → awake).
 
     Updates the awake cache, then checks for pending sleep duration and
     sleep_disabled writes and applies them.
     Waits a few seconds after wake to ensure writable entities are ready.
+
+    Args:
+        probe_id: The probe identifier (e.g. "gophr_1")
+        scheduled: True if this wake was triggered by the schedule timeline
+                   (prep state was "prep_pending"), False for normal wake
     """
     data = _load_data()
     probe = data.get("probes", {}).get(probe_id)
@@ -4472,12 +4479,15 @@ async def on_probe_wake(probe_id: str):
         # Extract probe number from probe_id (e.g. "gophr_1" → "1")
         probe_num_match = re.search(r'(\d+)', probe_id)
         probe_num = probe_num_match.group(1) if probe_num_match else probe_id
+
+        event_type = "scheduled_wake" if scheduled else "probe_wake"
+        wake_label = "Scheduled Wake" if scheduled else "woke"
         run_log.log_probe_event(
             probe_id=probe_id,
-            event_type="probe_wake",
+            event_type=event_type,
             display_name=display_name,
-            zone_name=f"Probe {probe_num} woke — mapped to {zones_text}",
-            details={"mapped_zones": mapped_zones},
+            zone_name=f"Probe {probe_num} {wake_label} — mapped to {zones_text}",
+            details={"mapped_zones": mapped_zones, "scheduled": scheduled},
         )
     except Exception as e:
         print(f"[MOISTURE] Failed to log probe wake event: {e}")
