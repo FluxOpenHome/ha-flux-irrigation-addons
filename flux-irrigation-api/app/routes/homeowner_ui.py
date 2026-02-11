@@ -2619,8 +2619,9 @@ async function loadHistory() {
                 '</div>';
         }
 
-        // Determine if any event has probe (moisture) data — show column only if so
+        // Determine if any event has probe (moisture) data — show columns only if so
         const hasProbeData = events.some(e => e.moisture && e.moisture.moisture_multiplier != null);
+        const hasSoilReadings = events.some(e => e.moisture && e.moisture.sensor_readings && (e.moisture.sensor_readings.T != null || e.moisture.sensor_readings.M != null || e.moisture.sensor_readings.B != null));
 
         // Determine if any event's zone has GPM data configured
         const gpmMap = window._hoZoneGpmMap || {};
@@ -2630,6 +2631,7 @@ async function loadHistory() {
             '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th>' +
             (hasGpmData ? '<th style="padding:6px;">GPM</th><th style="padding:6px;">Est. Gallons</th>' : '') +
             '<th style="padding:6px;">Moisture Factor</th>' +
+            (hasSoilReadings ? '<th style="padding:6px;">Soil Moisture</th>' : '') +
             '<th style="padding:6px;">Weather</th></tr></thead><tbody>' +
             events.slice(0, 100).map(e => {
                 const wx = e.weather || {};
@@ -2660,15 +2662,19 @@ async function loadHistory() {
                             const fc = mMult === 1.0 ? 'var(--color-success)' : mMult < 1 ? 'var(--color-warning)' : 'var(--color-danger)';
                             mFactorCell = '<span style="color:' + fc + ';font-weight:600;">' + mMult + 'x</span>';
                         }
-                        // Show sensor readings (T/M/B) if available
-                        const sr = mo.sensor_readings || {};
-                        const parts = [];
-                        if (sr.T != null) parts.push('T:' + sr.T + '%');
-                        if (sr.M != null) parts.push('M:' + sr.M + '%');
-                        if (sr.B != null) parts.push('B:' + sr.B + '%');
-                        if (parts.length > 0) {
-                            mFactorCell += '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">' + parts.join(' ') + '</div>';
-                        }
+                    }
+                }
+                // Soil Moisture column — show T/M/B sensor readings
+                let soilCell = '<span style="color:var(--text-disabled);">—</span>';
+                {
+                    const mo = e.moisture || {};
+                    const sr = mo.sensor_readings || {};
+                    const lines = [];
+                    if (sr.T != null) lines.push('<span style="color:var(--text-muted);">T:</span> ' + sr.T + '%');
+                    if (sr.M != null) lines.push('<span style="color:var(--text-muted);">M:</span> ' + sr.M + '%');
+                    if (sr.B != null) lines.push('<span style="color:var(--text-muted);">B:</span> ' + sr.B + '%');
+                    if (lines.length > 0) {
+                        soilCell = '<div style="font-size:12px;line-height:1.4;">' + lines.join('<br>') + '</div>';
                     }
                 }
                 const srcLabel = e.source && e.source !== 'schedule' && e.source !== 'moisture_probe' ? '<div style="font-size:10px;color:var(--text-placeholder);">' + esc(e.source) + '</div>' : '';
@@ -2726,6 +2732,7 @@ async function loadHistory() {
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
                 ${hasGpmData ? '<td style="padding:6px;">' + gpmCell + '</td><td style="padding:6px;">' + estGalCell + '</td>' : ''}
                 <td style="padding:6px;font-size:12px;">${mFactorCell}</td>
+                ${hasSoilReadings ? '<td style="padding:6px;font-size:12px;">' + soilCell + '</td>' : ''}
                 <td style="padding:6px;font-size:12px;">${wxCell}</td>
             </tr>`;
             }).join('') + '</tbody></table>';
