@@ -3968,6 +3968,14 @@ async function loadMoisture() {
         html += '<span style="font-size:12px;color:var(--text-muted);">minutes — how early the probe wakes before its mapped zone runs</span>';
         html += '</div></div>';
 
+        // Max wake time
+        html += '<div style="margin-bottom:12px;">';
+        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Max Wake Time</label>';
+        html += '<div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center;">';
+        html += '<input type="number" id="moistureMaxWake" value="' + (settings.max_wake_minutes != null ? settings.max_wake_minutes : 120) + '" min="0" max="480" step="1" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;">';
+        html += '<span style="font-size:12px;color:var(--text-muted);">minutes — auto re-enables sleep if exceeded (0 = unlimited)</span>';
+        html += '</div></div>';
+
         // Stale threshold
         html += '<div style="margin-bottom:12px;">';
         html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Stale Reading Threshold</label>';
@@ -4130,6 +4138,7 @@ async function saveMoistureSettings() {
             enabled: document.getElementById('moistureEnabled').checked,
             schedule_sync_enabled: document.getElementById('moistureScheduleSync').checked,
             wake_before_minutes: parseInt(document.getElementById('moistureWakeBefore').value) || 10,
+            max_wake_minutes: parseInt(document.getElementById('moistureMaxWake').value) || 0,
             multi_probe_mode: document.getElementById('moistureMultiProbeMode').value,
             stale_reading_threshold_minutes: parseInt(document.getElementById('moistureStaleMin').value) || 120,
             default_thresholds: {

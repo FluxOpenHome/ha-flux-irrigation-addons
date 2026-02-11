@@ -21,6 +21,7 @@ import asyncio
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -48,6 +49,15 @@ def _get_wake_before_minutes() -> int:
     data = _load_data()
     return data.get("wake_before_minutes", TARGET_WAKE_BEFORE_MINUTES)
 
+
+MAX_WAKE_MINUTES_DEFAULT = 120  # Default max awake time before auto re-enabling sleep
+
+
+def _get_max_wake_minutes() -> int:
+    """Get the configurable max wake time from moisture settings.  0 = unlimited."""
+    data = _load_data()
+    return data.get("max_wake_minutes", MAX_WAKE_MINUTES_DEFAULT)
+
 # Keywords used to auto-discover moisture probe sensor entities
 PROBE_KEYWORDS = ["gophr", "moisture", "soil"]
 
@@ -68,6 +78,11 @@ _sensor_cache_loaded = False
 # When the light is ON the device is awake; when OFF it is sleeping.
 # This is a simple HA state read — no writes required.
 _probe_awake_cache: dict[str, bool] = {}  # probe_id -> True=awake, False=sleeping
+
+# --- Max Wake Time Enforcement ---
+# Tracks when each probe became awake (Unix timestamp).  Used by
+# _awake_poll_loop() to enforce max_wake_minutes and auto re-enable sleep.
+_probe_wake_start: dict[str, float] = {}  # probe_id -> time.time() at wake
 
 
 def _load_sensor_cache():
@@ -219,8 +234,13 @@ async def _awake_poll_loop():
                             )
                             break  # Only handle one prep per cycle
 
+                # --- Sleep transition: clear wake timer ---
+                if not now_awake and was_awake:
+                    _probe_wake_start.pop(probe_id, None)
+
                 # --- Wake transition detection ---
                 if now_awake and not was_awake:
+                    _probe_wake_start[probe_id] = time.time()
                     prep_state = prep.get("state") if prep else None
                     is_scheduled = prep_state == "prep_pending"
                     is_reprogram_wake = prep_state == "pending_reprogram"
@@ -245,6 +265,18 @@ async def _awake_poll_loop():
                         asyncio.create_task(
                             _handle_prepped_wake(probe_id, probe, prep, timeline)
                         )
+
+                # --- Max wake time enforcement ---
+                max_wake = _get_max_wake_minutes()
+                if max_wake > 0 and now_awake and probe_id in _probe_wake_start:
+                    elapsed = time.time() - _probe_wake_start[probe_id]
+                    if elapsed > max_wake * 60:
+                        display = probe.get("display_name", probe_id)
+                        print(f"[MOISTURE] Max wake time ({max_wake} min) exceeded "
+                              f"for {display} (awake {elapsed / 60:.1f} min) "
+                              f"— re-enabling sleep")
+                        await set_probe_sleep_disabled(probe_id, False)
+                        _probe_wake_start.pop(probe_id, None)
 
         except asyncio.CancelledError:
             break
@@ -2638,6 +2670,7 @@ class MoistureSettingsRequest(BaseModel):
     apply_factors_to_schedule: Optional[bool] = None
     schedule_sync_enabled: Optional[bool] = None
     wake_before_minutes: Optional[int] = Field(None, ge=2, le=60)
+    max_wake_minutes: Optional[int] = Field(None, ge=0, le=480)  # 0 = unlimited
     multi_probe_mode: Optional[str] = None  # "conservative", "average", "optimistic"
     stale_reading_threshold_minutes: Optional[int] = Field(None, ge=5, le=1440)
     depth_weights: Optional[dict] = None
@@ -3812,6 +3845,7 @@ async def api_get_settings():
         "apply_factors_to_schedule": data.get("apply_factors_to_schedule", False),
         "schedule_sync_enabled": data.get("schedule_sync_enabled", True),
         "wake_before_minutes": data.get("wake_before_minutes", TARGET_WAKE_BEFORE_MINUTES),
+        "max_wake_minutes": data.get("max_wake_minutes", MAX_WAKE_MINUTES_DEFAULT),
         "multi_probe_mode": data.get("multi_probe_mode", "conservative"),
         "stale_reading_threshold_minutes": data.get("stale_reading_threshold_minutes", 120),
         "depth_weights": data.get("depth_weights", DEFAULT_DATA["depth_weights"]),
@@ -3962,6 +3996,15 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
             )
             # Recalculate timeline with new value
             asyncio.create_task(calculate_irrigation_timeline())
+
+    # Handle max_wake_minutes
+    if body.max_wake_minutes is not None:
+        old_max = data.get("max_wake_minutes", MAX_WAKE_MINUTES_DEFAULT)
+        data["max_wake_minutes"] = body.max_wake_minutes
+        if old_max != body.max_wake_minutes:
+            changes.append(
+                f"Max wake time: {old_max} min -> {body.max_wake_minutes} min"
+            )
 
     _save_data(data)
     if changes:
