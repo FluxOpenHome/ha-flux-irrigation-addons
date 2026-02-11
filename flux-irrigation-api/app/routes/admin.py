@@ -56,7 +56,7 @@ async def _save_options(options: dict):
         "homeowner_connection_mode", "api_keys", "irrigation_device_id",
         "rate_limit_per_minute", "log_retention_days", "enable_audit_log",
         "connection_revoked", "weather_entity_id", "weather_enabled",
-        "weather_check_interval_minutes",
+        "weather_check_interval_minutes", "weather_source",
     }
     supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
     if supervisor_token:
