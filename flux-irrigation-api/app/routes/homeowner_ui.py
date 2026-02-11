@@ -191,6 +191,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .toast.success { background: var(--color-success); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
+/* Water-themed spinner */
+.water-spinner {
+    width: 44px; height: 44px; border-radius: 50%;
+    border: 3px solid rgba(59, 130, 246, 0.15);
+    border-top: 3px solid rgba(59, 130, 246, 0.8);
+    border-right: 3px solid rgba(59, 130, 246, 0.4);
+    animation: waterSpin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.15), inset 0 0 10px rgba(59, 130, 246, 0.05);
+}
+@keyframes waterSpin { to { transform: rotate(360deg); } }
+
 /* Dark mode form inputs */
 body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     background: var(--bg-input); color: var(--text-primary); border-color: var(--border-input);
@@ -4645,7 +4656,22 @@ async function hoCalibrate(probeId, action) {
     }
 }
 
-function hoShowWakeSchedule(probeId) {
+async function hoShowWakeSchedule(probeId) {
+    /* Show spinner while recalculating */
+    var spinnerHtml = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 0;">' +
+        '<div class="water-spinner"></div>' +
+        '<div style="margin-top:14px;font-size:13px;color:var(--text-muted);">Recalculating wake schedule...</div></div>';
+    showModal('Wake Schedule', spinnerHtml, '440px');
+
+    /* Force recalculate then fetch fresh timeline */
+    try {
+        var timeline = await mapi('/schedule-timeline/recalculate', 'POST');
+        var freshPrep = (timeline.probe_prep || {})[probeId] || null;
+        if (freshPrep) window['_wakePrep_' + probeId] = freshPrep;
+    } catch(e) {
+        /* If recalc fails, fall back to cached data */
+    }
+
     var prep = window['_wakePrep_' + probeId];
     var skipMap = window['_wakeSkip_' + probeId] || {};
     var body = '';
@@ -4724,7 +4750,7 @@ function hoShowWakeSchedule(probeId) {
     } else {
         body = '<div style="font-size:13px;color:var(--text-muted);font-style:italic;padding:8px 0;">No schedule calculated yet. Configure schedule start times and zone durations to enable wake scheduling.</div>';
     }
-    showModal('Wake Schedule', body);
+    showModal('Wake Schedule', body, '440px');
 }
 
 async function toggleApplyFactors(enable) {
