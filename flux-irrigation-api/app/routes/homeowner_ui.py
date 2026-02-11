@@ -2565,12 +2565,15 @@ function cleanEntityName(friendlyName, entityId) {
     // HA often appends the device name to entity friendly names, e.g.
     // "Irrigation System Restart irrigation_controller" — strip it
     if (!friendlyName) return entityId || 'Unknown';
-    const parts = friendlyName.split(' ');
+    var name = friendlyName;
+    // Strip "Irrigation Controller XX:XX:XX:XX:XX:XX " prefix (device name with MAC)
+    name = name.replace(/^Irrigation Controller\\s+[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}\\s+/i, '');
+    const parts = name.split(' ');
     const last = parts[parts.length - 1];
     if (parts.length > 1 && last.includes('_') && entityId && entityId.includes(last)) {
         return parts.slice(0, -1).join(' ');
     }
-    return friendlyName;
+    return name;
 }
 
 function renderControlTile(e) {
