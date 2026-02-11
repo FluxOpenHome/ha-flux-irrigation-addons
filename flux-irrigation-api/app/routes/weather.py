@@ -524,6 +524,8 @@ def _map_nws_forecast_period(period: dict) -> dict:
         "precipitation": None,
         "wind_speed": _parse_wind_speed_text(period.get("windSpeed", "")),
         "wind_bearing": period.get("windDirection"),
+        "is_daytime": period.get("isDaytime"),
+        "name": period.get("name", ""),
     }
 
 

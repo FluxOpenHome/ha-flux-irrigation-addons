@@ -3060,7 +3060,7 @@ function _getVisibleWeatherKey(data) {
         JSON.stringify((data.active_adjustments || []).map(a => a.reason || a.rule)),
     ];
     // Include forecast visible fields only
-    const fc = (w.forecast || []).slice(0, 5);
+    const fc = (w.forecast || []).slice(0, 10);
     for (const f of fc) {
         parts.push(f.condition, f.temperature, f.precipitation_probability);
     }
@@ -3141,15 +3141,26 @@ async function loadWeather() {
         const forecast = w.forecast || [];
         if (forecast.length > 0) {
             let fh = '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
-            fh += '<div style="display:flex;gap:8px;overflow-x:auto;">';
-            for (let i = 0; i < Math.min(forecast.length, 5); i++) {
+            fh += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;">';
+            for (let i = 0; i < Math.min(forecast.length, 10); i++) {
                 const f = forecast[i];
                 const dt = f.datetime ? new Date(f.datetime) : null;
-                const dayLabel = dt ? dt.toLocaleDateString('en-US', { weekday: 'short' }) : '';
+                const isNight = f.is_daytime === false;
+                var dayLabel = dt ? dt.toLocaleDateString('en-US', { weekday: 'short' }) : '';
+                // If the period has a name like "Tonight", "Wednesday Night", use it for clarity
+                if (isNight && f.name) {
+                    // Show abbreviated: "Tue Night" or just "Tonight"
+                    if (f.name.toLowerCase() === 'tonight' || f.name.toLowerCase() === 'overnight') {
+                        dayLabel = f.name;
+                    } else {
+                        dayLabel = dayLabel + ' Night';
+                    }
+                }
                 const fIcon = _condIcons[f.condition] || '🌡️';
                 const precip = f.precipitation_probability || 0;
-                fh += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;">';
-                fh += '<div style="font-size:11px;color:var(--text-placeholder);">' + esc(dayLabel) + '</div>';
+                const nightBg = isNight ? 'background:var(--bg-tile);border:1px solid var(--border-light);' : 'background:var(--bg-tile);';
+                fh += '<div style="flex:0 0 auto;' + nightBg + 'border-radius:8px;padding:8px 10px;text-align:center;min-width:64px;' + (isNight ? 'opacity:0.75;' : '') + '">';
+                fh += '<div style="font-size:10px;color:var(--text-placeholder);white-space:nowrap;">' + esc(dayLabel) + '</div>';
                 fh += '<div style="font-size:18px;">' + fIcon + '</div>';
                 fh += '<div style="font-size:12px;font-weight:600;">' + (f.temperature != null ? f.temperature + '°' : '') + '</div>';
                 if (precip > 0) {
