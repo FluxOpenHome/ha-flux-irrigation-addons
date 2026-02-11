@@ -11,7 +11,8 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flux Open Home - Homeowner Dashboard</title>
-<script src="https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__" async defer></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
 :root {
     --bg-body: #f5f6fa;
@@ -236,9 +237,9 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
     .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
 }
-.gmap-ctrl-btn { background:#fff; border:0; border-radius:2px; box-shadow:0 1px 4px rgba(0,0,0,.3); cursor:pointer; margin:10px; padding:0; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:16px; color:#333; }
-.gmap-ctrl-btn:hover { background:#f5f5f5; }
-.gm-style a[href*="shortcuts"], .gm-style a[href*="report_a_map"] { display:none !important; }
+.leaflet-tile-pane.dark-tiles { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
+.map-lock-btn { position:absolute; top:10px; right:10px; z-index:1000; background:#fff; border:none; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.3); cursor:pointer; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-size:14px; }
+.map-lock-btn:hover { background:#f5f5f5; }
 </style>
 </head>
 <body>
@@ -606,7 +607,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 const HBASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api/homeowner';
 let refreshTimer = null;
 let geocodeCache = {};
-let gDetailMap = null;
+let leafletMap = null;
 
 // --- Toast ---
 function showToast(msg, type = 'success') {
@@ -1298,98 +1299,86 @@ async function initDetailMap(addrData) {
 let mapLocked = true;
 let mapCenter = null;
 
-// --- Google Maps Dark Mode Style ---
-const GMAP_DARK_STYLE = [
-    { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
-    { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#263c3f' }] },
-    { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
-    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
-    { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
-    { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
-    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
-    { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2835' }] },
-    { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
-    { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
-    { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
-    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
-    { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
-    { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] },
-];
-function _isDarkMode() { return document.body.classList.contains('dark-mode'); }
-function _getMapStyles() { return _isDarkMode() ? GMAP_DARK_STYLE : []; }
-
-function _addMapControl(map, position, html, id, onClick) {
-    var div = document.createElement('div');
-    div.id = id || '';
-    div.className = 'gmap-ctrl-btn';
-    div.innerHTML = html;
-    div.title = div.textContent.trim();
-    div.addEventListener('click', function(e) { e.stopPropagation(); onClick(e); });
-    map.controls[position].push(div);
-    return div;
+function _applyDarkTiles() {
+    if (!leafletMap) return;
+    var pane = leafletMap.getPane('tilePane');
+    if (!pane) return;
+    if (document.body.classList.contains('dark-mode')) {
+        pane.classList.add('dark-tiles');
+    } else {
+        pane.classList.remove('dark-tiles');
+    }
 }
 
 function showMap(lat, lon, label) {
-    if (typeof google === 'undefined' || !google.maps) {
+    if (typeof L === 'undefined') {
+        if (!showMap._retries) showMap._retries = 0;
+        if (++showMap._retries > 25) { document.getElementById('detailMap').style.display = 'none'; return; }
         setTimeout(function() { showMap(lat, lon, label); }, 200);
         return;
     }
+    showMap._retries = 0;
     const mapEl = document.getElementById('detailMap');
     mapEl.style.display = 'block';
     mapEl.innerHTML = '';
     mapCenter = { lat, lon };
     mapLocked = true;
     requestAnimationFrame(() => {
-        gDetailMap = new google.maps.Map(mapEl, {
-            center: { lat: lat, lng: lon },
+        leafletMap = L.map(mapEl, {
+            center: [lat, lon],
             zoom: 16,
-            gestureHandling: 'none',
+            dragging: false,
+            scrollWheelZoom: false,
+            doubleClickZoom: false,
+            boxZoom: false,
+            keyboard: false,
             zoomControl: false,
-            streetViewControl: false,
-            mapTypeControl: false,
-            fullscreenControl: false,
-            clickableIcons: false,
-            styles: _getMapStyles(),
+            touchZoom: false,
+            attributionControl: true,
         });
-        new google.maps.Marker({
-            position: { lat: lat, lng: lon },
-            map: gDetailMap,
-        });
-        // Lock/unlock control
-        _addMapControl(gDetailMap, google.maps.ControlPosition.RIGHT_TOP,
-            '&#128274;', 'mapLockBtn',
-            function() { toggleMapLock(); });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap',
+            maxZoom: 19,
+        }).addTo(leafletMap);
+        L.marker([lat, lon]).addTo(leafletMap);
+        _applyDarkTiles();
+        // Lock/unlock button
+        var lockBtn = document.createElement('button');
+        lockBtn.id = 'mapLockBtn';
+        lockBtn.className = 'map-lock-btn';
+        lockBtn.innerHTML = '&#128274;';
+        lockBtn.title = 'Unlock map interaction';
+        lockBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleMapLock(); });
+        mapEl.appendChild(lockBtn);
     });
 }
 
 function toggleMapLock() {
-    if (!gDetailMap) return;
+    if (!leafletMap) return;
     mapLocked = !mapLocked;
-    gDetailMap.setOptions({
-        gestureHandling: mapLocked ? 'none' : 'auto',
-        zoomControl: !mapLocked,
-    });
+    if (mapLocked) {
+        leafletMap.dragging.disable();
+        leafletMap.scrollWheelZoom.disable();
+        leafletMap.doubleClickZoom.disable();
+        leafletMap.boxZoom.disable();
+        leafletMap.keyboard.disable();
+        leafletMap.touchZoom.disable();
+        leafletMap.removeControl(leafletMap.zoomControl || {});
+    } else {
+        leafletMap.dragging.enable();
+        leafletMap.scrollWheelZoom.enable();
+        leafletMap.doubleClickZoom.enable();
+        leafletMap.boxZoom.enable();
+        leafletMap.keyboard.enable();
+        leafletMap.touchZoom.enable();
+        if (!leafletMap._zoomCtrl) {
+            leafletMap._zoomCtrl = L.control.zoom({ position: 'topleft' }).addTo(leafletMap);
+        }
+    }
     var btn = document.getElementById('mapLockBtn');
     if (btn) {
         btn.innerHTML = mapLocked ? '&#128274;' : '&#128275;';
         btn.title = mapLocked ? 'Unlock map interaction' : 'Lock map interaction';
-    }
-    var existingRecenter = document.getElementById('detailRecenterBtn');
-    if (mapLocked) {
-        if (existingRecenter) existingRecenter.remove();
-    } else if (!existingRecenter) {
-        _addMapControl(gDetailMap, google.maps.ControlPosition.LEFT_TOP,
-            '&#8982;', 'detailRecenterBtn',
-            function() {
-                if (gDetailMap && mapCenter) {
-                    gDetailMap.setCenter({ lat: mapCenter.lat, lng: mapCenter.lon });
-                    gDetailMap.setZoom(16);
-                }
-            });
     }
 }
 
@@ -4964,7 +4953,7 @@ function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
     localStorage.setItem('flux_dark_mode_homeowner', isDark);
     document.querySelector('.dark-toggle').textContent = isDark ? '☀️' : '🌙';
-    if (gDetailMap) gDetailMap.setOptions({ styles: _getMapStyles() });
+    _applyDarkTiles();
 }
 (function initDarkToggleIcon() {
     const btn = document.querySelector('.dark-toggle');

@@ -56,7 +56,7 @@ async def _save_options(options: dict):
         "homeowner_connection_mode", "api_keys", "irrigation_device_id",
         "rate_limit_per_minute", "log_retention_days", "enable_audit_log",
         "connection_revoked", "weather_entity_id", "weather_enabled",
-        "weather_check_interval_minutes", "google_maps_api_key",
+        "weather_check_interval_minutes",
     }
     supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
     if supervisor_token:
@@ -896,10 +896,7 @@ async def admin_ui(request: Request):
     if view == "config":
         return HTMLResponse(content=ADMIN_HTML, headers=no_cache)
     from routes.homeowner_ui import HOMEOWNER_HTML
-    opts = _load_options()
-    gmaps_key = opts.get("google_maps_api_key", "")
-    html = HOMEOWNER_HTML.replace("__GOOGLE_MAPS_API_KEY__", gmaps_key)
-    return HTMLResponse(content=html, headers=no_cache)
+    return HTMLResponse(content=HOMEOWNER_HTML, headers=no_cache)
 
 
 ADMIN_HTML = """<!DOCTYPE html>

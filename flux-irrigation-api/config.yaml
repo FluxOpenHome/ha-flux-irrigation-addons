@@ -43,7 +43,6 @@ options:
   weather_enabled: false
   weather_check_interval_minutes: 15
   weather_source: "ha_entity"
-  google_maps_api_key: ""
 schema:
   homeowner_url: "str?"
   homeowner_label: "str?"
@@ -70,7 +69,6 @@ schema:
   weather_enabled: "bool?"
   weather_check_interval_minutes: "int(5,60)?"
   weather_source: "str?"
-  google_maps_api_key: "str?"
 map:
   - config:rw
 init: false
