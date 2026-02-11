@@ -39,6 +39,7 @@ class Config:
     weather_entity_id: str = ""
     weather_enabled: bool = False
     weather_check_interval_minutes: int = 15
+    weather_source: str = "ha_entity"  # "ha_entity" or "nws"
     supervisor_token: Optional[str] = None
     detected_zone_count: int = 0
 
@@ -133,6 +134,9 @@ class Config:
         )
         config.weather_check_interval_minutes = options.get(
             "weather_check_interval_minutes", config.weather_check_interval_minutes
+        )
+        config.weather_source = options.get(
+            "weather_source", config.weather_source
         )
 
         return config

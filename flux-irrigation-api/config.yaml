@@ -43,6 +43,7 @@ options:
   weather_entity_id: ""
   weather_enabled: false
   weather_check_interval_minutes: 15
+  weather_source: "ha_entity"
 schema:
   mode: "list(homeowner|management)"
   homeowner_url: "str?"
@@ -69,6 +70,7 @@ schema:
   weather_entity_id: "str?"
   weather_enabled: "bool?"
   weather_check_interval_minutes: "int(5,60)?"
+  weather_source: "str?"
 map:
   - config:rw
 init: false

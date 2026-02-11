@@ -2,12 +2,15 @@
 Flux Open Home - Weather-Based Irrigation Control
 ===================================================
 Weather data fetching, rules engine, and API endpoints.
-Uses existing HA weather entities (NWS, Weather Underground, etc.)
-for intelligent irrigation scheduling adjustments.
+Supports two weather sources:
+  - HA weather entities (NWS integration, Weather Underground, etc.)
+  - Built-in NWS API (address-based, no HA integration needed)
 """
 
+import hashlib
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
 from config import get_config
@@ -19,6 +22,56 @@ router = APIRouter(prefix="/admin/api", tags=["Weather Control"])
 
 WEATHER_RULES_FILE = "/data/weather_rules.json"
 WEATHER_LOG_FILE = "/data/weather_log.jsonl"
+NWS_CACHE_FILE = "/data/nws_location_cache.json"
+
+# User-Agent required by NWS API (requests without one may be blocked)
+NWS_USER_AGENT = "FluxIrrigationAPI/1.1.11 (github.com/FluxOpenHome)"
+
+# Map NWS textDescription to HA-compatible condition strings
+# The rules engine uses these for rain detection, etc.
+NWS_CONDITION_MAP = {
+    "fair": "sunny",
+    "clear": "sunny",
+    "sunny": "sunny",
+    "hot": "sunny",
+    "mostly sunny": "sunny",
+    "mostly clear": "clear-night",
+    "partly cloudy": "partlycloudy",
+    "partly sunny": "partlycloudy",
+    "mostly cloudy": "cloudy",
+    "cloudy": "cloudy",
+    "overcast": "cloudy",
+    "rain": "rainy",
+    "light rain": "rainy",
+    "rain showers": "rainy",
+    "showers": "rainy",
+    "drizzle": "rainy",
+    "heavy rain": "pouring",
+    "rain showers likely": "rainy",
+    "showers and thunderstorms": "lightning-rainy",
+    "thunderstorm": "lightning-rainy",
+    "thunderstorms": "lightning-rainy",
+    "severe thunderstorms": "lightning-rainy",
+    "snow": "snowy",
+    "light snow": "snowy",
+    "heavy snow": "snowy",
+    "snow showers": "snowy",
+    "blizzard": "snowy",
+    "flurries": "snowy",
+    "freezing rain": "snowy-rainy",
+    "sleet": "snowy-rainy",
+    "wintry mix": "snowy-rainy",
+    "ice pellets": "hail",
+    "hail": "hail",
+    "fog": "fog",
+    "mist": "fog",
+    "haze": "fog",
+    "smoke": "fog",
+    "patchy fog": "fog",
+    "windy": "windy",
+    "breezy": "windy",
+    "gusty": "windy",
+}
 
 
 # --- Weather Event Log ---
@@ -238,11 +291,356 @@ def _save_weather_rules(data: dict):
         json.dump(data, f, indent=2)
 
 
+# --- NWS Built-In Weather Helpers ---
+
+def _nws_address_hash(config) -> str:
+    """Create a hash of the homeowner address fields for cache invalidation."""
+    parts = f"{config.homeowner_address}|{config.homeowner_city}|{config.homeowner_state}|{config.homeowner_zip}"
+    return hashlib.md5(parts.encode()).hexdigest()
+
+
+def _load_nws_cache() -> dict:
+    """Load the cached NWS location data."""
+    if os.path.exists(NWS_CACHE_FILE):
+        try:
+            with open(NWS_CACHE_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def _save_nws_cache(data: dict):
+    """Save NWS location data to cache."""
+    os.makedirs(os.path.dirname(NWS_CACHE_FILE), exist_ok=True)
+    with open(NWS_CACHE_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+async def _get_or_create_nws_location(config) -> dict | None:
+    """Get cached NWS location or geocode + lookup from NWS API.
+
+    Returns dict with station_url, forecast_url, lat, lon, etc. or None on failure.
+    """
+    import httpx
+
+    addr_hash = _nws_address_hash(config)
+    cache = _load_nws_cache()
+
+    # Use cache if address hasn't changed
+    if cache.get("address_hash") == addr_hash and cache.get("station_url"):
+        return cache
+
+    # Build address string for geocoding
+    addr_parts = [config.homeowner_address, config.homeowner_city,
+                  config.homeowner_state, config.homeowner_zip]
+    address_str = ", ".join(p for p in addr_parts if p)
+    if not address_str:
+        print("[WEATHER-NWS] No address configured for geocoding")
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Step 1: Geocode address via Nominatim
+            geo_resp = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"format": "json", "limit": "1", "q": address_str},
+                headers={"User-Agent": NWS_USER_AGENT},
+            )
+            geo_resp.raise_for_status()
+            geo_results = geo_resp.json()
+            if not geo_results:
+                print(f"[WEATHER-NWS] Geocoding returned no results for: {address_str}")
+                return None
+
+            lat = round(float(geo_results[0]["lat"]), 4)
+            lon = round(float(geo_results[0]["lon"]), 4)
+            print(f"[WEATHER-NWS] Geocoded address to {lat}, {lon}")
+
+            # Step 2: NWS points lookup
+            points_resp = await client.get(
+                f"https://api.weather.gov/points/{lat},{lon}",
+                headers={"User-Agent": NWS_USER_AGENT, "Accept": "application/geo+json"},
+            )
+            points_resp.raise_for_status()
+            points_data = points_resp.json()
+            props = points_data.get("properties", {})
+
+            forecast_url = props.get("forecast", "")
+            stations_url = props.get("observationStations", "")
+
+            if not forecast_url or not stations_url:
+                print(f"[WEATHER-NWS] Points response missing forecast/stations URLs")
+                return None
+
+            # Step 3: Get nearest observation station
+            stations_resp = await client.get(
+                stations_url,
+                headers={"User-Agent": NWS_USER_AGENT, "Accept": "application/geo+json"},
+            )
+            stations_resp.raise_for_status()
+            stations_data = stations_resp.json()
+            station_features = stations_data.get("features", [])
+            if not station_features:
+                print(f"[WEATHER-NWS] No observation stations found near {lat}, {lon}")
+                return None
+
+            # Use the first (nearest) station
+            station_props = station_features[0].get("properties", {})
+            station_id = station_props.get("stationIdentifier", "")
+            station_url = f"https://api.weather.gov/stations/{station_id}"
+
+            # Also save backup station IDs in case primary fails
+            backup_stations = []
+            for feat in station_features[1:4]:  # Next 3 closest
+                sid = feat.get("properties", {}).get("stationIdentifier", "")
+                if sid:
+                    backup_stations.append(sid)
+
+            cache_data = {
+                "address_hash": addr_hash,
+                "lat": lat,
+                "lon": lon,
+                "station_id": station_id,
+                "station_url": station_url,
+                "backup_stations": backup_stations,
+                "forecast_url": forecast_url,
+                "grid_id": props.get("gridId", ""),
+                "grid_x": props.get("gridX"),
+                "grid_y": props.get("gridY"),
+                "cached_at": datetime.now(timezone.utc).isoformat(),
+            }
+            _save_nws_cache(cache_data)
+            print(f"[WEATHER-NWS] Cached location: station={station_id}, "
+                  f"grid={props.get('gridId')}/{props.get('gridX')},{props.get('gridY')}")
+            return cache_data
+
+    except Exception as e:
+        print(f"[WEATHER-NWS] Location lookup failed: {e}")
+        return None
+
+
+def _extract_nws_value(field_data) -> float | None:
+    """Extract numeric value from NWS observation field.
+
+    NWS observations use objects like {"value": 16.0, "unitCode": "wmoUnit:degC"}.
+    Some fields may be null or have null values.
+    """
+    if field_data is None:
+        return None
+    if isinstance(field_data, dict):
+        val = field_data.get("value")
+        return float(val) if val is not None else None
+    if isinstance(field_data, (int, float)):
+        return float(field_data)
+    return None
+
+
+def _c_to_f(val: float | None) -> float | None:
+    """Convert Celsius to Fahrenheit."""
+    if val is None:
+        return None
+    return round((val * 9 / 5) + 32, 1)
+
+
+def _kmh_to_mph(val: float | None) -> float | None:
+    """Convert km/h to mph."""
+    if val is None:
+        return None
+    return round(val * 0.621371, 1)
+
+
+def _pa_to_hpa(val: float | None) -> float | None:
+    """Convert Pascals to hectopascals (hPa / mbar)."""
+    if val is None:
+        return None
+    return round(val / 100, 1)
+
+
+def _parse_wind_speed_text(text: str) -> float | None:
+    """Parse NWS wind speed text like '10 to 15 mph' → 15 (max value)."""
+    if not text:
+        return None
+    numbers = re.findall(r'(\d+)', text)
+    if numbers:
+        return float(numbers[-1])  # Use the higher value
+    return None
+
+
+def _map_nws_condition(text_description: str) -> str:
+    """Map NWS textDescription to HA-compatible condition string.
+
+    Uses partial matching — checks if any key phrase appears in the description.
+    Falls back to 'unknown' if no match found.
+    """
+    if not text_description:
+        return "unknown"
+    desc_lower = text_description.lower().strip()
+
+    # Exact match first
+    if desc_lower in NWS_CONDITION_MAP:
+        return NWS_CONDITION_MAP[desc_lower]
+
+    # Partial match — check if description contains a known pattern
+    # Order matters: check longer/more specific patterns first
+    for key in sorted(NWS_CONDITION_MAP.keys(), key=len, reverse=True):
+        if key in desc_lower:
+            return NWS_CONDITION_MAP[key]
+
+    # Fallback heuristics
+    if "rain" in desc_lower or "shower" in desc_lower:
+        return "rainy"
+    if "snow" in desc_lower:
+        return "snowy"
+    if "thunder" in desc_lower or "storm" in desc_lower:
+        return "lightning-rainy"
+    if "cloud" in desc_lower:
+        return "cloudy"
+    if "sun" in desc_lower or "clear" in desc_lower:
+        return "sunny"
+    if "fog" in desc_lower or "mist" in desc_lower:
+        return "fog"
+    if "wind" in desc_lower:
+        return "windy"
+
+    return "unknown"
+
+
+def _map_nws_forecast_period(period: dict) -> dict:
+    """Map an NWS forecast period to HA-compatible forecast format."""
+    precip_prob = period.get("probabilityOfPrecipitation", {})
+    prob_val = None
+    if isinstance(precip_prob, dict):
+        prob_val = precip_prob.get("value")
+    elif isinstance(precip_prob, (int, float)):
+        prob_val = precip_prob
+
+    return {
+        "datetime": period.get("startTime"),
+        "condition": _map_nws_condition(period.get("shortForecast", "")),
+        "temperature": period.get("temperature"),
+        "templow": None,
+        "precipitation_probability": prob_val,
+        "precipitation": None,
+        "wind_speed": _parse_wind_speed_text(period.get("windSpeed", "")),
+        "wind_bearing": period.get("windDirection"),
+    }
+
+
+async def _fetch_nws_observations(station_url: str, backup_stations: list = None) -> dict:
+    """Fetch latest observations from an NWS station.
+
+    Returns a flat dict with extracted values (not raw NWS objects).
+    Falls back to backup stations if the primary fails.
+    """
+    import httpx
+
+    urls_to_try = [f"{station_url}/observations/latest"]
+    for sid in (backup_stations or []):
+        urls_to_try.append(f"https://api.weather.gov/stations/{sid}/observations/latest")
+
+    for url in urls_to_try:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    url,
+                    headers={"User-Agent": NWS_USER_AGENT, "Accept": "application/geo+json"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                props = data.get("properties", {})
+
+                return {
+                    "textDescription": props.get("textDescription", ""),
+                    "temperature": _extract_nws_value(props.get("temperature")),
+                    "relativeHumidity": _extract_nws_value(props.get("relativeHumidity")),
+                    "windSpeed": _extract_nws_value(props.get("windSpeed")),
+                    "windDirection": _extract_nws_value(props.get("windDirection")),
+                    "barometricPressure": _extract_nws_value(props.get("barometricPressure")),
+                    "timestamp": props.get("timestamp"),
+                }
+        except Exception as e:
+            print(f"[WEATHER-NWS] Observation fetch failed ({url}): {e}")
+            continue
+
+    print("[WEATHER-NWS] All observation stations failed")
+    return {}
+
+
+async def _fetch_nws_forecast(forecast_url: str) -> list:
+    """Fetch forecast periods from NWS and map to HA format."""
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                forecast_url,
+                headers={"User-Agent": NWS_USER_AGENT, "Accept": "application/geo+json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            periods = data.get("properties", {}).get("periods", [])
+            return [_map_nws_forecast_period(p) for p in periods[:14]]  # ~7 days (day+night)
+    except Exception as e:
+        print(f"[WEATHER-NWS] Forecast fetch failed: {e}")
+        return []
+
+
+async def get_weather_data_nws() -> dict:
+    """Fetch current weather from NWS API using homeowner address.
+
+    Returns data in the same format as get_weather_data() (HA entity version)
+    so the rules engine can consume it without changes.
+    """
+    config = get_config()
+
+    # Get cached NWS location or geocode + lookup
+    location = await _get_or_create_nws_location(config)
+    if not location:
+        return {"error": "Could not determine location from address for NWS weather"}
+
+    # Fetch current observations from nearest station
+    obs = await _fetch_nws_observations(
+        location["station_url"],
+        backup_stations=location.get("backup_stations", []),
+    )
+    if not obs:
+        return {"error": "Could not fetch NWS observations"}
+
+    # Fetch forecast
+    forecast = await _fetch_nws_forecast(location["forecast_url"])
+
+    return {
+        "entity_id": "nws_builtin",
+        "condition": _map_nws_condition(obs.get("textDescription", "")),
+        "temperature": _c_to_f(obs.get("temperature")),
+        "temperature_unit": "°F",
+        "humidity": round(obs["relativeHumidity"], 1) if obs.get("relativeHumidity") is not None else None,
+        "wind_speed": _kmh_to_mph(obs.get("windSpeed")),
+        "wind_speed_unit": "mph",
+        "wind_bearing": obs.get("windDirection"),
+        "pressure": _pa_to_hpa(obs.get("barometricPressure")),
+        "forecast": forecast,
+        "last_updated": obs.get("timestamp"),
+    }
+
+
 # --- Weather Data Fetching ---
 
 async def get_weather_data() -> dict:
-    """Fetch current weather and forecast from the configured HA weather entity."""
+    """Fetch current weather from the configured source.
+
+    Supports two sources:
+      - 'ha_entity': Uses a Home Assistant weather entity (default)
+      - 'nws': Uses the NWS API with the homeowner's address
+    """
     config = get_config()
+
+    # Branch based on weather source
+    if config.weather_source == "nws":
+        return await get_weather_data_nws()
+
+    # Default: HA entity source
     if not config.weather_entity_id:
         return {"error": "No weather entity configured"}
 
@@ -276,8 +674,12 @@ async def run_weather_evaluation() -> dict:
     Returns a summary of triggered rules and actions taken.
     """
     config = get_config()
-    if not config.weather_enabled or not config.weather_entity_id:
-        return {"skipped": True, "reason": "Weather control disabled or no entity configured"}
+    if not config.weather_enabled:
+        return {"skipped": True, "reason": "Weather control disabled"}
+    if config.weather_source == "ha_entity" and not config.weather_entity_id:
+        return {"skipped": True, "reason": "No weather entity configured"}
+    if config.weather_source == "nws" and not (config.homeowner_address or config.homeowner_zip):
+        return {"skipped": True, "reason": "No address configured for built-in weather"}
 
     weather = await get_weather_data()
     if "error" in weather:

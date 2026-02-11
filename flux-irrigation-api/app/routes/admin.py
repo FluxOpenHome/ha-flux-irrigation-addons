@@ -109,6 +109,7 @@ class SettingsUpdate(BaseModel):
     weather_entity_id: Optional[str] = None
     weather_enabled: Optional[bool] = None
     weather_check_interval_minutes: Optional[int] = Field(None, ge=5, le=60)
+    weather_source: Optional[str] = None  # "ha_entity" or "nws"
 
 
 @router.get("/api/settings", summary="Get current settings")
@@ -151,6 +152,7 @@ async def get_settings():
         "weather_entity_id": options.get("weather_entity_id", ""),
         "weather_enabled": options.get("weather_enabled", False),
         "weather_check_interval_minutes": options.get("weather_check_interval_minutes", 15),
+        "weather_source": options.get("weather_source", "ha_entity"),
     }
 
 
@@ -461,6 +463,12 @@ async def update_general_settings(body: SettingsUpdate):
         if old != body.weather_check_interval_minutes:
             changes.append(f"Weather check interval: {old} -> {body.weather_check_interval_minutes} min")
         options["weather_check_interval_minutes"] = body.weather_check_interval_minutes
+    if body.weather_source is not None:
+        old = options.get("weather_source", "ha_entity")
+        if old != body.weather_source:
+            source_labels = {"ha_entity": "HA Entity", "nws": "Built-In (NWS)"}
+            changes.append(f"Weather source: {source_labels.get(old, old)} -> {source_labels.get(body.weather_source, body.weather_source)}")
+        options["weather_source"] = body.weather_source
 
     await _save_options(options)
 
@@ -1597,6 +1605,21 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
         <div class="card-body">
             <div class="form-group">
+                <label>Weather Source</label>
+                <div style="display:flex;gap:16px;margin-top:4px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+                        <input type="radio" name="weatherSource" value="ha_entity" checked onchange="toggleWeatherSource()">
+                        HA Weather Entity
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+                        <input type="radio" name="weatherSource" value="nws" onchange="toggleWeatherSource()">
+                        Built-In (Address-Based)
+                    </label>
+                </div>
+                <p id="weatherSourceHint" style="font-size:12px;color:var(--text-placeholder);margin-top:4px;">Select a weather entity from your Home Assistant integrations.</p>
+            </div>
+
+            <div id="weatherEntityGroup" class="form-group">
                 <label>Weather Entity</label>
                 <select id="weatherEntitySelect" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
                     <option value="">-- Select a weather entity --</option>
@@ -1612,7 +1635,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <div id="weatherPreviewContent" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;font-size:13px;"></div>
             </div>
 
-            <div class="form-group" style="max-width:200px;">
+            <div id="weatherIntervalGroup" class="form-group" style="max-width:200px;">
                 <label>Check Interval (minutes)</label>
                 <input type="number" id="weatherInterval" min="5" max="60" value="15" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
             </div>
@@ -2241,6 +2264,27 @@ ADMIN_HTML = """<!DOCTYPE html>
     });
 
     // --- Weather Settings ---
+    var _weatherSource = 'ha_entity';
+
+    function toggleWeatherSource() {
+        var source = document.querySelector('input[name="weatherSource"]:checked').value;
+        _weatherSource = source;
+        var entityGroup = document.getElementById('weatherEntityGroup');
+        var hint = document.getElementById('weatherSourceHint');
+        var intervalGroup = document.getElementById('weatherIntervalGroup');
+        if (source === 'nws') {
+            entityGroup.style.display = 'none';
+            hint.textContent = 'Uses the National Weather Service API with your configured address. US addresses only. Checks every 60 minutes.';
+            // Auto-set interval to 60 for NWS
+            document.getElementById('weatherInterval').value = 60;
+            document.getElementById('weatherInterval').min = 60;
+        } else {
+            entityGroup.style.display = 'block';
+            hint.textContent = 'Select a weather entity from your Home Assistant integrations.';
+            document.getElementById('weatherInterval').min = 5;
+        }
+    }
+
     async function loadWeatherEntities() {
         try {
             const res = await fetch(`${BASE}/weather/entities`);
@@ -2267,14 +2311,26 @@ ADMIN_HTML = """<!DOCTYPE html>
             document.getElementById('weatherEnabled').checked = settings.weather_enabled || false;
             document.getElementById('weatherInterval').value = settings.weather_check_interval_minutes || 15;
 
+            // Set weather source radio
+            _weatherSource = settings.weather_source || 'ha_entity';
+            var radios = document.querySelectorAll('input[name="weatherSource"]');
+            for (var i = 0; i < radios.length; i++) {
+                radios[i].checked = (radios[i].value === _weatherSource);
+            }
+            toggleWeatherSource();
+
             await loadWeatherEntities();
             if (settings.weather_entity_id) {
                 document.getElementById('weatherEntitySelect').value = settings.weather_entity_id;
             }
 
-            updateWeatherBadge(settings.weather_enabled, settings.weather_entity_id);
+            updateWeatherBadge(settings.weather_enabled, settings.weather_entity_id, _weatherSource);
 
-            if (settings.weather_enabled && settings.weather_entity_id) {
+            // Show preview if weather is configured and enabled
+            var weatherReady = settings.weather_enabled && (
+                settings.weather_entity_id || _weatherSource === 'nws'
+            );
+            if (weatherReady) {
                 testWeatherEntity();
             }
         } catch (e) {
@@ -2282,9 +2338,11 @@ ADMIN_HTML = """<!DOCTYPE html>
         }
     }
 
-    function updateWeatherBadge(enabled, entityId) {
+    function updateWeatherBadge(enabled, entityId, source) {
+        var src = source || _weatherSource;
         const badge = document.getElementById('weatherStatusBadge');
-        if (!entityId) {
+        var configured = (src === 'nws') || !!entityId;
+        if (!configured) {
             badge.textContent = 'Not Configured';
             badge.style.background = 'var(--border-light)';
             badge.style.color = 'var(--text-secondary)';
@@ -2293,7 +2351,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             badge.style.background = 'var(--bg-warning)';
             badge.style.color = 'var(--text-warning)';
         } else {
-            badge.textContent = 'Active';
+            badge.textContent = src === 'nws' ? 'Active (Built-In)' : 'Active';
             badge.style.background = 'var(--bg-success-light)';
             badge.style.color = 'var(--text-success-dark)';
         }
@@ -2301,21 +2359,27 @@ ADMIN_HTML = """<!DOCTYPE html>
 
     async function saveWeatherSettings() {
         try {
+            var source = document.querySelector('input[name="weatherSource"]:checked').value;
             const entityId = document.getElementById('weatherEntitySelect').value;
             const enabled = document.getElementById('weatherEnabled').checked;
-            const interval = parseInt(document.getElementById('weatherInterval').value) || 15;
+            var interval = parseInt(document.getElementById('weatherInterval').value) || 15;
+
+            // Enforce minimum 60 for NWS
+            if (source === 'nws' && interval < 60) interval = 60;
 
             await fetch(`${BASE}/general`, {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    weather_entity_id: entityId,
+                    weather_source: source,
+                    weather_entity_id: source === 'nws' ? '' : entityId,
                     weather_enabled: enabled,
                     weather_check_interval_minutes: interval,
                 }),
             });
 
-            updateWeatherBadge(enabled, entityId);
+            _weatherSource = source;
+            updateWeatherBadge(enabled, entityId, source);
             showToast('Weather settings saved');
         } catch (e) {
             showToast('Failed to save weather settings', 'error');
@@ -2323,8 +2387,11 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     async function testWeatherEntity() {
-        const entityId = document.getElementById('weatherEntitySelect').value;
-        if (!entityId) return;
+        // For HA entity mode, require an entity selected
+        if (_weatherSource !== 'nws') {
+            const entityId = document.getElementById('weatherEntitySelect').value;
+            if (!entityId) return;
+        }
 
         const preview = document.getElementById('weatherPreview');
         const content = document.getElementById('weatherPreviewContent');

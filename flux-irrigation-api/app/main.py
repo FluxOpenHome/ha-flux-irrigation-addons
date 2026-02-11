@@ -308,7 +308,10 @@ async def _periodic_weather_check():
     while True:
         try:
             config = get_config()
-            if config.weather_enabled and config.weather_entity_id:
+            weather_ready = config.weather_enabled and (
+                config.weather_entity_id or config.weather_source == "nws"
+            )
+            if weather_ready:
                 from routes.weather import run_weather_evaluation
                 result = await run_weather_evaluation()
                 if result.get("triggered_rules"):
@@ -318,7 +321,8 @@ async def _periodic_weather_check():
             print(f"[MAIN] Weather check error: {e}")
 
         config = get_config()
-        interval = max(config.weather_check_interval_minutes, 5) * 60
+        min_interval = 60 if config.weather_source == "nws" else 5
+        interval = max(config.weather_check_interval_minutes, min_interval) * 60
         await asyncio.sleep(interval)
 
 
@@ -762,9 +766,13 @@ async def lifespan(app: FastAPI):
         from run_log import watch_zone_states
         zone_watcher_task = asyncio.create_task(watch_zone_states())
         print(f"[MAIN] Zone state watcher active: monitoring {len(config.allowed_zone_entities)} zone(s)")
-    if config.weather_enabled and config.weather_entity_id:
+    weather_ready = config.weather_enabled and (
+        config.weather_entity_id or config.weather_source == "nws"
+    )
+    if weather_ready:
         weather_task = asyncio.create_task(_periodic_weather_check())
-        print(f"[MAIN] Weather control active: entity={config.weather_entity_id}, "
+        source_label = "Built-In NWS (address)" if config.weather_source == "nws" else f"entity={config.weather_entity_id}"
+        print(f"[MAIN] Weather control active: source={source_label}, "
               f"interval={config.weather_check_interval_minutes}min")
     if config.mode == "homeowner":
         from routes.moisture import _load_data as _load_moisture_data
