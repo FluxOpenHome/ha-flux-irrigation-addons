@@ -11,8 +11,7 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flux Open Home - Homeowner Dashboard</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__" async defer></script>
 <style>
 :root {
     --bg-body: #f5f6fa;
@@ -237,6 +236,9 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
     .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
 }
+.gmap-ctrl-btn { background:#fff; border:0; border-radius:2px; box-shadow:0 1px 4px rgba(0,0,0,.3); cursor:pointer; margin:10px; padding:0; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:16px; color:#333; }
+.gmap-ctrl-btn:hover { background:#f5f5f5; }
+.gm-style a[href*="shortcuts"], .gm-style a[href*="report_a_map"] { display:none !important; }
 </style>
 </head>
 <body>
@@ -604,7 +606,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 const HBASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api/homeowner';
 let refreshTimer = null;
 let geocodeCache = {};
-let leafletMap = null;
+let gDetailMap = null;
 
 // --- Toast ---
 function showToast(msg, type = 'success') {
@@ -1295,91 +1297,99 @@ async function initDetailMap(addrData) {
 
 let mapLocked = true;
 let mapCenter = null;
-let mapRecenterControl = null;
+
+// --- Google Maps Dark Mode Style ---
+const GMAP_DARK_STYLE = [
+    { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+    { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#263c3f' }] },
+    { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+    { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+    { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
+    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
+    { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2835' }] },
+    { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
+    { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
+    { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
+    { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
+    { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] },
+];
+function _isDarkMode() { return document.body.classList.contains('dark-mode'); }
+function _getMapStyles() { return _isDarkMode() ? GMAP_DARK_STYLE : []; }
+
+function _addMapControl(map, position, html, id, onClick) {
+    var div = document.createElement('div');
+    div.id = id || '';
+    div.className = 'gmap-ctrl-btn';
+    div.innerHTML = html;
+    div.title = div.textContent.trim();
+    div.addEventListener('click', function(e) { e.stopPropagation(); onClick(e); });
+    map.controls[position].push(div);
+    return div;
+}
 
 function showMap(lat, lon, label) {
+    if (typeof google === 'undefined' || !google.maps) {
+        setTimeout(function() { showMap(lat, lon, label); }, 200);
+        return;
+    }
     const mapEl = document.getElementById('detailMap');
     mapEl.style.display = 'block';
-    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
-    mapLocked = true;
+    mapEl.innerHTML = '';
     mapCenter = { lat, lon };
-    mapRecenterControl = null;
-    // Delay Leaflet init until after the container is visible and laid out
+    mapLocked = true;
     requestAnimationFrame(() => {
-        leafletMap = L.map('detailMap', {
-            scrollWheelZoom: false,
-            dragging: false,
-            touchZoom: false,
-            doubleClickZoom: false,
-            boxZoom: false,
-            keyboard: false,
+        gDetailMap = new google.maps.Map(mapEl, {
+            center: { lat: lat, lng: lon },
+            zoom: 16,
+            gestureHandling: 'none',
             zoomControl: false,
-        }).setView([lat, lon], 16);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors',
-            maxZoom: 19,
-        }).addTo(leafletMap);
-        L.marker([lat, lon]).addTo(leafletMap);
-        // Lock/unlock toggle control
-        const LockControl = L.Control.extend({
-            options: { position: 'topright' },
-            onAdd: function() {
-                const btn = L.DomUtil.create('div', 'leaflet-bar');
-                btn.id = 'mapLockBtn';
-                btn.innerHTML = '<a href="#" title="Unlock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128274;</a>';
-                btn.style.cursor = 'pointer';
-                L.DomEvent.on(btn, 'click', function(e) {
-                    L.DomEvent.stop(e);
-                    toggleMapLock();
-                });
-                return btn;
-            }
+            streetViewControl: false,
+            mapTypeControl: false,
+            fullscreenControl: false,
+            clickableIcons: false,
+            styles: _getMapStyles(),
         });
-        leafletMap.addControl(new LockControl());
-        setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 300);
-        setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 1000);
+        new google.maps.Marker({
+            position: { lat: lat, lng: lon },
+            map: gDetailMap,
+        });
+        // Lock/unlock control
+        _addMapControl(gDetailMap, google.maps.ControlPosition.RIGHT_TOP,
+            '&#128274;', 'mapLockBtn',
+            function() { toggleMapLock(); });
     });
 }
 
 function toggleMapLock() {
-    if (!leafletMap) return;
+    if (!gDetailMap) return;
     mapLocked = !mapLocked;
-    const btn = document.getElementById('mapLockBtn');
+    gDetailMap.setOptions({
+        gestureHandling: mapLocked ? 'none' : 'auto',
+        zoomControl: !mapLocked,
+    });
+    var btn = document.getElementById('mapLockBtn');
+    if (btn) {
+        btn.innerHTML = mapLocked ? '&#128274;' : '&#128275;';
+        btn.title = mapLocked ? 'Unlock map interaction' : 'Lock map interaction';
+    }
+    var existingRecenter = document.getElementById('detailRecenterBtn');
     if (mapLocked) {
-        leafletMap.scrollWheelZoom.disable();
-        leafletMap.dragging.disable();
-        leafletMap.touchZoom.disable();
-        leafletMap.doubleClickZoom.disable();
-        leafletMap.boxZoom.disable();
-        leafletMap.keyboard.disable();
-        if (leafletMap.zoomControl) { leafletMap.zoomControl.remove(); }
-        if (mapRecenterControl) { leafletMap.removeControl(mapRecenterControl); mapRecenterControl = null; }
-        if (btn) btn.innerHTML = '<a href="#" title="Unlock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128274;</a>';
-    } else {
-        leafletMap.scrollWheelZoom.enable();
-        leafletMap.dragging.enable();
-        leafletMap.touchZoom.enable();
-        leafletMap.doubleClickZoom.enable();
-        leafletMap.boxZoom.enable();
-        leafletMap.keyboard.enable();
-        L.control.zoom({ position: 'topleft' }).addTo(leafletMap);
-        // Add recenter button
-        const RecenterControl = L.Control.extend({
-            options: { position: 'topleft' },
-            onAdd: function() {
-                const b = L.DomUtil.create('div', 'leaflet-bar');
-                b.innerHTML = '<a href="#" title="Recenter map" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#8982;</a>';
-                b.style.cursor = 'pointer';
-                L.DomEvent.on(b, 'click', function(e) {
-                    L.DomEvent.stop(e);
-                    if (leafletMap && mapCenter) leafletMap.setView([mapCenter.lat, mapCenter.lon], 16);
-                });
-                return b;
-            }
-        });
-        mapRecenterControl = new RecenterControl();
-        leafletMap.addControl(mapRecenterControl);
-        if (btn) btn.innerHTML = '<a href="#" title="Lock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128275;</a>';
+        if (existingRecenter) existingRecenter.remove();
+    } else if (!existingRecenter) {
+        _addMapControl(gDetailMap, google.maps.ControlPosition.LEFT_TOP,
+            '&#8982;', 'detailRecenterBtn',
+            function() {
+                if (gDetailMap && mapCenter) {
+                    gDetailMap.setCenter({ lat: mapCenter.lat, lng: mapCenter.lon });
+                    gDetailMap.setZoom(16);
+                }
+            });
     }
 }
 
@@ -4954,6 +4964,7 @@ function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
     localStorage.setItem('flux_dark_mode_homeowner', isDark);
     document.querySelector('.dark-toggle').textContent = isDark ? '☀️' : '🌙';
+    if (gDetailMap) gDetailMap.setOptions({ styles: _getMapStyles() });
 }
 (function initDarkToggleIcon() {
     const btn = document.querySelector('.dark-toggle');
