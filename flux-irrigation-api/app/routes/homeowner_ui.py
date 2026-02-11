@@ -3657,9 +3657,9 @@ async function loadMoisture() {
                     html += '</div></div>';
                 }
 
-                // Device status row: WiFi, Battery, Sleep
-                const hasDeviceInfo = devSensors.wifi || devSensors.battery || devSensors.sleep_duration;
-                if (hasDeviceInfo) {
+                // --- Section 3: Device Info (read-only telemetry) ---
+                const hasDeviceTelemetry = devSensors.wifi || devSensors.battery || devSensors.solar_charging;
+                if (hasDeviceTelemetry) {
                     html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-muted);">';
                     if (devSensors.wifi) {
                         const wv = devSensors.wifi.value;
@@ -3676,14 +3676,21 @@ async function loadMoisture() {
                     if (devSensors.solar_charging) {
                         const scLive = (devSensors.solar_charging.live_raw_state || '').toLowerCase();
                         const scCached = (devSensors.solar_charging.value || '').toLowerCase();
-                        // Use live state if valid, otherwise fall back to cached value
                         const scVal = (scLive && scLive !== 'unavailable' && scLive !== 'unknown') ? scLive : scCached;
                         const isCharging = scVal === 'on';
                         const scRetained = (scLive === 'unavailable' || scLive === 'unknown') && scCached;
                         html += '<span style="color:' + (isCharging ? 'var(--color-warning)' : 'var(--text-muted)') + ';" title="Solar Charging: ' + (isCharging ? 'Active' : 'Inactive') + (scRetained ? ' (retained)' : '') + '">' + (isCharging ? '☀️ Charging' : '🌙 No Solar') + (scRetained ? ' <span style="font-size:9px;opacity:0.7;">(retained)</span>' : '') + '</span>';
                     }
-                    // Probe Awake/Sleeping status + schedule prep info
+                    html += '</div>';
+                }
+
+                // --- Section 4: Sleep & Status ---
+                const hasSleepInfo = devSensors.sleep_duration || devSensors.sleep_disabled;
+                if (hasSleepInfo) {
+                    html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-muted);">';
+                    // Row 4a: Awake/Sleeping status + schedule prep
                     if (devSensors.sleep_duration) {
+                        html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
                         const isAwake = probe.is_awake === true;
                         var sleepLabel = '😴 Sleeping';
                         if (!isAwake && devSensors.status_led && devSensors.status_led.last_changed && devSensors.sleep_duration.value) {
@@ -3712,7 +3719,6 @@ async function loadMoisture() {
                         }
                         html += '<span style="font-weight:600;color:' + (isAwake ? 'var(--color-success)' : 'var(--text-muted)') + ';">' +
                             (isAwake ? '☀️ Awake' : sleepLabel) + '</span>';
-                        // Show schedule prep state if timeline has data for this probe
                         var probePrep = (timelineData.probe_prep || {})[pid];
                         if (probePrep && probePrep.state !== 'idle') {
                             var prepState = probePrep.state;
@@ -3724,54 +3730,52 @@ async function loadMoisture() {
                                 html += '<span style="font-size:10px;color:var(--text-muted);" title="Sleeping between mapped zones">💤 Between zones</span>';
                             }
                         }
+                        html += '</div>';
                     }
-                    // Sleep disabled toggle button
+                    // Row 4b: Sleep disabled toggle + pending
                     if (devSensors.sleep_disabled) {
-                        const sdLive = devSensors.sleep_disabled.live_raw_state || devSensors.sleep_disabled.value || '';
                         const sdVal = devSensors.sleep_disabled.value || '';
                         const isSleepDisabled = sdVal === 'on';
                         const pendingSD = probe.pending_sleep_disabled;
                         const showDisabled = pendingSD != null ? pendingSD : isSleepDisabled;
                         const btnLabel = showDisabled ? 'Enable Sleep' : 'Disable Sleep';
                         const btnColor = showDisabled ? 'var(--color-success)' : 'var(--color-warning)';
-                        html += '<button onclick="hoToggleSleepDisabled(\\'' + esc(pid) + '\\',' + (showDisabled ? 'false' : 'true') + ')" style="padding:1px 6px;font-size:10px;border:1px solid ' + btnColor + ';border-radius:4px;cursor:pointer;background:transparent;color:' + btnColor + ';">' + btnLabel + '</button>';
-                        html += '<span id="sleepDisPending_' + esc(pid) + '" style="color:var(--color-warning);font-size:10px;' + (pendingSD != null ? '' : 'display:none;') + '">' + (pendingSD != null ? '⏳ Pending' : '') + '</span>';
+                        html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">';
+                        html += '<button onclick="hoToggleSleepDisabled(\\'' + esc(pid) + '\\',' + (showDisabled ? 'false' : 'true') + ')" style="padding:2px 8px;font-size:10px;border:1px solid ' + btnColor + ';border-radius:4px;cursor:pointer;background:transparent;color:' + btnColor + ';">' + btnLabel + '</button>';
+                        html += '<span id="sleepDisPending_' + esc(pid) + '" style="color:var(--color-warning);font-size:10px;' + (pendingSD != null ? '' : 'display:none;') + '">' + (pendingSD != null ? '⏳ Pending — applies on wake' : '') + '</span>';
+                        html += '</div>';
                     }
+                    // Row 4c: Sleep duration control + pending
                     if (devSensors.sleep_duration) {
                         const sv = devSensors.sleep_duration.value;
-                        // Device value is in minutes
                         const deviceMin = sv != null ? Math.round(sv) : null;
                         const pendingSleep = probe.pending_sleep_duration;
-                        // Input value priority: user-typed > pending > device
                         const userVal = _userSleepDurValues[pid];
                         const inputVal = userVal != null ? userVal : (pendingSleep != null ? pendingSleep : (deviceMin || ''));
                         const hasPendingOrUser = userVal != null || pendingSleep != null;
-                        html += '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;">';
-                        // Actual device value (read-only)
+                        html += '<div style="margin-top:6px;">';
+                        html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
                         html += '<span style="font-size:11px;" title="Current value on device">💤 ' + (deviceMin != null ? deviceMin + ' min' : '—') + '</span>';
-                        // Separate input — NOT tied to entity, retains user-typed value
                         html += '<input type="number" id="sleepDur_' + esc(pid) + '" value="' + inputVal + '" min="0.5" max="120" step="0.5" placeholder="min" oninput="_userSleepDurValues[\\'' + esc(pid) + '\\']=this.value" style="width:50px;padding:1px 4px;border:1px solid ' + (hasPendingOrUser ? 'var(--color-warning)' : 'var(--border-light)') + ';border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
                         html += '<span style="font-size:10px;">min</span>';
-                        html += '<button onclick="hoSetSleepDuration(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);">Set</button>';
-                        html += '<span id="sleepDurPending_' + esc(pid) + '" style="color:var(--color-warning);font-size:10px;' + (pendingSleep != null ? '' : 'display:none;') + '" title="Pending: will apply when probe wakes">' + (pendingSleep != null ? '⏳ Pending: ' + pendingSleep + ' min' : '') + '</span>';
+                        html += '<button onclick="hoSetSleepDuration(\\'' + esc(pid) + '\\')" style="padding:2px 8px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);">Set</button>';
+                        html += '</div>';
+                        html += '<div id="sleepDurPending_' + esc(pid) + '" style="color:var(--color-warning);font-size:10px;margin-top:2px;' + (pendingSleep != null ? '' : 'display:none;') + '" title="Pending: will apply when probe wakes">' + (pendingSleep != null ? '⏳ Pending: ' + pendingSleep + ' min — applies on wake' : '') + '</div>';
                         html += '</div>';
                     }
-                    // Sleep Now button — press to force the probe to sleep immediately
+                    // Row 4d: Sleep Now
                     if (es.sleep_now) {
-                        html += '<button onclick="hoPressSleepNow(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--color-info);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-info);margin-top:2px;" title="Force probe to sleep now (starts the sleep duration countdown immediately)">Sleep Now</button>';
-                    }
-                    // Calibrate button — only if calibration entities detected
-                    if (es.calibrate_dry && es.calibrate_dry.length > 0) {
-                        html += '<button onclick="hoShowCalibrationModal(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--color-warning);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-warning);margin-top:2px;" title="Calibrate moisture sensors">Calibrate</button>';
+                        html += '<div style="margin-top:6px;">';
+                        html += '<button onclick="hoPressSleepNow(\\'' + esc(pid) + '\\')" style="padding:2px 8px;font-size:10px;border:1px solid var(--color-info);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-info);" title="Force probe to sleep now (starts the sleep duration countdown immediately)">Sleep Now</button>';
+                        html += '</div>';
                     }
                     html += '</div>';
                 }
 
-                // Wake schedule — button that opens a popup
+                // --- Section 5: Actions (Calibrate + Wake Schedule) ---
                 var _ppWake = (timelineData.probe_prep || {})[pid];
                 var _hasZones = (probe.zone_mappings || []).length > 0;
                 if (_hasZones) {
-                    // Store prep data + per-zone skip info for the popup
                     var _zoneSkipMap = {};
                     for (var _zsi = 0; _zsi < probeZones.length; _zsi++) {
                         var _zsEid = probeZones[_zsi];
@@ -3780,7 +3784,17 @@ async function loadMoisture() {
                     }
                     window['_wakePrep_' + pid] = _ppWake;
                     window['_wakeSkip_' + pid] = _zoneSkipMap;
-                    html += '<button onclick="hoShowWakeSchedule(\\'' + esc(pid) + '\\')" style="margin-top:6px;padding:2px 8px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);" title="View probe wake schedule">Wake Schedule</button>';
+                }
+                const _hasCalibrate = es.calibrate_dry && es.calibrate_dry.length > 0;
+                if (_hasZones || _hasCalibrate) {
+                    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">';
+                    if (_hasCalibrate) {
+                        html += '<button onclick="hoShowCalibrationModal(\\'' + esc(pid) + '\\')" style="padding:2px 8px;font-size:10px;border:1px solid var(--color-warning);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-warning);" title="Calibrate moisture sensors">Calibrate</button>';
+                    }
+                    if (_hasZones) {
+                        html += '<button onclick="hoShowWakeSchedule(\\'' + esc(pid) + '\\')" style="padding:2px 8px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);" title="View probe wake schedule">Wake Schedule</button>';
+                    }
+                    html += '</div>';
                 }
 
                 // Zone summary + edit toggle
@@ -4338,7 +4352,7 @@ async function hoSetSleepDuration(probeId) {
         if (result.status === 'pending') {
             showToast('Sleep ' + minutes + ' min queued — will apply when probe wakes', 'warning');
             // Show pending indicator immediately (before full reload)
-            _showPendingInline('sleepDurPending_' + probeId, '\\u23f3 Pending: ' + minutes + ' min');
+            _showPendingInline('sleepDurPending_' + probeId, '\\u23f3 Pending: ' + minutes + ' min \\u2014 applies on wake');
             input.style.borderColor = 'var(--color-warning)';
         } else {
             showToast('Sleep duration set to ' + minutes + ' min');
@@ -4357,7 +4371,7 @@ async function hoToggleSleepDisabled(probeId, disabled) {
         if (result.status === 'pending') {
             showToast('Sleep ' + action + ' queued — will apply when probe wakes', 'warning');
             // Show pending indicator immediately (before full reload)
-            _showPendingInline('sleepDisPending_' + probeId, '\\u23f3 Pending');
+            _showPendingInline('sleepDisPending_' + probeId, '\\u23f3 Pending \\u2014 applies on wake');
         } else {
             showToast('Sleep ' + action);
         }
