@@ -3424,13 +3424,17 @@ async function mgmtSetSleepDuration(probeId) {
         });
         if (result.status === 'pending') {
             showToast('Sleep ' + minutes + ' min queued — will apply when probe wakes', 'warning');
+            // Show pending indicator immediately (before full reload)
+            _mgmtShowPendingInline('mgmtSleepDurPending_' + probeId, '\\u23f3 Pending: ' + minutes + ' min');
+            var durInput = document.getElementById('mgmtSleepDur_' + probeId);
+            if (durInput) durInput.style.borderColor = 'var(--color-warning)';
         } else {
             showToast('Sleep duration set to ' + minutes + ' min');
             // Value was applied — clear user override so input shows device value
             delete _mgmtUserSleepDurValues[probeId];
         }
         _mgmtMoistureDataCache = null;
-        loadDetailMoisture(currentCustomerId);
+        await loadDetailMoisture(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -3443,12 +3447,22 @@ async function mgmtToggleSleepDisabled(probeId, disabled) {
         const action = disabled ? 'disabled' : 'enabled';
         if (result.status === 'pending') {
             showToast('Sleep ' + action + ' queued — will apply when probe wakes', 'warning');
+            // Show pending indicator immediately (before full reload)
+            _mgmtShowPendingInline('mgmtSleepDisPending_' + probeId, '\\u23f3 Pending');
         } else {
             showToast('Sleep ' + action);
         }
         _mgmtMoistureDataCache = null;
-        loadDetailMoisture(currentCustomerId);
+        await loadDetailMoisture(currentCustomerId);
     } catch (e) { showToast(e.message, 'error'); }
+}
+
+function _mgmtShowPendingInline(elId, text) {
+    var el = document.getElementById(elId);
+    if (el) {
+        el.textContent = text;
+        el.style.display = '';
+    }
 }
 
 async function mgmtPressSleepNow(probeId) {
