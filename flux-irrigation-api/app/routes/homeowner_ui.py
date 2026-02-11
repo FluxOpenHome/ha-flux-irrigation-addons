@@ -3638,9 +3638,7 @@ async function loadMoisture() {
                         const btnLabel = showDisabled ? 'Enable Sleep' : 'Disable Sleep';
                         const btnColor = showDisabled ? 'var(--color-success)' : 'var(--color-warning)';
                         html += '<button onclick="hoToggleSleepDisabled(\\'' + esc(pid) + '\\',' + (showDisabled ? 'false' : 'true') + ')" style="padding:1px 6px;font-size:10px;border:1px solid ' + btnColor + ';border-radius:4px;cursor:pointer;background:transparent;color:' + btnColor + ';">' + btnLabel + '</button>';
-                        if (pendingSD != null) {
-                            html += '<span style="color:var(--color-warning);font-size:10px;">⏳ Pending</span>';
-                        }
+                        html += '<span id="sleepDisPending_' + esc(pid) + '" style="color:var(--color-warning);font-size:10px;' + (pendingSD != null ? '' : 'display:none;') + '">' + (pendingSD != null ? '⏳ Pending' : '') + '</span>';
                     }
                     if (devSensors.sleep_duration) {
                         const sv = devSensors.sleep_duration.value;
@@ -3658,9 +3656,7 @@ async function loadMoisture() {
                         html += '<input type="number" id="sleepDur_' + esc(pid) + '" value="' + inputVal + '" min="0.5" max="120" step="0.5" placeholder="min" oninput="_userSleepDurValues[\\'' + esc(pid) + '\\']=this.value" style="width:50px;padding:1px 4px;border:1px solid ' + (hasPendingOrUser ? 'var(--color-warning)' : 'var(--border-light)') + ';border-radius:4px;font-size:11px;background:var(--bg-card);color:var(--text-primary);">';
                         html += '<span style="font-size:10px;">min</span>';
                         html += '<button onclick="hoSetSleepDuration(\\'' + esc(pid) + '\\')" style="padding:1px 6px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);">Set</button>';
-                        if (pendingSleep != null) {
-                            html += '<span style="color:var(--color-warning);font-size:10px;" title="Pending: will apply when probe wakes">⏳ Pending: ' + pendingSleep + ' min</span>';
-                        }
+                        html += '<span id="sleepDurPending_' + esc(pid) + '" style="color:var(--color-warning);font-size:10px;' + (pendingSleep != null ? '' : 'display:none;') + '" title="Pending: will apply when probe wakes">' + (pendingSleep != null ? '⏳ Pending: ' + pendingSleep + ' min' : '') + '</span>';
                         html += '</div>';
                     }
                     // Sleep Now button — press to force the probe to sleep immediately
@@ -4244,13 +4240,16 @@ async function hoSetSleepDuration(probeId) {
         const result = await mapi('/probes/' + encodeURIComponent(probeId) + '/sleep-duration', 'PUT', { minutes: minutes });
         if (result.status === 'pending') {
             showToast('Sleep ' + minutes + ' min queued — will apply when probe wakes', 'warning');
+            // Show pending indicator immediately (before full reload)
+            _showPendingInline('sleepDurPending_' + probeId, '\\u23f3 Pending: ' + minutes + ' min');
+            input.style.borderColor = 'var(--color-warning)';
         } else {
             showToast('Sleep duration set to ' + minutes + ' min');
             // Value was applied — clear user override so input shows device value
             delete _userSleepDurValues[probeId];
         }
         _moistureDataCache = null;
-        loadMoisture();
+        await loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -4260,12 +4259,22 @@ async function hoToggleSleepDisabled(probeId, disabled) {
         const action = disabled ? 'disabled' : 'enabled';
         if (result.status === 'pending') {
             showToast('Sleep ' + action + ' queued — will apply when probe wakes', 'warning');
+            // Show pending indicator immediately (before full reload)
+            _showPendingInline('sleepDisPending_' + probeId, '\\u23f3 Pending');
         } else {
             showToast('Sleep ' + action);
         }
         _moistureDataCache = null;
-        loadMoisture();
+        await loadMoisture();
     } catch (e) { showToast(e.message, 'error'); }
+}
+
+function _showPendingInline(elId, text) {
+    var el = document.getElementById(elId);
+    if (el) {
+        el.textContent = text;
+        el.style.display = '';
+    }
 }
 
 async function hoPressSleepNow(probeId) {
