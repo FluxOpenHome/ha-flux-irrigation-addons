@@ -1604,21 +1604,25 @@ ADMIN_HTML = """<!DOCTYPE html>
             </div>
         </div>
         <div class="card-body">
+
+            <!-- Weather Source Selection -->
             <div class="form-group">
                 <label>Weather Source</label>
-                <div style="display:flex;gap:16px;margin-top:4px;">
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
-                        <input type="radio" name="weatherSource" value="ha_entity" checked onchange="toggleWeatherSource()">
-                        HA Weather Entity
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+                    <label style="display:block;cursor:pointer;padding:14px;border:2px solid var(--border-input);border-radius:8px;transition:border-color 0.2s;" id="srcHaLabel">
+                        <input type="radio" name="weatherSource" value="ha_entity" checked onchange="toggleWeatherSource()" style="margin-right:6px;">
+                        <strong style="font-size:14px;">HA Weather Entity</strong>
+                        <div style="font-size:12px;color:var(--text-hint);margin-top:4px;">Use an existing Home Assistant weather integration (NWS, OpenWeatherMap, etc).</div>
                     </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
-                        <input type="radio" name="weatherSource" value="nws" onchange="toggleWeatherSource()">
-                        Built-In (Address-Based)
+                    <label style="display:block;cursor:pointer;padding:14px;border:2px solid var(--border-input);border-radius:8px;transition:border-color 0.2s;" id="srcNwsLabel">
+                        <input type="radio" name="weatherSource" value="nws" onchange="toggleWeatherSource()" style="margin-right:6px;">
+                        <strong style="font-size:14px;">Built-In Weather</strong>
+                        <div style="font-size:12px;color:var(--text-hint);margin-top:4px;">Uses your address with the National Weather Service. No HA integration needed. US only.</div>
                     </label>
                 </div>
-                <p id="weatherSourceHint" style="font-size:12px;color:var(--text-placeholder);margin-top:4px;">Select a weather entity from your Home Assistant integrations.</p>
             </div>
 
+            <!-- HA Entity Selector (only shown for ha_entity source) -->
             <div id="weatherEntityGroup" class="form-group">
                 <label>Weather Entity</label>
                 <select id="weatherEntitySelect" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
@@ -1627,6 +1631,15 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <p style="font-size:12px;color:var(--text-placeholder);margin-top:4px;">We recommend the <strong>NWS (National Weather Service)</strong> integration for the most accurate weather data. See the Help section below for setup instructions.</p>
             </div>
 
+            <!-- NWS Info (only shown for nws source) -->
+            <div id="weatherNwsInfo" style="display:none;">
+                <div style="background:var(--bg-active-tile);border:1px solid var(--border-active);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">
+                    <strong style="color:var(--color-primary);">&#127782;&#65039; Using your configured address</strong><br>
+                    <span style="color:var(--text-secondary);">Weather data is fetched from the National Weather Service every 60 minutes using the address in your Connection Key settings above. No API key needed.</span>
+                </div>
+            </div>
+
+            <!-- Current Conditions Preview -->
             <div id="weatherPreview" style="display:none;background:var(--bg-weather);border-radius:8px;padding:14px;margin-bottom:16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                     <strong>Current Conditions</strong>
@@ -1635,6 +1648,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <div id="weatherPreviewContent" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;font-size:13px;"></div>
             </div>
 
+            <!-- Check Interval (only shown for ha_entity source) -->
             <div id="weatherIntervalGroup" class="form-group" style="max-width:200px;">
                 <label>Check Interval (minutes)</label>
                 <input type="number" id="weatherInterval" min="5" max="60" value="15" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
@@ -2269,18 +2283,17 @@ ADMIN_HTML = """<!DOCTYPE html>
     function toggleWeatherSource() {
         var source = document.querySelector('input[name="weatherSource"]:checked').value;
         _weatherSource = source;
-        var entityGroup = document.getElementById('weatherEntityGroup');
-        var hint = document.getElementById('weatherSourceHint');
-        var intervalGroup = document.getElementById('weatherIntervalGroup');
+        // Highlight selected card border
+        document.getElementById('srcHaLabel').style.borderColor = source === 'ha_entity' ? 'var(--color-accent)' : 'var(--border-input)';
+        document.getElementById('srcNwsLabel').style.borderColor = source === 'nws' ? 'var(--color-accent)' : 'var(--border-input)';
+        // Show/hide sections based on source
+        document.getElementById('weatherEntityGroup').style.display = source === 'ha_entity' ? 'block' : 'none';
+        document.getElementById('weatherNwsInfo').style.display = source === 'nws' ? 'block' : 'none';
+        document.getElementById('weatherIntervalGroup').style.display = source === 'ha_entity' ? 'block' : 'none';
         if (source === 'nws') {
-            entityGroup.style.display = 'none';
-            hint.textContent = 'Uses the National Weather Service API with your configured address. US addresses only. Checks every 60 minutes.';
-            // Auto-set interval to 60 for NWS
             document.getElementById('weatherInterval').value = 60;
             document.getElementById('weatherInterval').min = 60;
         } else {
-            entityGroup.style.display = 'block';
-            hint.textContent = 'Select a weather entity from your Home Assistant integrations.';
             document.getElementById('weatherInterval').min = 5;
         }
     }
