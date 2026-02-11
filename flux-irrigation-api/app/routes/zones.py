@@ -132,6 +132,10 @@ async def list_zones(request: Request):
 
     entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
 
+    # Filter out pump start relay and master valve — they are not actual zones
+    _NON_ZONE_RE = re.compile(r"pump|master.?valve", re.IGNORECASE)
+    entities = [e for e in entities if not _NON_ZONE_RE.search(e.get("entity_id", ""))]
+
     zones = []
     max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
     for entity in entities:

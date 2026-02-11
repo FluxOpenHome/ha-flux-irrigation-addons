@@ -108,6 +108,9 @@ async def get_system_status(request: Request):
     max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
     if max_zones > 0:
         zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) <= max_zones]
+    # Filter out pump start relay and master valve — they are not actual zones
+    _NON_ZONE_RE = re.compile(r"pump|master.?valve", re.IGNORECASE)
+    zones = [z for z in zones if not _NON_ZONE_RE.search(z.get("entity_id", ""))]
     active_zones = [z for z in zones if z.get("state") == "on"]
 
     # Count sensors

@@ -273,6 +273,7 @@ _NON_ZONE_SWITCH_KEYWORDS = {
     "schedule", "monday", "tuesday", "wednesday", "thursday",
     "friday", "saturday", "sunday", "restart", "rain_sensor",
     "rain_delay", "12_hour", "time_format",
+    "pump", "master_valve", "master",
 }
 
 
@@ -285,25 +286,22 @@ def _is_zone_entity(entity_id: str, name: str) -> bool:
       - switch.*_start_stop_resume  → main switch (NOT a zone)
       - switch.*_auto_advance  → auto advance (NOT a zone)
       - switch.*_schedule_*  → schedule controls (NOT a zone)
-      - valve.*  → always a zone (non-ESPHome controllers)
+      - valve.*  → zones (non-ESPHome controllers), EXCEPT pump/master valve
     """
     domain = entity_id.split(".")[0] if "." in entity_id else ""
+    suffix = entity_id.split(".", 1)[1].lower() if "." in entity_id else entity_id.lower()
 
-    # valve.* entities are always zones
+    # Check for non-zone keywords first (applies to ALL domains)
+    for keyword in _NON_ZONE_SWITCH_KEYWORDS:
+        if keyword in suffix:
+            return False
+
+    # valve.* entities are zones (after non-zone keyword check above)
     if domain == _VALVE_DOMAIN:
         return True
 
     if domain != "switch":
         return False
-
-    # Get the part after "switch."
-    suffix = entity_id.split(".", 1)[1] if "." in entity_id else entity_id
-
-    # Check for non-zone keywords in the entity_id
-    suffix_lower = suffix.lower()
-    for keyword in _NON_ZONE_SWITCH_KEYWORDS:
-        if keyword in suffix_lower:
-            return False
 
     # Match the zone valve pattern: *_zone_N
     if _ZONE_VALVE_PATTERN.match(entity_id):
