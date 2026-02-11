@@ -53,10 +53,13 @@ For irrigation management companies, the companion [Flux Management Server](http
 5. Click **Add → Close**
 6. Find **Flux Open Home Irrigation Control** in the store and click **Install**
 7. Enable **Show in sidebar** if desired, then click **Start**
-8. **Open the Web UI** — click the **"OPEN WEB UI"** button on the add-on page, or click the add-on name in the sidebar
+8. **Restart Home Assistant** — Go to **Settings → System → Restart**. This is required on first install so that the add-on's proxy services register with HA. You only need to do this once.
+9. **Open the Web UI** — click the **"OPEN WEB UI"** button on the add-on page, or click the add-on name in the sidebar
 
 > **Important: All setup is done inside the Web UI.**
 > Do **NOT** use the "Configuration" tab on the add-on's splash screen in Home Assistant — that tab is for advanced/internal settings only. Instead, open the Web UI and click **Configuration** in the top navigation bar. That is where you select your irrigation device, set up weather, generate connection keys, and configure everything else.
+>
+> **Why restart?** The add-on automatically configures your `configuration.yaml` and creates proxy services on startup. Home Assistant only loads these on restart, so a one-time restart is needed after the first install.
 
 ---
 
@@ -64,7 +67,7 @@ For irrigation management companies, the companion [Flux Management Server](http
 
 ### Step 1: Install and Start
 
-Install the add-on from the repository (see [Installation](#installation) above) and start it.
+Install the add-on from the repository (see [Installation](#installation) above) and start it. Then **restart Home Assistant once** (Settings → System → Restart) — the add-on automatically configures your `configuration.yaml` and creates proxy services on its first startup, but HA needs a restart to load them.
 
 **Open the Web UI** by clicking the **"OPEN WEB UI"** button on the add-on page (or the sidebar link if you enabled it). You will see the **Homeowner Dashboard**.
 

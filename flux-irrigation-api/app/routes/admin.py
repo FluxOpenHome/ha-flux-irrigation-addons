@@ -1341,11 +1341,14 @@ ADMIN_HTML = """<!DOCTYPE html>
                     </p>
                 </div>
                 <div style="background:var(--bg-active-tile);border:1px solid var(--border-active);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">
-                    <strong style="color:var(--color-primary);">&#9989; Automatic setup</strong><br>
+                    <strong style="color:var(--color-primary);">&#9989; Automatic proxy setup</strong><br>
                     <span style="color:var(--text-secondary);">
-                        The add-on automatically configures <code style="background:var(--bg-tile);padding:2px 6px;border-radius:3px;">configuration.yaml</code> and creates the proxy package on startup.
-                        <span style="font-size:11px;color:var(--text-hint);margin-top:4px;display:block;">After generating the connection key, restart Home Assistant once for the proxy services to register.</span>
+                        The add-on automatically configures <code style="background:var(--bg-tile);padding:2px 6px;border-radius:3px;">configuration.yaml</code> and creates the proxy package on every startup &mdash; no manual editing needed.
                     </span>
+                    <div style="margin-top:8px;padding:8px 10px;background:var(--bg-tile);border-radius:6px;font-size:12px;color:var(--text-secondary);">
+                        <strong style="color:var(--color-warning);">&#9888;&#65039; First install only:</strong> After installing the add-on, you must <strong>restart Home Assistant</strong> once
+                        (Settings &rarr; System &rarr; Restart) so the proxy services register. This is a one-time step &mdash; subsequent add-on restarts do not require an HA restart.
+                    </div>
                 </div>
             </div>
 
@@ -2812,6 +2815,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Management Access Control</h4>
 <p style="margin-bottom:10px;">Control your management company's access to your irrigation system. Generate a connection key to grant access, or revoke it instantly. The connection key gives your management company access to all devices — irrigation controller zones, schedules, sensors, moisture probes, weather settings, and run history.</p>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#9989; <strong>Automatic proxy setup:</strong> The add-on automatically configures <code>configuration.yaml</code> and creates the Nabu Casa proxy package on every startup. After the <strong>first install only</strong>, restart Home Assistant once (Settings &rarr; System &rarr; Restart) so the proxy services register.</div>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Connection Method</strong> — Choose how your management company connects:</li>
 <li style="margin-bottom:4px;margin-left:16px;"><strong>Nabu Casa (Cloud)</strong> — Uses your Home Assistant Cloud URL. Works from anywhere without port forwarding. Recommended for most users.</li>
