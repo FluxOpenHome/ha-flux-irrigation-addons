@@ -311,7 +311,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('status')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_status" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> System Status</h2>
             <div style="display:flex;gap:8px;align-items:center;">
-                <a href="#" onclick="lockCard('status',event)" id="cardLock_status" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('status',event)" id="cardLock_status" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <button class="btn btn-secondary btn-sm" id="pauseResumeBtn" onclick="event.stopPropagation();togglePauseResume()">Pause System</button>
             </div>
         </div>
@@ -327,7 +327,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <div class="card-header" onclick="toggleCard('gallons')" style="cursor:pointer;user-select:none;">
                 <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_gallons" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Estimated Gallons</h2>
                 <div style="display:flex;gap:6px;align-items:center;">
-                    <a href="#" onclick="lockCard('gallons',event)" id="cardLock_gallons" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                    <a href="#" onclick="lockCard('gallons',event)" id="cardLock_gallons" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                     <select id="gallonsRange" onclick="event.stopPropagation()" onchange="loadEstGallons()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
                         <option value="24">Last 24 hours</option>
                         <option value="168">Last 7 days</option>
@@ -348,7 +348,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <div class="card-header" onclick="toggleCard('pump')" style="cursor:pointer;user-select:none;">
                 <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_pump" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> &#9889; Pump Monitor</h2>
                 <div style="display:flex;gap:6px;align-items:center;">
-                    <a href="#" onclick="lockCard('pump',event)" id="cardLock_pump" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                    <a href="#" onclick="lockCard('pump',event)" id="cardLock_pump" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                     <select id="pumpRange" onclick="event.stopPropagation()" onchange="loadPumpMonitor()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
                         <option value="24">Last 24 hours</option>
                         <option value="720" selected>Last 30 days</option>
@@ -369,7 +369,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('rain')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_rain" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> &#127783;&#65039; Rain Sensor</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <a href="#" onclick="lockCard('rain',event)" id="cardLock_rain" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('rain',event)" id="cardLock_rain" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <span id="rainStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">&#8212;</span>
             </div>
         </div>
@@ -383,7 +383,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('weather')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_weather" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Weather-Based Control</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <a href="#" onclick="lockCard('weather',event)" id="cardLock_weather" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('weather',event)" id="cardLock_weather" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <span id="weatherMultBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-success-light);color:var(--text-success-dark);">1.0x</span>
             </div>
         </div>
@@ -397,7 +397,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('moisture')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_moisture" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> <svg xmlns="http://www.w3.org/2000/svg" viewBox="155 170 745 295" style="height:28px;width:auto;"><path fill="var(--text-primary)" fill-rule="evenodd" d="M322.416931,281.625397 C323.073517,288.667053 324.062378,295.290680 324.095001,301.918976 C324.240021,331.407532 324.573761,360.907135 323.953278,390.384125 C323.315430,420.685608 305.951965,442.817230 276.750000,451.004150 C252.045670,457.930115 227.631088,457.462616 204.859512,444.061829 C193.733704,437.514404 185.529037,427.904022 179.913101,416.206268 C179.426056,415.191742 179.182327,414.060425 178.732849,412.703430 C192.772842,404.558502 206.657608,396.503632 221.095810,388.127686 C222.548920,398.588440 227.417007,406.291168 236.306213,411.228241 C242.295563,414.554749 248.872574,415.283630 255.195541,413.607391 C269.094299,409.922882 279.602142,400.331543 276.985321,375.408997 C268.292480,376.997406 259.625824,379.362396 250.827682,380.053528 C212.511551,383.063599 177.112976,355.681854 170.128632,318.134705 C162.288498,275.986908 187.834488,236.765533 229.805115,227.777832 C248.650925,223.742157 267.514679,224.860764 285.481567,232.988800 C306.417999,242.460220 318.099121,258.975830 322.416931,281.625397 M216.907806,286.065979 C225.295822,272.331604 237.176926,265.403442 252.929047,267.162231 C267.323669,268.769440 277.405518,277.037170 282.681366,290.504517 C288.739105,305.967712 282.622986,322.699615 267.827820,332.537079 C254.597519,341.334045 236.860046,339.821564 225.031052,328.887756 C212.268768,317.091309 209.342514,302.099945 216.907806,286.065979z"/><path fill="var(--text-primary)" fill-rule="evenodd" d="M440.778076,230.141632 C466.800079,239.483002 484.434601,256.637787 491.839233,283.105133 C500.007050,312.300537 489.084961,342.278625 464.074921,361.493744 C431.640076,386.413300 382.445770,383.545990 353.656403,355.057953 C318.682434,320.450043 324.759583,264.850739 366.581024,238.762604 C389.708984,224.335434 414.506042,222.091354 440.778076,230.141632 M419.079773,266.764740 C437.440765,270.748535 450.546936,286.287720 449.715515,302.670624 C448.781708,321.070160 434.135437,336.279297 415.803497,337.885803 C397.935547,339.451660 380.905334,327.358856 376.509705,309.984161 C370.390747,285.797394 393.025116,262.545013 419.079773,266.764740z"/><path fill="var(--text-primary)" fill-rule="evenodd" d="M505.651459,275.706696 C519.676758,244.101715 544.491516,227.960754 577.827881,226.121109 C611.160156,224.281693 638.083069,237.473114 655.040100,266.968140 C676.296448,303.941376 659.723389,352.082367 620.168030,369.955170 C596.583435,380.611755 572.628662,381.200958 548.535156,371.444641 C547.794678,371.144745 546.983826,371.018707 545.645447,370.662506 C545.645447,390.059296 545.645447,409.111145 545.645447,428.497070 C530.607544,428.497070 516.074341,428.497070 500.996918,428.497070 C500.996918,426.395355 500.996918,424.628113 500.996918,422.860901 C500.996948,382.885895 500.731262,342.907776 501.200592,302.938263 C501.306030,293.961548 503.980682,285.014954 505.651459,275.706696 M598.115479,334.281433 C575.892517,344.478851 553.161804,330.843811 547.077026,312.404572 C542.453613,298.393616 547.708435,283.178833 560.344666,273.573029 C572.626587,264.236572 589.550232,263.566986 602.341309,271.911499 C626.866516,287.910980 624.857971,320.051117 598.115479,334.281433z"/><path fill="var(--text-primary)" d="M670.825439,182.155045 C670.825439,180.187927 670.825439,178.699997 670.825439,176.849915 C685.635620,176.849915 700.198181,176.849915 715.259155,176.849915 C715.259155,197.175491 715.259155,217.587784 715.259155,238.510025 C716.406799,238.089737 717.045288,238.015717 717.473022,237.676285 C735.466553,223.398956 755.376953,222.532013 775.856384,230.443253 C790.949036,236.273605 798.483093,249.035553 801.756714,264.225281 C803.287109,271.326416 804.004150,278.725677 804.067200,285.998688 C804.319702,315.143738 804.171570,344.292236 804.171570,373.721710 C789.407043,373.721710 774.836182,373.721710 759.827942,373.721710 C759.827942,371.711731 759.835571,369.768616 759.826843,367.825562 C759.706604,341.165588 760.090210,314.490112 759.275696,287.851318 C758.772949,271.407867 746.863953,263.163330 731.353210,266.883484 C722.925842,268.904694 717.127258,275.714691 716.057434,285.099060 C715.681213,288.399445 715.542114,291.742798 715.536499,295.066956 C715.495117,319.566559 715.514954,344.066254 715.515503,368.565918 C715.515503,370.204803 715.515503,371.843689 715.515503,373.824829 C700.566040,373.824829 685.988281,373.824829 670.825439,373.824829 C670.825439,310.162415 670.825439,246.398331 670.825439,182.155045z"/><path fill="var(--text-primary)" d="M855.839355,323.000092 C855.839355,340.127289 855.839355,356.754486 855.839355,373.695129 C840.823486,373.695129 826.114746,373.695129 810.997253,373.695129 C810.997253,371.683563 810.994263,369.731567 810.997681,367.779572 C811.046997,339.965515 810.786316,312.145172 811.345886,284.341370 C811.503601,276.506470 813.144958,268.402985 815.701904,260.971832 C822.865173,240.153290 839.259949,230.438156 859.952881,227.148788 C867.723389,225.913574 875.715454,226.072052 883.918213,225.576279 C883.918213,240.530334 883.918213,254.247711 883.918213,268.202820 C883.009399,267.944122 882.380005,267.791504 881.768005,267.586914 C867.262085,262.736725 856.693237,269.680603 856.083313,285.032410 C855.587708,297.505157 855.890564,310.009644 855.839355,323.000092z"/><path fill="#6DAC39" d="M397.000000,391.998138 C428.473236,391.998138 459.446503,391.998138 490.792969,391.998138 C490.792969,404.699890 490.792969,417.072754 490.792969,429.726562 C438.290070,429.726562 385.895660,429.726562 333.244019,429.726562 C333.244019,417.257721 333.244019,404.991150 333.244019,391.998138 C354.328308,391.998138 375.414154,391.998138 397.000000,391.998138z"/></svg> Moisture Probes</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <a href="#" onclick="lockCard('moisture',event)" id="cardLock_moisture" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('moisture',event)" id="cardLock_moisture" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <span id="moistureStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-success-light);color:var(--text-success-dark);">—</span>
             </div>
         </div>
@@ -411,7 +411,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('zones')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_zones" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Zones</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <a href="#" onclick="lockCard('zones',event)" id="cardLock_zones" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('zones',event)" id="cardLock_zones" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <div id="autoAdvanceToggle" onclick="event.stopPropagation()" style="display:none;"></div>
             </div>
         </div>
@@ -425,7 +425,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('schedule')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_schedule" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Schedule</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <a href="#" onclick="lockCard('schedule',event)" id="cardLock_schedule" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('schedule',event)" id="cardLock_schedule" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
             </div>
         </div>
         <div class="card-body" id="cardBody_schedule">
@@ -438,7 +438,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('sensors')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_sensors" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Sensors</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <a href="#" onclick="lockCard('sensors',event)" id="cardLock_sensors" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('sensors',event)" id="cardLock_sensors" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
             </div>
         </div>
         <div class="card-body" id="cardBody_sensors">
@@ -451,7 +451,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('controls')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_controls" style="font-size:12px;transition:transform 0.2s;display:inline-block;">&#9654;</span> Device Controls</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <a href="#" onclick="lockCard('controls',event)" id="cardLock_controls" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('controls',event)" id="cardLock_controls" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
             </div>
         </div>
         <div class="card-body" id="cardBody_controls" style="display:none;">
@@ -464,7 +464,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('expansion')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_expansion" style="font-size:12px;transition:transform 0.2s;display:inline-block;">&#9654;</span> &#128268; Expansion Boards</h2>
             <div style="display:flex;align-items:center;gap:8px;">
-                <a href="#" onclick="lockCard('expansion',event)" id="cardLock_expansion" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('expansion',event)" id="cardLock_expansion" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <span id="expansionStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">&#8212;</span>
             </div>
         </div>
@@ -478,7 +478,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <div class="card-header" onclick="toggleCard('history')" style="cursor:pointer;user-select:none;">
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_history" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Run History</h2>
             <div style="display:flex;gap:6px;align-items:center;">
-                <a href="#" onclick="lockCard('history',event)" id="cardLock_history" style="font-size:14px;text-decoration:none;" title="Lock open">&#128275;</a>
+                <a href="#" onclick="lockCard('history',event)" id="cardLock_history" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <select id="historyRange" onclick="event.stopPropagation()" onchange="loadHistory()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
                     <option value="24">Last 24 hours</option>
                     <option value="168">Last 7 days</option>
@@ -707,6 +707,23 @@ function getStatusTileSvg(key, size) {
     return svgs[key] || '';
 }
 
+function getLockSvg(locked, size) {
+    var s = size || 22;
+    if (locked) {
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
+            + '<rect x="4" y="11" width="16" height="11" rx="2" opacity="0.75"/>'
+            + '<rect x="9" y="14" width="6" height="5" rx="1"/>'
+            + '<path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 11" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.9"/>'
+            + '</svg>';
+    } else {
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
+            + '<rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/>'
+            + '<rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/>'
+            + '<path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/>'
+            + '</svg>';
+    }
+}
+
 // --- Collapsible Cards ---
 var _cardLocks = {};
 try { _cardLocks = JSON.parse(localStorage.getItem('flux_card_locks_ho') || '{}'); } catch(e) { _cardLocks = {}; }
@@ -737,14 +754,14 @@ function lockCard(key, evt) {
     if (_cardLocks[key]) {
         // Unlock
         delete _cardLocks[key];
-        if (lockIcon) { lockIcon.textContent = '\\u{1F513}'; lockIcon.title = 'Lock open'; }
+        if (lockIcon) { lockIcon.innerHTML = getLockSvg(false, 22); lockIcon.title = 'Lock open'; }
     } else {
         // Lock open — ensure expanded
         _cardLocks[key] = true;
         if (body) body.style.display = 'block';
         var chevron = document.getElementById('cardChevron_' + key);
         if (chevron) chevron.style.transform = 'rotate(90deg)';
-        if (lockIcon) { lockIcon.textContent = '\\u{1F512}'; lockIcon.title = 'Unlock (allow collapse)'; }
+        if (lockIcon) { lockIcon.innerHTML = getLockSvg(true, 22); lockIcon.title = 'Unlock (allow collapse)'; }
         // Restore header border + remove collapsed class
         if (body) {
             var header = body.previousElementSibling;
@@ -767,19 +784,19 @@ function initCardState(key, defaultCollapsed) {
         // Locked open
         body.style.display = 'block';
         if (chevron) chevron.style.transform = 'rotate(90deg)';
-        if (lockIcon) { lockIcon.textContent = '\\u{1F512}'; lockIcon.title = 'Unlock (allow collapse)'; }
+        if (lockIcon) { lockIcon.innerHTML = getLockSvg(true, 22); lockIcon.title = 'Unlock (allow collapse)'; }
         if (header && header.classList.contains('card-header')) header.style.borderBottom = '';
         if (card) card.classList.remove('card-collapsed');
     } else if (defaultCollapsed) {
         body.style.display = 'none';
         if (chevron) chevron.style.transform = 'rotate(0deg)';
-        if (lockIcon) { lockIcon.textContent = '\\u{1F513}'; lockIcon.title = 'Lock open'; }
+        if (lockIcon) { lockIcon.innerHTML = getLockSvg(false, 22); lockIcon.title = 'Lock open'; }
         if (header && header.classList.contains('card-header')) header.style.borderBottom = 'none';
         if (card) card.classList.add('card-collapsed');
     } else {
         body.style.display = 'block';
         if (chevron) chevron.style.transform = 'rotate(90deg)';
-        if (lockIcon) { lockIcon.textContent = '\\u{1F513}'; lockIcon.title = 'Lock open'; }
+        if (lockIcon) { lockIcon.innerHTML = getLockSvg(false, 22); lockIcon.title = 'Lock open'; }
         if (header && header.classList.contains('card-header')) header.style.borderBottom = '';
         if (card) card.classList.remove('card-collapsed');
     }
@@ -1396,7 +1413,7 @@ function showMap(lat, lon, label) {
         var lockBtn = document.createElement('button');
         lockBtn.id = 'mapLockBtn';
         lockBtn.className = 'map-lock-btn';
-        lockBtn.innerHTML = '&#128274;';
+        lockBtn.innerHTML = getLockSvg(true, 16);
         lockBtn.title = 'Unlock map interaction';
         lockBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleMapLock(); });
         mapEl.appendChild(lockBtn);
@@ -1427,7 +1444,7 @@ function toggleMapLock() {
     }
     var btn = document.getElementById('mapLockBtn');
     if (btn) {
-        btn.innerHTML = mapLocked ? '&#128274;' : '&#128275;';
+        btn.innerHTML = getLockSvg(mapLocked, 16);
         btn.title = mapLocked ? 'Unlock map interaction' : 'Lock map interaction';
     }
 }
