@@ -21,6 +21,9 @@ A secure REST API and homeowner dashboard for your Flux Open Home irrigation sys
 5. Paste this URL: `https://github.com/FluxOpenHome/ha-flux-irrigation-addons`
 6. Click **Add → Close**
 7. The Flux Irrigation Control API will appear in the add-on store
+8. Install the add-on, click **Start**, then click **"OPEN WEB UI"**
+
+> **Important:** All setup is done inside the **Web UI** — click "OPEN WEB UI" on the add-on page and use the **Configuration** link in the top navigation bar. Do **NOT** use the "Configuration" tab on the HA add-on splash screen.
 
 ## Requirements
 

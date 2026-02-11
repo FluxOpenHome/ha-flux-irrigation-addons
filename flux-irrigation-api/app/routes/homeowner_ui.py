@@ -1653,7 +1653,8 @@ async function loadZones() {
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
                 <div class="tile-actions" style="flex-wrap:wrap;">
                     ${isOn
-                        ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + zId + '\\')">Stop</button>'
+                        ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + zId + '\\')">Stop</button>' +
+                          '<span data-elapsed-since="' + (z.last_changed || '') + '" style="font-weight:700;color:var(--text-primary);font-size:13px;margin-left:6px;">' + _formatElapsed(z.last_changed) + '</span>'
                         : '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', null)">Start</button>' +
                           '<span style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="width:60px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
                           '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', document.getElementById(\\'dur_' + zId + '\\').value)">Timed</button></span>'
@@ -1685,6 +1686,25 @@ async function loadZones() {
         el.innerHTML = '<div style="color:var(--color-danger);">Failed to load zones: ' + esc(e.message) + '</div>';
     }
 }
+
+function _formatElapsed(isoDate) {
+    if (!isoDate) return '';
+    try {
+        var diff = Math.max(0, Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000));
+        var h = Math.floor(diff / 3600);
+        var m = Math.floor((diff % 3600) / 60);
+        var s = diff % 60;
+        if (h > 0) return h + 'h ' + m + 'm ' + s + 's';
+        if (m > 0) return m + 'm ' + s + 's';
+        return s + 's';
+    } catch(e) { return ''; }
+}
+setInterval(function() {
+    document.querySelectorAll('[data-elapsed-since]').forEach(function(el) {
+        var since = el.getAttribute('data-elapsed-since');
+        if (since) el.textContent = _formatElapsed(since);
+    });
+}, 1000);
 
 async function startZone(zoneId, durationMinutes) {
     try {

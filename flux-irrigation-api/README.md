@@ -52,8 +52,11 @@ For irrigation management companies, the companion [Flux Management Server](http
 4. Paste: `https://github.com/FluxOpenHome/ha-flux-irrigation-addons`
 5. Click **Add → Close**
 6. Find **Flux Open Home Irrigation Control** in the store and click **Install**
-7. After installation, go to the add-on's **Configuration** tab
-8. Enable **Show in sidebar** if desired, then click **Start**
+7. Enable **Show in sidebar** if desired, then click **Start**
+8. **Open the Web UI** — click the **"OPEN WEB UI"** button on the add-on page, or click the add-on name in the sidebar
+
+> **Important: All setup is done inside the Web UI.**
+> Do **NOT** use the "Configuration" tab on the add-on's splash screen in Home Assistant — that tab is for advanced/internal settings only. Instead, open the Web UI and click **Configuration** in the top navigation bar. That is where you select your irrigation device, set up weather, generate connection keys, and configure everything else.
 
 ---
 
@@ -61,9 +64,13 @@ For irrigation management companies, the companion [Flux Management Server](http
 
 ### Step 1: Install and Start
 
-Install the add-on from the repository (see [Installation](#installation) above) and start it. Open the add-on panel — you will see the **Homeowner Dashboard** by default.
+Install the add-on from the repository (see [Installation](#installation) above) and start it.
 
-Click **Configuration** in the top navigation to access the settings page.
+**Open the Web UI** by clicking the **"OPEN WEB UI"** button on the add-on page (or the sidebar link if you enabled it). You will see the **Homeowner Dashboard**.
+
+Click **Configuration** in the top navigation bar inside the Web UI to access the settings page.
+
+> **Reminder:** Do **NOT** use the "Configuration" tab on the HA add-on splash screen. All configuration is done inside the Web UI.
 
 ### Step 2: Select Your Irrigation Device
 
