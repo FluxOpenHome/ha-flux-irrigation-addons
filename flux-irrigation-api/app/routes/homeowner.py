@@ -12,7 +12,7 @@ import re
 import httpx
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Any
 from config import get_config
@@ -472,7 +472,12 @@ async def homeowner_entities():
 
 
 @router.post("/entities/{entity_id:path}/set", summary="Set entity value")
-async def homeowner_set_entity(entity_id: str, body: EntitySetRequest, request: Request):
+async def homeowner_set_entity(
+    entity_id: str,
+    body: EntitySetRequest,
+    request: Request,
+    force: bool = Query(False, description="Skip probe wake conflict check"),
+):
     """Set the value of a device control entity."""
     _require_homeowner_mode()
     config = get_config()
@@ -481,6 +486,29 @@ async def homeowner_set_entity(entity_id: str, body: EntitySetRequest, request: 
         raise HTTPException(status_code=404, detail=f"Entity '{entity_id}' not found.")
 
     domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+    # Pre-flight conflict check for zone duration changes
+    if domain == "number" and body.value is not None and not force:
+        try:
+            from routes.moisture import check_timeline_conflicts, _find_duration_entities
+            dur_entities = _find_duration_entities(config.allowed_control_entities)
+            if entity_id in dur_entities:
+                conflicts = await check_timeline_conflicts(
+                    override_zone_duration={entity_id: float(body.value)}
+                )
+                if conflicts:
+                    return JSONResponse(content={
+                        "success": False,
+                        "status": "conflict",
+                        "conflicts": conflicts,
+                        "entity_id": entity_id,
+                        "proposed_value": body.value,
+                        "message": "This duration change would prevent probe wake scheduling",
+                    })
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"[HOMEOWNER] Conflict check failed for {entity_id}: {e}")
 
     # Fetch current state before changing it (for changelog old → new)
     old_state = await ha_client.get_entity_state(entity_id)

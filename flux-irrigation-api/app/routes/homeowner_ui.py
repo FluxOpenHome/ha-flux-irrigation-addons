@@ -628,6 +628,42 @@ function showToast(msg, type = 'success') {
     setTimeout(() => toast.remove(), 4000);
 }
 
+// --- Probe Wake Conflict Warning ---
+var _pendingForceEntity = null;
+var _pendingForceSleep = null;
+
+function _buildConflictModalHtml(conflicts) {
+    var html = '<div style="margin-bottom:12px;color:var(--text-secondary);">' +
+        'This change will prevent the following probe(s) from waking before their ' +
+        'mapped zone(s) on the next watering cycle:</div><div style="margin-bottom:16px;">';
+    for (var i = 0; i < conflicts.length; i++) {
+        var c = conflicts[i];
+        html += '<div style="padding:8px;margin-bottom:6px;background:var(--bg-hover);border-radius:6px;border-left:3px solid var(--color-warning);">' +
+            '<strong>' + esc(c.probe_name) + '</strong> cannot wake before ' +
+            '<strong>Zone ' + c.zone_num + '</strong> at <strong>' + esc(c.zone_start_time) + '</strong>' +
+            '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Prep needed by ' +
+            esc(c.prep_trigger_time) + ' (already past)</div></div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+function _forceEntitySet() {
+    if (!_pendingForceEntity) return;
+    var p = _pendingForceEntity;
+    _pendingForceEntity = null;
+    closeDynamicModal();
+    setEntityValue(p.entityId, p.domain, p.bodyObj, true);
+}
+
+function _forceSleepSet() {
+    if (!_pendingForceSleep) return;
+    var p = _pendingForceSleep;
+    _pendingForceSleep = null;
+    closeDynamicModal();
+    _doSetSleepDuration(p.probeId, p.minutes, true);
+}
+
 // --- Sprinkler Type Icons ---
 var _sprinklerCategoryMap = {
     'pop_up_spray':'spray','rotary_nozzle':'spray','fixed_spray':'spray','strip_spray':'spray',
@@ -2647,12 +2683,23 @@ function renderControlTile(e) {
         '</div>';
 }
 
-async function setEntityValue(entityId, domain, bodyObj) {
+async function setEntityValue(entityId, domain, bodyObj, force) {
     try {
-        await api('/entities/' + entityId + '/set', {
+        var url = '/entities/' + entityId + '/set';
+        if (force) url += '?force=true';
+        var result = await api(url, {
             method: 'POST',
             body: JSON.stringify(bodyObj),
         });
+        if (result && result.status === 'conflict' && result.conflicts && result.conflicts.length > 0) {
+            _pendingForceEntity = { entityId: entityId, domain: domain, bodyObj: bodyObj };
+            var html = _buildConflictModalHtml(result.conflicts);
+            html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">' +
+                '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
+                '<button class="btn btn-primary" onclick="_forceEntitySet()">Apply Anyway</button></div>';
+            showModal('Probe Wake Conflict', html, '480px');
+            return;
+        }
         showToast('Updated ' + entityId.split('.').pop());
         setTimeout(() => { loadControls(); loadSensors(); }, 1000);
     } catch (e) { showToast(e.message, 'error'); }
@@ -3264,31 +3311,52 @@ async function loadWeather() {
 
         // Forecast — rebuild only the forecast strip (lightweight)
         const forecastEl = el('wForecast');
-        const forecast = w.forecast || [];
+        const rawForecast = w.forecast || [];
+        // Deduplicate forecast by date — NWS returns day+night periods
+        // Keep one entry per calendar day (merge high/low temps, max precip)
+        var forecast = [];
+        var seenDays = {};
+        for (var fi = 0; fi < rawForecast.length; fi++) {
+            var ff = rawForecast[fi];
+            var fdt = ff.datetime ? new Date(ff.datetime) : null;
+            var dayKey = fdt ? fdt.toLocaleDateString('en-US') : ('idx' + fi);
+            if (seenDays[dayKey]) {
+                // Merge: use higher temp as high, lower as low, max precip
+                var existing = seenDays[dayKey];
+                if (ff.temperature != null && existing.temperature != null) {
+                    if (ff.temperature > existing.temperature) {
+                        existing.templow = existing.temperature;
+                        existing.temperature = ff.temperature;
+                        existing.condition = ff.condition || existing.condition;
+                    } else {
+                        existing.templow = ff.temperature;
+                    }
+                }
+                var ep = existing.precipitation_probability || 0;
+                var fp = ff.precipitation_probability || 0;
+                if (fp > ep) existing.precipitation_probability = fp;
+                continue;
+            }
+            var entry = Object.assign({}, ff);
+            seenDays[dayKey] = entry;
+            forecast.push(entry);
+        }
         if (forecast.length > 0) {
             let fh = '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
             fh += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;">';
-            for (let i = 0; i < Math.min(forecast.length, 10); i++) {
+            for (let i = 0; i < Math.min(forecast.length, 5); i++) {
                 const f = forecast[i];
                 const dt = f.datetime ? new Date(f.datetime) : null;
-                const isNight = f.is_daytime === false;
                 var dayLabel = dt ? dt.toLocaleDateString('en-US', { weekday: 'short' }) : '';
-                // If the period has a name like "Tonight", "Wednesday Night", use it for clarity
-                if (isNight && f.name) {
-                    // Show abbreviated: "Tue Night" or just "Tonight"
-                    if (f.name.toLowerCase() === 'tonight' || f.name.toLowerCase() === 'overnight') {
-                        dayLabel = f.name;
-                    } else {
-                        dayLabel = dayLabel + ' Night';
-                    }
-                }
                 const fIcon = _condIcons[f.condition] || '🌡️';
                 const precip = f.precipitation_probability || 0;
-                const nightBg = isNight ? 'background:var(--bg-tile);border:1px solid var(--border-light);' : 'background:var(--bg-tile);';
-                fh += '<div style="flex:0 0 auto;' + nightBg + 'border-radius:8px;padding:8px 10px;text-align:center;min-width:64px;' + (isNight ? 'opacity:0.75;' : '') + '">';
+                fh += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:8px 10px;text-align:center;min-width:64px;">';
                 fh += '<div style="font-size:10px;color:var(--text-placeholder);white-space:nowrap;">' + esc(dayLabel) + '</div>';
                 fh += '<div style="font-size:18px;">' + fIcon + '</div>';
                 fh += '<div style="font-size:12px;font-weight:600;">' + (f.temperature != null ? f.temperature + '°' : '') + '</div>';
+                if (f.templow != null) {
+                    fh += '<div style="font-size:11px;color:var(--text-muted);">' + f.templow + '°</div>';
+                }
                 if (precip > 0) {
                     fh += '<div style="font-size:10px;color:var(--color-link);">💧 ' + precip + '%</div>';
                 }
@@ -3881,6 +3949,14 @@ async function loadMoisture() {
         html += '<input type="checkbox" id="moistureScheduleSync" ' + (settings.schedule_sync_enabled !== false ? 'checked' : '') + '> Sync Schedules to Gophr Probes</label>';
         html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;margin-top:-8px;">Syncs wake times to probes and dynamically manages sleep between mapped zones during runs.</div>';
 
+        // Wake before minutes
+        html += '<div style="margin-bottom:12px;">';
+        html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Wake Before Zone Start</label>';
+        html += '<div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center;">';
+        html += '<input type="number" id="moistureWakeBefore" value="' + (settings.wake_before_minutes || 10) + '" min="2" max="60" style="width:100%;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);font-size:13px;">';
+        html += '<span style="font-size:12px;color:var(--text-muted);">minutes — how early the probe wakes before its mapped zone runs</span>';
+        html += '</div></div>';
+
         // Stale threshold
         html += '<div style="margin-bottom:12px;">';
         html += '<label style="font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:4px;">Stale Reading Threshold</label>';
@@ -4042,6 +4118,7 @@ async function saveMoistureSettings() {
         const payload = {
             enabled: document.getElementById('moistureEnabled').checked,
             schedule_sync_enabled: document.getElementById('moistureScheduleSync').checked,
+            wake_before_minutes: parseInt(document.getElementById('moistureWakeBefore').value) || 10,
             multi_probe_mode: document.getElementById('moistureMultiProbeMode').value,
             stale_reading_threshold_minutes: parseInt(document.getElementById('moistureStaleMin').value) || 120,
             default_thresholds: {
@@ -4387,13 +4464,27 @@ async function hoSetSleepDuration(probeId) {
     }
     // Store user value so it survives DOM rebuilds
     _userSleepDurValues[probeId] = input.value;
+    await _doSetSleepDuration(probeId, minutes, false);
+}
+
+async function _doSetSleepDuration(probeId, minutes, force) {
     try {
-        const result = await mapi('/probes/' + encodeURIComponent(probeId) + '/sleep-duration', 'PUT', { minutes: minutes });
+        const result = await mapi('/probes/' + encodeURIComponent(probeId) + '/sleep-duration', 'PUT', { minutes: minutes, force: !!force });
+        if (result.status === 'conflict' && result.conflicts && result.conflicts.length > 0) {
+            _pendingForceSleep = { probeId: probeId, minutes: minutes };
+            var html = _buildConflictModalHtml(result.conflicts);
+            html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">' +
+                '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
+                '<button class="btn btn-primary" onclick="_forceSleepSet()">Apply Anyway</button></div>';
+            showModal('Probe Wake Conflict', html, '480px');
+            return;
+        }
         if (result.status === 'pending') {
             showToast('Sleep ' + minutes + ' min queued — will apply when probe wakes', 'warning');
             // Show pending indicator immediately (before full reload)
             _showPendingInline('sleepDurPending_' + probeId, '\\u23f3 Pending: ' + minutes + ' min \\u2014 applies on wake');
-            input.style.borderColor = 'var(--color-warning)';
+            var input = document.getElementById('sleepDur_' + probeId);
+            if (input) input.style.borderColor = 'var(--color-warning)';
         } else {
             showToast('Sleep duration set to ' + minutes + ' min');
             // Value was applied — clear user override so input shows device value

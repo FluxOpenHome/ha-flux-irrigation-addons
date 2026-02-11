@@ -4,7 +4,8 @@ List, read, and control all non-zone/non-sensor entities on the irrigation devic
 (numbers, selects, switches, buttons, text inputs, lights, etc.).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, Any
 from auth import require_permission, ApiKeyConfig
@@ -228,11 +229,15 @@ async def get_entity(entity_id: str, request: Request):
 
 @router.post(
     "/{entity_id:path}/set",
-    response_model=EntitySetResponse,
     dependencies=[Depends(require_permission("entities.control"))],
     summary="Set an entity's value",
 )
-async def set_entity(entity_id: str, body: EntitySetRequest, request: Request):
+async def set_entity(
+    entity_id: str,
+    body: EntitySetRequest,
+    request: Request,
+    force: bool = Query(False, description="Skip probe wake conflict check"),
+):
     """Set the value of a device control entity.
 
     The service called depends on the entity domain:
@@ -247,6 +252,30 @@ async def set_entity(entity_id: str, body: EntitySetRequest, request: Request):
 
     entity_id = _resolve_control_entity(entity_id, config)
     domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+    # Pre-flight conflict check for zone duration changes:
+    # would this change prevent any probe's wake schedule from working?
+    if domain == "number" and body.value is not None and not force:
+        try:
+            from routes.moisture import check_timeline_conflicts, _find_duration_entities
+            dur_entities = _find_duration_entities(config.allowed_control_entities)
+            if entity_id in dur_entities:
+                conflicts = await check_timeline_conflicts(
+                    override_zone_duration={entity_id: float(body.value)}
+                )
+                if conflicts:
+                    return JSONResponse(content={
+                        "success": False,
+                        "status": "conflict",
+                        "conflicts": conflicts,
+                        "entity_id": entity_id,
+                        "proposed_value": body.value,
+                        "message": "This duration change would prevent probe wake scheduling",
+                    })
+        except ImportError:
+            pass  # moisture module not available, skip check
+        except Exception as e:
+            print(f"[ENTITIES] Conflict check failed for {entity_id}: {e}")
 
     # Fetch current state before changing it (for changelog old → new)
     old_state = await ha_client.get_entity_state(entity_id)
