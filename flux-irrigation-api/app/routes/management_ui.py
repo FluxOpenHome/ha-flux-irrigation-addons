@@ -942,6 +942,7 @@ if (_propSettings.showIssueDetails === undefined) _propSettings.showIssueDetails
 if (_propSettings.defaultMapOpen === undefined) _propSettings.defaultMapOpen = false;
 if (_propSettings.defaultMapUnlocked === undefined) _propSettings.defaultMapUnlocked = false;
 if (_propSettings.showRadar === undefined) _propSettings.showRadar = false;
+if (_propSettings.radarOpacity === undefined) _propSettings.radarOpacity = 0.5;
 
 function _savePropSettings() {
     localStorage.setItem('flux_prop_settings', JSON.stringify(_propSettings));
@@ -964,9 +965,16 @@ function mgmtShowPropertiesSettings() {
     html += '<div><strong>Unlock map by default</strong><br><span style="font-size:12px;color:var(--text-muted);">Map starts unlocked with zoom and drag enabled. When locked, scrolling passes through to the page.</span></div>';
     html += '</label>';
     html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:13px;color:var(--text);">';
-    html += '<input type="checkbox" id="propSetShowRadar"' + (_propSettings.showRadar ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
+    html += '<input type="checkbox" id="propSetShowRadar"' + (_propSettings.showRadar ? ' checked' : '') + ' onchange="document.getElementById(\\'radarOpacityGroup\\').style.display=this.checked?\\'block\\':\\'none\\'" style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
     html += '<div><strong>Show weather radar</strong><br><span style="font-size:12px;color:var(--text-muted);">Display live NEXRAD Doppler radar overlay on the map. US coverage only.</span></div>';
     html += '</label>';
+    html += '<div id="radarOpacityGroup" style="display:' + (_propSettings.showRadar ? 'block' : 'none') + ';padding:4px 0 0 28px;">';
+    html += '<label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:8px;">';
+    html += 'Opacity';
+    html += '<input type="range" id="propSetRadarOpacity" min="5" max="50" step="5" value="' + Math.round((_propSettings.radarOpacity || 0.5) * 100) + '" oninput="document.getElementById(\\'radarOpacityVal\\').textContent=this.value+\\'%\\'" style="flex:1;accent-color:var(--color-primary);">';
+    html += '<span id="radarOpacityVal" style="font-size:12px;font-weight:600;color:var(--text);min-width:30px;text-align:right;">' + Math.round((_propSettings.radarOpacity || 0.5) * 100) + '%</span>';
+    html += '</label>';
+    html += '</div>';
     html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">';
     html += '<button class="btn btn-secondary" onclick="closeMgmtDynamicModal()">Cancel</button>';
     html += '<button class="btn btn-primary" onclick="mgmtSavePropertiesSettings()">Save</button>';
@@ -979,14 +987,21 @@ function mgmtSavePropertiesSettings() {
     _propSettings.defaultMapOpen = !!document.getElementById('propSetDefaultMapOpen').checked;
     _propSettings.defaultMapUnlocked = !!document.getElementById('propSetDefaultMapUnlocked').checked;
     var radarWas = _propSettings.showRadar;
+    var opacityWas = _propSettings.radarOpacity;
     _propSettings.showRadar = !!document.getElementById('propSetShowRadar').checked;
+    _propSettings.radarOpacity = (parseInt(document.getElementById('propSetRadarOpacity').value) || 50) / 100;
     _savePropSettings();
     closeMgmtDynamicModal();
     showToast('Settings saved');
     // If radar setting changed and map is open, update the layer
-    if (radarWas !== _propSettings.showRadar && propertyMap && propMapRadarLayer) {
-        if (_propSettings.showRadar) { propMapRadarLayer.addTo(propertyMap); }
-        else { propertyMap.removeLayer(propMapRadarLayer); }
+    if (propertyMap && propMapRadarLayer) {
+        if (radarWas !== _propSettings.showRadar) {
+            if (_propSettings.showRadar) { propMapRadarLayer.addTo(propertyMap); }
+            else { propertyMap.removeLayer(propMapRadarLayer); }
+        }
+        if (_propSettings.radarOpacity !== opacityWas) {
+            propMapRadarLayer.setOpacity(_propSettings.radarOpacity);
+        }
         var rbtn = document.getElementById('propMapRadarBtn');
         if (rbtn) { var a = rbtn.querySelector('a'); if (a) a.style.background = _propSettings.showRadar ? '#e8f5e9' : '#fff'; }
     }
@@ -1445,7 +1460,7 @@ function initPropertyMap() {
     }).addTo(propertyMap);
     // Radar overlay (NEXRAD via Iowa State Mesonet — free, no API key, ~5 min updates)
     propMapRadarLayer = L.tileLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png', {
-        opacity: 0.5,
+        opacity: _propSettings.radarOpacity || 0.5,
         maxZoom: 19,
         attribution: 'Radar: Iowa State Mesonet',
     });
@@ -2592,7 +2607,7 @@ function showMap(lat, lon, label) {
         // Radar overlay on detail map (uses same setting as property map)
         if (_propSettings.showRadar) {
             L.tileLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png', {
-                opacity: 0.5, maxZoom: 19, attribution: 'Radar: Iowa State Mesonet',
+                opacity: _propSettings.radarOpacity || 0.5, maxZoom: 19, attribution: 'Radar: Iowa State Mesonet',
             }).addTo(leafletMap);
         }
         // Lock/unlock toggle control
