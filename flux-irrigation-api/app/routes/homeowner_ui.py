@@ -5259,6 +5259,14 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     body += '<button class="btn btn-primary btn-sm" onclick="hoBuildHeadTable()" style="font-size:11px;">Update Table</button>';
     body += '</div>';
 
+    body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
+    body += '<label style="font-weight:600;font-size:13px;">Copy From:</label>';
+    body += '<select id="hoCopyFromZone" style="flex:1;max-width:250px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
+    body += '<option value="">\\u2014 Select a zone \\u2014</option>';
+    body += '</select>';
+    body += '<button class="btn btn-sm" onclick="hoCopyFromZone()" style="font-size:11px;background:var(--bg-hover);border:1px solid var(--border-light);color:var(--text-primary);">&#128203; Copy</button>';
+    body += '</div>';
+
     body += '<div id="hoHeadTableWrap"></div>';
 
     body += '<div style="margin-top:10px;">';
@@ -5289,8 +5297,26 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
 
     showModal('Zone Details — ' + displayName, body, '95vw');
 
-    // Build the table with existing data
-    setTimeout(function() { hoRenderHeadTable(zoneData.heads); }, 50);
+    // Build the table with existing data, then populate Copy From dropdown
+    setTimeout(function() {
+        hoRenderHeadTable(zoneData.heads);
+        var copySelect = document.getElementById('hoCopyFromZone');
+        if (copySelect) {
+            var headCounts = window._hoZoneHeadCount || {};
+            var zoneIds = Object.keys(headCounts).filter(function(eid) { return eid !== entityId; });
+            zoneIds.sort(function(a, b) {
+                var aNum = parseInt(extractZoneNumber(a, 'zone') || '999');
+                var bNum = parseInt(extractZoneNumber(b, 'zone') || '999');
+                return aNum - bNum;
+            });
+            for (var ci = 0; ci < zoneIds.length; ci++) {
+                var opt = document.createElement('option');
+                opt.value = zoneIds[ci];
+                opt.textContent = resolveZoneName(zoneIds[ci]) + ' (' + headCounts[zoneIds[ci]] + ' heads)';
+                copySelect.appendChild(opt);
+            }
+        }
+    }, 50);
 }
 
 function hoBuildHeadTable() {
@@ -5550,6 +5576,50 @@ function hoDuplicateHead(sourceRow) {
     document.getElementById('hoHeadCount').value = String(heads.length);
     hoRenderHeadTable(heads);
     showToast('Row duplicated');
+}
+
+async function hoCopyFromZone() {
+    var select = document.getElementById('hoCopyFromZone');
+    if (!select || !select.value) {
+        showToast('Select a zone to copy from', 'error');
+        return;
+    }
+    var sourceEntityId = select.value;
+    var sourceName = resolveZoneName(sourceEntityId);
+    // Check if target zone has existing data — confirm overwrite
+    var existingHeads = hoCollectHeadData();
+    if (existingHeads.length > 0) {
+        if (!confirm('This will replace all ' + existingHeads.length + ' existing head(s) in this zone with data from ' + sourceName + '. Continue?')) {
+            return;
+        }
+    }
+    try {
+        var srcData = await api('/zone_heads/' + sourceEntityId + '?t=' + Date.now());
+        if (!srcData || !srcData.heads || srcData.heads.length === 0) {
+            showToast('Source zone has no head data', 'error');
+            return;
+        }
+        // Deep-clone heads and clear IDs (new UUIDs assigned on save)
+        var newHeads = JSON.parse(JSON.stringify(srcData.heads));
+        for (var i = 0; i < newHeads.length; i++) {
+            newHeads[i].id = '';
+        }
+        // Update head count input
+        document.getElementById('hoHeadCount').value = String(newHeads.length);
+        // Copy zone notes
+        var notesEl = document.getElementById('hoZoneNotes');
+        if (notesEl && srcData.notes) notesEl.value = srcData.notes;
+        // Copy display settings
+        var gpmCheck = document.getElementById('hoShowGpmOnCard');
+        if (gpmCheck) gpmCheck.checked = !!srcData.show_gpm_on_card;
+        var countCheck = document.getElementById('hoShowHeadCountOnCard');
+        if (countCheck) countCheck.checked = !!srcData.show_head_count_on_card;
+        // Re-render the head table with copied data
+        hoRenderHeadTable(newHeads);
+        showToast('Copied ' + newHeads.length + ' head(s) from ' + sourceName + '. Review and Save.');
+    } catch(e) {
+        showToast('Failed to load zone data: ' + e.message, 'error');
+    }
 }
 
 function hoUpdateGpmSummary() {
