@@ -941,6 +941,7 @@ var _propSettings = JSON.parse(localStorage.getItem('flux_prop_settings') || '{}
 if (_propSettings.showIssueDetails === undefined) _propSettings.showIssueDetails = true;
 if (_propSettings.defaultMapOpen === undefined) _propSettings.defaultMapOpen = false;
 if (_propSettings.defaultMapUnlocked === undefined) _propSettings.defaultMapUnlocked = false;
+if (_propSettings.showRadar === undefined) _propSettings.showRadar = false;
 
 function _savePropSettings() {
     localStorage.setItem('flux_prop_settings', JSON.stringify(_propSettings));
@@ -962,6 +963,10 @@ function mgmtShowPropertiesSettings() {
     html += '<input type="checkbox" id="propSetDefaultMapUnlocked"' + (_propSettings.defaultMapUnlocked ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
     html += '<div><strong>Unlock map by default</strong><br><span style="font-size:12px;color:var(--text-muted);">Map starts unlocked with zoom and drag enabled. When locked, scrolling passes through to the page.</span></div>';
     html += '</label>';
+    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:13px;color:var(--text);">';
+    html += '<input type="checkbox" id="propSetShowRadar"' + (_propSettings.showRadar ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
+    html += '<div><strong>Show weather radar</strong><br><span style="font-size:12px;color:var(--text-muted);">Display live NEXRAD Doppler radar overlay on the map. US coverage only.</span></div>';
+    html += '</label>';
     html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">';
     html += '<button class="btn btn-secondary" onclick="closeMgmtDynamicModal()">Cancel</button>';
     html += '<button class="btn btn-primary" onclick="mgmtSavePropertiesSettings()">Save</button>';
@@ -973,9 +978,18 @@ function mgmtSavePropertiesSettings() {
     _propSettings.showIssueDetails = !!document.getElementById('propSetIssueDetails').checked;
     _propSettings.defaultMapOpen = !!document.getElementById('propSetDefaultMapOpen').checked;
     _propSettings.defaultMapUnlocked = !!document.getElementById('propSetDefaultMapUnlocked').checked;
+    var radarWas = _propSettings.showRadar;
+    _propSettings.showRadar = !!document.getElementById('propSetShowRadar').checked;
     _savePropSettings();
     closeMgmtDynamicModal();
     showToast('Settings saved');
+    // If radar setting changed and map is open, update the layer
+    if (radarWas !== _propSettings.showRadar && propertyMap && propMapRadarLayer) {
+        if (_propSettings.showRadar) { propMapRadarLayer.addTo(propertyMap); }
+        else { propertyMap.removeLayer(propMapRadarLayer); }
+        var rbtn = document.getElementById('propMapRadarBtn');
+        if (rbtn) { var a = rbtn.querySelector('a'); if (a) a.style.background = _propSettings.showRadar ? '#e8f5e9' : '#fff'; }
+    }
     filterCustomers();
 }
 
@@ -1378,6 +1392,7 @@ let _pendingGeocodes = 0;
 let _lastFilteredCustomers = null;
 let propMapLocked = true;
 let propMapRecenterControl = null;
+let propMapRadarLayer = null;
 
 function openPropertyMap() {
     if (propertyMapVisible) return;
@@ -1428,6 +1443,15 @@ function initPropertyMap() {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19,
     }).addTo(propertyMap);
+    // Radar overlay (NEXRAD via Iowa State Mesonet — free, no API key, ~5 min updates)
+    propMapRadarLayer = L.tileLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png', {
+        opacity: 0.5,
+        maxZoom: 19,
+        attribution: 'Radar: Iowa State Mesonet',
+    });
+    if (_propSettings.showRadar) {
+        propMapRadarLayer.addTo(propertyMap);
+    }
     // Lock/unlock toggle control
     const PropMapLockControl = L.Control.extend({
         options: { position: 'topright' },
@@ -1446,6 +1470,23 @@ function initPropertyMap() {
         }
     });
     propertyMap.addControl(new PropMapLockControl());
+    // Radar toggle control
+    const RadarControl = L.Control.extend({
+        options: { position: 'topright' },
+        onAdd: function() {
+            const rbtn = L.DomUtil.create('div', 'leaflet-bar');
+            rbtn.id = 'propMapRadarBtn';
+            const active = _propSettings.showRadar;
+            rbtn.innerHTML = '<a href="#" title="' + (active ? 'Hide' : 'Show') + ' weather radar" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:' + (active ? '#e8f5e9' : '#fff') + ';">&#127783;</a>';
+            rbtn.style.cursor = 'pointer';
+            L.DomEvent.on(rbtn, 'click', function(e) {
+                L.DomEvent.stop(e);
+                togglePropMapRadar();
+            });
+            return rbtn;
+        }
+    });
+    propertyMap.addControl(new RadarControl());
     // If starting unlocked, add zoom + recenter controls
     if (unlocked) {
         L.control.zoom({ position: 'topleft' }).addTo(propertyMap);
@@ -1496,6 +1537,27 @@ function togglePropMapLock() {
         propMapRecenterControl = new RecenterControl();
         propertyMap.addControl(propMapRecenterControl);
         if (btn) btn.innerHTML = '<a href="#" title="Lock map interaction" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;font-size:16px;text-decoration:none;color:#333;background:#fff;">&#128275;</a>';
+    }
+}
+
+function togglePropMapRadar() {
+    if (!propertyMap || !propMapRadarLayer) return;
+    var showing = propertyMap.hasLayer(propMapRadarLayer);
+    if (showing) {
+        propertyMap.removeLayer(propMapRadarLayer);
+    } else {
+        propMapRadarLayer.addTo(propertyMap);
+    }
+    _propSettings.showRadar = !showing;
+    _savePropSettings();
+    // Update button appearance
+    var rbtn = document.getElementById('propMapRadarBtn');
+    if (rbtn) {
+        var a = rbtn.querySelector('a');
+        if (a) {
+            a.style.background = !showing ? '#e8f5e9' : '#fff';
+            a.title = !showing ? 'Hide weather radar' : 'Show weather radar';
+        }
     }
 }
 
@@ -2527,6 +2589,12 @@ function showMap(lat, lon, label) {
             maxZoom: 19,
         }).addTo(leafletMap);
         L.marker([lat, lon]).addTo(leafletMap);
+        // Radar overlay on detail map (uses same setting as property map)
+        if (_propSettings.showRadar) {
+            L.tileLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png', {
+                opacity: 0.5, maxZoom: 19, attribution: 'Radar: Iowa State Mesonet',
+            }).addTo(leafletMap);
+        }
         // Lock/unlock toggle control
         const LockControl = L.Control.extend({
             options: { position: 'topright' },
