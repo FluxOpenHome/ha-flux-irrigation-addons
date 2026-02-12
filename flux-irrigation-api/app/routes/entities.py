@@ -12,7 +12,7 @@ from auth import require_permission, ApiKeyConfig
 from config import get_config
 import ha_client
 import audit_log
-from config_changelog import log_change, get_actor, friendly_entity_name
+from config_changelog import log_change, get_actor, is_ai_suggested, friendly_entity_name
 
 
 router = APIRouter(prefix="/entities", tags=["Entities"])
@@ -278,8 +278,26 @@ async def set_entity(
             print(f"[ENTITIES] Conflict check failed for {entity_id}: {e}")
 
     # Fetch current state before changing it (for changelog old → new)
+    # For duration entities with active factors, use the BASE duration
+    # (not the factored HA entity state) so the changelog is accurate.
     old_state = await ha_client.get_entity_state(entity_id)
     old_val = old_state.get("state", "unknown") if old_state else "unknown"
+    if domain == "number":
+        try:
+            from routes.moisture import (
+                _load_data as _load_moisture_data,
+                _find_duration_entities,
+            )
+            dur_entities = _find_duration_entities(config.allowed_control_entities)
+            if entity_id in dur_entities:
+                mdata = _load_moisture_data()
+                if mdata.get("apply_factors_to_schedule"):
+                    base_info = mdata.get("base_durations", {}).get(entity_id, {})
+                    base_val = base_info.get("base_value")
+                    if base_val is not None:
+                        old_val = base_val
+        except Exception:
+            pass  # Fall back to live entity state
 
     # Determine which HA service to call
     svc_domain, svc_name, extra_data = _get_set_service(domain, body)
@@ -325,10 +343,12 @@ async def set_entity(
 
     # Log configuration change with old → new
     actor = get_actor(request)
+    ai_flag = is_ai_suggested(request)
     fname = friendly_entity_name(entity_id)
     new_val = body.value if body.value is not None else body.state if body.state is not None else body.option
     log_change(actor, "Schedule", f"Set {fname}: {old_val} -> {new_val}",
-               {"entity_id": entity_id, "old_value": old_val, "new_value": new_val})
+               {"entity_id": entity_id, "old_value": old_val, "new_value": new_val},
+               ai_suggested=ai_flag)
 
     audit_log.log_action(
         api_key_name=key_config.name,

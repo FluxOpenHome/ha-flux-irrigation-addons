@@ -15,7 +15,7 @@ CHANGELOG_FILE = "/data/config_changelog.jsonl"
 MAX_ENTRIES = 1000
 
 
-def log_change(actor: str, category: str, description: str, details: dict = None):
+def log_change(actor: str, category: str, description: str, details: dict = None, ai_suggested: bool = False):
     """Append a configuration change entry. Trim to MAX_ENTRIES."""
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -25,6 +25,8 @@ def log_change(actor: str, category: str, description: str, details: dict = None
     }
     if details:
         entry["details"] = details
+    if ai_suggested:
+        entry["ai_suggested"] = True
 
     try:
         os.makedirs(os.path.dirname(CHANGELOG_FILE), exist_ok=True)
@@ -110,6 +112,19 @@ def get_actor(request=None) -> str:
         # Check query param (Nabu Casa proxy mode)
         actor = request.query_params.get("X-Actor", "")
     return actor if actor in ("Homeowner", "Management") else "Homeowner"
+
+
+def is_ai_suggested(request=None) -> bool:
+    """Check if this change was suggested by AI (Claude).
+
+    Checks X-AI-Suggested header (direct proxy) and query param (Nabu Casa proxy).
+    """
+    if request is None:
+        return False
+    val = request.headers.get("X-AI-Suggested", "")
+    if not val:
+        val = request.query_params.get("X-AI-Suggested", "")
+    return val.lower() in ("true", "1", "yes")
 
 
 # --- Friendly Name Helpers ---
