@@ -2786,10 +2786,13 @@ async function loadHistory() {
         // Determine if any event's zone has GPM data configured
         const gpmMap = window._hoZoneGpmMap || {};
         const hasGpmData = events.some(e => gpmMap[e.entity_id] > 0);
+        // Check if any event has water_saved_gallons
+        const hasWaterSaved = events.some(e => e.water_saved_gallons > 0);
 
         el.innerHTML = weatherSummary +
             '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th>' +
             (hasGpmData ? '<th style="padding:6px;">GPM</th><th style="padding:6px;">Est. Gallons</th>' : '') +
+            (hasWaterSaved ? '<th style="padding:6px;color:var(--color-success);">Water Saved</th>' : '') +
             '<th style="padding:6px;">Moisture Factor</th>' +
             (hasSoilReadings ? '<th style="padding:6px;">Soil Moisture</th>' : '') +
             '<th style="padding:6px;">Weather</th></tr></thead><tbody>' +
@@ -2850,18 +2853,17 @@ async function loadHistory() {
                     if (e.mid_sensor_pct != null) {
                         stateCell += '<div style="font-size:10px;color:var(--text-muted);">Mid: ' + e.mid_sensor_pct + '%</div>';
                     }
-                    if (e.water_saved_gallons > 0) {
-                        stateCell += '<div style="font-size:10px;color:var(--color-success);font-weight:600;">&#x1F4A7; ' + e.water_saved_gallons.toFixed(1) + ' gal saved</div>';
-                    }
                 } else if (e.state === 'skip') {
                     stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span><br><span style="color:var(--text-disabled);font-size:11px;">OFF</span>';
                 } else if (e.state === 'on' || e.state === 'open') {
                     stateCell = '<span style="color:var(--color-success);">ON</span>';
                 } else {
                     stateCell = '<span style="color:var(--text-disabled);">OFF</span>';
-                    if (e.water_saved_gallons > 0) {
-                        stateCell += '<div style="font-size:10px;color:var(--color-success);font-weight:600;">&#x1F4A7; ' + e.water_saved_gallons.toFixed(1) + ' gal saved</div>';
-                    }
+                }
+                // Water Saved cell — dedicated column
+                let waterSavedCell = '<span style="color:var(--text-disabled);">—</span>';
+                if (e.water_saved_gallons > 0) {
+                    waterSavedCell = '<span style="color:var(--color-success);font-weight:600;">&#x1F4A7; ' + e.water_saved_gallons.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + ' gal</span>';
                 }
                 // Zone name display — probe events resolve current probe name
                 let zoneDisplay;
@@ -2890,10 +2892,6 @@ async function loadHistory() {
                             estGalCell = '<span style="font-weight:600;">' + gal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</span>';
                         }
                     }
-                    // Water saved badge for any event with savings
-                    if (e.water_saved_gallons > 0) {
-                        estGalCell += '<div style="font-size:10px;color:var(--color-success);font-weight:600;margin-top:2px;">&#x1F4A7; ' + e.water_saved_gallons.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + ' gal saved</div>';
-                    }
                 }
                 return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' || e.state === 'moisture_skip' ? 'opacity:0.7;' : ''}${isProbeEvent ? 'background:var(--bg-tile);' : ''}">
                 <td style="padding:6px;">${zoneDisplay}${srcLabel}</td>
@@ -2901,6 +2899,7 @@ async function loadHistory() {
                 <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
                 ${hasGpmData ? '<td style="padding:6px;">' + gpmCell + '</td><td style="padding:6px;">' + estGalCell + '</td>' : ''}
+                ${hasWaterSaved ? '<td style="padding:6px;">' + waterSavedCell + '</td>' : ''}
                 <td style="padding:6px;font-size:12px;">${mFactorCell}</td>
                 ${hasSoilReadings ? '<td style="padding:6px;font-size:12px;">' + soilCell + '</td>' : ''}
                 <td style="padding:6px;font-size:12px;">${wxCell}</td>
@@ -2978,8 +2977,9 @@ async function loadEstGallons() {
         const hasCost = waterSettings && waterSettings.cost_per_1000_gal > 0 &&
             (waterSettings.water_source === 'city' || waterSettings.water_source === 'reclaimed');
         const costPer1000 = hasCost ? waterSettings.cost_per_1000_gal : 0;
-        // Build summary-only HTML (no inline table — details go in modal)
-        let html = '<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;">';
+        // Build summary-only HTML — centered layout
+        let html = '<div style="display:flex;flex-direction:column;align-items:center;padding:8px 0;">';
+        html += '<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;">';
         // --- Used column ---
         html += '<div style="text-align:center;flex:1;min-width:120px;">' +
             '<div style="font-size:32px;font-weight:700;color:var(--text-primary);">' + totalGal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</div>' +
@@ -3004,10 +3004,11 @@ async function loadEstGallons() {
         // Water source badge
         if (waterSettings && waterSettings.water_source) {
             var srcLabel = {city:'City Water', reclaimed:'Reclaimed Water', well:'Well Water'}[waterSettings.water_source] || '';
-            if (srcLabel) html += '<div style="text-align:center;font-size:11px;color:var(--text-muted);margin-bottom:8px;">' + esc(srcLabel) + '</div>';
+            if (srcLabel) html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">' + esc(srcLabel) + '</div>';
         }
         // View Zone Details button
-        html += '<div style="text-align:center;margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="openGallonsDetailModal()">View Zone Details</button></div>';
+        html += '<div style="margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="openGallonsDetailModal()">View Zone Details</button></div>';
+        html += '</div>';  // close outer centering wrapper
         // Store zone data for the modal
         window._gallonsModalData = { sorted: sorted, zoneNames: zoneNames, zoneMinutes: zoneMinutes, zoneGallons: zoneGallons, zoneSaved: zoneSaved, gpmMap: gpmMap, totalGal: totalGal, totalSaved: totalSaved, costPer1000: costPer1000, hasCost: hasCost };
         card.style.display = '';
@@ -3513,8 +3514,9 @@ async function loadWeatherRules() {
 
         // Rule 2: Rain Forecast
         const r2 = rules.rain_forecast || {};
-        html += buildRuleRow('rain_forecast', 'Rain Forecast', 'Skip when rain probability exceeds threshold', r2.enabled, [
-            { id: 'rain_forecast_probability_threshold', label: 'Probability %', value: r2.probability_threshold || 60, type: 'number', min: 10, max: 100, step: 5 }
+        html += buildRuleRow('rain_forecast', 'Rain Forecast', 'Skip when rain probability exceeds threshold within lookahead window', r2.enabled, [
+            { id: 'rain_forecast_probability_threshold', label: 'Probability %', value: r2.probability_threshold || 60, type: 'number', min: 10, max: 100, step: 5 },
+            { id: 'rain_forecast_lookahead_hours', label: 'Lookahead (hours)', value: r2.lookahead_hours || 48, type: 'number', min: 6, max: 168, step: 6 }
         ]);
 
         // Rule 3: Precipitation Threshold
@@ -3632,7 +3634,7 @@ async function saveWeatherRules() {
             rain_forecast: {
                 enabled: document.getElementById('rule_rain_forecast').checked,
                 probability_threshold: parseInt(document.getElementById('rain_forecast_probability_threshold').value) || 60,
-                lookahead_hours: 24,
+                lookahead_hours: parseInt(document.getElementById('rain_forecast_lookahead_hours').value) || 48,
             },
             precipitation_threshold: {
                 enabled: document.getElementById('rule_precipitation_threshold').checked,

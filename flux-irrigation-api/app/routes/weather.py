@@ -220,7 +220,7 @@ DEFAULT_RULES = {
         },
         "rain_forecast": {
             "enabled": True,
-            "lookahead_hours": 24,
+            "lookahead_hours": 48,
             "probability_threshold": 60,
         },
         "precipitation_threshold": {
@@ -717,10 +717,32 @@ async def run_weather_evaluation() -> dict:
     if rule.get("enabled") and not should_pause:
         forecast = weather.get("forecast", [])
         prob_threshold = rule.get("probability_threshold", 60)
+        lookahead_hours = rule.get("lookahead_hours", 48)
+        cutoff = datetime.now(timezone.utc) + timedelta(hours=lookahead_hours)
         for f in forecast:
+            # Filter by lookahead window — only check forecast periods within range
+            fc_dt_str = f.get("datetime") or f.get("start_time") or ""
+            if fc_dt_str:
+                try:
+                    fc_dt = datetime.fromisoformat(fc_dt_str)
+                    # Ensure timezone-aware for comparison
+                    if fc_dt.tzinfo is None:
+                        fc_dt = fc_dt.replace(tzinfo=timezone.utc)
+                    if fc_dt > cutoff:
+                        continue  # Outside lookahead window — skip this period
+                except (ValueError, TypeError):
+                    pass  # Can't parse datetime — include it to be safe
             precip_prob = f.get("precipitation_probability", 0) or 0
             if precip_prob >= prob_threshold:
-                reason = f"Rain forecasted ({precip_prob}% probability)"
+                # Include which day the rain is forecast for in the reason
+                day_label = ""
+                if fc_dt_str:
+                    try:
+                        fc_dt = datetime.fromisoformat(fc_dt_str)
+                        day_label = f" on {fc_dt.strftime('%A')}"
+                    except (ValueError, TypeError):
+                        pass
+                reason = f"Rain forecasted ({precip_prob}% probability{day_label})"
                 should_pause = True
                 pause_reason = pause_reason or reason
                 triggered.append({"rule": "rain_forecast", "action": "skip", "reason": reason})
