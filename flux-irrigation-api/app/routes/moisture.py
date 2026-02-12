@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from config import get_config
 import ha_client
+import issue_store
 from config_changelog import log_change, get_actor
 
 
@@ -83,6 +84,79 @@ _probe_awake_cache: dict[str, bool] = {}  # probe_id -> True=awake, False=sleepi
 # Tracks when each probe became awake (Unix timestamp).  Used by
 # _awake_poll_loop() to enforce max_wake_minutes and auto re-enable sleep.
 _probe_wake_start: dict[str, float] = {}  # probe_id -> time.time() at wake
+
+# --- Daily Wake Exceedance Tracking ---
+# Counts how many times per day each probe exceeded max_wake_minutes during
+# scheduled wake cycles.  Resets at midnight.  If a probe exceeds the limit
+# more than MAX_DAILY_WAKE_EXCEEDANCES times, or battery < MIN_BATTERY_FOR_EXTENDED_WAKE,
+# the watchdog forces sleep even during scheduled wakes.
+MAX_DAILY_WAKE_EXCEEDANCES = 2
+MIN_BATTERY_FOR_EXTENDED_WAKE = 70  # percent
+_wake_exceedance_counts: dict[str, dict] = {}  # probe_id -> {"date": "YYYY-MM-DD", "count": N}
+
+
+def _get_daily_exceedance_count(probe_id: str) -> int:
+    """Get today's wake exceedance count for a probe, resetting if day changed."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    entry = _wake_exceedance_counts.get(probe_id)
+    if not entry or entry.get("date") != today:
+        _wake_exceedance_counts[probe_id] = {"date": today, "count": 0}
+        return 0
+    return entry["count"]
+
+
+def _increment_exceedance_count(probe_id: str):
+    """Increment today's wake exceedance count for a probe."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    entry = _wake_exceedance_counts.get(probe_id)
+    if not entry or entry.get("date") != today:
+        _wake_exceedance_counts[probe_id] = {"date": today, "count": 1}
+    else:
+        entry["count"] += 1
+
+
+async def _get_probe_battery_level(probe_id: str, probe: dict) -> float | None:
+    """Read the current battery percentage for a probe.
+
+    Uses the sensor cache first (fastest), falls back to live HA read.
+    Returns a float 0-100, or None if unavailable.
+    """
+    extra = probe.get("extra_sensors") or {}
+    battery_eid = extra.get("battery")
+    if not battery_eid:
+        return None
+
+    _load_sensor_cache()
+
+    # Try sensor cache first
+    cached = _sensor_cache.get(battery_eid)
+    if cached:
+        try:
+            return float(cached["state"])
+        except (ValueError, TypeError, KeyError):
+            pass
+
+    # Fall back to live HA read
+    try:
+        states = await ha_client.get_entities_by_ids([battery_eid])
+        if states:
+            raw = states[0].get("state", "unknown")
+            if raw not in ("unavailable", "unknown"):
+                val = float(raw)
+                # Update cache while we're at it
+                _sensor_cache[battery_eid] = {
+                    "state": val,
+                    "raw_state": raw,
+                    "last_updated": states[0].get("last_updated", ""),
+                    "friendly_name": states[0].get("attributes", {}).get(
+                        "friendly_name", battery_eid),
+                    "unit": "%",
+                }
+                _save_sensor_cache()
+                return val
+    except (ValueError, TypeError):
+        pass
+    return None
 
 
 def _load_sensor_cache():
@@ -240,7 +314,27 @@ async def _awake_poll_loop():
 
                 # --- Wake transition detection ---
                 if now_awake and not was_awake:
-                    _probe_wake_start[probe_id] = time.time()
+                    # On add-on restart, _probe_awake_cache is empty so all
+                    # awake probes appear as fresh wakes.  `was_awake` is
+                    # False only because we hadn't polled yet, not because
+                    # the probe actually just woke up.  Detect this by
+                    # checking if was_awake defaulted (probe_id wasn't in
+                    # cache at all before _check_probe_awake set it).
+                    is_startup_detection = (was_awake is False and
+                                            probe_id not in _probe_wake_start)
+                    prep_state_val = prep.get("state") if prep else None
+                    if (is_startup_detection and
+                            prep_state_val in (None, "idle")):
+                        # Likely already awake before restart — be aggressive:
+                        # pretend probe has been awake for half of max_wake
+                        half_wake = (_get_max_wake_minutes() * 60) / 2
+                        _probe_wake_start[probe_id] = time.time() - half_wake
+                        display = probe.get("display_name", probe_id)
+                        print(f"[MOISTURE] Startup: {display} already awake "
+                              f"with no active prep — setting wake_start to "
+                              f"{half_wake / 60:.0f} min ago as safety margin")
+                    else:
+                        _probe_wake_start[probe_id] = time.time()
                     prep_state = prep.get("state") if prep else None
                     is_scheduled = prep_state == "prep_pending"
                     is_reprogram_wake = prep_state == "pending_reprogram"
@@ -267,16 +361,159 @@ async def _awake_poll_loop():
                         )
 
                 # --- Max wake time enforcement ---
+                # Safety net that prevents probes from draining battery.
+                #
+                # SCHEDULE-AWARE: If the probe is awake for a scheduled
+                # reason (prep state is monitoring, prep_pending, etc.),
+                # we allow up to MAX_DAILY_WAKE_EXCEEDANCES (2) overruns
+                # per day IF battery is above MIN_BATTERY_FOR_EXTENDED_WAKE
+                # (70%).  Otherwise we force sleep immediately.
+                #
+                # NON-SCHEDULED: If prep state is idle/None, the watchdog
+                # fires the moment max_wake is exceeded — no grace.
                 max_wake = _get_max_wake_minutes()
-                if max_wake > 0 and now_awake and probe_id in _probe_wake_start:
-                    elapsed = time.time() - _probe_wake_start[probe_id]
+                wake_ts = _probe_wake_start.get(probe_id)
+                if max_wake > 0 and now_awake and wake_ts is not None and wake_ts > 0:
+                    elapsed = time.time() - wake_ts
                     if elapsed > max_wake * 60:
                         display = probe.get("display_name", probe_id)
-                        print(f"[MOISTURE] Max wake time ({max_wake} min) exceeded "
-                              f"for {display} (awake {elapsed / 60:.1f} min) "
-                              f"— re-enabling sleep")
+                        prep_state = prep.get("state") if prep else None
+                        is_scheduled_wake = prep_state in (
+                            "monitoring", "prep_pending", "sleeping_between",
+                            "awake_checking", "checking_next",
+                        )
+
+                        # --- Schedule-aware grace period ---
+                        force_sleep = True  # default: force sleep
+                        if is_scheduled_wake:
+                            exceedances_today = _get_daily_exceedance_count(probe_id)
+                            battery = await _get_probe_battery_level(probe_id, probe)
+                            battery_ok = battery is not None and battery >= MIN_BATTERY_FOR_EXTENDED_WAKE
+                            under_limit = exceedances_today < MAX_DAILY_WAKE_EXCEEDANCES
+
+                            if battery_ok and under_limit:
+                                # Allow this scheduled wake to exceed max_wake.
+                                # Only log once per exceedance (use 2x max_wake
+                                # as the hard ceiling even with grace).
+                                if elapsed <= max_wake * 60 * 2:
+                                    force_sleep = False
+                                    # Log on first detection (within a 10-sec window)
+                                    if elapsed < (max_wake * 60) + 10:
+                                        print(
+                                            f"[MOISTURE] Max wake ({max_wake} min) "
+                                            f"exceeded for {display} during "
+                                            f"scheduled wake (prep={prep_state}, "
+                                            f"battery={battery:.0f}%, "
+                                            f"exceedances today={exceedances_today}/"
+                                            f"{MAX_DAILY_WAKE_EXCEEDANCES}) — "
+                                            f"allowing extended wake")
+                                else:
+                                    # Hit 2x max_wake — hard ceiling, force sleep
+                                    print(
+                                        f"[MOISTURE] ⚠️ HARD CEILING: {display} "
+                                        f"awake {elapsed / 60:.1f} min (2x limit). "
+                                        f"Forcing sleep despite scheduled wake.")
+                            else:
+                                # Battery too low or too many exceedances
+                                reason = []
+                                if not battery_ok:
+                                    reason.append(
+                                        f"battery={'unknown' if battery is None else f'{battery:.0f}%'}"
+                                        f" < {MIN_BATTERY_FOR_EXTENDED_WAKE}%")
+                                if not under_limit:
+                                    reason.append(
+                                        f"exceedances={exceedances_today}/"
+                                        f"{MAX_DAILY_WAKE_EXCEEDANCES}")
+                                print(
+                                    f"[MOISTURE] ⚠️ MAX WAKE WATCHDOG: {display} "
+                                    f"exceeded {max_wake} min during scheduled wake "
+                                    f"but cannot allow extension — "
+                                    f"{', '.join(reason)}. FORCING SLEEP.")
+
+                        else:
+                            # Not a scheduled wake — no grace
+                            print(
+                                f"[MOISTURE] ⚠️ MAX WAKE WATCHDOG: {display} has "
+                                f"been awake {elapsed / 60:.1f} min (limit: "
+                                f"{max_wake} min). Prep state: {prep_state}. "
+                                f"FORCING SLEEP.")
+
+                        if force_sleep:
+                            # Track this as an exceedance for today
+                            _increment_exceedance_count(probe_id)
+                            exc_count = _get_daily_exceedance_count(probe_id)
+
+                            # Create an issue so management sees it
+                            try:
+                                battery = await _get_probe_battery_level(
+                                    probe_id, probe)
+                                bat_str = (f"{battery:.0f}%"
+                                           if battery is not None
+                                           else "unknown")
+                                issue_store.create_issue(
+                                    "annoyance",
+                                    f"Moisture probe '{display}' exceeded max "
+                                    f"wake time ({max_wake} min, awake "
+                                    f"{elapsed / 60:.0f} min). Battery: "
+                                    f"{bat_str}. Exceedances today: "
+                                    f"{exc_count}. Watchdog forced sleep."
+                                    + (f" Prep state was: {prep_state}."
+                                       if is_scheduled_wake else ""),
+                                )
+                            except Exception:
+                                pass  # Don't let issue creation break watchdog
+
+                            # Step 1: Re-enable sleep
+                            await set_probe_sleep_disabled(probe_id, False)
+
+                            # Step 2: FORCE immediate sleep via sleep_now button
+                            await press_probe_sleep_now(probe_id)
+
+                            # Step 3: Reset prep state machine if stuck
+                            if prep and prep.get("state") not in ("idle", None):
+                                old_state = prep.get("state")
+                                for skipped in prep.get("skipped_zones", []):
+                                    enable_entity = skipped.get("enable_entity")
+                                    zone_num = skipped.get("zone_num")
+                                    if enable_entity:
+                                        await ha_client.call_service(
+                                            "switch", "turn_on",
+                                            {"entity_id": enable_entity}
+                                        )
+                                        print(f"[MOISTURE] Watchdog: re-enabled "
+                                              f"zone {zone_num} ({enable_entity})")
+                                prep["state"] = "idle"
+                                prep["skipped_zones"] = []
+                                prep["active_schedule_start_time"] = None
+                                prep["active_zone_entity_id"] = None
+                                prep["active_zone_num"] = None
+                                _save_schedule_timeline(timeline)
+                                print(f"[MOISTURE] Watchdog: reset prep state "
+                                      f"{old_state} → idle for {display}")
+
+                            # Step 4: Restore original sleep duration
+                            original = _original_sleep_durations.pop(probe_id, None)
+                            if original is not None:
+                                await _set_probe_sleep_duration(probe_id, original)
+                                print(f"[MOISTURE] Watchdog: restored original "
+                                      f"sleep duration {original} min for {display}")
+
+                            # Set retry sentinel
+                            _probe_wake_start[probe_id] = -time.time()
+
+                elif max_wake > 0 and now_awake and wake_ts is not None and wake_ts < 0:
+                    # Sentinel: watchdog already fired (negative timestamp).
+                    # If probe is STILL awake 2 min after watchdog, retry.
+                    fired_at = -wake_ts
+                    since_fired = time.time() - fired_at
+                    if since_fired > 120:  # 2 minutes since last attempt
+                        display = probe.get("display_name", probe_id)
+                        print(f"[MOISTURE] ⚠️ WATCHDOG RETRY: {display} still awake "
+                              f"{since_fired / 60:.1f} min after watchdog fired! "
+                              f"Retrying sleep_now...")
                         await set_probe_sleep_disabled(probe_id, False)
-                        _probe_wake_start.pop(probe_id, None)
+                        await press_probe_sleep_now(probe_id)
+                        _probe_wake_start[probe_id] = -time.time()
 
         except asyncio.CancelledError:
             break
