@@ -152,6 +152,48 @@ def log_zone_event(
             except (ValueError, TypeError):
                 pass
 
+    # Calculate water savings on OFF events
+    # Compare actual run time to ORIGINAL schedule set time (base duration, NOT factored)
+    actual_dur = entry.get("duration_seconds")
+    if state in ("off", "closed") and actual_dur and actual_dur > 0:
+        try:
+            from routes.moisture import _load_data as _load_moisture_data
+            import zone_nozzle_data
+
+            moisture_data = _load_moisture_data()
+            base_durations = moisture_data.get("base_durations", {})
+            zone_suffix = entity_id.split(".", 1)[1] if "." in entity_id else entity_id
+
+            # Find the base (original schedule) duration for this zone
+            base_minutes = None
+            for dur_eid, bd in base_durations.items():
+                if zone_suffix in dur_eid:
+                    base_minutes = bd.get("base_value")
+                    break
+
+            if base_minutes is not None and base_minutes > 0:
+                actual_minutes = actual_dur / 60.0
+                saved_minutes = base_minutes - actual_minutes
+
+                if saved_minutes > 0.05:  # Only record meaningful savings (>3 seconds)
+                    # Get GPM for this zone
+                    heads_data = zone_nozzle_data.get_zone_heads(entity_id)
+                    total_gpm = heads_data.get("total_gpm", 0)
+
+                    if total_gpm > 0:
+                        water_saved = round(saved_minutes * total_gpm, 2)
+                        entry["water_saved_gallons"] = water_saved
+                        print(f"[RUN_LOG] Water saved: {entity_id} ran {actual_minutes:.1f}min "
+                              f"vs {base_minutes:.1f}min base → saved {saved_minutes:.1f}min × "
+                              f"{total_gpm:.2f}GPM = {water_saved:.2f} gal")
+                    else:
+                        # No GPM configured — still record time savings for reference
+                        entry["water_saved_minutes"] = round(saved_minutes, 2)
+                        print(f"[RUN_LOG] Time saved (no GPM): {entity_id} ran {actual_minutes:.1f}min "
+                              f"vs {base_minutes:.1f}min base → saved {saved_minutes:.1f}min")
+        except Exception as e:
+            print(f"[RUN_LOG] Water savings calculation error: {e}")
+
     try:
         os.makedirs(os.path.dirname(RUN_LOG_FILE), exist_ok=True)
         with open(RUN_LOG_FILE, "a") as f:
