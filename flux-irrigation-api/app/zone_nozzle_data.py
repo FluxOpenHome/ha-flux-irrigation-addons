@@ -249,6 +249,8 @@ def get_zone_heads(entity_id: str) -> dict:
         "heads": zone_data.get("heads", []),
         "notes": zone_data.get("notes", ""),
         "total_gpm": sum(h.get("gpm", 0) for h in zone_data.get("heads", [])),
+        "area_sqft": zone_data.get("area_sqft", 0),
+        "soil_type": zone_data.get("soil_type", ""),
         "show_gpm_on_card": zone_data.get("show_gpm_on_card", False),
         "show_head_count_on_card": zone_data.get("show_head_count_on_card", False),
     }
@@ -263,6 +265,8 @@ def get_all_zones_heads() -> dict:
             "heads": zone_data.get("heads", []),
             "notes": zone_data.get("notes", ""),
             "total_gpm": sum(h.get("gpm", 0) for h in zone_data.get("heads", [])),
+            "area_sqft": zone_data.get("area_sqft", 0),
+            "soil_type": zone_data.get("soil_type", ""),
             "show_gpm_on_card": zone_data.get("show_gpm_on_card", False),
             "show_head_count_on_card": zone_data.get("show_head_count_on_card", False),
         }
@@ -271,7 +275,9 @@ def get_all_zones_heads() -> dict:
 
 def save_zone_heads(entity_id: str, heads: list, notes: str = "",
                     show_gpm_on_card: bool = False,
-                    show_head_count_on_card: bool = False) -> dict:
+                    show_head_count_on_card: bool = False,
+                    area_sqft: float = 0,
+                    soil_type: str = "") -> dict:
     """Save complete head list for a zone. Replaces all heads."""
     data = _load_data()
     if "zones" not in data:
@@ -287,6 +293,8 @@ def save_zone_heads(entity_id: str, heads: list, notes: str = "",
         "notes": notes,
         "show_gpm_on_card": show_gpm_on_card,
         "show_head_count_on_card": show_head_count_on_card,
+        "area_sqft": area_sqft or 0,
+        "soil_type": soil_type or "",
     }
     _save_data(data)
     return get_zone_heads(entity_id)

@@ -94,6 +94,8 @@ class SaveZoneHeadsRequest(BaseModel):
     notes: str = Field("", max_length=2000, description="General zone notes")
     show_gpm_on_card: bool = Field(False, description="Show total GPM on zone card")
     show_head_count_on_card: bool = Field(False, description="Show head count on zone card")
+    area_sqft: float = Field(0, ge=0, description="Zone area in square feet")
+    soil_type: str = Field("", description="Soil type: sandy, sandy_loam, loam, clay_loam, silty_clay, clay, rock_gravel")
 
 
 class UpdateNotificationPrefsRequest(BaseModel):
@@ -955,7 +957,8 @@ async def homeowner_save_zone_heads(entity_id: str, body: SaveZoneHeadsRequest, 
 
     result = zone_nozzle_data.save_zone_heads(
         entity_id, body.heads, body.notes,
-        body.show_gpm_on_card, body.show_head_count_on_card
+        body.show_gpm_on_card, body.show_head_count_on_card,
+        area_sqft=body.area_sqft, soil_type=body.soil_type
     )
 
     log_change(get_actor(request), "Zone Details",
