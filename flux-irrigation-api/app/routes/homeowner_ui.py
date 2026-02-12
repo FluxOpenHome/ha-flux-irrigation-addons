@@ -5359,6 +5359,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Start clock with browser time initially (will update with correct TZ after status loads)
     startHomeClock('');
 
+    // Load system mode (for boundary area column visibility)
+    try {
+        var smBase = window.location.pathname.replace(/\\/+$/, '');
+        var smRes = await fetch(smBase + '/admin/api/system-mode');
+        var smData = await smRes.json();
+        window._hoSystemMode = smData.mode || 'standalone';
+    } catch(e) {
+        window._hoSystemMode = 'standalone';
+    }
+
     // Load zone aliases
     try {
         window._currentZoneAliases = await api('/zone_aliases');
@@ -5731,6 +5741,9 @@ function hoRenderHeadTable(heads) {
     document.getElementById('hoHeadCount').value = String(heads.length);
     var ref = _hoNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
 
+    // Check if boundary_name column should be shown (managed mode + any head has boundary_name)
+    var showBoundaryCol = window._hoSystemMode === 'managed' && heads.some(function(h) { return h && h.boundary_name; });
+
     var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
     html += '<thead><tr style="background:var(--bg-hover);">';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;width:50px;"></th>';
@@ -5746,6 +5759,7 @@ function hoRenderHeadTable(heads) {
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Pop-Up Height</th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">PSI</th>';
     html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Notes</th>';
+    if (showBoundaryCol) html += '<th style="padding:6px;border:1px solid var(--border-light);white-space:nowrap;">Boundary Area</th>';
     html += '</tr></thead><tbody>';
 
     for (var i = 0; i < heads.length; i++) {
@@ -5832,6 +5846,9 @@ function hoRenderHeadTable(heads) {
 
         // Notes
         html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes" style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+
+        // Boundary Area (only if managed mode + data exists)
+        if (showBoundaryCol) html += '<td style="padding:4px 6px;border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);white-space:nowrap;">' + esc(h.boundary_name || '') + '</td>';
 
         html += '</tr>';
     }

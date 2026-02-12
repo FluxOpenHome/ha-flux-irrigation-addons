@@ -549,6 +549,35 @@ class ConnectionKeyRequest(BaseModel):
     connection_mode: str = Field("direct", description="Connection mode: 'nabu_casa' or 'direct'")
 
 
+@router.get("/api/system-mode", summary="Get system mode")
+async def get_system_mode():
+    """Return the current system mode (standalone or managed)."""
+    config = get_config()
+    return {"mode": config.system_mode}
+
+
+@router.put("/api/system-mode", summary="Set system mode")
+async def set_system_mode(body: dict):
+    """Set the system mode to standalone or managed."""
+    import json as json_mod
+    mode = body.get("mode", "standalone")
+    if mode not in ("standalone", "managed"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"error": "Invalid mode. Must be 'standalone' or 'managed'."})
+
+    options_path = "/data/options.json"
+    options = {}
+    if os.path.exists(options_path):
+        with open(options_path, "r") as f:
+            options = json_mod.load(f)
+    options["system_mode"] = mode
+    with open(options_path, "w") as f:
+        json_mod.dump(options, f, indent=2)
+
+    await reload_config()
+    return {"mode": mode, "status": "saved"}
+
+
 @router.post("/api/connection-key", summary="Generate a connection key")
 async def generate_connection_key(body: ConnectionKeyRequest):
     """Generate a connection key for sharing with a management company."""
@@ -1294,8 +1323,35 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Management Access Control -->
+    <!-- System Mode -->
     <div class="card">
+        <div class="card-header" style="cursor:pointer;" onclick="document.getElementById('systemModeCardBody').style.display = document.getElementById('systemModeCardBody').style.display === 'none' ? 'block' : 'none'; document.getElementById('systemModeChevron').textContent = document.getElementById('systemModeCardBody').style.display === 'none' ? '\\u25b6' : '\\u25bc';">
+            <h2>System Mode</h2>
+            <span id="systemModeChevron">&#9654;</span>
+        </div>
+        <div class="card-body" id="systemModeCardBody" style="display:none;">
+            <p style="margin-bottom:16px; color:var(--text-secondary); font-size:14px;">
+                Choose how your irrigation system is managed.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                <label id="modeStandaloneLabel" style="display:block;cursor:pointer;padding:14px;border:2px solid var(--border-input);border-radius:8px;">
+                    <input type="radio" name="systemMode" value="standalone" onchange="selectSystemMode('standalone')" checked>
+                    <strong style="font-size:14px;">Stand Alone</strong>
+                    <div style="font-size:12px;color:var(--text-hint);margin-top:4px;">You manage your own irrigation system. No external management company.</div>
+                </label>
+                <label id="modeManagedLabel" style="display:block;cursor:pointer;padding:14px;border:2px solid var(--border-input);border-radius:8px;">
+                    <input type="radio" name="systemMode" value="managed" onchange="selectSystemMode('managed')">
+                    <strong style="font-size:14px;">Professionally Managed</strong>
+                    <div style="font-size:12px;color:var(--text-hint);margin-top:4px;">A management company monitors and controls your system remotely.</div>
+                </label>
+            </div>
+            <button onclick="saveSystemMode()" class="btn btn-primary" style="min-width:120px;">Save</button>
+            <span id="systemModeStatus" style="margin-left:12px;font-size:13px;"></span>
+        </div>
+    </div>
+
+    <!-- Management Access Control -->
+    <div class="card" id="managementAccessCard">
         <div class="card-header">
             <h2>Management Access Control</h2>
         </div>
@@ -2894,11 +2950,58 @@ ADMIN_HTML = """<!DOCTYPE html>
         if (e.target === this) closeHelpModal();
     });
 
+    // --- System Mode ---
+    function selectSystemMode(mode) {
+        document.getElementById('modeStandaloneLabel').style.borderColor = mode === 'standalone' ? 'var(--color-primary)' : 'var(--border-input)';
+        document.getElementById('modeManagedLabel').style.borderColor = mode === 'managed' ? 'var(--color-primary)' : 'var(--border-input)';
+    }
+
+    async function saveSystemMode() {
+        const mode = document.querySelector('input[name="systemMode"]:checked').value;
+        const statusEl = document.getElementById('systemModeStatus');
+        try {
+            statusEl.textContent = 'Saving...';
+            statusEl.style.color = 'var(--text-secondary)';
+            const res = await fetch(BASE + '/system-mode', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mode}),
+            });
+            if (!res.ok) throw new Error('Save failed');
+            statusEl.textContent = '\\u2713 Saved!';
+            statusEl.style.color = 'var(--color-success)';
+            showToast('System mode updated to ' + mode);
+            toggleManagementCardVisibility(mode);
+            setTimeout(() => statusEl.textContent = '', 3000);
+        } catch(e) {
+            statusEl.textContent = 'Error saving';
+            statusEl.style.color = 'var(--color-danger)';
+        }
+    }
+
+    async function loadSystemMode() {
+        try {
+            const res = await fetch(BASE + '/system-mode');
+            const data = await res.json();
+            const mode = data.mode || 'standalone';
+            const radio = document.querySelector('input[name="systemMode"][value="' + mode + '"]');
+            if (radio) radio.checked = true;
+            selectSystemMode(mode);
+            toggleManagementCardVisibility(mode);
+        } catch(e) { console.warn('Failed to load system mode:', e); }
+    }
+
+    function toggleManagementCardVisibility(mode) {
+        const card = document.getElementById('managementAccessCard');
+        if (card) card.style.display = mode === 'managed' ? '' : 'none';
+    }
+
     // --- Init ---
     loadSettings();
     loadConnectionKey();
     loadWeatherSettings();
     loadStatus();
+    loadSystemMode();
     setInterval(loadStatus, 30000);
 </script>
 </body>

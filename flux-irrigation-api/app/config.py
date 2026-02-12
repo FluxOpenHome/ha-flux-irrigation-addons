@@ -41,6 +41,7 @@ class Config:
     weather_check_interval_minutes: int = 15
     weather_source: str = "ha_entity"  # "ha_entity" or "nws"
     supervisor_token: Optional[str] = None
+    system_mode: str = "standalone"  # "standalone" or "managed"
     detected_zone_count: int = 0
 
     @classmethod
@@ -105,6 +106,7 @@ class Config:
                     print(f"[CONFIG] Auto-upgraded management key permissions: added {missing}")
 
         config.mode = options.get("mode", config.mode)
+        config.system_mode = options.get("system_mode", config.system_mode)
         config.homeowner_url = options.get("homeowner_url", config.homeowner_url)
         config.homeowner_label = options.get("homeowner_label", config.homeowner_label)
         config.homeowner_address = options.get("homeowner_address", config.homeowner_address)
