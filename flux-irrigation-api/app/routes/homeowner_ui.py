@@ -5640,11 +5640,11 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     body += '<div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">';
     body += '<div style="flex:0 0 auto;">';
     body += '<label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">Zone Area (sq ft):</label>';
-    body += '<input type="number" id="hoZoneAreaSqft" min="0" max="100000" step="1" value="' + (zoneData.area_sqft || '') + '" placeholder="e.g. 1500" style="width:130px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);" oninput="hoCalcPrecipRate()">';
+    body += '<input type="number" id="hoZoneAreaSqft" min="0" max="100000" step="1" value="' + (zoneData.area_sqft || '') + '" placeholder="e.g. 1500" style="width:130px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
     body += '</div>';
     body += '<div style="flex:0 0 auto;">';
     body += '<label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">Soil Type:</label>';
-    body += '<select id="hoZoneSoilType" onchange="hoCalcPrecipRate()" style="width:160px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
+    body += '<select id="hoZoneSoilType" style="width:160px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
     body += '<option value="">-- Select --</option>';
     body += '<option value="sandy"' + (zoneData.soil_type === 'sandy' ? ' selected' : '') + '>Sandy</option>';
     body += '<option value="sandy_loam"' + (zoneData.soil_type === 'sandy_loam' ? ' selected' : '') + '>Sandy Loam</option>';
@@ -5655,7 +5655,7 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     body += '<option value="rock_gravel"' + (zoneData.soil_type === 'rock_gravel' ? ' selected' : '') + '>Rock / Gravel</option>';
     body += '</select>';
     body += '</div>';
-    body += '<div id="hoPrecipRateDisplay" style="font-size:12px;color:var(--text-muted);padding-top:18px;"></div>';
+    body += '';
     body += '</div>';
 
     body += '<div style="margin-top:10px;">';
@@ -5705,7 +5705,6 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
                 copySelect.appendChild(opt);
             }
         }
-        hoCalcPrecipRate();
     }, 50);
 }
 
@@ -5849,7 +5848,7 @@ function hoRenderHeadTable(heads) {
     // Add GPM change listeners
     var gpmInputs = wrap.querySelectorAll('input[data-field="gpm"]');
     for (var g = 0; g < gpmInputs.length; g++) {
-        gpmInputs[g].addEventListener('input', function() { hoUpdateGpmSummary(); hoCalcPrecipRate(); });
+        gpmInputs[g].addEventListener('input', function() { hoUpdateGpmSummary(); });
     }
 
     // Model select: auto-fill GPM + toggle custom input
@@ -5872,7 +5871,6 @@ function hoRenderHeadTable(heads) {
                     if (gpmInput) {
                         gpmInput.value = modelGpm;
                         hoUpdateGpmSummary();
-                        hoCalcPrecipRate();
                     }
                 }
             }
@@ -6099,62 +6097,6 @@ async function hoSaveZoneHeads() {
     }
 }
 
-function hoCalcPrecipRate() {
-    var el = document.getElementById('hoPrecipRateDisplay');
-    if (!el) return;
-    var areaSqft = parseFloat((document.getElementById('hoZoneAreaSqft') || {}).value) || 0;
-    var totalGpm = 0;
-    var headCount = 0;
-    var rows = document.querySelectorAll('#hoHeadTableWrap input[data-field="gpm"]');
-    for (var i = 0; i < rows.length; i++) {
-        var v = parseFloat(rows[i].value) || 0;
-        if (v > 0) headCount++;
-        totalGpm += v;
-    }
-    if (areaSqft <= 0 || totalGpm <= 0) {
-        el.innerHTML = '<span style="color:var(--text-disabled);">Enter area & heads with GPM to see precipitation rate</span>';
-        return;
-    }
-    var precipRate = (totalGpm * 96.25) / areaSqft;
-    var html = '<div style="line-height:1.6;">';
-    var warnings = [];
-    var sqftPerHead = headCount > 0 ? areaSqft / headCount : areaSqft;
-    if (sqftPerHead > 3000) {
-        warnings.push('\\u26a0\\ufe0f Area per head is ' + Math.round(sqftPerHead).toLocaleString() + ' sqft — most heads cover 200-1,600 sqft. Area may be too large or more heads are needed.');
-    }
-    if (precipRate < 0.05) {
-        var hoursPerInch = (1 / precipRate).toFixed(0);
-        warnings.push('\\u26a0\\ufe0f Precip rate is extremely low — it would take ~' + hoursPerInch + ' hours to apply 1 inch of water. The area is likely too large for this head configuration.');
-    }
-    if (precipRate > 4.0) {
-        warnings.push('\\u26a0\\ufe0f Precip rate is very high (' + precipRate.toFixed(1) + ' in/hr). Verify area and GPM values — this will cause heavy runoff on any soil type.');
-    }
-    if (warnings.length > 0) {
-        html += '<div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:6px;padding:6px 8px;margin-bottom:6px;">';
-        for (var w = 0; w < warnings.length; w++) {
-            html += '<div style="color:var(--color-warning);font-size:11px;font-weight:600;">' + warnings[w] + '</div>';
-        }
-        html += '</div>';
-    }
-    html += '<span style="font-weight:600;color:var(--text-primary);">Precip Rate: ' + precipRate.toFixed(4) + ' in/hr</span>';
-    html += '<span style="margin-left:8px;color:var(--text-secondary);">(' + totalGpm.toFixed(1) + ' GPM \\u00d7 96.25 \\u00f7 ' + areaSqft.toLocaleString() + ' sqft)</span>';
-    if (headCount > 0) {
-        html += '<br><span style="color:var(--text-secondary);">Coverage: ' + Math.round(sqftPerHead).toLocaleString() + ' sqft/head (' + headCount + ' heads \\u00d7 ' + (totalGpm/headCount).toFixed(1) + ' avg GPM)</span>';
-    }
-    var soilType = (document.getElementById('hoZoneSoilType') || {}).value || '';
-    var intakeRates = {sandy: {rate: '2.0', range: '1.5-2.5'}, sandy_loam: {rate: '1.5', range: '1.0-2.0'}, loam: {rate: '0.75', range: '0.5-1.0'}, clay_loam: {rate: '0.4', range: '0.25-0.5'}, silty_clay: {rate: '0.25', range: '0.15-0.35'}, clay: {rate: '0.15', range: '0.1-0.2'}, rock_gravel: {rate: '3.0+', range: '2.0+'}};
-    if (soilType && intakeRates[soilType]) {
-        var ir = intakeRates[soilType];
-        var overRate = precipRate > parseFloat(ir.rate);
-        html += '<br><span style="color:' + (overRate ? 'var(--color-warning)' : 'var(--color-success)') + ';">';
-        html += soilType.replace(/_/g, ' ') + ' intake: ~' + ir.range + ' in/hr';
-        if (overRate) html += ' \\u26a0\\ufe0f Precip rate exceeds soil intake — risk of runoff';
-        else if (warnings.length === 0) html += ' \\u2705 Within soil intake capacity';
-        html += '</span>';
-    }
-    html += '</div>';
-    el.innerHTML = html;
-}
 
 function showModal(title, bodyHtml, maxWidth) {
     document.getElementById('dynamicModalTitle').textContent = title;
