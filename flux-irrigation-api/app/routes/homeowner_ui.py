@@ -590,6 +590,17 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     </div>
 </div>
 
+<!-- Gallons Zone Detail Modal -->
+<div id="gallonsDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10001;align-items:center;justify-content:center;" onclick="if(event.target===this)closeGallonsDetailModal()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:92%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;max-height:80vh;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);flex-shrink:0;">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128167; Zone Water Usage</h3>
+            <button onclick="closeGallonsDetailModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div id="gallonsDetailBody" style="overflow-y:auto;flex:1;min-height:0;padding:16px 24px 24px 24px;"></div>
+    </div>
+</div>
+
 <!-- Notifications Panel Modal (with settings inside) -->
 <div id="notifPanelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10001;align-items:center;justify-content:center;" onclick="if(event.target===this)closeNotificationsPanel()">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:92%;max-width:500px;max-height:85vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
@@ -912,8 +923,11 @@ async function submitIssue() {
     }
 }
 
-// Escape + backdrop for report issue modal
+// Escape + backdrop for report issue modal + gallons detail modal
 document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('gallonsDetailModal').style.display === 'flex') {
+        closeGallonsDetailModal();
+    }
     if (e.key === 'Escape' && document.getElementById('reportIssueModal').style.display === 'flex') {
         closeReportIssue();
     }
@@ -1112,7 +1126,11 @@ function renderActiveIssuesBanner(issues) {
         const isResolved = issue.status === 'resolved';
         const isReturned = issue.status === 'returned';
         const dt = new Date(issue.created_at);
-        const timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+        const _isMon = dt.toLocaleDateString('en-US', {month:'short'});
+        const _isDay = dt.getDate();
+        const _isYr = String(dt.getFullYear()).slice(-2);
+        const _isTime = dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+        const timeStr = _isMon + ' ' + _isDay + '-' + _isYr + ' ' + _isTime;
         html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);' + (isResolved ? 'opacity:0.85;' : '') + '">';
         if (isResolved) {
             html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#27ae6022;color:#27ae60;white-space:nowrap;">&#10003; Resolved</span>';
@@ -2832,12 +2850,18 @@ async function loadHistory() {
                     if (e.mid_sensor_pct != null) {
                         stateCell += '<div style="font-size:10px;color:var(--text-muted);">Mid: ' + e.mid_sensor_pct + '%</div>';
                     }
+                    if (e.water_saved_gallons > 0) {
+                        stateCell += '<div style="font-size:10px;color:var(--color-success);font-weight:600;">&#x1F4A7; ' + e.water_saved_gallons.toFixed(1) + ' gal saved</div>';
+                    }
                 } else if (e.state === 'skip') {
                     stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span><br><span style="color:var(--text-disabled);font-size:11px;">OFF</span>';
                 } else if (e.state === 'on' || e.state === 'open') {
                     stateCell = '<span style="color:var(--color-success);">ON</span>';
                 } else {
                     stateCell = '<span style="color:var(--text-disabled);">OFF</span>';
+                    if (e.water_saved_gallons > 0) {
+                        stateCell += '<div style="font-size:10px;color:var(--color-success);font-weight:600;">&#x1F4A7; ' + e.water_saved_gallons.toFixed(1) + ' gal saved</div>';
+                    }
                 }
                 // Zone name display — probe events resolve current probe name
                 let zoneDisplay;
@@ -2866,6 +2890,10 @@ async function loadHistory() {
                             estGalCell = '<span style="font-weight:600;">' + gal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</span>';
                         }
                     }
+                    // Water saved badge for any event with savings
+                    if (e.water_saved_gallons > 0) {
+                        estGalCell += '<div style="font-size:10px;color:var(--color-success);font-weight:600;margin-top:2px;">&#x1F4A7; ' + e.water_saved_gallons.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + ' gal saved</div>';
+                    }
                 }
                 return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' || e.state === 'moisture_skip' ? 'opacity:0.7;' : ''}${isProbeEvent ? 'background:var(--bg-tile);' : ''}">
                 <td style="padding:6px;">${zoneDisplay}${srcLabel}</td>
@@ -2887,7 +2915,11 @@ function formatTime(ts) {
     if (!ts) return '-';
     try {
         const d = new Date(ts);
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const mon = d.toLocaleDateString('en-US', {month:'short'});
+        const day = d.getDate();
+        const yr = String(d.getFullYear()).slice(-2);
+        const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return mon + ' ' + day + '-' + yr + ' ' + time;
     } catch { return ts; }
 }
 
@@ -2905,7 +2937,10 @@ async function loadEstGallons() {
         const events = data.events || [];
         // Filter to events with duration and GPM (duration_seconds is set on OFF events)
         const relevant = events.filter(e => e.duration_seconds > 0 && gpmMap[e.entity_id]);
-        if (relevant.length === 0) {
+        // Also collect water_saved_gallons from all events
+        const savingsEvents = events.filter(e => e.water_saved_gallons > 0);
+        const hasAnyData = relevant.length > 0 || savingsEvents.length > 0;
+        if (!hasAnyData) {
             card.style.display = '';
             el.innerHTML = '<div class="empty-state"><p>No water usage data for the selected period</p></div>';
             return;
@@ -2925,45 +2960,122 @@ async function loadEstGallons() {
             if (!zoneNames[e.entity_id]) zoneNames[e.entity_id] = resolveZoneName(e.entity_id, e.zone_name);
         });
         const totalGal = Object.values(zoneGallons).reduce((a, b) => a + b, 0);
+        // Aggregate savings per zone
+        const zoneSaved = {};
+        var totalSaved = 0;
+        savingsEvents.forEach(e => {
+            if (!zoneSaved[e.entity_id]) zoneSaved[e.entity_id] = 0;
+            zoneSaved[e.entity_id] += e.water_saved_gallons;
+            totalSaved += e.water_saved_gallons;
+            if (!zoneNames[e.entity_id]) zoneNames[e.entity_id] = resolveZoneName(e.entity_id, e.zone_name);
+        });
         // Sort zones by gallons desc
-        const sorted = Object.keys(zoneGallons).sort((a, b) => zoneGallons[b] - zoneGallons[a]);
+        const allZoneIds = [...new Set([...Object.keys(zoneGallons), ...Object.keys(zoneSaved)])];
+        const sorted = allZoneIds.sort((a, b) => (zoneGallons[b] || 0) - (zoneGallons[a] || 0));
         // Fetch water settings for cost display
         var waterSettings = null;
         try { waterSettings = await api('/water_settings?t=' + Date.now()); } catch(e) {}
-        let html = '<div style="text-align:center;margin-bottom:12px;">' +
+        const hasCost = waterSettings && waterSettings.cost_per_1000_gal > 0 &&
+            (waterSettings.water_source === 'city' || waterSettings.water_source === 'reclaimed');
+        const costPer1000 = hasCost ? waterSettings.cost_per_1000_gal : 0;
+        // Build summary-only HTML (no inline table — details go in modal)
+        let html = '<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;">';
+        // --- Used column ---
+        html += '<div style="text-align:center;flex:1;min-width:120px;">' +
             '<div style="font-size:32px;font-weight:700;color:var(--text-primary);">' + totalGal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</div>' +
-            '<div style="font-size:13px;color:var(--text-muted);">estimated gallons</div>';
-        // Water cost line (city/reclaimed with cost configured)
-        if (waterSettings && waterSettings.cost_per_1000_gal > 0 &&
-            (waterSettings.water_source === 'city' || waterSettings.water_source === 'reclaimed')) {
-            var waterCost = (totalGal / 1000) * waterSettings.cost_per_1000_gal;
-            html += '<div style="font-size:15px;color:var(--color-success);font-weight:600;margin-top:4px;">$' +
-                waterCost.toFixed(2) + ' est. water cost</div>';
+            '<div style="font-size:13px;color:var(--text-muted);">est. gallons used</div>';
+        if (hasCost) {
+            var waterCost = (totalGal / 1000) * costPer1000;
+            html += '<div style="font-size:15px;color:var(--text-secondary);font-weight:600;margin-top:4px;">$' +
+                waterCost.toFixed(2) + ' est. cost</div>';
         }
+        html += '</div>';
+        // --- Saved column ---
+        html += '<div style="text-align:center;flex:1;min-width:120px;">' +
+            '<div style="font-size:32px;font-weight:700;color:var(--color-success);">' + (totalSaved > 0 ? totalSaved.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) : '-') + '</div>' +
+            '<div style="font-size:13px;color:var(--color-success);">&#x1F4A7; est. gallons saved</div>';
+        if (hasCost && totalSaved > 0) {
+            var savedCost = (totalSaved / 1000) * costPer1000;
+            html += '<div style="font-size:15px;color:var(--color-success);font-weight:600;margin-top:4px;">$' +
+                savedCost.toFixed(2) + ' est. savings</div>';
+        }
+        html += '</div>';
+        html += '</div>';
         // Water source badge
         if (waterSettings && waterSettings.water_source) {
             var srcLabel = {city:'City Water', reclaimed:'Reclaimed Water', well:'Well Water'}[waterSettings.water_source] || '';
-            if (srcLabel) html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + esc(srcLabel) + '</div>';
+            if (srcLabel) html += '<div style="text-align:center;font-size:11px;color:var(--text-muted);margin-bottom:8px;">' + esc(srcLabel) + '</div>';
         }
-        html += '</div>';
-        html += '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
-            '<thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:4px 6px;">Zone</th><th style="padding:4px 6px;text-align:right;">Time</th><th style="padding:4px 6px;text-align:right;">Gallons</th><th style="padding:4px 6px;text-align:right;">GPM</th></tr></thead><tbody>';
-        sorted.forEach(eid => {
-            const totalMins = Math.round(zoneMinutes[eid]);
-            html += '<tr style="border-bottom:1px solid var(--border-row);">' +
-                '<td style="padding:4px 6px;">' + esc(zoneNames[eid]) + '</td>' +
-                '<td style="padding:4px 6px;text-align:right;">' + totalMins + ' min</td>' +
-                '<td style="padding:4px 6px;text-align:right;font-weight:600;">' + zoneGallons[eid].toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</td>' +
-                '<td style="padding:4px 6px;text-align:right;color:var(--text-muted);">' + (gpmMap[eid] || 0).toFixed(1) + '</td>' +
-                '</tr>';
-        });
-        html += '</tbody></table>';
+        // View Zone Details button
+        html += '<div style="text-align:center;margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="openGallonsDetailModal()">View Zone Details</button></div>';
+        // Store zone data for the modal
+        window._gallonsModalData = { sorted: sorted, zoneNames: zoneNames, zoneMinutes: zoneMinutes, zoneGallons: zoneGallons, zoneSaved: zoneSaved, gpmMap: gpmMap, totalGal: totalGal, totalSaved: totalSaved, costPer1000: costPer1000, hasCost: hasCost };
         card.style.display = '';
         el.innerHTML = html;
     } catch (e) {
         card.style.display = '';
         el.innerHTML = '<div style="color:var(--color-danger);">Failed to load water usage: ' + esc(e.message) + '</div>';
     }
+}
+
+function openGallonsDetailModal() {
+    const d = window._gallonsModalData;
+    if (!d) return;
+    // Summary header — side by side for used and saved
+    let html = '<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:16px;">';
+    html += '<div style="text-align:center;flex:1;min-width:100px;">' +
+        '<div style="font-size:28px;font-weight:700;color:var(--text-primary);">' + d.totalGal.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</div>' +
+        '<div style="font-size:13px;color:var(--text-muted);">est. gallons used</div>';
+    if (d.hasCost) {
+        html += '<div style="font-size:14px;color:var(--text-secondary);font-weight:600;margin-top:2px;">$' + ((d.totalGal / 1000) * d.costPer1000).toFixed(2) + '</div>';
+    }
+    html += '</div>';
+    html += '<div style="text-align:center;flex:1;min-width:100px;">' +
+        '<div style="font-size:28px;font-weight:700;color:var(--color-success);">' + (d.totalSaved > 0 ? d.totalSaved.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) : '-') + '</div>' +
+        '<div style="font-size:13px;color:var(--color-success);">&#x1F4A7; est. gallons saved</div>';
+    if (d.hasCost && d.totalSaved > 0) {
+        html += '<div style="font-size:14px;color:var(--color-success);font-weight:600;margin-top:2px;">$' + ((d.totalSaved / 1000) * d.costPer1000).toFixed(2) + ' saved</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+    // Zone breakdown table — always show Saved column
+    html += '<table style="width:100%;font-size:13px;border-collapse:collapse;">' +
+        '<thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);">' +
+        '<th style="padding:6px 8px;">Zone</th>' +
+        '<th style="padding:6px 8px;text-align:right;">Time</th>' +
+        '<th style="padding:6px 8px;text-align:right;">Gallons</th>' +
+        '<th style="padding:6px 8px;text-align:right;color:var(--color-success);">Saved</th>' +
+        '<th style="padding:6px 8px;text-align:right;">GPM</th></tr></thead><tbody>';
+    d.sorted.forEach(function(eid) {
+        const totalMins = Math.round(d.zoneMinutes[eid] || 0);
+        const used = d.zoneGallons[eid] || 0;
+        const saved = (d.zoneSaved && d.zoneSaved[eid]) || 0;
+        html += '<tr style="border-bottom:1px solid var(--border-row);">' +
+            '<td style="padding:6px 8px;">' + esc(d.zoneNames[eid] || eid) + '</td>' +
+            '<td style="padding:6px 8px;text-align:right;">' + totalMins + ' min</td>' +
+            '<td style="padding:6px 8px;text-align:right;font-weight:600;">' + used.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + '</td>' +
+            '<td style="padding:6px 8px;text-align:right;color:var(--color-success);font-weight:600;">' + (saved > 0 ? saved.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) : '-') + '</td>' +
+            '<td style="padding:6px 8px;text-align:right;color:var(--text-muted);">' + (d.gpmMap[eid] || 0).toFixed(1) + '</td>' +
+            '</tr>';
+    });
+    // Cost totals row
+    if (d.hasCost) {
+        const usedCost = (d.totalGal / 1000) * d.costPer1000;
+        const savedCost = (d.totalSaved / 1000) * d.costPer1000;
+        html += '<tr style="border-top:2px solid var(--border-light);font-weight:700;">' +
+            '<td style="padding:8px 8px;">Total</td>' +
+            '<td></td>' +
+            '<td style="padding:8px 8px;text-align:right;">$' + usedCost.toFixed(2) + '</td>' +
+            '<td style="padding:8px 8px;text-align:right;color:var(--color-success);">$' + (d.totalSaved > 0 ? savedCost.toFixed(2) : '-') + '</td>' +
+            '<td></td></tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('gallonsDetailBody').innerHTML = html;
+    document.getElementById('gallonsDetailModal').style.display = 'flex';
+}
+
+function closeGallonsDetailModal() {
+    document.getElementById('gallonsDetailModal').style.display = 'none';
 }
 
 // --- Pump Monitor ---
@@ -5447,7 +5559,11 @@ async function loadChangelog() {
         html += '</tr></thead><tbody>';
         entries.forEach(function(e) {
             const dt = new Date(e.timestamp);
-            const timeStr = dt.toLocaleDateString(undefined, {month:'short',day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'numeric',minute:'2-digit'});
+            const _clMon = dt.toLocaleDateString('en-US', {month:'short'});
+            const _clDay = dt.getDate();
+            const _clYr = String(dt.getFullYear()).slice(-2);
+            const _clTime = dt.toLocaleTimeString(undefined, {hour:'numeric',minute:'2-digit'});
+            const timeStr = _clMon + ' ' + _clDay + '-' + _clYr + ' ' + _clTime;
             const isHO = e.actor === 'Homeowner';
             const badge = '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                 'background:' + (isHO ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)') + ';' +

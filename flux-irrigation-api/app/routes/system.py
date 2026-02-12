@@ -38,6 +38,8 @@ class SystemStatus(BaseModel):
     rain_delay_until: Optional[str] = None
     api_version: str = "1.0.0"
     uptime_check: str
+    has_pump_relay: bool = False
+    has_master_valve: bool = False
     # Weather multiplier (system-wide); moisture is per-zone, not in status
     weather_multiplier: float = 1.0
     moisture_enabled: bool = False
@@ -111,6 +113,26 @@ async def get_system_status(request: Request):
     # Filter out pump start relay and master valve — they are not actual zones
     _NON_ZONE_RE = re.compile(r"pump|master.?valve", re.IGNORECASE)
     zones = [z for z in zones if not _NON_ZONE_RE.search(z.get("entity_id", ""))]
+
+    # Detect pump relay / master valve via zone mode entities
+    has_pump_relay = False
+    has_master_valve = False
+    _ZONE_MODE_RE = re.compile(r"zone_\d+_mode", re.IGNORECASE)
+    mode_eids = [e for e in config.allowed_control_entities if _ZONE_MODE_RE.search(e)]
+    if mode_eids:
+        mode_entities = await ha_client.get_entities_by_ids(mode_eids)
+        for me in mode_entities:
+            mode_val = (me.get("state") or "").lower()
+            if "pump" in mode_val or "relay" in mode_val:
+                has_pump_relay = True
+                # Also filter this zone out of the count
+                zone_num = _extract_zone_number(me.get("entity_id", ""))
+                zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) != zone_num]
+            elif "master" in mode_val and "valve" in mode_val:
+                has_master_valve = True
+                zone_num = _extract_zone_number(me.get("entity_id", ""))
+                zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) != zone_num]
+
     active_zones = [z for z in zones if z.get("state") == "on"]
 
     # Count sensors
@@ -176,6 +198,8 @@ async def get_system_status(request: Request):
         rain_delay_active=rain_delay_active,
         rain_delay_until=rain_delay_until if rain_delay_active else None,
         uptime_check=datetime.now(timezone.utc).isoformat(),
+        has_pump_relay=has_pump_relay,
+        has_master_valve=has_master_valve,
         weather_multiplier=weather_multiplier,
         moisture_enabled=moisture_enabled,
         # Live contact/address info for management company sync
