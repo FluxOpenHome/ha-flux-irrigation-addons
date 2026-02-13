@@ -4197,6 +4197,43 @@ async def api_receive_cellular_reading(request: Request):
     return {"success": True, "probe_key": cellular_key}
 
 
+@router.post("/cellular-remove", summary="Remove cellular probe from HA add-on")
+async def api_remove_cellular_probe(request: Request):
+    """Remove a cellular probe that was deleted or unassigned in the management server.
+
+    Called by the management server when a probe is deleted or unassigned from
+    this customer. Removes the probe from the probes dict and cleans up sensor cache.
+    """
+    body = await request.json()
+    probe_id = body.get("probe_id", "")
+    device_id = body.get("particle_device_id", "")
+
+    if not probe_id or not device_id:
+        raise HTTPException(status_code=400, detail="Missing probe_id or particle_device_id")
+
+    data = _load_data()
+    cellular_key = f"cellular_{probe_id}"
+
+    # Remove from probes dict
+    removed = False
+    if cellular_key in data.get("probes", {}):
+        del data["probes"][cellular_key]
+        removed = True
+
+    # Clean up sensor cache entries
+    _load_sensor_cache()
+    for depth in ("shallow", "mid", "deep"):
+        eid = f"cellular.{device_id}.{depth}"
+        _sensor_cache.pop(eid, None)
+    _save_sensor_cache()
+    _save_data(data)
+
+    action = "removed" if removed else "not_found"
+    print(f"[MOISTURE] Cellular probe {action}: {cellular_key} ({device_id})")
+
+    return {"success": True, "action": action, "probe_key": cellular_key}
+
+
 @router.get("/settings", summary="Get moisture probe settings")
 async def api_get_settings():
     """Get global moisture probe settings."""
