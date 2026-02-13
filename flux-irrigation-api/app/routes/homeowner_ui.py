@@ -6120,6 +6120,7 @@ function hoRenderHeadTable(heads) {
             html += '<td style="padding:2px 4px;border:1px solid var(--border-light);text-align:center;white-space:nowrap;">';
             html += '<button onclick="hoCopyHeadDown(' + i + ')" title="Copy to rows below" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">\\u2b07</button>';
             html += '<button onclick="hoDuplicateHead(' + i + ')" title="Duplicate row" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">+</button>';
+            html += '<button onclick="hoDeleteHead(' + i + ')" title="Delete head" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--color-danger, #e74c3c);">\\u2715</button>';
             html += '</td>';
         } else {
             html += '<td style="padding:2px 4px;border:1px solid var(--border-light);text-align:center;white-space:nowrap;color:var(--text-secondary);font-size:10px;">&#128274;</td>';
@@ -6342,6 +6343,18 @@ function hoDuplicateHead(sourceRow) {
     document.getElementById('hoHeadCount').value = String(heads.length);
     hoRenderHeadTable(heads);
     showToast('Row duplicated');
+}
+
+function hoDeleteHead(rowIdx) {
+    if (!confirm('Delete head #' + (rowIdx + 1) + '?')) return;
+    var heads = hoCollectHeadData();
+    if (rowIdx >= heads.length) return;
+    heads.splice(rowIdx, 1);
+    var hcEl = document.getElementById('hoHeadCount');
+    if (hcEl) hcEl.value = String(heads.length);
+    hoRenderHeadTable(heads);
+    if (typeof hoUpdateGpmSummary === 'function') hoUpdateGpmSummary();
+    showToast('Head #' + (rowIdx + 1) + ' deleted');
 }
 
 async function hoCopyFromZone() {
