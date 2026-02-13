@@ -4069,15 +4069,21 @@ async function loadMoisture() {
     const badge = document.getElementById('moistureStatusBadge');
     try {
         const _mcb = '?t=' + Date.now();
-        const data = await mapi('/probes' + _mcb);
-        const settings = await mapi('/settings' + _mcb);
+        const [data, settings, cellularData] = await Promise.all([
+            mapi('/probes' + _mcb),
+            mapi('/settings' + _mcb),
+            mapi('/probes/cellular' + _mcb).catch(() => ({ probes: {} })),
+        ]);
         let multData = {};
         try { multData = await mapi('/multiplier' + _mcb); } catch (_) {}
         let timelineData = {};
         try { timelineData = await mapi('/schedule-timeline' + _mcb); } catch (_) {}
 
-        const probes = data.probes || {};
-        const probeCount = Object.keys(probes).length;
+        const wifiProbes = data.probes || {};
+        const cellularProbes = (cellularData && cellularData.probes) || {};
+        const wifiCount = Object.keys(wifiProbes).length;
+        const cellularCount = Object.keys(cellularProbes).length;
+        const probeCount = wifiCount + cellularCount;
 
         // Check if moisture multipliers changed → auto-refresh schedule card
         const multKey = JSON.stringify(multData.per_zone || {});
@@ -4095,31 +4101,18 @@ async function loadMoisture() {
             return;
         }
         // Skip DOM rebuild if data hasn't changed (prevents flickering on refresh)
-        const moistureKey = JSON.stringify(data) + '|' + JSON.stringify(settings) + '|' + JSON.stringify(multData) + '|' + JSON.stringify(timelineData);
+        const moistureKey = JSON.stringify(data) + '|' + JSON.stringify(settings) + '|' + JSON.stringify(multData) + '|' + JSON.stringify(timelineData) + '|' + JSON.stringify(cellularData);
         if (_moistureDataCache === moistureKey) return;
         _moistureDataCache = moistureKey;
         card.style.display = 'block';
 
-        badge.textContent = settings.enabled ? probeCount + ' probe(s)' : 'Disabled';
+        badge.textContent = settings.enabled ? probeCount + ' probe(s)' + (cellularCount > 0 ? ' (' + cellularCount + ' cellular)' : '') : 'Disabled';
         badge.style.background = settings.enabled ? 'var(--bg-success-light)' : 'var(--bg-tile)';
         badge.style.color = settings.enabled ? 'var(--text-success-dark)' : 'var(--text-muted)';
 
         const perZone = (multData && multData.per_zone) || {};
 
         let html = '';
-
-        // Split probes into WiFi and Cellular
-        var wifiProbes = {};
-        var cellularProbes = {};
-        for (const [pid, probe] of Object.entries(probes)) {
-            if (probe.probe_type === 'cellular' || pid.startsWith('cellular_')) {
-                cellularProbes[pid] = probe;
-            } else {
-                wifiProbes[pid] = probe;
-            }
-        }
-        var wifiCount = Object.keys(wifiProbes).length;
-        var cellularCount = Object.keys(cellularProbes).length;
 
         // WiFi Probe tiles
         if (wifiCount > 0) {
@@ -4476,9 +4469,9 @@ async function loadMoisture() {
         html += '</div>';
         html += '<div id="moistureManagementBody" style="display:' + (_moistureExpanded.management ? 'block' : 'none') + ';margin-top:10px;">';
 
-        // Existing probes — simple cards
-        if (probeCount > 0) {
-            for (const [pid, probe] of Object.entries(probes)) {
+        // Existing WiFi probes — simple management cards (cellular probes are managed from cloud)
+        if (wifiCount > 0) {
+            for (const [pid, probe] of Object.entries(wifiProbes)) {
                 const ss = probe.sensors || {};
                 const es = probe.extra_sensors || {};
                 const depthLabels = {shallow: 'Shallow', mid: 'Mid', deep: 'Deep'};

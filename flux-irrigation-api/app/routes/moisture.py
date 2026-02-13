@@ -4239,6 +4239,47 @@ async def api_remove_cellular_probe(request: Request):
     return {"success": True, "action": action, "probe_key": cellular_key}
 
 
+@router.get("/probes/cellular", summary="Get cellular probes with cached readings")
+async def api_get_cellular_probes():
+    """Get all cellular probes stored by the management server.
+
+    Returns cellular probes with their cached sensor readings.
+    These probes are pushed from the cloud management server and are
+    read-only on the HA add-on side.
+    """
+    data = _load_data()
+    all_probes = data.get("probes", {})
+    # Only cellular probes
+    cellular = {
+        k: v for k, v in all_probes.items()
+        if v.get("probe_type") == "cellular" or k.startswith("cellular_")
+    }
+
+    if not cellular:
+        return {"probes": {}, "total": 0}
+
+    # Attach cached sensor values
+    _load_sensor_cache()
+    for pid, probe in cellular.items():
+        sensors_live = {}
+        for depth in ("shallow", "mid", "deep"):
+            eid = probe.get("sensors", {}).get(depth, "")
+            if eid and eid in _sensor_cache:
+                cached = _sensor_cache[eid]
+                sensors_live[depth] = {
+                    "value": cached.get("state"),
+                    "stale": False,
+                    "cached": True,
+                    "last_updated": cached.get("last_updated", ""),
+                }
+        probe["sensors_live"] = sensors_live
+
+    return {
+        "probes": cellular,
+        "total": len(cellular),
+    }
+
+
 @router.get("/settings", summary="Get moisture probe settings")
 async def api_get_settings():
     """Get global moisture probe settings."""
