@@ -1609,7 +1609,13 @@ async def _get_probe_sensor_states(probes: dict) -> dict:
                 if eid:
                     sleeping_sensor_eids.add(eid)
 
-    all_states = await ha_client.get_entities_by_ids(list(sensor_ids))
+    # Separate HA-native entities from cellular virtual entities.
+    # Cellular entities (e.g., "cellular.xyz.shallow") don't exist in HA —
+    # they are managed entirely through the sensor cache.
+    ha_sensor_ids = [eid for eid in sensor_ids if not eid.startswith("cellular.")]
+    cellular_sensor_ids = [eid for eid in sensor_ids if eid.startswith("cellular.")]
+
+    all_states = await ha_client.get_entities_by_ids(ha_sensor_ids) if ha_sensor_ids else []
     result = {}
     cache_dirty = False
 
@@ -1664,6 +1670,26 @@ async def _get_probe_sensor_states(probes: dict) -> dict:
                 "raw_state": state_val,
                 "last_updated": s.get("last_updated", ""),
                 "friendly_name": s.get("attributes", {}).get("friendly_name", eid),
+                "cached": False,
+            }
+
+    # Cellular probes: read directly from sensor cache (no HA entities to query)
+    for eid in cellular_sensor_ids:
+        if eid in _sensor_cache:
+            cached = _sensor_cache[eid]
+            result[eid] = {
+                "state": cached["state"],
+                "raw_state": cached.get("raw_state", str(cached["state"])),
+                "last_updated": cached.get("last_updated", ""),
+                "friendly_name": cached.get("friendly_name", eid),
+                "cached": True,
+            }
+        else:
+            result[eid] = {
+                "state": None,
+                "raw_state": "unknown",
+                "last_updated": "",
+                "friendly_name": eid,
                 "cached": False,
             }
 
