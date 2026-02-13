@@ -13,6 +13,8 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
 <title>Flux Open Home - Homeowner Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="" async></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js" crossorigin="" async></script>
 <style>
 :root {
     --bg-body: #f5f6fa;
@@ -260,6 +262,60 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 .leaflet-tile-pane.dark-tiles { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
 .map-lock-btn { position:absolute; top:10px; right:10px; z-index:1000; background:#fff; border:none; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.3); cursor:pointer; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-size:14px; }
 .map-lock-btn:hover { background:#f5f5f5; }
+
+/* === DATA NERD VIEW === */
+#dataNerdOverlay { position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;background:rgba(245,246,250,0.97);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:opacity 0.3s ease; }
+body.dark-mode #dataNerdOverlay { background:rgba(18,18,35,0.97); }
+#dnToolbar { display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(255,255,255,0.95);border-bottom:1px solid rgba(0,0,0,0.08);flex-shrink:0; }
+body.dark-mode #dnToolbar { background:rgba(15,25,50,0.95);border-bottom:1px solid rgba(46,204,113,0.15); }
+#dnContent { flex:1;overflow-y:auto;padding:16px; }
+#dnGrid { display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:1600px;margin:0 auto; }
+@media(max-width:1024px){ #dnGrid { grid-template-columns:1fr; } }
+@media(min-width:1400px){ #dnGrid { grid-template-columns:repeat(3,1fr); } #dnGrid .dn-wide { grid-column:span 2; } }
+.dn-full { grid-column:1/-1; }
+.dn-panel { background:rgba(255,255,255,0.9);border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:16px;backdrop-filter:blur(10px);transition:box-shadow 0.3s ease; }
+.dn-panel:hover { box-shadow:0 0 20px rgba(46,204,113,0.1); }
+body.dark-mode .dn-panel { background:rgba(22,33,62,0.8);border-color:rgba(46,204,113,0.15); }
+body.dark-mode .dn-panel:hover { box-shadow:0 0 24px rgba(46,204,113,0.15); }
+.dn-panel-title { font-size:13px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center; }
+.dn-chart-wrap { position:relative;width:100%;height:280px; }
+.dn-chart-wrap canvas { width:100%!important;height:100%!important; }
+.dn-range-group { display:flex;border-radius:6px;overflow:hidden;border:1px solid rgba(0,0,0,0.12); }
+body.dark-mode .dn-range-group { border-color:rgba(255,255,255,0.15); }
+.dn-range-btn { padding:5px 14px;background:rgba(0,0,0,0.04);border:none;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s; }
+body.dark-mode .dn-range-btn { background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7); }
+.dn-range-btn.active { background:rgba(46,204,113,0.2);color:#1a7a4c; }
+body.dark-mode .dn-range-btn.active { background:rgba(46,204,113,0.3);color:#2ecc71; }
+.dn-range-btn:hover:not(.active) { background:rgba(0,0,0,0.08); }
+body.dark-mode .dn-range-btn:hover:not(.active) { background:rgba(255,255,255,0.12); }
+.dn-toolbar-btn { padding:6px 14px;border-radius:6px;border:1px solid rgba(0,0,0,0.12);background:rgba(0,0,0,0.03);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s; }
+body.dark-mode .dn-toolbar-btn { border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7); }
+.dn-toolbar-btn:hover { background:rgba(0,0,0,0.08); }
+body.dark-mode .dn-toolbar-btn:hover { background:rgba(255,255,255,0.12); }
+.dn-summary-row { display:grid;grid-template-columns:repeat(4,1fr);gap:12px; }
+@media(max-width:768px){ .dn-summary-row { grid-template-columns:repeat(2,1fr); } }
+.dn-stat-card { background:linear-gradient(135deg,rgba(46,204,113,0.08),rgba(52,152,219,0.08));border:1px solid rgba(46,204,113,0.15);border-radius:10px;padding:14px;text-align:center;backdrop-filter:blur(8px); }
+body.dark-mode .dn-stat-card { background:linear-gradient(135deg,rgba(46,204,113,0.12),rgba(52,152,219,0.12));border-color:rgba(46,204,113,0.2); }
+.dn-stat-val { font-size:28px;font-weight:700;color:var(--color-primary);line-height:1.2; }
+body.dark-mode .dn-stat-val { color:#2ecc71; }
+.dn-stat-label { font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-top:2px; }
+.dn-stat-sub { font-size:11px;color:var(--text-hint);margin-top:4px; }
+.dn-heatmap { display:flex;flex-direction:column;gap:2px; }
+.dn-heatmap-row { display:flex;align-items:center;gap:2px; }
+.dn-heatmap-label { width:36px;font-size:10px;font-weight:600;color:var(--text-muted);text-align:right;padding-right:4px;flex-shrink:0; }
+.dn-heatmap-cell { flex:1;height:22px;border-radius:3px;cursor:default;transition:transform 0.15s;min-width:0; }
+.dn-heatmap-cell:hover { transform:scale(1.3);z-index:1; }
+.dn-heatmap-hours { display:flex;gap:2px;margin-left:40px; }
+.dn-heatmap-hours span { flex:1;font-size:9px;color:var(--text-hint);text-align:center; }
+.dn-loading { display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-muted);font-size:14px; }
+.dn-tab-group { display:flex;gap:4px; }
+.dn-tab-btn { padding:3px 10px;border-radius:4px;border:1px solid transparent;background:none;color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer; }
+.dn-tab-btn.active { background:rgba(46,204,113,0.15);color:var(--color-primary);border-color:rgba(46,204,113,0.3); }
+body.dark-mode .dn-tab-btn.active { color:#2ecc71; }
+.dn-pill { display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;margin:2px; }
+.dn-nerd-btn { padding:6px 14px;border-radius:6px;border:1px solid rgba(46,204,113,0.3);background:linear-gradient(135deg,rgba(46,204,113,0.1),rgba(52,152,219,0.1));color:var(--color-primary);font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px; }
+body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);background:linear-gradient(135deg,rgba(46,204,113,0.15),rgba(52,152,219,0.15)); }
+.dn-nerd-btn:hover { background:linear-gradient(135deg,rgba(46,204,113,0.2),rgba(52,152,219,0.2));box-shadow:0 0 12px rgba(46,204,113,0.15); }
 </style>
 </head>
 <body>
@@ -271,6 +327,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <h1>Irrigation</h1>
     </div>
     <div class="header-actions">
+        <button class="dn-nerd-btn" onclick="dnOpen()" title="Data Nerd View">&#128202; Data Nerd View</button>
         <div class="nav-tabs">
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
@@ -6837,11 +6894,758 @@ function closeDynamicModal() {
 }
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+        if (document.getElementById('dataNerdOverlay')) { dnClose(); return; }
         if (document.getElementById('notifPanelModal').style.display === 'flex') closeNotificationsPanel();
         else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
         else if (document.getElementById('dynamicModal').style.display === 'flex') closeDynamicModal();
     }
 });
+
+// ============================================================
+// DATA NERD VIEW — Comprehensive Analytics Dashboard
+// ============================================================
+var _dnCharts = {};
+var _dnRawData = null;
+var _dnCurrentRange = 720; // 30 days default
+var _dnCurrentUnit = 'gallons'; // or 'minutes'
+var _dnThemeObserver = null;
+
+var DN_COLORS = [
+    {border:'rgba(46,204,113,0.85)',fill:'rgba(46,204,113,0.12)'},
+    {border:'rgba(52,152,219,0.85)',fill:'rgba(52,152,219,0.12)'},
+    {border:'rgba(26,188,156,0.75)',fill:'rgba(26,188,156,0.10)'},
+    {border:'rgba(155,89,182,0.75)',fill:'rgba(155,89,182,0.10)'},
+    {border:'rgba(243,156,18,0.75)',fill:'rgba(243,156,18,0.10)'},
+    {border:'rgba(231,76,60,0.75)',fill:'rgba(231,76,60,0.10)'},
+    {border:'rgba(41,128,185,0.75)',fill:'rgba(41,128,185,0.10)'},
+    {border:'rgba(22,160,133,0.75)',fill:'rgba(22,160,133,0.10)'}
+];
+
+function dnOpen() {
+    if (document.getElementById('dataNerdOverlay')) return;
+    if (typeof Chart === 'undefined') { showToast('Chart library still loading, please wait...','warning'); return; }
+    document.body.style.overflow = 'hidden';
+    var overlay = document.createElement('div');
+    overlay.id = 'dataNerdOverlay';
+    overlay.innerHTML = '<div id="dnToolbar">' +
+        '<button class="dn-toolbar-btn" onclick="dnClose()" title="Close">&#10005; Close</button>' +
+        '<span style="font-size:15px;font-weight:700;color:var(--text-primary);letter-spacing:0.3px;">&#128202; Data Nerd View</span>' +
+        '<div style="flex:1;"></div>' +
+        '<div class="dn-range-group">' +
+        '<button class="dn-range-btn" onclick="dnSetTimeRange(168)" data-range="168">7d</button>' +
+        '<button class="dn-range-btn active" onclick="dnSetTimeRange(720)" data-range="720">30d</button>' +
+        '<button class="dn-range-btn" onclick="dnSetTimeRange(2160)" data-range="2160">90d</button>' +
+        '<button class="dn-range-btn" onclick="dnSetTimeRange(8760)" data-range="8760">1yr</button>' +
+        '</div>' +
+        '<button class="dn-toolbar-btn" id="dnUnitToggle" onclick="dnToggleUnit()">Show Minutes</button>' +
+        '<button class="dn-toolbar-btn" onclick="dnExportCSV()">Export CSV</button>' +
+        '</div>' +
+        '<div id="dnContent"><div id="dnGrid"><div class="dn-full dn-loading">Loading data...</div></div></div>';
+    document.body.appendChild(overlay);
+    // Start theme observer
+    _dnThemeObserver = new MutationObserver(function() {
+        if (document.getElementById('dataNerdOverlay') && _dnRawData) {
+            dnDestroyCharts();
+            dnRenderAllCharts(_dnRawData);
+        }
+    });
+    _dnThemeObserver.observe(document.body, {attributes:true, attributeFilter:['class']});
+    // Fetch and render
+    _dnRawData = null;
+    dnFetchAndRender(_dnCurrentRange);
+}
+
+function dnClose() {
+    dnDestroyCharts();
+    if (_dnThemeObserver) { _dnThemeObserver.disconnect(); _dnThemeObserver = null; }
+    var el = document.getElementById('dataNerdOverlay');
+    if (el) el.remove();
+    document.body.style.overflow = '';
+}
+
+function dnDestroyCharts() {
+    Object.keys(_dnCharts).forEach(function(k) {
+        try { _dnCharts[k].destroy(); } catch(e) {}
+    });
+    _dnCharts = {};
+}
+
+async function dnFetchAndRender(hours) {
+    var grid = document.getElementById('dnGrid');
+    if (!grid) return;
+    grid.innerHTML = '<div class="dn-full dn-loading">Fetching ' + (hours <= 168 ? '7 days' : hours <= 720 ? '30 days' : hours <= 2160 ? '90 days' : '1 year') + ' of data...</div>';
+    try {
+        var results = await Promise.all([
+            api('/history/runs?hours=' + hours).catch(function() { return {events:[]}; }),
+            api('/weather/log?hours=' + hours + '&limit=10000').catch(function() { return {events:[]}; }),
+            mapi('/probes').catch(function() { return {probes:{}}; }),
+            api('/water_settings').catch(function() { return null; })
+        ]);
+        _dnRawData = {
+            runs: (results[0].events || results[0] || []),
+            weather: (results[1].events || results[1] || []),
+            probes: results[2].probes || results[2] || {},
+            waterSettings: results[3]
+        };
+        // Make runs an array if needed
+        if (!Array.isArray(_dnRawData.runs)) {
+            _dnRawData.runs = Object.values(_dnRawData.runs);
+        }
+        if (!Array.isArray(_dnRawData.weather)) {
+            _dnRawData.weather = Object.values(_dnRawData.weather);
+        }
+        dnRenderAllCharts(_dnRawData);
+    } catch(e) {
+        grid.innerHTML = '<div class="dn-full dn-loading" style="color:var(--color-danger);">Error loading data: ' + esc(e.message || String(e)) + '</div>';
+    }
+}
+
+function dnSetTimeRange(hours) {
+    _dnCurrentRange = hours;
+    document.querySelectorAll('.dn-range-btn').forEach(function(b) {
+        b.classList.toggle('active', parseInt(b.getAttribute('data-range')) === hours);
+    });
+    dnDestroyCharts();
+    dnFetchAndRender(hours);
+}
+
+function dnToggleUnit() {
+    _dnCurrentUnit = _dnCurrentUnit === 'gallons' ? 'minutes' : 'gallons';
+    var btn = document.getElementById('dnUnitToggle');
+    if (btn) btn.textContent = _dnCurrentUnit === 'gallons' ? 'Show Minutes' : 'Show Gallons';
+    if (_dnRawData) { dnDestroyCharts(); dnRenderAllCharts(_dnRawData); }
+}
+
+// --- Chart defaults ---
+function dnChartDefaults() {
+    var isDark = document.body.classList.contains('dark-mode');
+    var gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    var textColor = isDark ? '#8a9bb0' : '#7f8c8d';
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 600, easing: 'easeOutQuart' },
+        plugins: {
+            legend: {
+                labels: {
+                    color: textColor,
+                    font: { family: '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif', size: 11 },
+                    usePointStyle: true,
+                    pointStyleWidth: 8,
+                    padding: 12
+                }
+            },
+            tooltip: {
+                backgroundColor: isDark ? 'rgba(15,25,50,0.95)' : 'rgba(255,255,255,0.95)',
+                titleColor: isDark ? '#e0e0e0' : '#2c3e50',
+                bodyColor: isDark ? '#b0b0b0' : '#555',
+                borderColor: isDark ? 'rgba(46,204,113,0.3)' : 'rgba(0,0,0,0.1)',
+                borderWidth: 1,
+                padding: 10,
+                cornerRadius: 8,
+                displayColors: true,
+                titleFont: { weight: '600' }
+            }
+        },
+        scales: {
+            x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 45 } },
+            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } }, beginAtZero: true }
+        }
+    };
+}
+
+// --- GPM Map builder ---
+function dnBuildGpmMap(data) {
+    var gpm = {};
+    if (data.waterSettings && data.waterSettings.zones) {
+        var zones = data.waterSettings.zones;
+        for (var eid in zones) {
+            if (zones[eid].gpm) gpm[eid] = zones[eid].gpm;
+        }
+    }
+    // Also try from zone name map
+    if (window._hoZoneGpmMap) {
+        for (var k in window._hoZoneGpmMap) { if (!gpm[k]) gpm[k] = window._hoZoneGpmMap[k]; }
+    }
+    return gpm;
+}
+
+// --- Data transformers ---
+function dnBucketByDay(events) {
+    var buckets = {};
+    for (var i = 0; i < events.length; i++) {
+        var e = events[i];
+        var d = (e.timestamp || '').substring(0, 10);
+        if (!d) continue;
+        if (!buckets[d]) buckets[d] = [];
+        buckets[d].push(e);
+    }
+    return buckets;
+}
+
+function dnGetOnEvents(runs) {
+    var out = [];
+    for (var i = 0; i < runs.length; i++) {
+        if (runs[i].state === 'on' && runs[i].duration_seconds > 0) out.push(runs[i]);
+    }
+    return out;
+}
+
+function dnTransformWaterUsage(runs, gpmMap, unit) {
+    var onRuns = dnGetOnEvents(runs);
+    var zoneMap = {};
+    var daySet = {};
+    for (var i = 0; i < onRuns.length; i++) {
+        var r = onRuns[i];
+        var eid = r.entity_id || '';
+        var name = r.zone_name || eid;
+        var day = (r.timestamp || '').substring(0, 10);
+        if (!day) continue;
+        daySet[day] = true;
+        if (!zoneMap[eid]) zoneMap[eid] = { name: name, days: {} };
+        if (!zoneMap[eid].days[day]) zoneMap[eid].days[day] = 0;
+        var mins = (r.duration_seconds || 0) / 60;
+        var val = unit === 'gallons' ? mins * (gpmMap[eid] || 0) : mins;
+        zoneMap[eid].days[day] += val;
+    }
+    var labels = Object.keys(daySet).sort();
+    var zones = [];
+    var zoneIds = Object.keys(zoneMap);
+    for (var z = 0; z < zoneIds.length; z++) {
+        var zm = zoneMap[zoneIds[z]];
+        var vals = [];
+        for (var d = 0; d < labels.length; d++) {
+            vals.push(Math.round((zm.days[labels[d]] || 0) * 100) / 100);
+        }
+        zones.push({ name: zm.name, values: vals });
+    }
+    return { labels: labels, zones: zones };
+}
+
+function dnTransformSavings(runs, gpmMap) {
+    var onRuns = dnGetOnEvents(runs);
+    var daySet = {};
+    for (var i = 0; i < onRuns.length; i++) {
+        var r = onRuns[i];
+        var day = (r.timestamp || '').substring(0, 10);
+        if (!day) continue;
+        if (!daySet[day]) daySet[day] = { used: 0, saved: 0, weatherSaved: 0, moistureSaved: 0 };
+        var eid = r.entity_id || '';
+        var mins = (r.duration_seconds || 0) / 60;
+        var gpv = gpmMap[eid] || 0;
+        daySet[day].used += mins * gpv;
+        var savedGal = r.water_saved_gallons || 0;
+        if (savedGal > 0) {
+            daySet[day].saved += savedGal;
+            var src = r.water_saved_source || '';
+            if (src.indexOf('weather') >= 0) daySet[day].weatherSaved += savedGal;
+            else if (src.indexOf('moisture') >= 0) daySet[day].moistureSaved += savedGal;
+            else daySet[day].weatherSaved += savedGal;
+        }
+    }
+    var labels = Object.keys(daySet).sort();
+    var used = [], saved = [], cumSaved = [], totalCum = 0;
+    var totalWeather = 0, totalMoisture = 0;
+    for (var d = 0; d < labels.length; d++) {
+        var ds = daySet[labels[d]];
+        used.push(Math.round(ds.used * 100) / 100);
+        saved.push(Math.round(ds.saved * 100) / 100);
+        totalCum += ds.saved;
+        cumSaved.push(Math.round(totalCum * 100) / 100);
+        totalWeather += ds.weatherSaved;
+        totalMoisture += ds.moistureSaved;
+    }
+    return { labels: labels, used: used, saved: saved, cumulativeSaved: cumSaved,
+             totalWeather: Math.round(totalWeather), totalMoisture: Math.round(totalMoisture),
+             totalSaved: Math.round(totalCum) };
+}
+
+function dnTransformMoisture(runs) {
+    var points = [];
+    var onRuns = dnGetOnEvents(runs);
+    for (var i = 0; i < onRuns.length; i++) {
+        var r = onRuns[i];
+        var m = r.moisture || {};
+        if (m.sensor_readings) {
+            var sr = m.sensor_readings;
+            points.push({
+                ts: r.timestamp,
+                shallow: sr.T != null ? sr.T : null,
+                mid: sr.M != null ? sr.M : null,
+                deep: sr.B != null ? sr.B : null,
+                multiplier: m.moisture_multiplier || m.combined_multiplier || null
+            });
+        }
+    }
+    points.sort(function(a, b) { return a.ts < b.ts ? -1 : 1; });
+    return {
+        labels: points.map(function(p) { return p.ts; }),
+        shallow: points.map(function(p) { return p.shallow; }),
+        mid: points.map(function(p) { return p.mid; }),
+        deep: points.map(function(p) { return p.deep; }),
+        multiplier: points.map(function(p) { return p.multiplier; })
+    };
+}
+
+function dnTransformWeather(weatherLog) {
+    var points = [];
+    for (var i = 0; i < weatherLog.length; i++) {
+        var w = weatherLog[i];
+        if (w.temperature != null || w.watering_multiplier != null) {
+            points.push({
+                ts: w.timestamp,
+                temp: w.temperature != null ? w.temperature : null,
+                humidity: w.humidity != null ? w.humidity : null,
+                multiplier: w.watering_multiplier != null ? w.watering_multiplier : null,
+                condition: w.condition || ''
+            });
+        }
+    }
+    points.sort(function(a, b) { return a.ts < b.ts ? -1 : 1; });
+    // Thin out if too many points for chart performance
+    if (points.length > 500) {
+        var step = Math.ceil(points.length / 500);
+        var thinned = [];
+        for (var j = 0; j < points.length; j += step) thinned.push(points[j]);
+        points = thinned;
+    }
+    return {
+        labels: points.map(function(p) { return p.ts; }),
+        temperature: points.map(function(p) { return p.temp; }),
+        humidity: points.map(function(p) { return p.humidity; }),
+        multiplier: points.map(function(p) { return p.multiplier; })
+    };
+}
+
+function dnTransformZones(runs, gpmMap) {
+    var onRuns = dnGetOnEvents(runs);
+    var zones = {};
+    for (var i = 0; i < onRuns.length; i++) {
+        var r = onRuns[i];
+        var eid = r.entity_id || '';
+        if (!zones[eid]) zones[eid] = { name: r.zone_name || eid, runtime: 0, gallons: 0, runs: 0, skips: 0 };
+        var mins = (r.duration_seconds || 0) / 60;
+        zones[eid].runtime += mins;
+        zones[eid].gallons += mins * (gpmMap[eid] || 0);
+        zones[eid].runs++;
+    }
+    // Count skips from all runs
+    for (var j = 0; j < runs.length; j++) {
+        if (runs[j].source === 'moisture_skip' || (runs[j].moisture && runs[j].moisture.skip)) {
+            var zeid = runs[j].entity_id || '';
+            if (zones[zeid]) zones[zeid].skips++;
+        }
+    }
+    var arr = Object.keys(zones).map(function(k) { return zones[k]; });
+    arr.sort(function(a, b) { return b.gallons - a.gallons || b.runtime - a.runtime; });
+    return arr;
+}
+
+function dnTransformHeatmap(runs) {
+    var matrix = [];
+    for (var d = 0; d < 7; d++) { matrix[d] = []; for (var h = 0; h < 24; h++) matrix[d][h] = 0; }
+    var onRuns = dnGetOnEvents(runs);
+    for (var i = 0; i < onRuns.length; i++) {
+        var ts = onRuns[i].timestamp;
+        if (!ts) continue;
+        var dt = new Date(ts);
+        var day = dt.getDay();
+        var hour = dt.getHours();
+        matrix[day][hour] += (onRuns[i].duration_seconds || 0) / 60;
+    }
+    return matrix;
+}
+
+function dnTransformProbeHealth(probes) {
+    var arr = [];
+    if (!probes) return arr;
+    var keys = Object.keys(probes);
+    for (var i = 0; i < keys.length; i++) {
+        var p = probes[keys[i]];
+        var ds = p.device_sensors || {};
+        arr.push({
+            name: p.display_name || keys[i],
+            battery: ds.battery ? ds.battery.value : null,
+            wifi: ds.wifi ? ds.wifi.value : null,
+            isAwake: p.is_awake || false,
+            mappedZones: (p.zone_mappings || []).length
+        });
+    }
+    return arr;
+}
+
+// --- Summary cards ---
+function dnBuildSummaryCards(data, gpmMap) {
+    var onRuns = dnGetOnEvents(data.runs);
+    var totalGal = 0, totalSaved = 0, totalMins = 0;
+    for (var i = 0; i < onRuns.length; i++) {
+        var r = onRuns[i];
+        var mins = (r.duration_seconds || 0) / 60;
+        totalMins += mins;
+        totalGal += mins * (gpmMap[r.entity_id] || 0);
+        totalSaved += r.water_saved_gallons || 0;
+    }
+    // Avg moisture from probes
+    var moistVals = [], probeKeys = Object.keys(data.probes || {});
+    for (var j = 0; j < probeKeys.length; j++) {
+        var sl = (data.probes[probeKeys[j]].sensors_live || {});
+        if (sl.mid && sl.mid.value != null) moistVals.push(sl.mid.value);
+    }
+    var avgMoist = moistVals.length > 0 ? Math.round(moistVals.reduce(function(a,b){return a+b;},0) / moistVals.length) : null;
+    // Cost
+    var costPer1000 = data.waterSettings ? (data.waterSettings.cost_per_1000_gal || data.waterSettings.cost_per_1000gal || 0) : 0;
+    var costSaved = costPer1000 > 0 ? (totalSaved / 1000 * costPer1000) : 0;
+    var savePct = totalGal + totalSaved > 0 ? Math.round(totalSaved / (totalGal + totalSaved) * 100) : 0;
+
+    var html = '<div class="dn-summary-row">';
+    html += '<div class="dn-stat-card"><div class="dn-stat-val">' + dnFmtNum(Math.round(totalGal)) + '</div><div class="dn-stat-label">Total Gallons</div><div class="dn-stat-sub">' + Math.round(totalMins) + ' minutes runtime</div></div>';
+    html += '<div class="dn-stat-card"><div class="dn-stat-val" style="color:#27ae60;">' + dnFmtNum(Math.round(totalSaved)) + '</div><div class="dn-stat-label">Gallons Saved (' + savePct + '%)</div><div class="dn-stat-sub">' + (costSaved > 0 ? '$' + costSaved.toFixed(2) + ' saved' : 'No cost data') + '</div></div>';
+    html += '<div class="dn-stat-card"><div class="dn-stat-val">' + (avgMoist != null ? avgMoist + '%' : '--') + '</div><div class="dn-stat-label">Avg Moisture</div><div class="dn-stat-sub">' + probeKeys.length + ' probe' + (probeKeys.length !== 1 ? 's' : '') + '</div></div>';
+    // Zone count
+    var zoneSet = {};
+    for (var z = 0; z < onRuns.length; z++) { zoneSet[onRuns[z].entity_id] = true; }
+    var zoneCount = Object.keys(zoneSet).length;
+    html += '<div class="dn-stat-card"><div class="dn-stat-val">' + zoneCount + '</div><div class="dn-stat-label">Active Zones</div><div class="dn-stat-sub">' + onRuns.length + ' run events</div></div>';
+    html += '</div>';
+    return html;
+}
+
+// --- Chart builders ---
+function dnBuildWaterUsage(canvasId, data, gpmMap) {
+    var td = dnTransformWaterUsage(data.runs, gpmMap, _dnCurrentUnit);
+    if (td.labels.length === 0) return null;
+    var cfg = dnChartDefaults();
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    var datasets = [];
+    for (var i = 0; i < td.zones.length; i++) {
+        var ci = i % DN_COLORS.length;
+        datasets.push({
+            label: td.zones[i].name,
+            data: td.zones[i].values,
+            borderColor: DN_COLORS[ci].border,
+            backgroundColor: DN_COLORS[ci].fill,
+            fill: true,
+            tension: 0.3,
+            pointRadius: td.labels.length > 60 ? 0 : 2,
+            pointHitRadius: 8,
+            borderWidth: 2
+        });
+    }
+    _dnCharts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { labels: td.labels, datasets: datasets },
+        options: Object.assign({}, cfg, {
+            scales: {
+                x: Object.assign({}, cfg.scales.x, { stacked: true }),
+                y: Object.assign({}, cfg.scales.y, { stacked: true, title: { display: true, text: _dnCurrentUnit === 'gallons' ? 'Gallons' : 'Minutes', color: cfg.scales.y.ticks.color } })
+            },
+            interaction: { mode: 'index', intersect: false }
+        })
+    });
+    return _dnCharts[canvasId];
+}
+
+function dnBuildSavings(canvasId, data, gpmMap) {
+    var td = dnTransformSavings(data.runs, gpmMap);
+    if (td.labels.length === 0) return null;
+    var cfg = dnChartDefaults();
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    _dnCharts[canvasId] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: td.labels,
+            datasets: [
+                { label: 'Gallons Used', data: td.used, backgroundColor: 'rgba(52,152,219,0.6)', borderRadius: 4, order: 2 },
+                { label: 'Gallons Saved', data: td.saved, backgroundColor: 'rgba(46,204,113,0.6)', borderRadius: 4, order: 2 },
+                { label: 'Cumulative Savings', data: td.cumulativeSaved, type: 'line', borderColor: 'rgba(46,204,113,0.9)', backgroundColor: 'rgba(46,204,113,0.08)', fill: true, tension: 0.3, yAxisID: 'y1', pointRadius: 0, borderWidth: 2, order: 1 }
+            ]
+        },
+        options: Object.assign({}, cfg, {
+            scales: {
+                x: cfg.scales.x,
+                y: Object.assign({}, cfg.scales.y, { title: { display: true, text: 'Gallons', color: cfg.scales.y.ticks.color } }),
+                y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: cfg.scales.y.ticks.color, font: { size: 10 } }, title: { display: true, text: 'Cumulative', color: cfg.scales.y.ticks.color }, beginAtZero: true }
+            },
+            interaction: { mode: 'index', intersect: false }
+        })
+    });
+    return _dnCharts[canvasId];
+}
+
+function dnBuildMoisture(canvasId, data) {
+    var td = dnTransformMoisture(data.runs);
+    if (td.labels.length === 0) return null;
+    var cfg = dnChartDefaults();
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    _dnCharts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: td.labels,
+            datasets: [
+                { label: 'Shallow', data: td.shallow, borderColor: 'rgba(46,204,113,0.85)', backgroundColor: 'rgba(46,204,113,0.08)', fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+                { label: 'Mid', data: td.mid, borderColor: 'rgba(52,152,219,0.85)', backgroundColor: 'rgba(52,152,219,0.08)', fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+                { label: 'Deep', data: td.deep, borderColor: 'rgba(155,89,182,0.8)', backgroundColor: 'rgba(155,89,182,0.06)', fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+                { label: 'Multiplier', data: td.multiplier, borderColor: 'rgba(243,156,18,0.8)', borderDash: [5,3], fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2, yAxisID: 'y1' }
+            ]
+        },
+        options: Object.assign({}, cfg, {
+            scales: {
+                x: cfg.scales.x,
+                y: Object.assign({}, cfg.scales.y, { min: 0, max: 100, title: { display: true, text: 'Moisture %', color: cfg.scales.y.ticks.color } }),
+                y1: { position: 'right', min: 0, max: 2.5, grid: { drawOnChartArea: false }, ticks: { color: cfg.scales.y.ticks.color, font: { size: 10 } }, title: { display: true, text: 'Multiplier', color: cfg.scales.y.ticks.color } }
+            },
+            interaction: { mode: 'index', intersect: false }
+        })
+    });
+    return _dnCharts[canvasId];
+}
+
+function dnBuildWeather(canvasId, data) {
+    var td = dnTransformWeather(data.weather);
+    if (td.labels.length === 0) return null;
+    var cfg = dnChartDefaults();
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    _dnCharts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: td.labels,
+            datasets: [
+                { label: 'Temperature', data: td.temperature, borderColor: 'rgba(231,76,60,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yTemp' },
+                { label: 'Humidity %', data: td.humidity, borderColor: 'rgba(52,152,219,0.5)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yHumid' },
+                { label: 'Multiplier', data: td.multiplier, borderColor: 'rgba(46,204,113,0.9)', backgroundColor: 'rgba(46,204,113,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2.5, yAxisID: 'yMult' }
+            ]
+        },
+        options: Object.assign({}, cfg, {
+            scales: {
+                x: cfg.scales.x,
+                yTemp: { position: 'left', grid: { color: cfg.scales.x.grid.color }, ticks: { color: 'rgba(231,76,60,0.7)', font: { size: 10 } }, title: { display: true, text: 'Temp', color: 'rgba(231,76,60,0.7)' } },
+                yHumid: { display: false },
+                yMult: { position: 'right', min: 0, max: 2, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(46,204,113,0.8)', font: { size: 10 } }, title: { display: true, text: 'Multiplier', color: 'rgba(46,204,113,0.8)' } }
+            },
+            interaction: { mode: 'index', intersect: false }
+        })
+    });
+    return _dnCharts[canvasId];
+}
+
+function dnBuildZoneBar(canvasId, data, gpmMap) {
+    var zones = dnTransformZones(data.runs, gpmMap);
+    if (zones.length === 0) return null;
+    var cfg = dnChartDefaults();
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    _dnCharts[canvasId] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: zones.map(function(z) { return z.name; }),
+            datasets: [
+                { label: 'Gallons Used', data: zones.map(function(z) { return Math.round(z.gallons); }), backgroundColor: 'rgba(52,152,219,0.6)', borderRadius: 4 },
+                { label: 'Runtime (min)', data: zones.map(function(z) { return Math.round(z.runtime); }), backgroundColor: 'rgba(46,204,113,0.6)', borderRadius: 4 }
+            ]
+        },
+        options: Object.assign({}, cfg, {
+            indexAxis: 'y',
+            scales: {
+                x: Object.assign({}, cfg.scales.x, { title: { display: true, text: 'Value', color: cfg.scales.x.ticks.color } }),
+                y: Object.assign({}, cfg.scales.y, { beginAtZero: undefined })
+            }
+        })
+    });
+    return _dnCharts[canvasId];
+}
+
+function dnBuildZoneRadar(canvasId, data, gpmMap) {
+    var zones = dnTransformZones(data.runs, gpmMap);
+    if (zones.length === 0) return null;
+    var cfg = dnChartDefaults();
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    // Normalize all metrics 0-100
+    var maxRuntime = Math.max.apply(null, zones.map(function(z){return z.runtime;})) || 1;
+    var maxGallons = Math.max.apply(null, zones.map(function(z){return z.gallons;})) || 1;
+    var maxRuns = Math.max.apply(null, zones.map(function(z){return z.runs;})) || 1;
+    var isDark = document.body.classList.contains('dark-mode');
+    var datasets = [];
+    for (var i = 0; i < Math.min(zones.length, 8); i++) {
+        var z = zones[i];
+        var skipRate = z.runs > 0 ? (z.skips / z.runs * 100) : 0;
+        var efficiency = z.gallons > 0 && z.runtime > 0 ? (z.gallons / z.runtime) : 0;
+        var maxEff = maxGallons / maxRuntime || 1;
+        datasets.push({
+            label: z.name,
+            data: [
+                Math.round(z.runtime / maxRuntime * 100),
+                Math.round(z.gallons / maxGallons * 100),
+                Math.round(efficiency / maxEff * 100),
+                Math.round(skipRate),
+                Math.round(z.runs / maxRuns * 100)
+            ],
+            borderColor: DN_COLORS[i % DN_COLORS.length].border,
+            backgroundColor: DN_COLORS[i % DN_COLORS.length].fill,
+            pointBackgroundColor: DN_COLORS[i % DN_COLORS.length].border,
+            borderWidth: 2
+        });
+    }
+    _dnCharts[canvasId] = new Chart(ctx, {
+        type: 'radar',
+        data: { labels: ['Runtime', 'Gallons', 'Efficiency', 'Skip Rate', 'Frequency'], datasets: datasets },
+        options: Object.assign({}, cfg, {
+            scales: {
+                r: {
+                    min: 0, max: 100,
+                    ticks: { display: false, stepSize: 25 },
+                    grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
+                    pointLabels: { color: isDark ? '#8a9bb0' : '#7f8c8d', font: { size: 11 } },
+                    angleLines: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }
+                }
+            }
+        })
+    });
+    return _dnCharts[canvasId];
+}
+
+function dnBuildHeatmap(containerId, data) {
+    var matrix = dnTransformHeatmap(data.runs);
+    var maxVal = 0;
+    for (var d = 0; d < 7; d++) for (var h = 0; h < 24; h++) maxVal = Math.max(maxVal, matrix[d][h]);
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var html = '<div class="dn-heatmap">';
+    for (var d = 0; d < 7; d++) {
+        html += '<div class="dn-heatmap-row"><span class="dn-heatmap-label">' + days[d] + '</span>';
+        for (var h = 0; h < 24; h++) {
+            var v = matrix[d][h];
+            var intensity = maxVal > 0 ? v / maxVal : 0;
+            var bg = intensity > 0 ? 'rgba(46,204,113,' + (0.15 + intensity * 0.7).toFixed(2) + ')' : 'rgba(128,128,128,0.06)';
+            html += '<div class="dn-heatmap-cell" style="background:' + bg + ';" title="' + days[d] + ' ' + h + ':00 \\u2014 ' + Math.round(v) + ' min"></div>';
+        }
+        html += '</div>';
+    }
+    // Hour labels
+    html += '<div class="dn-heatmap-hours">';
+    for (var h = 0; h < 24; h++) {
+        html += '<span>' + (h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h-12) + 'p') + '</span>';
+    }
+    html += '</div></div>';
+    var el = document.getElementById(containerId);
+    if (el) el.innerHTML = html;
+}
+
+function dnBuildProbeHealth(containerId, data) {
+    var probes = dnTransformProbeHealth(data.probes);
+    if (probes.length === 0) { document.getElementById(containerId).innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">No probes configured</div>'; return; }
+    var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">';
+    for (var i = 0; i < probes.length; i++) {
+        var p = probes[i];
+        html += '<div class="dn-stat-card" style="text-align:left;">';
+        html += '<div style="font-weight:600;font-size:13px;margin-bottom:8px;">' + esc(p.name) + '</div>';
+        html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Battery: <span style="font-weight:600;color:' + (p.battery != null && p.battery < 20 ? 'var(--color-danger)' : 'var(--text-primary)') + ';">' + (p.battery != null ? p.battery + '%' : '--') + '</span></div>';
+        html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">WiFi: <span style="font-weight:600;">' + (p.wifi != null ? p.wifi + ' dBm' : '--') + '</span></div>';
+        html += '<div style="font-size:12px;color:var(--text-muted);">Status: <span style="font-weight:600;color:' + (p.isAwake ? '#27ae60' : 'var(--text-hint)') + ';">' + (p.isAwake ? 'Awake' : 'Sleeping') + '</span></div>';
+        html += '<div style="font-size:11px;color:var(--text-hint);margin-top:4px;">' + p.mappedZones + ' zone' + (p.mappedZones !== 1 ? 's' : '') + ' mapped</div>';
+        html += '</div>';
+    }
+    html += '</div>';
+    document.getElementById(containerId).innerHTML = html;
+}
+
+// --- Master render ---
+function dnRenderAllCharts(data) {
+    var grid = document.getElementById('dnGrid');
+    if (!grid) return;
+    var gpmMap = dnBuildGpmMap(data);
+    var html = '';
+    // 1. Summary cards
+    html += '<div class="dn-full">' + dnBuildSummaryCards(data, gpmMap) + '</div>';
+    // 2. Water Usage
+    html += '<div class="dn-panel dn-wide"><div class="dn-panel-title">Water Usage Over Time</div><div class="dn-chart-wrap"><canvas id="dnChartUsage"></canvas></div></div>';
+    // 3. Water Savings
+    html += '<div class="dn-panel"><div class="dn-panel-title">Water Savings Analysis</div><div class="dn-chart-wrap"><canvas id="dnChartSavings"></canvas></div>';
+    // Savings pills
+    var sv = dnTransformSavings(data.runs, gpmMap);
+    html += '<div style="margin-top:8px;text-align:center;">';
+    html += '<span class="dn-pill" style="background:rgba(52,152,219,0.15);color:rgba(52,152,219,0.9);">Weather: ' + dnFmtNum(sv.totalWeather) + ' gal</span>';
+    html += '<span class="dn-pill" style="background:rgba(46,204,113,0.15);color:rgba(46,204,113,0.9);">Moisture: ' + dnFmtNum(sv.totalMoisture) + ' gal</span>';
+    html += '<span class="dn-pill" style="background:rgba(155,89,182,0.15);color:rgba(155,89,182,0.9);">Total: ' + dnFmtNum(sv.totalSaved) + ' gal</span>';
+    html += '</div></div>';
+    // 4. Moisture Trends
+    html += '<div class="dn-panel"><div class="dn-panel-title">Moisture Trends</div><div class="dn-chart-wrap"><canvas id="dnChartMoisture"></canvas></div></div>';
+    // 5. Weather Impact
+    html += '<div class="dn-panel"><div class="dn-panel-title">Weather Impact</div><div class="dn-chart-wrap"><canvas id="dnChartWeather"></canvas></div></div>';
+    // 6. Zone Performance — with bar/radar toggle
+    html += '<div class="dn-panel"><div class="dn-panel-title">Zone Performance <div class="dn-tab-group"><button class="dn-tab-btn active" onclick="dnZoneView(\\' + "'bar'" + '\\',this)">Bar</button><button class="dn-tab-btn" onclick="dnZoneView(\\' + "'radar'" + '\\',this)">Radar</button></div></div><div class="dn-chart-wrap" id="dnZoneWrap"><canvas id="dnChartZoneBar"></canvas></div></div>';
+    // 7. Probe Health
+    html += '<div class="dn-panel"><div class="dn-panel-title">Probe Health</div><div id="dnProbeHealth"></div></div>';
+    // 8. Heatmap
+    html += '<div class="dn-panel dn-full"><div class="dn-panel-title">Watering Activity Heatmap</div><div id="dnHeatmap"></div></div>';
+
+    grid.innerHTML = html;
+
+    // Build charts after DOM is ready
+    setTimeout(function() {
+        dnBuildWaterUsage('dnChartUsage', data, gpmMap);
+        dnBuildSavings('dnChartSavings', data, gpmMap);
+        dnBuildMoisture('dnChartMoisture', data);
+        dnBuildWeather('dnChartWeather', data);
+        dnBuildZoneBar('dnChartZoneBar', data, gpmMap);
+        dnBuildHeatmap('dnHeatmap', data);
+        dnBuildProbeHealth('dnProbeHealth', data);
+    }, 50);
+}
+
+// Zone view toggle
+function dnZoneView(mode, btn) {
+    var wrap = document.getElementById('dnZoneWrap');
+    if (!wrap) return;
+    // Toggle active tab
+    var tabs = btn.parentElement.querySelectorAll('.dn-tab-btn');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    btn.classList.add('active');
+    // Destroy existing zone chart
+    if (_dnCharts['dnChartZoneBar']) { _dnCharts['dnChartZoneBar'].destroy(); delete _dnCharts['dnChartZoneBar']; }
+    if (_dnCharts['dnChartZoneRadar']) { _dnCharts['dnChartZoneRadar'].destroy(); delete _dnCharts['dnChartZoneRadar']; }
+    var canvasId = mode === 'radar' ? 'dnChartZoneRadar' : 'dnChartZoneBar';
+    wrap.innerHTML = '<canvas id="' + canvasId + '"></canvas>';
+    var gpmMap = dnBuildGpmMap(_dnRawData);
+    if (mode === 'radar') {
+        dnBuildZoneRadar(canvasId, _dnRawData, gpmMap);
+    } else {
+        dnBuildZoneBar(canvasId, _dnRawData, gpmMap);
+    }
+}
+
+// Format number with commas
+function dnFmtNum(n) {
+    if (n == null) return '--';
+    return n.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');
+}
+
+// CSV export
+function dnExportCSV() {
+    if (!_dnRawData || !_dnRawData.runs) { showToast('No data to export','warning'); return; }
+    var onRuns = dnGetOnEvents(_dnRawData.runs);
+    var gpmMap = dnBuildGpmMap(_dnRawData);
+    var csv = 'Date,Zone,Duration_Min,Gallons,Saved_Gal,Weather_Mult,Moisture_Mult,Source\\n';
+    for (var i = 0; i < onRuns.length; i++) {
+        var r = onRuns[i];
+        var mins = Math.round((r.duration_seconds || 0) / 60 * 100) / 100;
+        var gal = Math.round(mins * (gpmMap[r.entity_id] || 0) * 100) / 100;
+        var wMult = (r.weather || {}).watering_multiplier || '';
+        var mMult = (r.moisture || {}).moisture_multiplier || '';
+        csv += (r.timestamp || '') + ',' + (r.zone_name || '').replace(/,/g, ' ') + ',' + mins + ',' + gal + ',' + (r.water_saved_gallons || 0) + ',' + wMult + ',' + mMult + ',' + (r.source || '') + '\\n';
+    }
+    var blob = new Blob([csv], {type:'text/csv'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'irrigation_data_export.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('CSV exported','success');
+}
+
 </script>
 </body>
 </html>

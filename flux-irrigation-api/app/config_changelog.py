@@ -2,17 +2,17 @@
 Flux Open Home - Configuration Change Log
 ==========================================
 Tracks all configuration changes made to the irrigation system.
-Rolling buffer of 1000 entries stored in JSONL format.
+2-year rolling retention stored in JSONL format.
 Records WHO made the change (Homeowner/Management), WHEN, and WHAT changed.
 """
 
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 CHANGELOG_FILE = "/data/config_changelog.jsonl"
-MAX_ENTRIES = 1000
+RETENTION_DAYS = 730  # 2 years
 
 
 def log_change(actor: str, category: str, description: str, details: dict = None, ai_suggested: bool = False):
@@ -40,13 +40,25 @@ def log_change(actor: str, category: str, description: str, details: dict = None
 
 
 def _trim_changelog():
-    """Keep only the last MAX_ENTRIES lines in the changelog file."""
+    """Remove entries older than RETENTION_DAYS (2 years)."""
     try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)).isoformat()
         with open(CHANGELOG_FILE, "r") as f:
             lines = f.readlines()
-        if len(lines) > MAX_ENTRIES:
+        kept = []
+        for line in lines:
+            line_s = line.strip()
+            if not line_s:
+                continue
+            try:
+                entry = json.loads(line_s)
+                if entry.get("timestamp", "") >= cutoff:
+                    kept.append(line)
+            except json.JSONDecodeError:
+                kept.append(line)  # keep unparseable lines
+        if len(kept) < len(lines):
             with open(CHANGELOG_FILE, "w") as f:
-                f.writelines(lines[-MAX_ENTRIES:])
+                f.writelines(kept)
     except Exception as e:
         print(f"[CHANGELOG] Failed to trim: {e}")
 
@@ -75,7 +87,7 @@ def get_changelog(limit: int = 200) -> list[dict]:
 
 def export_changelog_csv() -> str:
     """Return CSV string of all entries."""
-    entries = get_changelog(limit=MAX_ENTRIES)
+    entries = get_changelog(limit=100000)
     lines = ["timestamp,actor,category,description"]
     for e in entries:
         lines.append(",".join([
