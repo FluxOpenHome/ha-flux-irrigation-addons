@@ -3166,6 +3166,23 @@ async function showPumpSettingsModal() {
         '<input type="text" id="pumpYear" value="' + esc(pSettings.year_installed || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 2020"></div>';
     body += '</div>';
 
+    var hoPsi = pSettings.pressure_psi || '';
+    var hoBar = hoPsi ? (parseFloat(hoPsi) * 0.0689476).toFixed(2) : '';
+    body += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;">';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Pressure (PSI)</label>' +
+        '<input type="number" id="pumpPressure" value="' + hoPsi + '" step="1" min="0" ' +
+        'oninput="var b=document.getElementById(\\'pumpPressureBar\\');if(b)b.value=this.value?(this.value*0.0689476).toFixed(2):\\'\\';" ' +
+        'style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 60"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Pressure (bar)</label>' +
+        '<input type="number" id="pumpPressureBar" value="' + hoBar + '" step="0.01" min="0" ' +
+        'oninput="var p=document.getElementById(\\'pumpPressure\\');if(p)p.value=this.value?Math.round(this.value/0.0689476):\\'\\';" ' +
+        'style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 4.14"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Max GPM</label>' +
+        '<input type="number" id="pumpMaxGpm" value="' + (pSettings.max_gpm || '') + '" step="0.1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 25"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Max Head (ft)</label>' +
+        '<input type="number" id="pumpMaxHead" value="' + (pSettings.max_head_ft || '') + '" step="1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 120"></div>';
+    body += '</div>';
+
     body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Electricity Cost ($/kWh)</label>' +
         '<input type="number" id="pumpCostKwh" value="' + (pSettings.cost_per_kwh || 0.12) + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="0.12"></div>';
@@ -3192,7 +3209,10 @@ async function savePumpSettings() {
         voltage: parseFloat(document.getElementById('pumpVoltage').value) || 240,
         year_installed: document.getElementById('pumpYear').value.trim(),
         cost_per_kwh: parseFloat(document.getElementById('pumpCostKwh').value) || 0.12,
-        peak_rate_per_kwh: parseFloat(document.getElementById('pumpPeakRate').value) || 0
+        peak_rate_per_kwh: parseFloat(document.getElementById('pumpPeakRate').value) || 0,
+        pressure_psi: parseFloat(document.getElementById('pumpPressure').value) || 0,
+        max_gpm: parseFloat(document.getElementById('pumpMaxGpm').value) || 0,
+        max_head_ft: parseFloat(document.getElementById('pumpMaxHead').value) || 0
     };
     try {
         await api('/pump_settings', { method: 'PUT', body: JSON.stringify(payload) });
