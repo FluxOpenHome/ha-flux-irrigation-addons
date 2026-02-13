@@ -25,6 +25,9 @@ DEFAULT_SETTINGS = {
     "year_installed": "",
     "cost_per_kwh": 0.12,
     "peak_rate_per_kwh": 0.0,
+    "pressure_psi": 0.0,
+    "max_gpm": 0.0,
+    "max_head_ft": 0.0,
 }
 
 
@@ -75,7 +78,7 @@ def save_pump_settings(settings: dict) -> dict:
         current["hp"] = round(kw / HP_TO_KW, 4)
 
     # Ensure numeric types
-    for key in ("voltage", "hp", "kw", "cost_per_kwh", "peak_rate_per_kwh"):
+    for key in ("voltage", "hp", "kw", "cost_per_kwh", "peak_rate_per_kwh", "pressure_psi", "max_gpm", "max_head_ft"):
         try:
             current[key] = float(current.get(key, 0) or 0)
         except (ValueError, TypeError):

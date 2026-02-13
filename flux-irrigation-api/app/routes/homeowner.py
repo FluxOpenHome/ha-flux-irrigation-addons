@@ -996,6 +996,9 @@ class SavePumpSettingsRequest(BaseModel):
     year_installed: str = ""
     cost_per_kwh: float = 0.12
     peak_rate_per_kwh: float = 0.0
+    pressure_psi: float = 0.0
+    max_gpm: float = 0.0
+    max_head_ft: float = 0.0
 
 
 @router.get("/pump_settings", summary="Get pump settings")
@@ -1016,7 +1019,7 @@ async def homeowner_save_pump_settings(body: SavePumpSettingsRequest, request: R
 
     # Log changes
     changes = []
-    for key in ("voltage", "hp", "kw", "brand", "year_installed", "cost_per_kwh", "peak_rate_per_kwh"):
+    for key in ("voltage", "hp", "kw", "brand", "year_installed", "cost_per_kwh", "peak_rate_per_kwh", "pressure_psi", "max_gpm", "max_head_ft"):
         old_val = old.get(key)
         new_val = result.get(key)
         if str(old_val) != str(new_val):
@@ -1056,6 +1059,7 @@ async def homeowner_get_pump_stats(
 class SaveWaterSettingsRequest(BaseModel):
     water_source: str = ""
     cost_per_1000_gal: float = 0.0
+    pressure_psi: float = 50.0
 
 
 @router.get("/water_settings", summary="Get water source settings")
@@ -1076,7 +1080,7 @@ async def homeowner_save_water_settings(body: SaveWaterSettingsRequest, request:
 
     # Log changes
     changes = []
-    for key in ("water_source", "cost_per_1000_gal"):
+    for key in ("water_source", "cost_per_1000_gal", "pressure_psi"):
         old_val = old.get(key)
         new_val = result.get(key)
         if str(old_val) != str(new_val):

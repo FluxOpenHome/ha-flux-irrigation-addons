@@ -17,6 +17,7 @@ VALID_SOURCES = ("city", "reclaimed", "well", "")
 DEFAULT_SETTINGS = {
     "water_source": "",           # "city", "reclaimed", "well", or "" (not configured)
     "cost_per_1000_gal": 0.0,     # $/1,000 gallons (for city/reclaimed)
+    "pressure_psi": 50.0,         # Water pressure in PSI (default 50, used when no pump)
 }
 
 
@@ -74,6 +75,13 @@ def save_water_settings(settings: dict) -> dict:
     # Well water has no utility cost
     if current["water_source"] == "well":
         current["cost_per_1000_gal"] = 0.0
+
+    # Ensure numeric pressure
+    try:
+        pressure = float(current.get("pressure_psi", 50.0) or 50.0)
+    except (ValueError, TypeError):
+        pressure = 50.0
+    current["pressure_psi"] = max(0.0, pressure)
 
     _save_settings(current)
     return current
