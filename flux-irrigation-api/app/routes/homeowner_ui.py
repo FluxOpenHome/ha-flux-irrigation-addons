@@ -4417,23 +4417,23 @@ async function loadMoisture() {
                     html += '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.3s;"></div>';
                     html += '</div></div>';
                 }
-                // Battery & Signal from device_sensors_live
+                // Signal & Battery from device_sensors_live (signal first, matching WiFi probe card order)
                 var cpDevSensors = probe.device_sensors_live || {};
                 var cpHasBat = cpDevSensors.battery && cpDevSensors.battery.value != null;
                 var cpHasSig = cpDevSensors.signal && cpDevSensors.signal.value != null;
                 if (cpHasBat || cpHasSig) {
                     html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-muted);">';
-                    if (cpHasBat) {
-                        var cbv = cpDevSensors.battery.value;
-                        var cbIcon = cbv > 50 ? '\\ud83d\\udd0b' : '\\ud83e\\udeab';
-                        var cbColor = cbv > 50 ? 'var(--text-success-dark)' : cbv > 20 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
-                        html += '<span style="color:' + cbColor + ';" title="Battery">' + cbIcon + ' ' + cbv.toFixed(0) + '%</span>';
-                    }
                     if (cpHasSig) {
                         var csv = cpDevSensors.signal.value;
                         var csLabel = csv > -70 ? 'Good' : csv > -90 ? 'Fair' : 'Poor';
                         var csColor = csv > -70 ? 'var(--text-success-dark)' : csv > -90 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
                         html += '<span style="color:' + csColor + ';display:inline-flex;align-items:center;gap:2px;" title="Cell Signal: ' + csv.toFixed(0) + ' dBm"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M2 22V17h3v5H2zm5 0V14h3v8H7zm5 0V11h3v11h-3zm5 0V7h3v15h-3z"/><path d="M4.5 2L2 6h5L4.5 2z" stroke="currentColor" stroke-width="1.5" fill="currentColor"/><line x1="4.5" y1="6" x2="4.5" y2="10" stroke="currentColor" stroke-width="1.5"/></svg> ' + csLabel + '</span>';
+                    }
+                    if (cpHasBat) {
+                        var cbv = cpDevSensors.battery.value;
+                        var cbIcon = cbv > 50 ? '\\ud83d\\udd0b' : '\\ud83e\\udeab';
+                        var cbColor = cbv > 50 ? 'var(--text-success-dark)' : cbv > 20 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
+                        html += '<span style="color:' + cbColor + ';" title="Battery">' + cbIcon + ' ' + cbv.toFixed(0) + '%</span>';
                     }
                     html += '</div>';
                 }
