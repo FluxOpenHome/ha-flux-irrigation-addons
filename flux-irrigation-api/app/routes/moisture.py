@@ -30,7 +30,6 @@ from pydantic import BaseModel, Field
 
 from config import get_config
 import ha_client
-import issue_store
 from config_changelog import log_change, get_actor
 
 
@@ -443,25 +442,11 @@ async def _awake_poll_loop():
                             _increment_exceedance_count(probe_id)
                             exc_count = _get_daily_exceedance_count(probe_id)
 
-                            # Create an issue so management sees it
-                            try:
-                                battery = await _get_probe_battery_level(
-                                    probe_id, probe)
-                                bat_str = (f"{battery:.0f}%"
-                                           if battery is not None
-                                           else "unknown")
-                                issue_store.create_issue(
-                                    "annoyance",
-                                    f"Moisture probe '{display}' exceeded max "
-                                    f"wake time ({max_wake} min, awake "
-                                    f"{elapsed / 60:.0f} min). Battery: "
-                                    f"{bat_str}. Exceedances today: "
-                                    f"{exc_count}. Watchdog forced sleep."
-                                    + (f" Prep state was: {prep_state}."
-                                       if is_scheduled_wake else ""),
-                                )
-                            except Exception:
-                                pass  # Don't let issue creation break watchdog
+                            print(
+                                f"[MOISTURE] Watchdog forced sleep for "
+                                f"'{display}' — awake {elapsed / 60:.0f} min "
+                                f"(limit: {max_wake} min). Exceedances today: "
+                                f"{exc_count}.")
 
                             # Step 1: Re-enable sleep
                             await set_probe_sleep_disabled(probe_id, False)
