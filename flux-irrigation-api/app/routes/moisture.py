@@ -4667,3 +4667,181 @@ async def api_recalculate_timeline():
     """
     timeline = await calculate_irrigation_timeline()
     return {"success": True, "message": "Timeline recalculated", **timeline}
+
+
+# --- Cellular Probe Webhook: Incoming Readings ---
+# Cellular probes check in for ~5 seconds via a cloud webhook.
+# The management server forwards those readings to this endpoint so
+# the add-on can use them for moisture multipliers and store history.
+
+READINGS_HISTORY_FILE = "/data/moisture_readings_history.json"
+_MAX_READINGS_PER_PROBE = 2000  # Rolling buffer per probe
+
+
+class CellularReadingRequest(BaseModel):
+    """Incoming reading from a cellular probe check-in."""
+    shallow: Optional[float] = Field(None, description="Shallow sensor moisture %")
+    mid: Optional[float] = Field(None, description="Mid sensor moisture %")
+    deep: Optional[float] = Field(None, description="Deep sensor moisture %")
+    battery: Optional[float] = Field(None, description="Battery level %")
+    signal: Optional[float] = Field(None, description="Signal strength (dBm or %)")
+    timestamp: Optional[str] = Field(None, description="ISO timestamp of the reading (defaults to now)")
+
+
+def _load_readings_history() -> dict:
+    """Load the readings history from disk."""
+    if os.path.exists(READINGS_HISTORY_FILE):
+        try:
+            with open(READINGS_HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def _save_readings_history(history: dict):
+    """Save readings history to disk."""
+    try:
+        os.makedirs(os.path.dirname(READINGS_HISTORY_FILE), exist_ok=True)
+        with open(READINGS_HISTORY_FILE, "w") as f:
+            json.dump(history, f, indent=2)
+    except IOError as e:
+        print(f"[MOISTURE] Failed to save readings history: {e}")
+
+
+@router.post("/probes/{probe_id}/readings", summary="Push cellular probe readings")
+async def api_push_probe_readings(probe_id: str, body: CellularReadingRequest):
+    """Receive moisture readings from a cellular probe check-in.
+
+    Called by the management server when a cellular probe checks in via
+    its cloud webhook. Stores the readings in the sensor cache (so the
+    moisture multiplier uses them immediately) and appends to the readings
+    history file (for graphing/trends).
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
+
+    now_iso = body.timestamp or datetime.now(timezone.utc).isoformat()
+
+    # Update the sensor cache with the incoming readings
+    _load_sensor_cache()
+    cache_dirty = False
+    sensors = probe.get("sensors", {})
+    depth_map = {"shallow": body.shallow, "mid": body.mid, "deep": body.deep}
+
+    updated_depths = []
+    for depth, value in depth_map.items():
+        if value is None:
+            continue
+        sensor_eid = sensors.get(depth)
+        if not sensor_eid:
+            # No HA entity mapped for this depth — store under a virtual key
+            sensor_eid = f"cellular.{probe_id}_{depth}"
+            # Auto-assign the virtual entity to the probe's sensor config
+            sensors[depth] = sensor_eid
+            probe["sensors"] = sensors
+            _save_data(data)
+            print(f"[MOISTURE] Auto-assigned cellular sensor: {depth} → {sensor_eid}")
+
+        _sensor_cache[sensor_eid] = {
+            "state": value,
+            "raw_state": str(value),
+            "last_updated": now_iso,
+            "friendly_name": f"{probe.get('display_name', probe_id)} {depth.title()}",
+        }
+        cache_dirty = True
+        updated_depths.append(depth)
+
+    # Update extra_sensors cache (battery, signal)
+    extra = probe.get("extra_sensors") or {}
+    if body.battery is not None:
+        bat_eid = extra.get("battery") or f"cellular.{probe_id}_battery"
+        if not extra.get("battery"):
+            extra["battery"] = bat_eid
+            probe["extra_sensors"] = extra
+            _save_data(data)
+        _sensor_cache[bat_eid] = {
+            "state": body.battery,
+            "raw_state": str(body.battery),
+            "last_updated": now_iso,
+            "friendly_name": f"{probe.get('display_name', probe_id)} Battery",
+        }
+        cache_dirty = True
+
+    if body.signal is not None:
+        sig_eid = extra.get("signal") or extra.get("wifi") or f"cellular.{probe_id}_signal"
+        if not extra.get("signal"):
+            extra["signal"] = sig_eid
+            probe["extra_sensors"] = extra
+            _save_data(data)
+        _sensor_cache[sig_eid] = {
+            "state": body.signal,
+            "raw_state": str(body.signal),
+            "last_updated": now_iso,
+            "friendly_name": f"{probe.get('display_name', probe_id)} Signal",
+        }
+        cache_dirty = True
+
+    if cache_dirty:
+        _save_sensor_cache()
+
+    # Append to readings history (rolling buffer per probe)
+    reading_entry = {
+        "timestamp": now_iso,
+        "shallow": body.shallow,
+        "mid": body.mid,
+        "deep": body.deep,
+        "battery": body.battery,
+        "signal": body.signal,
+    }
+
+    history = _load_readings_history()
+    if probe_id not in history:
+        history[probe_id] = []
+    history[probe_id].append(reading_entry)
+
+    # Trim to rolling buffer size
+    if len(history[probe_id]) > _MAX_READINGS_PER_PROBE:
+        history[probe_id] = history[probe_id][-_MAX_READINGS_PER_PROBE:]
+
+    _save_readings_history(history)
+
+    print(f"[MOISTURE] Cellular check-in: {probe.get('display_name', probe_id)} — "
+          f"depths={updated_depths}, battery={body.battery}, signal={body.signal}")
+
+    return {
+        "success": True,
+        "probe_id": probe_id,
+        "updated_depths": updated_depths,
+        "timestamp": now_iso,
+        "history_count": len(history[probe_id]),
+    }
+
+
+@router.get("/probes/{probe_id}/readings/history", summary="Get probe readings history")
+async def api_get_readings_history(
+    probe_id: str,
+    limit: int = Query(100, ge=1, le=2000, description="Max readings to return"),
+):
+    """Get historical readings for a probe (for graphing/trends).
+
+    Returns the most recent readings, newest first.
+    """
+    data = _load_data()
+    if probe_id not in data.get("probes", {}):
+        raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
+
+    history = _load_readings_history()
+    probe_history = history.get(probe_id, [])
+
+    # Return newest first, limited
+    recent = probe_history[-limit:]
+    recent.reverse()
+
+    return {
+        "probe_id": probe_id,
+        "readings": recent,
+        "total_stored": len(probe_history),
+    }
