@@ -2021,6 +2021,17 @@ def calculate_zone_moisture_multiplier(
             "reason": str,
         }
     """
+    # If moisture probes are globally disabled, return 1.0x for all zones
+    if not data.get("enabled"):
+        return {
+            "multiplier": 1.0,
+            "avg_moisture": None,
+            "skip": False,
+            "probe_count": 0,
+            "probe_details": [],
+            "reason": "Moisture probes not enabled",
+        }
+
     stale_threshold = data.get("stale_reading_threshold_minutes", 120)
     default_thresholds = data.get("default_thresholds", DEFAULT_DATA["default_thresholds"])
 
@@ -4138,10 +4149,14 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
 
     # Build changelog description with old → new values
     changes = []
+    _enabled_changed = False
+    _enabled_old = None
     if body.enabled is not None:
         old = data.get("enabled", False)
         data["enabled"] = body.enabled
         if old != body.enabled:
+            _enabled_changed = True
+            _enabled_old = old
             changes.append(f"Moisture probes: {'Disabled' if old else 'Enabled'} -> {'Enabled' if body.enabled else 'Disabled'}")
     if body.stale_reading_threshold_minutes is not None:
         old = data.get("stale_reading_threshold_minutes", 120)
@@ -4289,6 +4304,18 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
         actor = get_actor(request)
         for change in changes:
             log_change(actor, "Moisture Probes", change)
+
+    # If moisture control was toggled ON/OFF and apply_factors_to_schedule is active,
+    # re-apply durations immediately so factors reflect the new enabled state.
+    # When disabled, calculate_zone_moisture_multiplier() returns 1.0x for all zones.
+    if _enabled_changed and data.get("apply_factors_to_schedule") and data.get("duration_adjustment_active"):
+        result = await apply_adjusted_durations()
+        applied = result.get("applied", 0)
+        if body.enabled:
+            return {"success": True, "message": f"Moisture enabled — factors re-applied to {applied} zone(s)"}
+        else:
+            return {"success": True, "message": f"Moisture disabled — factors reset to weather-only for {applied} zone(s)"}
+
     return {"success": True, "message": "Moisture settings updated"}
 
 

@@ -4296,7 +4296,11 @@ async function loadMoisture() {
                         html += '<button onclick="hoShowCalibrationModal(\\'' + esc(pid) + '\\')" style="padding:2px 8px;font-size:10px;border:1px solid var(--color-warning);border-radius:4px;cursor:pointer;background:transparent;color:var(--color-warning);" title="Calibrate moisture sensors">Calibrate</button>';
                     }
                     if (_hasZones) {
-                        html += '<button onclick="hoShowWakeSchedule(\\'' + esc(pid) + '\\')" style="padding:2px 8px;font-size:10px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;background:var(--bg-tile);color:var(--text-secondary);" title="View probe wake schedule">Wake Schedule</button>';
+                        var _wsDisabled = window['_wakeScheduleDisabled_' + pid] || false;
+                        var _wsColor = _wsDisabled ? 'var(--text-muted, #666)' : 'var(--color-success, #2ecc71)';
+                        var _wsBorder = _wsDisabled ? 'var(--border-light)' : 'var(--color-success, #2ecc71)';
+                        var _wsBg = _wsDisabled ? 'var(--bg-tile)' : 'transparent';
+                        html += '<button id="hoWakeSchedBtn_' + esc(pid) + '" onclick="hoShowWakeSchedule(\\'' + esc(pid) + '\\')" style="padding:2px 8px;font-size:10px;border:1px solid ' + _wsBorder + ';border-radius:4px;cursor:pointer;background:' + _wsBg + ';color:' + _wsColor + ';" title="View probe wake schedule">Wake Schedule</button>';
                     }
                     html += '</div>';
                 }
@@ -5147,9 +5151,10 @@ async function hoShowWakeSchedule(probeId) {
 
     // Add wake schedule enable/disable toggle
     var isDisabled = window['_wakeScheduleDisabled_' + probeId] || false;
-    body += '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">';
-    body += '<div><strong style="font-size:12px;color:var(--text-secondary);">Wake Schedule</strong><br><span style="font-size:11px;color:var(--text-muted);">' + (isDisabled ? 'Probe will NOT be woken for scheduled runs' : 'Probe will wake before scheduled runs') + '</span></div>';
-    body += '<button id="wakeSchedToggleBtn" onclick="hoToggleWakeSchedule(\\'' + esc(probeId) + '\\')" style="padding:4px 12px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:600;border:1px solid ' + (isDisabled ? 'var(--color-success)' : 'var(--color-danger)') + ';background:transparent;color:' + (isDisabled ? 'var(--color-success)' : 'var(--color-danger)') + ';">' + (isDisabled ? 'Enable' : 'Disable') + '</button>';
+    body += '<div style="margin-top:12px;padding:8px 10px;background:var(--bg-tile);border-radius:6px;display:flex;align-items:center;justify-content:space-between;">';
+    body += '<div style="font-size:12px;color:var(--text-secondary);"><strong>Wake Schedule</strong><br><span style="font-size:11px;color:var(--text-muted);">When disabled, probe sleep won\\'t be managed around irrigation runs</span></div>';
+    body += '<button id="wakeSchedToggleBtn" onclick="hoToggleWakeSchedule(\\'' + esc(probeId) + '\\')" style="padding:5px 14px;border-radius:4px;border:none;cursor:pointer;font-size:12px;font-weight:600;' +
+        (isDisabled ? 'background:var(--color-success, #2ecc71);color:#fff;">Enable' : 'background:rgba(150,150,150,0.2);color:var(--text-muted, #888);">Disable') + '</button>';
     body += '</div>';
 
     showModal('Wake Schedule', body, '440px');
@@ -5162,6 +5167,19 @@ async function hoToggleWakeSchedule(probeId) {
         await mapi('/probes/' + probeId + '/wake-schedule-disabled', 'PUT', { disabled: newState });
         window['_wakeScheduleDisabled_' + probeId] = newState;
         showToast('Wake schedule ' + (newState ? 'disabled' : 'enabled'));
+        // Update probe card button color
+        var cardBtn = document.getElementById('hoWakeSchedBtn_' + probeId);
+        if (cardBtn) {
+            if (newState) {
+                cardBtn.style.color = 'var(--text-muted, #666)';
+                cardBtn.style.borderColor = 'var(--border-light)';
+                cardBtn.style.background = 'var(--bg-tile)';
+            } else {
+                cardBtn.style.color = 'var(--color-success, #2ecc71)';
+                cardBtn.style.borderColor = 'var(--color-success, #2ecc71)';
+                cardBtn.style.background = 'transparent';
+            }
+        }
         hoShowWakeSchedule(probeId); // Refresh the modal
     } catch(e) {
         showToast('Failed: ' + e.message, 'error');
