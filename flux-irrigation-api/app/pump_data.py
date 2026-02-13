@@ -22,6 +22,7 @@ DEFAULT_SETTINGS = {
     "hp": 0.0,
     "kw": 0.0,
     "brand": "",
+    "model": "",
     "year_installed": "",
     "cost_per_kwh": 0.12,
     "peak_rate_per_kwh": 0.0,

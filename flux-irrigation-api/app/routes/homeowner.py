@@ -993,6 +993,7 @@ class SavePumpSettingsRequest(BaseModel):
     hp: float = 0
     kw: float = 0
     brand: str = ""
+    model: str = ""
     year_installed: str = ""
     cost_per_kwh: float = 0.12
     peak_rate_per_kwh: float = 0.0
@@ -1019,7 +1020,7 @@ async def homeowner_save_pump_settings(body: SavePumpSettingsRequest, request: R
 
     # Log changes
     changes = []
-    for key in ("voltage", "hp", "kw", "brand", "year_installed", "cost_per_kwh", "peak_rate_per_kwh", "pressure_psi", "max_gpm", "max_head_ft"):
+    for key in ("voltage", "hp", "kw", "brand", "model", "year_installed", "cost_per_kwh", "peak_rate_per_kwh", "pressure_psi", "max_gpm", "max_head_ft"):
         old_val = old.get(key)
         new_val = result.get(key)
         if str(old_val) != str(new_val):

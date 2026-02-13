@@ -334,7 +334,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <!-- Estimated Gallons Card -->
         <div class="card" id="estGallonsCard" style="display:none;">
             <div class="card-header" onclick="toggleCard('gallons')" style="cursor:pointer;user-select:none;">
-                <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_gallons" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> &#128167; Water Settings</h2>
+                <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_gallons" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> &#128167; Water Monitor</h2>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <a href="#" onclick="lockCard('gallons',event)" id="cardLock_gallons" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                     <select id="gallonsRange" onclick="event.stopPropagation()" onchange="loadEstGallons()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
@@ -3128,9 +3128,11 @@ async function loadPumpMonitor() {
 
         // Pump info line
         var brand = pSettings.brand || 'Unknown';
+        var pModel = pSettings.model || '';
+        var brandModel = pModel ? brand + ' ' + pModel : brand;
         var hp = pSettings.hp ? pSettings.hp + ' HP' : (pSettings.kw ? pSettings.kw + ' kW' : 'Not configured');
         html += '<div style="font-size:12px;color:var(--text-muted);text-align:center;">';
-        html += esc(brand) + ' &bull; ' + esc(String(hp)) + ' &bull; ' + (pSettings.voltage || 240) + 'V';
+        html += esc(brandModel) + ' &bull; ' + esc(String(hp)) + ' &bull; ' + (pSettings.voltage || 240) + 'V';
         if (pSettings.year_installed) {
             var pumpAge = new Date().getFullYear() - parseInt(pSettings.year_installed);
             if (pumpAge >= 0) html += ' &bull; ' + pumpAge + (pumpAge === 1 ? ' year old' : ' years old');
@@ -3149,8 +3151,12 @@ async function showPumpSettingsModal() {
 
     var body = '<div style="display:flex;flex-direction:column;gap:12px;">';
 
+    body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Brand</label>' +
         '<input type="text" id="pumpBrand" value="' + esc(pSettings.brand || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. Pentair, Hayward"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Model</label>' +
+        '<input type="text" id="pumpModel" value="' + esc(pSettings.model || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. IntelliPro VSF"></div>';
+    body += '</div>';
 
     body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Horsepower (HP)</label>' +
@@ -3204,6 +3210,7 @@ async function savePumpSettings() {
     var payload = {
         pump_entity_id: window._pumpZoneEntity || '',
         brand: document.getElementById('pumpBrand').value.trim(),
+        model: document.getElementById('pumpModel').value.trim(),
         hp: parseFloat(document.getElementById('pumpHP').value) || 0,
         kw: parseFloat(document.getElementById('pumpKW').value) || 0,
         voltage: parseFloat(document.getElementById('pumpVoltage').value) || 240,
