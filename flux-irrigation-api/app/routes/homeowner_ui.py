@@ -2821,8 +2821,8 @@ async function loadHistory() {
         // Determine if any event's zone has GPM data configured
         const gpmMap = window._hoZoneGpmMap || {};
         const hasGpmData = events.some(e => gpmMap[e.entity_id] > 0);
-        // Check if any event has water_saved_gallons
-        const hasWaterSaved = events.some(e => e.water_saved_gallons > 0);
+        // Check if any event has water savings data
+        const hasWaterSaved = events.some(e => e.water_saved_gallons > 0 || e.water_saved_minutes > 0);
 
         el.innerHTML = weatherSummary +
             '<table style="width:100%;font-size:13px;border-collapse:collapse;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);"><th style="padding:6px;">Zone</th><th style="padding:6px;">State</th><th style="padding:6px;">Time</th><th style="padding:6px;">Duration</th>' +
@@ -2895,10 +2895,16 @@ async function loadHistory() {
                 } else {
                     stateCell = '<span style="color:var(--text-disabled);">OFF</span>';
                 }
-                // Water Saved cell — dedicated column
+                // Water Saved cell — shows gallons saved, or time saved if no GPM
                 let waterSavedCell = '<span style="color:var(--text-disabled);">—</span>';
                 if (e.water_saved_gallons > 0) {
+                    var srcLabel = e.water_saved_source === 'moisture_skip' || e.water_saved_source === 'moisture_cutoff' ? 'Moisture' : e.water_saved_source === 'weather_pause' || e.water_saved_source === 'pause_enforced' ? 'Weather' : '';
                     waterSavedCell = '<span style="color:var(--color-success);font-weight:600;">&#x1F4A7; ' + e.water_saved_gallons.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + ' gal</span>';
+                    if (srcLabel) waterSavedCell += '<div style="font-size:10px;color:var(--text-muted);">' + srcLabel + '</div>';
+                } else if (e.water_saved_minutes > 0 && e.water_saved_no_gpm) {
+                    waterSavedCell = '<span style="color:var(--color-warning);">' + e.water_saved_minutes.toFixed(1) + ' min</span><div style="font-size:10px;color:var(--text-muted);">No GPM set</div>';
+                } else if (e.water_saved_minutes > 0) {
+                    waterSavedCell = '<span style="color:var(--color-success);font-weight:600;">' + e.water_saved_minutes.toFixed(1) + ' min saved</span>';
                 }
                 // Zone name display — probe events resolve current probe name
                 let zoneDisplay;
