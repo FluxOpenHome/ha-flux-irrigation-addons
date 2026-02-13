@@ -492,8 +492,9 @@ async def lifespan(app: FastAPI):
               f"interval={config.weather_check_interval_minutes}min")
         # Start awake status poller for Gophr probes
         if probe_count > 0:
-            from routes.moisture import start_awake_poller, calculate_irrigation_timeline
+            from routes.moisture import start_awake_poller, start_sensor_cache_poller, calculate_irrigation_timeline
             start_awake_poller()
+            start_sensor_cache_poller()
             # Calculate initial schedule timeline for probe-aware irrigation
             try:
                 timeline = await calculate_irrigation_timeline()
@@ -515,8 +516,9 @@ async def lifespan(app: FastAPI):
     if moisture_task:
         moisture_task.cancel()
     try:
-        from routes.moisture import stop_awake_poller
+        from routes.moisture import stop_awake_poller, stop_sensor_cache_poller
         stop_awake_poller()
+        stop_sensor_cache_poller()
     except Exception:
         pass
     if zone_watcher_task:

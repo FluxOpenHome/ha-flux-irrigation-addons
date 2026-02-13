@@ -544,6 +544,71 @@ def stop_awake_poller():
         print("[MOISTURE] Awake poller stopped")
 
 
+# --- Sensor Cache Warming Poller ---
+# Probes without a status_led (e.g. cellular probes) have no wake detection.
+# This poller runs every 30 seconds and fetches sensor states for ALL probes,
+# keeping the cache warm so readings aren't lost between brief check-ins.
+
+_sensor_cache_poller_task: asyncio.Task | None = None
+_SENSOR_CACHE_POLL_INTERVAL = 30  # seconds
+
+
+async def _sensor_cache_poll_loop():
+    """Background task that periodically fetches sensor states for all probes.
+
+    Keeps the sensor cache warm so that:
+    - Cellular probes' brief check-in windows are captured
+    - The multiplier has fresh cached data even between dashboard visits
+    - Probes without status_led still get their readings cached
+    """
+    while True:
+        try:
+            await asyncio.sleep(_SENSOR_CACHE_POLL_INTERVAL)
+            data = _load_data()
+            if not data.get("enabled"):
+                continue
+            probes = data.get("probes", {})
+            if not probes:
+                continue
+
+            # Fetch sensor states — this updates the sensor cache as a side effect
+            sensor_states = await _get_probe_sensor_states(probes)
+
+            # Count how many probes got valid readings
+            valid_count = sum(
+                1 for eid_data in sensor_states.values()
+                if eid_data.get("state") is not None
+            )
+            if valid_count > 0:
+                total = len(sensor_states)
+                # Only log when we actually got data (avoid log spam)
+                print(f"[MOISTURE] Sensor cache poll: {valid_count}/{total} sensors have data")
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[MOISTURE] Sensor cache poll error: {e}")
+            await asyncio.sleep(10)
+
+
+def start_sensor_cache_poller():
+    """Start the background sensor cache warming task."""
+    global _sensor_cache_poller_task
+    if _sensor_cache_poller_task and not _sensor_cache_poller_task.done():
+        return  # Already running
+    _sensor_cache_poller_task = asyncio.create_task(_sensor_cache_poll_loop())
+    print("[MOISTURE] Sensor cache poller started (interval: 30s)")
+
+
+def stop_sensor_cache_poller():
+    """Stop the background sensor cache warming task."""
+    global _sensor_cache_poller_task
+    if _sensor_cache_poller_task and not _sensor_cache_poller_task.done():
+        _sensor_cache_poller_task.cancel()
+        _sensor_cache_poller_task = None
+        print("[MOISTURE] Sensor cache poller stopped")
+
+
 # --- Schedule Timeline ---
 # Tracks when each zone will run per schedule, which zones have probes,
 # and the prep timing so probes can be woken before their mapped zones.
@@ -1282,9 +1347,13 @@ def _analyze_probe_gradient(
     mid_val = depth_readings.get("mid", {}).get("value")
     deep_val = depth_readings.get("deep", {}).get("value")
 
-    shallow_ok = shallow_val is not None and not depth_readings.get("shallow", {}).get("stale", True)
-    mid_ok = mid_val is not None and not depth_readings.get("mid", {}).get("stale", True)
-    deep_ok = deep_val is not None and not depth_readings.get("deep", {}).get("stale", True)
+    # Accept cached readings even if stale — a 3-hour-old reading of 60%
+    # is far more informative than defaulting to 1.0x (no adjustment).
+    # Previously stale readings were excluded, which caused probes that sleep
+    # between check-ins (e.g. cellular probes) to never apply factors.
+    shallow_ok = shallow_val is not None
+    mid_ok = mid_val is not None
+    deep_ok = deep_val is not None
 
     # Thresholds — root zone focused
     root_skip = thresholds.get("root_zone_skip", 80)
@@ -1532,6 +1601,9 @@ def calculate_zone_moisture_multiplier(
         thresholds = probe.get("thresholds") or default_thresholds
 
         # Build depth readings dict
+        # Stale flag is tracked for display but does NOT exclude readings from
+        # the multiplier — a cached reading is still the best data available
+        # for probes that sleep between check-ins (e.g. cellular probes).
         depth_readings = {}
         for depth in ("shallow", "mid", "deep"):
             sensor_eid = sensors.get(depth)
@@ -1543,19 +1615,15 @@ def calculate_zone_moisture_multiplier(
             last_updated = sensor_data.get("last_updated", "")
             stale = _is_stale(last_updated, stale_threshold)
 
-            if value is not None and not stale:
-                depth_readings[depth] = {
-                    "value": value,
-                    "stale": False,
-                    "entity_id": sensor_eid,
-                }
-            else:
-                depth_readings[depth] = {
-                    "value": value,
-                    "stale": stale,
-                    "entity_id": sensor_eid,
-                    "reason": "stale" if stale else "unavailable",
-                }
+            depth_readings[depth] = {
+                "value": value,
+                "stale": stale,
+                "entity_id": sensor_eid,
+            }
+            if value is None:
+                depth_readings[depth]["reason"] = "unavailable"
+            elif stale:
+                depth_readings[depth]["reason"] = "stale (cached)"
 
         # Run gradient analysis
         result = _analyze_probe_gradient(
@@ -1568,15 +1636,16 @@ def calculate_zone_moisture_multiplier(
             probe_multipliers.append(result["multiplier"])
 
         # Compute a representative moisture value for display (mid preferred)
+        # Accept stale cached readings — they're still informative
         mid_reading = depth_readings.get("mid", {})
         shallow_reading = depth_readings.get("shallow", {})
         deep_reading = depth_readings.get("deep", {})
         display_moisture = None
-        if mid_reading.get("value") is not None and not mid_reading.get("stale"):
+        if mid_reading.get("value") is not None:
             display_moisture = mid_reading["value"]
-        elif shallow_reading.get("value") is not None and not shallow_reading.get("stale"):
+        elif shallow_reading.get("value") is not None:
             display_moisture = shallow_reading["value"]
-        elif deep_reading.get("value") is not None and not deep_reading.get("stale"):
+        elif deep_reading.get("value") is not None:
             display_moisture = deep_reading["value"]
 
         probe_details.append({
@@ -3743,7 +3812,8 @@ async def calculate_overall_moisture_multiplier() -> dict:
         sensors = probe.get("sensors", {})
         thresholds = probe.get("thresholds") or default_thresholds
 
-        # Build depth readings dict
+        # Build depth readings dict — stale flag tracked for display
+        # but does not exclude readings from the multiplier calculation.
         depth_readings = {}
         for depth in ("shallow", "mid", "deep"):
             sensor_eid = sensors.get(depth)
@@ -3754,19 +3824,15 @@ async def calculate_overall_moisture_multiplier() -> dict:
             last_updated = sensor_data.get("last_updated", "")
             stale = _is_stale(last_updated, stale_threshold)
 
-            if value is not None and not stale:
-                depth_readings[depth] = {
-                    "value": value,
-                    "stale": False,
-                    "entity_id": sensor_eid,
-                }
-            else:
-                depth_readings[depth] = {
-                    "value": value,
-                    "stale": stale,
-                    "entity_id": sensor_eid,
-                    "reason": "stale" if stale else "unavailable",
-                }
+            depth_readings[depth] = {
+                "value": value,
+                "stale": stale,
+                "entity_id": sensor_eid,
+            }
+            if value is None:
+                depth_readings[depth]["reason"] = "unavailable"
+            elif stale:
+                depth_readings[depth]["reason"] = "stale (cached)"
 
         # Run gradient analysis
         result = _analyze_probe_gradient(
