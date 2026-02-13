@@ -362,6 +362,9 @@ async def _awake_poll_loop():
                 # --- Max wake time enforcement ---
                 # Safety net that prevents probes from draining battery.
                 #
+                # SKIP if sleep is explicitly disabled by the user — they
+                # intentionally want the probe to stay awake indefinitely.
+                #
                 # SCHEDULE-AWARE: If the probe is awake for a scheduled
                 # reason (prep state is monitoring, prep_pending, etc.),
                 # we allow up to MAX_DAILY_WAKE_EXCEEDANCES (2) overruns
@@ -370,9 +373,15 @@ async def _awake_poll_loop():
                 #
                 # NON-SCHEDULED: If prep state is idle/None, the watchdog
                 # fires the moment max_wake is exceeded — no grace.
+                sleep_disabled_eid = (probe.get("extra_sensors") or {}).get("sleep_disabled")
+                user_disabled_sleep = False
+                if sleep_disabled_eid:
+                    sd_state = await ha_client.get_entity_state(sleep_disabled_eid)
+                    user_disabled_sleep = (sd_state or {}).get("state") == "on"
+
                 max_wake = _get_max_wake_minutes()
                 wake_ts = _probe_wake_start.get(probe_id)
-                if max_wake > 0 and now_awake and wake_ts is not None and wake_ts > 0:
+                if max_wake > 0 and now_awake and wake_ts is not None and wake_ts > 0 and not user_disabled_sleep:
                     elapsed = time.time() - wake_ts
                     if elapsed > max_wake * 60:
                         display = probe.get("display_name", probe_id)
@@ -448,6 +457,26 @@ async def _awake_poll_loop():
                                 f"(limit: {max_wake} min). Exceedances today: "
                                 f"{exc_count}.")
 
+                            # Log to probe history
+                            try:
+                                import run_log
+                                battery = await _get_probe_battery_level(
+                                    probe_id, probe)
+                                run_log.log_probe_event(
+                                    probe_id=probe_id,
+                                    event_type="watchdog_force_sleep",
+                                    display_name=display,
+                                    details={
+                                        "awake_minutes": round(elapsed / 60, 1),
+                                        "max_wake_minutes": max_wake,
+                                        "exceedances_today": exc_count,
+                                        "battery": round(battery, 0) if battery is not None else None,
+                                        "prep_state": prep_state,
+                                    },
+                                )
+                            except Exception:
+                                pass
+
                             # Step 1: Re-enable sleep
                             await set_probe_sleep_disabled(probe_id, False)
 
@@ -486,7 +515,7 @@ async def _awake_poll_loop():
                             # Set retry sentinel
                             _probe_wake_start[probe_id] = -time.time()
 
-                elif max_wake > 0 and now_awake and wake_ts is not None and wake_ts < 0:
+                elif max_wake > 0 and now_awake and wake_ts is not None and wake_ts < 0 and not user_disabled_sleep:
                     # Sentinel: watchdog already fired (negative timestamp).
                     # If probe is STILL awake 2 min after watchdog, retry.
                     fired_at = -wake_ts
@@ -496,6 +525,18 @@ async def _awake_poll_loop():
                         print(f"[MOISTURE] ⚠️ WATCHDOG RETRY: {display} still awake "
                               f"{since_fired / 60:.1f} min after watchdog fired! "
                               f"Retrying sleep_now...")
+                        try:
+                            import run_log
+                            run_log.log_probe_event(
+                                probe_id=probe_id,
+                                event_type="watchdog_retry",
+                                display_name=display,
+                                details={
+                                    "minutes_since_watchdog": round(since_fired / 60, 1),
+                                },
+                            )
+                        except Exception:
+                            pass
                         await set_probe_sleep_disabled(probe_id, False)
                         await press_probe_sleep_now(probe_id)
                         _probe_wake_start[probe_id] = -time.time()

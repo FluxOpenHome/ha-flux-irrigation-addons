@@ -4726,6 +4726,10 @@ function renderProbeHistory() {
             eventCell = '<span style="color:var(--color-link);font-weight:600;">Awake</span>';
         } else if (e.state === 'moisture_skip') {
             eventCell = '<span style="color:var(--color-danger);font-weight:600;">Moisture Skip</span>';
+        } else if (e.state === 'watchdog_force_sleep') {
+            eventCell = '<span style="color:var(--color-danger);font-weight:600;">⚠ Watchdog Sleep</span>';
+        } else if (e.state === 'watchdog_retry') {
+            eventCell = '<span style="color:var(--color-warning);font-weight:600;">⚠ Watchdog Retry</span>';
         } else {
             eventCell = '<span style="font-weight:600;">' + esc(e.state) + '</span>';
         }
@@ -4747,11 +4751,19 @@ function renderProbeHistory() {
             if (e.reason) detailText += (detailText ? ' \\u2014 ' : '') + e.reason;
         } else if (e.state === 'scheduled_wake' || e.state === 'probe_wake') {
             if (e.mapped_zones) detailText = e.mapped_zones.length + ' zone' + (e.mapped_zones.length !== 1 ? 's' : '') + ' mapped';
+        } else if (e.state === 'watchdog_force_sleep') {
+            var wd = e.details || {};
+            detailText = 'Awake ' + (wd.awake_minutes || '?') + 'min (limit ' + (wd.max_wake_minutes || '?') + 'min)';
+            if (wd.battery != null) detailText += ' | Batt: ' + wd.battery + '%';
+            if (wd.prep_state && wd.prep_state !== 'idle') detailText += ' | Prep: ' + wd.prep_state;
+        } else if (e.state === 'watchdog_retry') {
+            var wdr = e.details || {};
+            detailText = 'Still awake ' + (wdr.minutes_since_watchdog || '?') + 'min after force sleep';
         }
         if (e.moisture_multiplier != null && e.state === 'moisture_skip') {
             detailText += (detailText ? ' | ' : '') + 'Factor: ' + e.moisture_multiplier + 'x';
         }
-        var rowBg = e.state === 'moisture_skip' ? 'background:var(--bg-danger-light);' : e.state === 'scheduled_wake' ? 'background:var(--bg-tile);' : '';
+        var rowBg = (e.state === 'moisture_skip' || e.state === 'watchdog_force_sleep' || e.state === 'watchdog_retry') ? 'background:var(--bg-danger-light);' : e.state === 'scheduled_wake' ? 'background:var(--bg-tile);' : '';
         html += '<tr style="border-bottom:1px solid var(--border-row);' + rowBg + '">';
         html += '<td style="padding:5px;font-weight:500;">' + esc(probeName) + '</td>';
         html += '<td style="padding:5px;">' + eventCell + '</td>';
