@@ -2898,9 +2898,9 @@ async function loadHistory() {
                 // Water Saved cell — shows gallons saved, or time saved if no GPM
                 let waterSavedCell = '<span style="color:var(--text-disabled);">—</span>';
                 if (e.water_saved_gallons > 0) {
-                    var srcLabel = e.water_saved_source === 'moisture_skip' || e.water_saved_source === 'moisture_cutoff' ? 'Moisture' : e.water_saved_source === 'weather_pause' || e.water_saved_source === 'pause_enforced' ? 'Weather' : '';
+                    var saveSrc = e.water_saved_source === 'moisture_skip' || e.water_saved_source === 'moisture_cutoff' ? 'Moisture' : e.water_saved_source === 'weather_pause' || e.water_saved_source === 'pause_enforced' ? 'Weather' : '';
                     waterSavedCell = '<span style="color:var(--color-success);font-weight:600;">&#x1F4A7; ' + e.water_saved_gallons.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + ' gal</span>';
-                    if (srcLabel) waterSavedCell += '<div style="font-size:10px;color:var(--text-muted);">' + srcLabel + '</div>';
+                    if (saveSrc) waterSavedCell += '<div style="font-size:10px;color:var(--text-muted);">' + saveSrc + '</div>';
                 } else if (e.water_saved_minutes > 0 && e.water_saved_no_gpm) {
                     waterSavedCell = '<span style="color:var(--color-warning);">' + e.water_saved_minutes.toFixed(1) + ' min</span><div style="font-size:10px;color:var(--text-muted);">No GPM set</div>';
                 } else if (e.water_saved_minutes > 0) {
