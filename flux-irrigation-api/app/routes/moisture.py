@@ -1051,6 +1051,9 @@ async def calculate_irrigation_timeline() -> dict:
     #    and calculate when to reprogram sleep duration
     probe_prep = {}
     for pid, probe in probes.items():
+        if probe.get("wake_schedule_disabled"):
+            print(f"[MOISTURE] Timeline: probe {pid} has wake schedule disabled, skipping")
+            continue
         mapped_zones = set(probe.get("zone_mappings", []))
         if not mapped_zones:
             print(f"[MOISTURE] Timeline: probe {pid} has no zone_mappings, skipping")
@@ -3934,6 +3937,10 @@ class SleepDisabledRequest(BaseModel):
     disabled: bool = Field(..., description="True to disable sleep (keep probe awake), False to allow sleeping")
 
 
+class WakeScheduleDisabledRequest(BaseModel):
+    disabled: bool = Field(..., description="True to disable wake schedule management for this probe")
+
+
 @router.put("/probes/{probe_id}/sleep-disabled", summary="Toggle probe sleep disabled")
 async def api_set_sleep_disabled(probe_id: str, body: SleepDisabledRequest, request: Request):
     """Enable or disable sleep on a Gophr probe.
@@ -3980,6 +3987,40 @@ async def api_set_sleep_disabled(probe_id: str, body: SleepDisabledRequest, requ
             "message": f"Sleep {action} queued — will apply when probe wakes",
             "disabled": body.disabled,
         }
+
+
+@router.put("/probes/{probe_id}/wake-schedule-disabled", summary="Toggle wake schedule for a probe")
+async def api_set_wake_schedule_disabled(probe_id: str, body: WakeScheduleDisabledRequest, request: Request):
+    """Enable or disable automatic wake schedule management for a probe.
+
+    When disabled, the system will NOT reprogram the probe's sleep duration
+    around scheduled irrigation runs. The probe will just use its normal
+    sleep cycle and won't be woken early for moisture checks.
+    """
+    data = _load_data()
+    probe = data.get("probes", {}).get(probe_id)
+    if not probe:
+        raise HTTPException(status_code=404, detail=f"Probe '{probe_id}' not found")
+
+    display_name = probe.get("display_name", probe_id)
+    probe["wake_schedule_disabled"] = body.disabled
+    _save_data(data)
+
+    action = "disabled" if body.disabled else "enabled"
+    log_change(get_actor(request), "Moisture Probes",
+               f"Wake schedule {action} for {display_name}")
+
+    # Recalculate timeline to reflect the change
+    try:
+        await calculate_irrigation_timeline()
+    except Exception as e:
+        print(f"[MOISTURE] Timeline recalc after wake schedule toggle: {e}")
+
+    return {
+        "success": True,
+        "message": f"Wake schedule {action} for {display_name}",
+        "disabled": body.disabled,
+    }
 
 
 @router.post("/probes/{probe_id}/sleep-now", summary="Force probe to sleep immediately")

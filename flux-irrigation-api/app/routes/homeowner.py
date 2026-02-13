@@ -989,6 +989,7 @@ async def homeowner_delete_zone_heads(entity_id: str, request: Request):
 
 class SavePumpSettingsRequest(BaseModel):
     pump_entity_id: str = ""
+    pump_type: str = ""
     voltage: float = 240
     hp: float = 0
     kw: float = 0
@@ -1020,7 +1021,7 @@ async def homeowner_save_pump_settings(body: SavePumpSettingsRequest, request: R
 
     # Log changes
     changes = []
-    for key in ("voltage", "hp", "kw", "brand", "model", "year_installed", "cost_per_kwh", "peak_rate_per_kwh", "pressure_psi", "max_gpm", "max_head_ft"):
+    for key in ("pump_type", "voltage", "hp", "kw", "brand", "model", "year_installed", "cost_per_kwh", "peak_rate_per_kwh", "pressure_psi", "max_gpm", "max_head_ft"):
         old_val = old.get(key)
         new_val = result.get(key)
         if str(old_val) != str(new_val):

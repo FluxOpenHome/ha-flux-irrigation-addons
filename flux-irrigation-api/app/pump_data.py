@@ -18,6 +18,7 @@ HP_TO_KW = 0.7457  # 1 HP = 0.7457 kW
 
 DEFAULT_SETTINGS = {
     "pump_entity_id": "",
+    "pump_type": "",
     "voltage": 240,
     "hp": 0.0,
     "kw": 0.0,

@@ -2974,6 +2974,7 @@ async function loadEstGallons() {
         // Fetch water settings for cost display
         var waterSettings = null;
         try { waterSettings = await api('/water_settings?t=' + Date.now()); } catch(e) {}
+        if (waterSettings) window._cachedWaterSettings = waterSettings;
         const hasCost = waterSettings && waterSettings.cost_per_1000_gal > 0 &&
             (waterSettings.water_source === 'city' || waterSettings.water_source === 'reclaimed');
         const costPer1000 = hasCost ? waterSettings.cost_per_1000_gal : 0;
@@ -3125,6 +3126,9 @@ async function loadPumpMonitor() {
         var stats = await api('/pump_stats?hours=' + hours + '&t=' + Date.now());
         var pSettings = await api('/pump_settings?t=' + Date.now());
 
+        // Cache pump settings for head pressure propagation
+        window._cachedPumpSettings = pSettings;
+
         var html = '';
         // 2x2 stat grid
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">';
@@ -3157,55 +3161,248 @@ async function loadPumpMonitor() {
     }
 }
 
+var PUMP_DATABASE = [
+    {brand:'Berkeley',models:[
+        {model:'LTHH',display:'LTHH 1.5HP Centrifugal',pump_type:'above_ground',hp:1.5,kw:1.12,voltage:230,pressure_psi:35,max_gpm:64,max_head_ft:80},
+        {model:'LTH-5',display:'LTH-5 5HP Centrifugal',pump_type:'above_ground',hp:5.0,kw:3.73,voltage:230,pressure_psi:50,max_gpm:162,max_head_ft:115},
+        {model:'B1.5TPMS',display:'B-Series 10HP Commercial',pump_type:'above_ground',hp:10.0,kw:7.46,voltage:230,pressure_psi:65,max_gpm:202,max_head_ft:150}
+    ]},
+    {brand:'Davey',models:[
+        {model:'XJ25P',display:'XJ25P Centrifugal 0.6HP',pump_type:'above_ground',hp:0.6,kw:0.45,voltage:230,pressure_psi:42,max_gpm:15,max_head_ft:97},
+        {model:'XJ35P',display:'XJ35P Centrifugal 0.75HP',pump_type:'above_ground',hp:0.75,kw:0.56,voltage:230,pressure_psi:50,max_gpm:18,max_head_ft:115},
+        {model:'XJ50P',display:'XJ50P Centrifugal 1.0HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:230,pressure_psi:56,max_gpm:22,max_head_ft:130},
+        {model:'Torrium2',display:'Torrium2 Variable Speed',pump_type:'above_ground',hp:0.75,kw:0.55,voltage:230,pressure_psi:60,max_gpm:18,max_head_ft:138}
+    ]},
+    {brand:'Flotec',models:[
+        {model:'FP4012',display:'FP4012 Shallow Well 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:55,max_gpm:8,max_head_ft:130},
+        {model:'FP4112',display:'FP4112 Cast Iron Shallow 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:56,max_gpm:9,max_head_ft:129},
+        {model:'FP4212',display:'FP4212 Convertible 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:60,max_gpm:8,max_head_ft:162},
+        {model:'FP5172',display:'FP5172 Submersible 0.75HP',pump_type:'submersible',hp:0.75,kw:0.56,voltage:230,pressure_psi:60,max_gpm:10,max_head_ft:147}
+    ]},
+    {brand:'Franklin Electric',models:[
+        {model:'SubDrive-10',display:'SubDrive 0.75HP 10GPM',pump_type:'submersible',hp:0.75,kw:0.56,voltage:230,pressure_psi:60,max_gpm:10,max_head_ft:200},
+        {model:'SubDrive-25',display:'SubDrive 1.5HP 25GPM',pump_type:'submersible',hp:1.5,kw:1.12,voltage:230,pressure_psi:80,max_gpm:25,max_head_ft:300},
+        {model:'SubDrive-35',display:'SubDrive 1.5HP 35GPM',pump_type:'submersible',hp:1.5,kw:1.12,voltage:230,pressure_psi:65,max_gpm:35,max_head_ft:250},
+        {model:'FPS-4400-10',display:'FPS 4400 1HP 10GPM Sub',pump_type:'submersible',hp:1.0,kw:0.75,voltage:230,pressure_psi:65,max_gpm:10,max_head_ft:250},
+        {model:'FPS-4400-20',display:'FPS 4400 1.5HP 20GPM Sub',pump_type:'submersible',hp:1.5,kw:1.12,voltage:230,pressure_psi:70,max_gpm:20,max_head_ft:300},
+        {model:'FPS-4400-35',display:'FPS 4400 3HP 35GPM Sub',pump_type:'submersible',hp:3.0,kw:2.24,voltage:230,pressure_psi:85,max_gpm:35,max_head_ft:400},
+        {model:'BT4-10S4',display:'BT4 Inline Booster 1HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:230,pressure_psi:100,max_gpm:7,max_head_ft:410}
+    ]},
+    {brand:'Goulds',models:[
+        {model:'J5S',display:'J5S Shallow Well 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:50,max_gpm:15,max_head_ft:110},
+        {model:'J7S',display:'J7S Shallow Well 0.75HP',pump_type:'above_ground',hp:0.75,kw:0.56,voltage:115,pressure_psi:55,max_gpm:20,max_head_ft:130},
+        {model:'J10S',display:'J10S Shallow Well 1.0HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:230,pressure_psi:63,max_gpm:23,max_head_ft:145},
+        {model:'J15S',display:'J15S Shallow Well 1.5HP',pump_type:'above_ground',hp:1.5,kw:1.12,voltage:230,pressure_psi:70,max_gpm:29,max_head_ft:165},
+        {model:'J5',display:'J5 Convertible 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:50,max_gpm:12,max_head_ft:150},
+        {model:'10GS05',display:'10GS05 Sub 0.5HP 10GPM',pump_type:'submersible',hp:0.5,kw:0.37,voltage:230,pressure_psi:40,max_gpm:10,max_head_ft:90},
+        {model:'10GS10',display:'10GS10 Sub 1HP 10GPM',pump_type:'submersible',hp:1.0,kw:0.75,voltage:230,pressure_psi:80,max_gpm:10,max_head_ft:185},
+        {model:'10GS15',display:'10GS15 Sub 1.5HP 10GPM',pump_type:'submersible',hp:1.5,kw:1.12,voltage:230,pressure_psi:120,max_gpm:10,max_head_ft:280},
+        {model:'18GS10',display:'18GS10 Sub 1HP 18GPM',pump_type:'submersible',hp:1.0,kw:0.75,voltage:230,pressure_psi:50,max_gpm:18,max_head_ft:115},
+        {model:'25GS10',display:'25GS10 Sub 1HP 25GPM',pump_type:'submersible',hp:1.0,kw:0.75,voltage:230,pressure_psi:38,max_gpm:25,max_head_ft:88}
+    ]},
+    {brand:'Grundfos',models:[
+        {model:'SCALA2',display:'SCALA2 3-45 Booster 0.75HP',pump_type:'above_ground',hp:0.75,kw:0.55,voltage:115,pressure_psi:64,max_gpm:20,max_head_ft:148},
+        {model:'CMBE-1-44',display:'CMBE 1-44 Booster 0.75HP',pump_type:'above_ground',hp:0.75,kw:0.56,voltage:115,pressure_psi:64,max_gpm:15,max_head_ft:168},
+        {model:'CMBE-3-51',display:'CMBE 3-51 Booster 1HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:115,pressure_psi:60,max_gpm:26,max_head_ft:170},
+        {model:'CMBE-1-75',display:'CMBE 1-75 Hi-Head 1HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:230,pressure_psi:115,max_gpm:15,max_head_ft:265},
+        {model:'MQ3-45',display:'MQ3-45 Booster 1HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:115,pressure_psi:60,max_gpm:20,max_head_ft:92},
+        {model:'SQFlex-11',display:'SQFlex 11 Solar Sub 1.4HP',pump_type:'submersible',hp:1.4,kw:1.05,voltage:230,pressure_psi:73,max_gpm:11,max_head_ft:525}
+    ]},
+    {brand:'Myers',models:[
+        {model:'HR50S',display:'HR50S Shallow Well 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:50,max_gpm:15,max_head_ft:115},
+        {model:'HJ75S',display:'HJ75S Shallow Well 0.75HP',pump_type:'above_ground',hp:0.75,kw:0.56,voltage:115,pressure_psi:69,max_gpm:25,max_head_ft:159},
+        {model:'HJ100S',display:'HJ100S Shallow Well 1HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:115,pressure_psi:67,max_gpm:29,max_head_ft:154}
+    ]},
+    {brand:'Pentair',models:[
+        {model:'Enviromax-E135',display:'Enviromax E135 Centrifugal',pump_type:'above_ground',hp:1.5,kw:1.12,voltage:230,pressure_psi:45,max_gpm:100,max_head_ft:80},
+        {model:'Enviromax-E150',display:'Enviromax E150 Centrifugal',pump_type:'above_ground',hp:2.0,kw:1.49,voltage:230,pressure_psi:50,max_gpm:120,max_head_ft:95},
+        {model:'Enviromax-E170',display:'Enviromax E170 Centrifugal',pump_type:'above_ground',hp:3.0,kw:2.24,voltage:230,pressure_psi:55,max_gpm:150,max_head_ft:110}
+    ]},
+    {brand:'Rain Bird',models:[
+        {model:'BPUMP1HP',display:'BPUMP 1HP Booster',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:115,pressure_psi:45,max_gpm:66,max_head_ft:104},
+        {model:'BPUMP1.5HP',display:'BPUMP 1.5HP Booster',pump_type:'above_ground',hp:1.5,kw:1.12,voltage:115,pressure_psi:50,max_gpm:66,max_head_ft:115},
+        {model:'BPUMP2HP',display:'BPUMP 2HP Booster',pump_type:'above_ground',hp:2.0,kw:1.49,voltage:115,pressure_psi:55,max_gpm:70,max_head_ft:127}
+    ]},
+    {brand:'Red Lion',models:[
+        {model:'RJS-50',display:'RJS-50 Shallow Well 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:50,max_gpm:13,max_head_ft:150},
+        {model:'RJS-75',display:'RJS-75 Shallow Well 0.75HP',pump_type:'above_ground',hp:0.75,kw:0.56,voltage:115,pressure_psi:50,max_gpm:17,max_head_ft:150},
+        {model:'RJS-100',display:'RJS-100 Shallow Well 1HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:115,pressure_psi:50,max_gpm:23,max_head_ft:150},
+        {model:'RJC-50',display:'RJC-50 Convertible 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:50,max_gpm:11,max_head_ft:176},
+        {model:'RJC-100',display:'RJC-100 Convertible 1HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:230,pressure_psi:50,max_gpm:20,max_head_ft:207},
+        {model:'RL-SWJ50',display:'RL-SWJ50 Sub 0.5HP',pump_type:'submersible',hp:0.5,kw:0.37,voltage:230,pressure_psi:45,max_gpm:12,max_head_ft:100}
+    ]},
+    {brand:'Sta-Rite',models:[
+        {model:'DuraJet-50',display:'DuraJet 0.5HP Shallow',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:50,max_gpm:12,max_head_ft:115},
+        {model:'DuraJet-75',display:'DuraJet 0.75HP Shallow',pump_type:'above_ground',hp:0.75,kw:0.56,voltage:115,pressure_psi:55,max_gpm:18,max_head_ft:130},
+        {model:'DuraJet-100',display:'DuraJet 1HP Shallow',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:230,pressure_psi:63,max_gpm:23,max_head_ft:145},
+        {model:'DuraJet-150',display:'DuraJet 1.5HP Shallow',pump_type:'above_ground',hp:1.5,kw:1.12,voltage:230,pressure_psi:70,max_gpm:28,max_head_ft:162},
+        {model:'DuraJet-200',display:'DuraJet 2HP Shallow',pump_type:'above_ground',hp:2.0,kw:1.49,voltage:230,pressure_psi:75,max_gpm:33,max_head_ft:173},
+        {model:'Dominator-50',display:'Dominator 0.5HP Deep Well',pump_type:'submersible',hp:0.5,kw:0.37,voltage:230,pressure_psi:50,max_gpm:10,max_head_ft:120},
+        {model:'Dominator-75',display:'Dominator 0.75HP Deep Well',pump_type:'submersible',hp:0.75,kw:0.56,voltage:230,pressure_psi:60,max_gpm:12,max_head_ft:170},
+        {model:'Dominator-100',display:'Dominator 1HP Deep Well',pump_type:'submersible',hp:1.0,kw:0.75,voltage:230,pressure_psi:70,max_gpm:15,max_head_ft:230}
+    ]},
+    {brand:'Wayne',models:[
+        {model:'SWS50',display:'SWS50 Shallow Well 0.5HP',pump_type:'above_ground',hp:0.5,kw:0.37,voltage:115,pressure_psi:50,max_gpm:12,max_head_ft:115},
+        {model:'SWS75',display:'SWS75 Shallow Well 0.75HP',pump_type:'above_ground',hp:0.75,kw:0.56,voltage:115,pressure_psi:50,max_gpm:13,max_head_ft:115},
+        {model:'SWS100',display:'SWS100 Shallow Well 1HP',pump_type:'above_ground',hp:1.0,kw:0.75,voltage:115,pressure_psi:50,max_gpm:18,max_head_ft:115}
+    ]}
+];
+
+function _pumpDbPopulateModels(prefix, filterType) {
+    var brandSel = document.getElementById(prefix + 'PumpBrandSel');
+    var modelSel = document.getElementById(prefix + 'PumpModelSel');
+    if (!brandSel || !modelSel) return;
+    var brand = brandSel.value;
+    modelSel.innerHTML = '<option value="">-- Select Model --</option>';
+    if (!brand || brand === '__custom__') {
+        modelSel.innerHTML += '<option value="__custom__">Custom / Other</option>';
+        if (brand === '__custom__') modelSel.value = '__custom__';
+        // Show custom row immediately
+        var cr = document.getElementById(prefix + 'PumpCustomRow');
+        if (cr) cr.style.display = (brand === '__custom__') ? '' : 'none';
+        return;
+    }
+    var entry = PUMP_DATABASE.find(function(e) { return e.brand === brand; });
+    if (!entry) return;
+    entry.models.forEach(function(m) {
+        if (filterType && m.pump_type !== filterType) return;
+        modelSel.innerHTML += '<option value="' + m.model + '">' + m.display + '</option>';
+    });
+    modelSel.innerHTML += '<option value="__custom__">Custom / Other</option>';
+}
+
+function _pumpDbAutoFill(prefix) {
+    var brandSel = document.getElementById(prefix + 'PumpBrandSel');
+    var modelSel = document.getElementById(prefix + 'PumpModelSel');
+    if (!brandSel || !modelSel) return;
+    var brand = brandSel.value;
+    var modelKey = modelSel.value;
+    // Toggle custom fields
+    var customRow = document.getElementById(prefix + 'PumpCustomRow');
+    if (customRow) customRow.style.display = (brand === '__custom__' || modelKey === '__custom__') ? '' : 'none';
+    if (!brand || brand === '__custom__' || !modelKey || modelKey === '__custom__') return;
+    var entry = PUMP_DATABASE.find(function(e) { return e.brand === brand; });
+    if (!entry) return;
+    var m = entry.models.find(function(mm) { return mm.model === modelKey; });
+    if (!m) return;
+    // Auto-fill fields
+    var s = function(id, v) { var el = document.getElementById(prefix + id); if (el && v !== undefined) el.value = v; };
+    s('PumpHP', m.hp || '');
+    s('PumpKW', m.kw || '');
+    s('PumpVoltage', m.voltage || 240);
+    s('PumpPressure', m.pressure_psi || '');
+    s('PumpMaxGpm', m.max_gpm || '');
+    s('PumpMaxHead', m.max_head_ft || '');
+    // Update bar from PSI
+    var barEl = document.getElementById(prefix + 'PumpPressureBar');
+    if (barEl && m.pressure_psi) barEl.value = (m.pressure_psi * 0.0689476).toFixed(2);
+    // Set pump type radio
+    var typeEls = document.querySelectorAll('input[name="' + prefix + 'PumpType"]');
+    for (var ti = 0; ti < typeEls.length; ti++) { typeEls[ti].checked = (typeEls[ti].value === m.pump_type); }
+}
+
+function _pumpDbInit(prefix, pSettings) {
+    var brandSel = document.getElementById(prefix + 'PumpBrandSel');
+    var modelSel = document.getElementById(prefix + 'PumpModelSel');
+    if (!brandSel || !modelSel) return;
+    var savedBrand = pSettings.brand || '';
+    var savedModel = pSettings.model || '';
+    // Try to match saved brand
+    var matchedBrand = PUMP_DATABASE.find(function(e) { return e.brand === savedBrand; });
+    if (matchedBrand) {
+        brandSel.value = savedBrand;
+        _pumpDbPopulateModels(prefix, '');
+        // Try to match saved model
+        var matchedModel = matchedBrand.models.find(function(m) { return m.model === savedModel; });
+        if (matchedModel) {
+            modelSel.value = savedModel;
+        } else if (savedModel) {
+            modelSel.value = '__custom__';
+        }
+    } else if (savedBrand) {
+        brandSel.value = '__custom__';
+    }
+    // Show/hide custom row
+    var customRow = document.getElementById(prefix + 'PumpCustomRow');
+    if (customRow) {
+        customRow.style.display = (brandSel.value === '__custom__' || modelSel.value === '__custom__' || (!matchedBrand && savedBrand)) ? '' : 'none';
+    }
+}
+
 async function showPumpSettingsModal() {
     var pSettings = {};
     try { pSettings = await api('/pump_settings?t=' + Date.now()); } catch(e) {}
+    var P = 'ho'; // prefix for element IDs
 
     var body = '<div style="display:flex;flex-direction:column;gap:12px;">';
 
+    // Pump Type
+    var pt = pSettings.pump_type || '';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Pump Type</label>';
+    body += '<div style="display:flex;gap:16px;">';
+    body += '<label style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:4px;"><input type="radio" name="hoPumpType" value="above_ground"' + (pt === 'above_ground' ? ' checked' : '') + ' onchange="_pumpDbPopulateModels(\\'ho\\',this.value)"> Above Ground</label>';
+    body += '<label style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:4px;"><input type="radio" name="hoPumpType" value="submersible"' + (pt === 'submersible' ? ' checked' : '') + ' onchange="_pumpDbPopulateModels(\\'ho\\',this.value)"> Submersible</label>';
+    body += '<label style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:4px;"><input type="radio" name="hoPumpType" value=""' + (!pt ? ' checked' : '') + ' onchange="_pumpDbPopulateModels(\\'ho\\',\\'\\')"> All Types</label>';
+    body += '</div></div>';
+
+    // Brand + Model dropdowns
     body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Brand</label>' +
-        '<input type="text" id="pumpBrand" value="' + esc(pSettings.brand || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. Pentair, Hayward"></div>';
+        '<select id="hoPumpBrandSel" onchange="_pumpDbPopulateModels(\\'ho\\',\\'\\');_pumpDbAutoFill(\\'ho\\')" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;">' +
+        '<option value="">-- Select Brand --</option>';
+    for (var dbi = 0; dbi < PUMP_DATABASE.length; dbi++) {
+        body += '<option value="' + PUMP_DATABASE[dbi].brand + '">' + PUMP_DATABASE[dbi].brand + '</option>';
+    }
+    body += '<option value="__custom__">Custom / Other</option></select></div>';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Model</label>' +
-        '<input type="text" id="pumpModel" value="' + esc(pSettings.model || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. IntelliPro VSF"></div>';
+        '<select id="hoPumpModelSel" onchange="_pumpDbAutoFill(\\'ho\\')" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;">' +
+        '<option value="">-- Select Model --</option></select></div>';
     body += '</div>';
+
+    // Custom brand/model text inputs (hidden by default)
+    body += '<div id="hoPumpCustomRow" style="display:none;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Custom Brand</label>' +
+        '<input type="text" id="hoPumpBrand" value="' + esc(pSettings.brand || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. Acme Pumps"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Custom Model</label>' +
+        '<input type="text" id="hoPumpModel" value="' + esc(pSettings.model || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. Turbo 3000"></div>';
+    body += '</div></div>';
 
     body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Horsepower (HP)</label>' +
-        '<input type="number" id="pumpHP" value="' + (pSettings.hp || '') + '" step="0.25" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 1.5" oninput="var v=parseFloat(this.value)||0;document.getElementById(\\'pumpKW\\').value=v>0?(v*0.7457).toFixed(4):\\'\\'"></div>';
+        '<input type="number" id="hoPumpHP" value="' + (pSettings.hp || '') + '" step="0.25" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 1.5" oninput="var v=parseFloat(this.value)||0;document.getElementById(\\'hoPumpKW\\').value=v>0?(v*0.7457).toFixed(4):\\'\\'"></div>';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Kilowatts (kW)</label>' +
-        '<input type="number" id="pumpKW" value="' + (pSettings.kw || '') + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 1.12" oninput="var v=parseFloat(this.value)||0;document.getElementById(\\'pumpHP\\').value=v>0?(v/0.7457).toFixed(4):\\'\\'"></div>';
+        '<input type="number" id="hoPumpKW" value="' + (pSettings.kw || '') + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 1.12" oninput="var v=parseFloat(this.value)||0;document.getElementById(\\'hoPumpHP\\').value=v>0?(v/0.7457).toFixed(4):\\'\\'"></div>';
     body += '</div>';
 
     body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Voltage</label>' +
-        '<input type="number" id="pumpVoltage" value="' + (pSettings.voltage || 240) + '" step="1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="240"></div>';
+        '<input type="number" id="hoPumpVoltage" value="' + (pSettings.voltage || 240) + '" step="1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="240"></div>';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Year Installed</label>' +
-        '<input type="text" id="pumpYear" value="' + esc(pSettings.year_installed || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 2020"></div>';
+        '<input type="text" id="hoPumpYear" value="' + esc(pSettings.year_installed || '') + '" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 2020"></div>';
     body += '</div>';
 
+    body += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;">';
     var hoPsi = pSettings.pressure_psi || '';
     var hoBar = hoPsi ? (parseFloat(hoPsi) * 0.0689476).toFixed(2) : '';
-    body += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;">';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Pressure (PSI)</label>' +
-        '<input type="number" id="pumpPressure" value="' + hoPsi + '" step="1" min="0" ' +
-        'oninput="var b=document.getElementById(\\'pumpPressureBar\\');if(b)b.value=this.value?(this.value*0.0689476).toFixed(2):\\'\\';" ' +
+        '<input type="number" id="hoPumpPressure" value="' + hoPsi + '" step="1" min="0" ' +
+        'oninput="var b=document.getElementById(\\'hoPumpPressureBar\\');if(b)b.value=this.value?(this.value*0.0689476).toFixed(2):\\'\\';" ' +
         'style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 60"></div>';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Pressure (bar)</label>' +
-        '<input type="number" id="pumpPressureBar" value="' + hoBar + '" step="0.01" min="0" ' +
-        'oninput="var p=document.getElementById(\\'pumpPressure\\');if(p)p.value=this.value?Math.round(this.value/0.0689476):\\'\\';" ' +
+        '<input type="number" id="hoPumpPressureBar" value="' + hoBar + '" step="0.01" min="0" ' +
+        'oninput="var p=document.getElementById(\\'hoPumpPressure\\');if(p)p.value=this.value?Math.round(this.value/0.0689476):\\'\\';" ' +
         'style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 4.14"></div>';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Max GPM</label>' +
-        '<input type="number" id="pumpMaxGpm" value="' + (pSettings.max_gpm || '') + '" step="0.1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 25"></div>';
-    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Max Head (ft)</label>' +
-        '<input type="number" id="pumpMaxHead" value="' + (pSettings.max_head_ft || '') + '" step="1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 120"></div>';
+        '<input type="number" id="hoPumpMaxGpm" value="' + (pSettings.max_gpm || '') + '" step="0.1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 25"></div>';
+    body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Max Head / TDH (ft)</label>' +
+        '<input type="number" id="hoPumpMaxHead" value="' + (pSettings.max_head_ft || '') + '" step="1" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="e.g. 120"></div>';
     body += '</div>';
 
     body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Electricity Cost ($/kWh)</label>' +
-        '<input type="number" id="pumpCostKwh" value="' + (pSettings.cost_per_kwh || 0.12) + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="0.12"></div>';
+        '<input type="number" id="hoPumpCostKwh" value="' + (pSettings.cost_per_kwh || 0.12) + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="0.12"></div>';
     body += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Peak Rate ($/kWh)</label>' +
-        '<input type="number" id="pumpPeakRate" value="' + (pSettings.peak_rate_per_kwh || 0) + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="0.00"></div>';
+        '<input type="number" id="hoPumpPeakRate" value="' + (pSettings.peak_rate_per_kwh || 0) + '" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="0.00"></div>';
     body += '</div>';
 
     body += '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
@@ -3215,23 +3412,42 @@ async function showPumpSettingsModal() {
 
     body += '</div>';
 
-    showModal('\\u26a1 Pump Settings', body, '480px');
+    showModal('\\u26a1 Pump Settings', body, '520px');
+    // Initialize dropdowns after modal renders
+    setTimeout(function() { _pumpDbInit('ho', pSettings); }, 50);
 }
 
 async function savePumpSettings() {
+    // Determine brand/model from dropdown or custom input
+    var brandSel = document.getElementById('hoPumpBrandSel');
+    var modelSel = document.getElementById('hoPumpModelSel');
+    var brand = '', model = '';
+    if (brandSel && brandSel.value && brandSel.value !== '__custom__') {
+        brand = brandSel.value;
+        if (modelSel && modelSel.value && modelSel.value !== '__custom__') model = modelSel.value;
+        else model = (document.getElementById('hoPumpModel') || {value:''}).value.trim();
+    } else {
+        brand = (document.getElementById('hoPumpBrand') || {value:''}).value.trim();
+        model = (document.getElementById('hoPumpModel') || {value:''}).value.trim();
+    }
+    // Get pump type from radio
+    var pumpType = '';
+    var typeEls = document.querySelectorAll('input[name="hoPumpType"]');
+    for (var ti = 0; ti < typeEls.length; ti++) { if (typeEls[ti].checked) { pumpType = typeEls[ti].value; break; } }
     var payload = {
         pump_entity_id: window._pumpZoneEntity || '',
-        brand: document.getElementById('pumpBrand').value.trim(),
-        model: document.getElementById('pumpModel').value.trim(),
-        hp: parseFloat(document.getElementById('pumpHP').value) || 0,
-        kw: parseFloat(document.getElementById('pumpKW').value) || 0,
-        voltage: parseFloat(document.getElementById('pumpVoltage').value) || 240,
-        year_installed: document.getElementById('pumpYear').value.trim(),
-        cost_per_kwh: parseFloat(document.getElementById('pumpCostKwh').value) || 0.12,
-        peak_rate_per_kwh: parseFloat(document.getElementById('pumpPeakRate').value) || 0,
-        pressure_psi: parseFloat(document.getElementById('pumpPressure').value) || 0,
-        max_gpm: parseFloat(document.getElementById('pumpMaxGpm').value) || 0,
-        max_head_ft: parseFloat(document.getElementById('pumpMaxHead').value) || 0
+        pump_type: pumpType,
+        brand: brand,
+        model: model,
+        hp: parseFloat(document.getElementById('hoPumpHP').value) || 0,
+        kw: parseFloat(document.getElementById('hoPumpKW').value) || 0,
+        voltage: parseFloat(document.getElementById('hoPumpVoltage').value) || 240,
+        year_installed: document.getElementById('hoPumpYear').value.trim(),
+        cost_per_kwh: parseFloat(document.getElementById('hoPumpCostKwh').value) || 0.12,
+        peak_rate_per_kwh: parseFloat(document.getElementById('hoPumpPeakRate').value) || 0,
+        pressure_psi: parseFloat(document.getElementById('hoPumpPressure').value) || 0,
+        max_gpm: parseFloat(document.getElementById('hoPumpMaxGpm').value) || 0,
+        max_head_ft: parseFloat(document.getElementById('hoPumpMaxHead').value) || 0
     };
     try {
         await api('/pump_settings', { method: 'PUT', body: JSON.stringify(payload) });
@@ -5900,7 +6116,14 @@ function hoRenderHeadTable(heads) {
         html += '</select></td>';
 
         // PSI
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+        // PSI field — locked to pump pressure when pump is connected
+        var pumpPressureAvail = window._pumpZoneEntity && window._cachedPumpSettings && parseFloat(window._cachedPumpSettings.pressure_psi) > 0;
+        var headPsi = pumpPressureAvail ? window._cachedPumpSettings.pressure_psi : (h.psi || '');
+        if (pumpPressureAvail) {
+            html += '<td style="padding:2px;border:1px solid var(--border-light);position:relative;"><input type="number" data-field="psi" data-row="' + i + '" value="' + headPsi + '" min="0" max="150" step="1" readonly style="width:100%;min-width:45px;padding:3px 4px;border:1px solid rgba(59,130,246,0.4);border-radius:3px;font-size:11px;background:rgba(59,130,246,0.08);color:var(--text-secondary);cursor:not-allowed;" title="Pressure set by pump (' + window._cachedPumpSettings.pressure_psi + ' PSI)"><span style="position:absolute;top:1px;right:3px;font-size:7px;color:rgba(59,130,246,0.7);">PUMP</span></td>';
+        } else {
+            html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+        }
 
         // Notes
         html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes" style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
