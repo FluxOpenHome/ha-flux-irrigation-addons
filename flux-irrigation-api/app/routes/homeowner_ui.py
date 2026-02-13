@@ -1695,6 +1695,9 @@ async function loadZones() {
                         if (/pump|relay/.test(mv)) {
                             return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings">&#9432;</span>';
                         }
+                        if (/master|valve/.test(mv)) {
+                            return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings">&#9432;</span>';
+                        }
                         return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'' + z.entity_id + '\\', decodeURIComponent(\\'' + encodeURIComponent(displayName) + '\\'))" title="Zone head details">&#9432;</span>';
                     })()}
                 </div>
@@ -1989,8 +1992,9 @@ async function loadControls() {
             if (num) window._zoneModes[num] = { state: zm.state, entity: zm };
         }
 
-        // Detect pump start relay zone
+        // Detect pump start relay zone and master valve zone
         window._pumpZoneEntity = null;
+        window._masterValveEntity = null;
         for (const num in window._zoneModes) {
             const mode = (window._zoneModes[num].state || '').toLowerCase();
             if (/pump.*relay|pump\\s*start/i.test(mode)) {
@@ -1998,7 +2002,9 @@ async function loadControls() {
                 // select.irrigation_xxx_zone_N_mode -> switch.irrigation_xxx_zone_N
                 const modeEid = window._zoneModes[num].entity.entity_id;
                 window._pumpZoneEntity = modeEid.replace('select.', 'switch.').replace(/_mode$/, '');
-                break;
+            } else if (/master.*valve|valve.*master/i.test(mode)) {
+                const modeEid = window._zoneModes[num].entity.entity_id;
+                window._masterValveEntity = modeEid.replace('select.', 'switch.').replace(/_mode$/, '');
             }
         }
         // Auto-default to well water if pump relay detected and no water source set
@@ -2010,6 +2016,13 @@ async function loadControls() {
                     ws.cost_per_1000_gal = 0;
                     await api('/water_settings', { method: 'PUT', body: JSON.stringify(ws) });
                 }
+            } catch(e) {}
+        }
+        // Always cache water settings (even if Est Gallons card is hidden)
+        if (!window._cachedWaterSettings) {
+            try {
+                var wsC = await api('/water_settings?t=' + Date.now());
+                if (wsC) window._cachedWaterSettings = wsC;
             } catch(e) {}
         }
         loadPumpMonitor();
