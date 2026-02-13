@@ -4415,8 +4415,28 @@ async function loadMoisture() {
                     var cpAgeStr = cpAge < 1 ? 'Just now' : cpAge < 60 ? cpAge + ' min ago' : cpAge < 1440 ? Math.floor(cpAge / 60) + 'h ago' : Math.floor(cpAge / 1440) + 'd ago';
                     html += '<div style="margin-top:6px;font-size:10px;color:var(--text-muted);">Last reading: ' + cpAgeStr + '</div>';
                 }
-                // Read-only note
-                html += '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;font-style:italic;">Managed from cloud dashboard</div>';
+                // Moisture status reason — show the first non-empty reason from mapped zones
+                var cpReasonText = '';
+                for (var cpri = 0; cpri < cpZones.length; cpri++) {
+                    var cprzInfo = perZone[cpZones[cpri]];
+                    if (cprzInfo && cprzInfo.reason) { cpReasonText = cprzInfo.reason; break; }
+                }
+                if (cpReasonText) {
+                    html += '<div style="margin-top:6px;font-size:10px;color:var(--text-muted);font-style:italic;">' + esc(cpReasonText) + '</div>';
+                }
+                // Zone count
+                html += '<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;">';
+                if (cpZones.length > 0) {
+                    html += '<span style="font-size:12px;color:var(--text-secondary);"><strong>' + cpZones.length + '</strong> zone' + (cpZones.length !== 1 ? 's' : '') + ' mapped</span>';
+                } else {
+                    html += '<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No zones mapped</span>';
+                }
+                html += '</div>';
+                // Device ID + cloud badge
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);">';
+                html += '<span style="font-size:10px;color:var(--text-muted);font-family:monospace;" title="Particle Device ID">' + esc(probe.device_id || pid) + '</span>';
+                html += '<span style="font-size:9px;color:var(--text-muted);font-style:italic;">\\u2601 Cloud managed</span>';
+                html += '</div>';
                 html += '</div>';
             }
             html += '</div></div>';
