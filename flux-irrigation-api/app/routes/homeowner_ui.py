@@ -488,6 +488,9 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
             <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_history" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Run History</h2>
             <div style="display:flex;gap:6px;align-items:center;">
                 <a href="#" onclick="lockCard('history',event)" id="cardLock_history" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
+                <select id="historyZoneFilter" onclick="event.stopPropagation()" onchange="loadHistory()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);max-width:130px;">
+                    <option value="">All Zones</option>
+                </select>
                 <select id="historyRange" onclick="event.stopPropagation()" onchange="loadHistory()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
                     <option value="24">Last 24 hours</option>
                     <option value="168">Last 7 days</option>
@@ -2764,14 +2767,33 @@ async function loadHistory() {
                 return m;
             }).catch(() => ({})),
         ]);
-        // Filter out bare OFF/closed events with no duration from schedule source —
-        // these are state snapshots from add-on restarts, not actual runs.
-        // Keep weather_pause, system_pause, moisture_skip, skip, etc.
-        const events = (data.events || []).filter(e => {
+        // Filter out bare OFF/closed events and probe events (shown in Probe History)
+        const zoneFilter = (document.getElementById('historyZoneFilter') || {}).value || '';
+        const allEvents = (data.events || []).filter(e => {
+            // Exclude probe events — they go in Probe History section
+            if (e.source === 'moisture_probe') return false;
             if ((e.state === 'off' || e.state === 'closed') && !e.duration_seconds
                 && (!e.source || e.source === 'schedule' || e.source === 'unknown')) return false;
             return true;
         });
+        // Populate zone filter dropdown
+        const zoneSelect = document.getElementById('historyZoneFilter');
+        if (zoneSelect) {
+            const zoneSet = new Set();
+            allEvents.forEach(e => { if (e.entity_id) zoneSet.add(e.entity_id); });
+            const zones = Array.from(zoneSet).sort((a, b) => {
+                const na = parseInt((a.match(/zone[_]?(\\d+)/i) || [])[1]) || 999;
+                const nb = parseInt((b.match(/zone[_]?(\\d+)/i) || [])[1]) || 999;
+                return na - nb;
+            });
+            const prev = zoneSelect.value;
+            zoneSelect.innerHTML = '<option value="">All Zones</option>' + zones.map(z => {
+                const num = (z.match(/zone[_]?(\\d+)/i) || [])[1] || z;
+                return '<option value="' + esc(z) + '"' + (z === prev ? ' selected' : '') + '>Zone ' + num + '</option>';
+            }).join('');
+        }
+        // Apply zone filter
+        const events = zoneFilter ? allEvents.filter(e => e.entity_id === zoneFilter) : allEvents;
         if (events.length === 0) { el.innerHTML = '<div class="empty-state"><p>No run events in the selected time range</p></div>'; return; }
 
         // Show current weather context summary if available
@@ -4603,6 +4625,34 @@ async function loadMoisture() {
         html += '<div id="hoMoistureDeviceSensors" style="margin-top:10px;"></div>';
         html += '</div></div>';
 
+        // --- Probe History Section (collapsible) ---
+        html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:12px;">';
+        html += '<div style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleProbeHistory()">';
+        html += '<span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">\\ud83d\\udcca Probe History</span>';
+        html += '<div style="display:flex;align-items:center;gap:6px;">';
+        html += '<select id="probeHistoryFilter" onclick="event.stopPropagation()" onchange="renderProbeHistory()" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:6px;font-size:11px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);max-width:130px;">';
+        html += '<option value="">All Probes</option>';
+        // WiFi probes
+        for (const [pid, p] of Object.entries(wifiProbes)) {
+            html += '<option value="' + esc(pid) + '">' + esc(p.display_name || pid) + '</option>';
+        }
+        // Cellular probes
+        for (const [cpid, cp] of Object.entries(cellularProbes)) {
+            html += '<option value="' + esc(cpid) + '">' + esc(cp.display_name || cpid) + ' (Cellular)</option>';
+        }
+        html += '</select>';
+        html += '<select id="probeHistoryRange" onclick="event.stopPropagation()" onchange="loadProbeHistory()" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:6px;font-size:11px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">';
+        html += '<option value="24">24 hours</option>';
+        html += '<option value="168" selected>7 days</option>';
+        html += '<option value="720">30 days</option>';
+        html += '<option value="2160">90 days</option>';
+        html += '</select>';
+        html += '<span id="probeHistoryChevron" style="font-size:12px;color:var(--text-muted);">\\u25b6</span>';
+        html += '</div></div>';
+        html += '<div id="probeHistoryBody" style="display:none;margin-top:10px;">';
+        html += '<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:12px;">Click to load probe history</div>';
+        html += '</div></div>';
+
         body.innerHTML = html;
         // Populate device picker after DOM is ready
         loadHoMoistureDevices();
@@ -4610,6 +4660,105 @@ async function loadMoisture() {
         console.error('[MOISTURE] loadMoisture failed:', e);
         card.style.display = 'none';
     }
+}
+
+// --- Probe History ---
+let _probeHistoryOpen = false;
+let _probeHistoryEvents = [];
+
+function toggleProbeHistory() {
+    _probeHistoryOpen = !_probeHistoryOpen;
+    const body = document.getElementById('probeHistoryBody');
+    const chevron = document.getElementById('probeHistoryChevron');
+    if (body) body.style.display = _probeHistoryOpen ? 'block' : 'none';
+    if (chevron) chevron.textContent = _probeHistoryOpen ? '\\u25bc' : '\\u25b6';
+    if (_probeHistoryOpen && _probeHistoryEvents.length === 0) {
+        loadProbeHistory();
+    }
+}
+
+async function loadProbeHistory() {
+    const body = document.getElementById('probeHistoryBody');
+    if (!body) return;
+    body.innerHTML = '<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:12px;">Loading...</div>';
+    try {
+        const hoursRaw = (document.getElementById('probeHistoryRange') || {}).value || '168';
+        const hours = parseInt(hoursRaw, 10) || 168;
+        const data = await api('/history/runs?hours=' + hours);
+        _probeHistoryEvents = (data.events || []).filter(e => e.source === 'moisture_probe');
+        renderProbeHistory();
+    } catch (e) {
+        body.innerHTML = '<div style="color:var(--color-danger);font-size:12px;">Failed to load: ' + esc(e.message) + '</div>';
+    }
+}
+
+function renderProbeHistory() {
+    const body = document.getElementById('probeHistoryBody');
+    if (!body) return;
+    const filter = (document.getElementById('probeHistoryFilter') || {}).value || '';
+    const events = filter ? _probeHistoryEvents.filter(e => e.probe_id === filter || (e.probe_name || '').indexOf(filter) >= 0) : _probeHistoryEvents;
+    if (events.length === 0) {
+        body.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:12px;">No probe events in the selected time range.</div>';
+        return;
+    }
+    var html = '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+    html += '<thead><tr style="text-align:left;border-bottom:2px solid var(--border-light);color:var(--text-muted);">';
+    html += '<th style="padding:5px;">Probe</th>';
+    html += '<th style="padding:5px;">Event</th>';
+    html += '<th style="padding:5px;">Zone</th>';
+    html += '<th style="padding:5px;">Time</th>';
+    html += '<th style="padding:5px;">Details</th>';
+    html += '</tr></thead><tbody>';
+    var shown = Math.min(events.length, 100);
+    for (var i = 0; i < shown; i++) {
+        var e = events[i];
+        var probeName = e.probe_name || e.probe_id || '?';
+        var eventCell;
+        if (e.state === 'scheduled_wake') {
+            eventCell = '<span style="color:var(--color-warning);font-weight:600;">Scheduled Wake</span>';
+        } else if (e.state === 'probe_wake') {
+            eventCell = '<span style="color:var(--color-link);font-weight:600;">Awake</span>';
+        } else if (e.state === 'moisture_skip') {
+            eventCell = '<span style="color:var(--color-danger);font-weight:600;">Moisture Skip</span>';
+        } else {
+            eventCell = '<span style="font-weight:600;">' + esc(e.state) + '</span>';
+        }
+        var zoneText = '';
+        if (e.state === 'moisture_skip') {
+            var skipZoneNum = (e.entity_id || '').match(/zone[_]?(\\d+)/i);
+            zoneText = skipZoneNum ? 'Zone ' + skipZoneNum[1] : (e.zone_name || e.entity_id || '');
+        } else if (e.mapped_zones && e.mapped_zones.length > 0) {
+            zoneText = e.mapped_zones.map(function(z) {
+                var n = (z.match(/zone[_]?(\\d+)/i) || [])[1] || z;
+                return 'Z' + n;
+            }).join(', ');
+        } else {
+            zoneText = e.zone_name || '-';
+        }
+        var detailText = '';
+        if (e.state === 'moisture_skip') {
+            if (e.mid_sensor_pct != null) detailText = 'Mid: ' + e.mid_sensor_pct + '%';
+            if (e.reason) detailText += (detailText ? ' \\u2014 ' : '') + e.reason;
+        } else if (e.state === 'scheduled_wake' || e.state === 'probe_wake') {
+            if (e.mapped_zones) detailText = e.mapped_zones.length + ' zone' + (e.mapped_zones.length !== 1 ? 's' : '') + ' mapped';
+        }
+        if (e.moisture_multiplier != null && e.state === 'moisture_skip') {
+            detailText += (detailText ? ' | ' : '') + 'Factor: ' + e.moisture_multiplier + 'x';
+        }
+        var rowBg = e.state === 'moisture_skip' ? 'background:var(--bg-danger-light);' : e.state === 'scheduled_wake' ? 'background:var(--bg-tile);' : '';
+        html += '<tr style="border-bottom:1px solid var(--border-row);' + rowBg + '">';
+        html += '<td style="padding:5px;font-weight:500;">' + esc(probeName) + '</td>';
+        html += '<td style="padding:5px;">' + eventCell + '</td>';
+        html += '<td style="padding:5px;">' + esc(zoneText) + '</td>';
+        html += '<td style="padding:5px;">' + formatTime(e.timestamp) + '</td>';
+        html += '<td style="padding:5px;font-size:11px;color:var(--text-muted);">' + esc(detailText) + '</td>';
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    if (events.length > 100) {
+        html += '<div style="text-align:center;padding:4px;font-size:11px;color:var(--text-muted);">Showing 100 of ' + events.length + ' events</div>';
+    }
+    body.innerHTML = html;
 }
 
 // Moisture API helper (uses homeowner moisture prefix)
