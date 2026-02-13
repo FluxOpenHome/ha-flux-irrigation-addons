@@ -5935,7 +5935,7 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     if (_hoSiteMapManaged) {
         // Site-map managed notice
         body += '<div style="margin-bottom:10px;padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:6px;font-size:12px;color:rgba(59,130,246,0.9);">';
-        body += '<strong>&#128205; Site Map Managed</strong> &mdash; Head type, name, GPM, arc, and radius are set by your irrigation company via the Site Map Editor (shown greyed out). You can still edit brand, model, mount, pop-up height, PSI, and notes.';
+        body += '<strong>&#128205; Site Map Managed</strong> &mdash; Head type, name, arc, and radius are set by your irrigation company via the Site Map Editor (shown greyed out). You can still edit GPM, brand, model, mount, pop-up height, PSI, and notes.';
         body += '</div>';
         body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
         body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
@@ -5999,8 +5999,8 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
 
     if (_hoSiteMapManaged) {
         body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
-        body += '<strong>&#128161; Note:</strong> Greyed-out fields (head type, name, GPM, arc, radius) are managed by your irrigation company through the Site Map Editor. ';
-        body += 'You can edit brand, model, mount, pop-up height, PSI, notes, as well as zone area, soil type, and display preferences.';
+        body += '<strong>&#128161; Note:</strong> Greyed-out fields (head type, name, arc, radius) are managed by your irrigation company through the Site Map Editor. ';
+        body += 'You can edit GPM, brand, model, mount, pop-up height, PSI, notes, as well as zone area, soil type, and display preferences.';
         body += '</div>';
     } else {
         body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
@@ -6160,8 +6160,8 @@ function hoRenderHeadTable(heads) {
         }
         html += '</select></td>';
 
-        // GPM — LOCKED by site map editor
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM"' + _smRo + ' style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '"></td>';
+        // GPM — EDITABLE by homeowner
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM" style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '"></td>';
 
         // Arc — LOCKED by site map editor
         html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="arc_degrees" data-row="' + i + '" value="' + (h.arc_degrees || '') + '" min="0" max="360" step="1" placeholder="°"' + _smRo + ' style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '"></td>';
@@ -6425,9 +6425,11 @@ async function hoSaveZoneHeads() {
         var origHeads = window._hoZoneDetailsHeads || [];
         heads = origHeads.map(function(h, idx) {
             var merged = Object.assign({}, h);
-            // Merge editable fields from DOM (brand, model, mount, popup_height, psi, head_notes)
+            // Merge editable fields from DOM (gpm, brand, model, mount, popup_height, psi, head_notes)
             var wrap = document.getElementById('hoHeadTableWrap');
             if (wrap) {
+                var gpmInput = wrap.querySelector('input[data-field="gpm"][data-row="' + idx + '"]');
+                if (gpmInput) merged.gpm = parseFloat(gpmInput.value) || 0;
                 var brandSel = wrap.querySelector('select[data-field="brand"][data-row="' + idx + '"]');
                 if (brandSel) merged.brand = brandSel.value || '';
                 var modelSel = wrap.querySelector('select[data-field="model_select"][data-row="' + idx + '"]');
