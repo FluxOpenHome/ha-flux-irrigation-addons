@@ -3281,7 +3281,7 @@ async function showWaterSettingsModal() {
         '</div>';
     body += '</div>';
 
-    showModal('\\u{1F4A7} Water Settings', body, '420px');
+    showModal('\\u{1F4A7} Water Monitor Settings', body, '420px');
 }
 
 function toggleWaterCostField() {
