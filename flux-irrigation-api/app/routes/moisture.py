@@ -4172,6 +4172,10 @@ async def api_receive_cellular_reading(request: Request):
             "mid": f"cellular.{device_id}.mid",
             "deep": f"cellular.{device_id}.deep",
         },
+        "device_sensors": {
+            "battery": f"cellular.{device_id}.battery",
+            "signal": f"cellular.{device_id}.signal",
+        },
         "extra_sensors": {},
         "zone_mappings": zone_mappings,
         "thresholds": thresholds,
@@ -4181,6 +4185,7 @@ async def api_receive_cellular_reading(request: Request):
     # Update sensor cache with the reading values
     _load_sensor_cache()
     now_iso = datetime.now(timezone.utc).isoformat()
+    last_updated = reading.get("published_at") or now_iso
     for depth in ("shallow", "mid", "deep"):
         val = reading.get(depth)
         if val is not None:
@@ -4188,10 +4193,30 @@ async def api_receive_cellular_reading(request: Request):
             _sensor_cache[eid] = {
                 "state": float(val),
                 "raw_state": str(val),
-                "last_updated": reading.get("published_at") or now_iso,
+                "last_updated": last_updated,
                 "friendly_name": f"{display_name} {depth.title()}",
                 "unit": "%",
             }
+
+    # Cache battery and signal_strength for display in homeowner UI
+    bat_val = reading.get("battery")
+    if bat_val is not None:
+        _sensor_cache[f"cellular.{device_id}.battery"] = {
+            "state": float(bat_val),
+            "raw_state": str(bat_val),
+            "last_updated": last_updated,
+            "friendly_name": f"{display_name} Battery",
+            "unit": "%",
+        }
+    sig_val = reading.get("signal_strength")
+    if sig_val is not None:
+        _sensor_cache[f"cellular.{device_id}.signal"] = {
+            "state": float(sig_val),
+            "raw_state": str(sig_val),
+            "last_updated": last_updated,
+            "friendly_name": f"{display_name} Signal",
+            "unit": "dBm",
+        }
 
     _save_sensor_cache()
     _save_data(data)
@@ -4227,8 +4252,8 @@ async def api_remove_cellular_probe(request: Request):
 
     # Clean up sensor cache entries
     _load_sensor_cache()
-    for depth in ("shallow", "mid", "deep"):
-        eid = f"cellular.{device_id}.{depth}"
+    for suffix in ("shallow", "mid", "deep", "battery", "signal"):
+        eid = f"cellular.{device_id}.{suffix}"
         _sensor_cache.pop(eid, None)
     _save_sensor_cache()
     _save_data(data)
@@ -4258,21 +4283,68 @@ async def api_get_cellular_probes():
     if not cellular:
         return {"probes": {}, "total": 0}
 
-    # Attach cached sensor values
+    # Attach cached sensor values with staleness calculation
     _load_sensor_cache()
+    # Cellular probes sleeping 1-2 hours is normal; stale after 3 hours with no data
+    CELLULAR_STALE_SECONDS = 3 * 3600
+    now_utc = datetime.now(timezone.utc)
+
     for pid, probe in cellular.items():
         sensors_live = {}
+        device_id = probe.get("device_id", "")
+
+        # Determine staleness from the most recent last_updated across all cached sensors
+        latest_update = None
+        for depth in ("shallow", "mid", "deep"):
+            eid = probe.get("sensors", {}).get(depth, "")
+            if eid and eid in _sensor_cache:
+                cached = _sensor_cache[eid]
+                lu = cached.get("last_updated", "")
+                if lu:
+                    try:
+                        ts = datetime.fromisoformat(lu.replace("Z", "+00:00"))
+                        if latest_update is None or ts > latest_update:
+                            latest_update = ts
+                    except (ValueError, TypeError):
+                        pass
+
+        is_stale = False
+        if latest_update:
+            age_seconds = (now_utc - latest_update).total_seconds()
+            is_stale = age_seconds > CELLULAR_STALE_SECONDS
+
         for depth in ("shallow", "mid", "deep"):
             eid = probe.get("sensors", {}).get(depth, "")
             if eid and eid in _sensor_cache:
                 cached = _sensor_cache[eid]
                 sensors_live[depth] = {
                     "value": cached.get("state"),
-                    "stale": False,
+                    "stale": is_stale,
                     "cached": True,
                     "last_updated": cached.get("last_updated", ""),
                 }
         probe["sensors_live"] = sensors_live
+
+        # Attach battery and signal from cache
+        dev_sensors = {}
+        bat_eid = f"cellular.{device_id}.battery"
+        if bat_eid in _sensor_cache:
+            dev_sensors["battery"] = {
+                "value": _sensor_cache[bat_eid].get("state"),
+                "last_updated": _sensor_cache[bat_eid].get("last_updated", ""),
+            }
+        sig_eid = f"cellular.{device_id}.signal"
+        if sig_eid in _sensor_cache:
+            dev_sensors["signal"] = {
+                "value": _sensor_cache[sig_eid].get("state"),
+                "last_updated": _sensor_cache[sig_eid].get("last_updated", ""),
+            }
+        if dev_sensors:
+            probe["device_sensors_live"] = dev_sensors
+
+        # Attach last reading timestamp
+        if latest_update:
+            probe["last_reading_at"] = latest_update.isoformat()
 
     return {
         "probes": cellular,
