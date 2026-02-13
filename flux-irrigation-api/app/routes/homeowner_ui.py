@@ -5935,7 +5935,7 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     if (_hoSiteMapManaged) {
         // Site-map managed notice
         body += '<div style="margin-bottom:10px;padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:6px;font-size:12px;color:rgba(59,130,246,0.9);">';
-        body += '<strong>&#128205; Site Map Managed</strong> &mdash; Head type, name, arc, and radius are set by your irrigation company via the Site Map Editor (shown greyed out). You can still edit GPM, brand, model, mount, pop-up height, PSI, and notes.';
+        body += '<strong>&#128205; Site Map Managed</strong> &mdash; Head type, name, arc, radius, and zone area are set by your irrigation company via the Site Map Editor (shown greyed out). You can still edit GPM, brand, model, mount, pop-up height, PSI, and notes.';
         body += '</div>';
         body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
         body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
@@ -5960,10 +5960,13 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
 
     body += '<div id="hoHeadTableWrap"></div>';
 
+    // Lock area_sqft when site map manages this zone (area comes from boundary polygons set by management company)
+    var _hoAreaRo = _hoSiteMapManaged ? ' readonly' : '';
+    var _hoAreaBg = _hoSiteMapManaged ? 'background:var(--bg-hover);color:var(--text-secondary);cursor:not-allowed;opacity:0.7;' : 'background:var(--bg-input);color:var(--text-primary);';
     body += '<div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">';
     body += '<div style="flex:0 0 auto;">';
-    body += '<label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">Zone Area (sq ft):</label>';
-    body += '<input type="number" id="hoZoneAreaSqft" min="0" max="100000" step="1" value="' + (zoneData.area_sqft || '') + '" placeholder="e.g. 1500" style="width:130px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
+    body += '<label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">Zone Area (sq ft):' + (_hoSiteMapManaged ? ' <span style="font-size:10px;color:rgba(59,130,246,0.7);">&#128274; managed</span>' : '') + '</label>';
+    body += '<input type="number" id="hoZoneAreaSqft" min="0" max="100000" step="1" value="' + (zoneData.area_sqft || '') + '" placeholder="e.g. 1500"' + _hoAreaRo + ' style="width:130px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;' + _hoAreaBg + '">';
     body += '</div>';
     body += '<div style="flex:0 0 auto;">';
     body += '<label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">Soil Type:</label>';
