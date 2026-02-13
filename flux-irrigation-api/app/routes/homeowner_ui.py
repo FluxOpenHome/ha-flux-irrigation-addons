@@ -3103,8 +3103,8 @@ async function loadEstGallons() {
         // Water source badge + pressure
         var infoLine = [];
         if (waterSettings && waterSettings.water_source) {
-            var srcLabel = {city:'City Water', reclaimed:'Reclaimed Water', well:'Well Water'}[waterSettings.water_source] || '';
-            if (srcLabel) infoLine.push(esc(srcLabel));
+            var waterSrcLabel = {city:'City Water', reclaimed:'Reclaimed Water', well:'Well Water'}[waterSettings.water_source] || '';
+            if (waterSrcLabel) infoLine.push(esc(waterSrcLabel));
         }
         if (waterSettings && waterSettings.pressure_psi && !window._pumpZoneEntity) {
             var wBar = (waterSettings.pressure_psi * 0.0689476).toFixed(1);
@@ -7576,7 +7576,7 @@ function dnRenderAllCharts(data) {
     // 5. Weather Impact
     html += '<div class="dn-panel"><div class="dn-panel-title">Weather Impact</div><div class="dn-chart-wrap"><canvas id="dnChartWeather"></canvas></div></div>';
     // 6. Zone Performance — with bar/radar toggle
-    html += '<div class="dn-panel"><div class="dn-panel-title">Zone Performance <div class="dn-tab-group"><button class="dn-tab-btn active" onclick="dnZoneView(\\' + "'bar'" + '\\',this)">Bar</button><button class="dn-tab-btn" onclick="dnZoneView(\\' + "'radar'" + '\\',this)">Radar</button></div></div><div class="dn-chart-wrap" id="dnZoneWrap"><canvas id="dnChartZoneBar"></canvas></div></div>';
+    html += '<div class="dn-panel"><div class="dn-panel-title">Zone Performance <div class="dn-tab-group"><button class="dn-tab-btn active" onclick="dnZoneView(&quot;bar&quot;,this)">Bar</button><button class="dn-tab-btn" onclick="dnZoneView(&quot;radar&quot;,this)">Radar</button></div></div><div class="dn-chart-wrap" id="dnZoneWrap"><canvas id="dnChartZoneBar"></canvas></div></div>';
     // 7. Probe Health
     html += '<div class="dn-panel"><div class="dn-panel-title">Probe Health</div><div id="dnProbeHealth"></div></div>';
     // 8. Heatmap
