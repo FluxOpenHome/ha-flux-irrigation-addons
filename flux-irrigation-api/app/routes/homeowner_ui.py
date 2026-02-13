@@ -7133,16 +7133,17 @@ function dnBucketByDay(events) {
     return buckets;
 }
 
-function dnGetOnEvents(runs) {
+function dnGetRunEvents(runs) {
     var out = [];
     for (var i = 0; i < runs.length; i++) {
-        if (runs[i].state === 'on' && runs[i].duration_seconds > 0) out.push(runs[i]);
+        var r = runs[i];
+        if (r.state === 'off' && r.duration_seconds != null && r.duration_seconds > 0) out.push(r);
     }
     return out;
 }
 
 function dnTransformWaterUsage(runs, gpmMap, unit) {
-    var onRuns = dnGetOnEvents(runs);
+    var onRuns = dnGetRunEvents(runs);
     var zoneMap = {};
     var daySet = {};
     for (var i = 0; i < onRuns.length; i++) {
@@ -7173,24 +7174,32 @@ function dnTransformWaterUsage(runs, gpmMap, unit) {
 }
 
 function dnTransformSavings(runs, gpmMap) {
-    var onRuns = dnGetOnEvents(runs);
+    var runEvts = dnGetRunEvents(runs);
     var daySet = {};
-    for (var i = 0; i < onRuns.length; i++) {
-        var r = onRuns[i];
+    for (var i = 0; i < runEvts.length; i++) {
+        var r = runEvts[i];
         var day = (r.timestamp || '').substring(0, 10);
         if (!day) continue;
         if (!daySet[day]) daySet[day] = { used: 0, saved: 0, weatherSaved: 0, moistureSaved: 0 };
         var eid = r.entity_id || '';
-        var mins = (r.duration_seconds || 0) / 60;
-        var gpv = gpmMap[eid] || 0;
-        daySet[day].used += mins * gpv;
-        var savedGal = r.water_saved_gallons || 0;
-        if (savedGal > 0) {
-            daySet[day].saved += savedGal;
-            var src = r.water_saved_source || '';
-            if (src.indexOf('weather') >= 0) daySet[day].weatherSaved += savedGal;
-            else if (src.indexOf('moisture') >= 0) daySet[day].moistureSaved += savedGal;
-            else daySet[day].weatherSaved += savedGal;
+        var actualMins = (r.duration_seconds || 0) / 60;
+        var zoneGpm = gpmMap[eid] || 0;
+        daySet[day].used += actualMins * zoneGpm;
+        // Calculate savings from weather multiplier
+        var wMult = (r.weather && r.weather.watering_multiplier != null) ? r.weather.watering_multiplier : 1.0;
+        if (wMult > 0 && wMult < 1.0 && zoneGpm > 0) {
+            var origMins = actualMins / wMult;
+            var weatherSavedGal = (origMins - actualMins) * zoneGpm;
+            daySet[day].weatherSaved += weatherSavedGal;
+            daySet[day].saved += weatherSavedGal;
+        }
+        // Calculate savings from moisture multiplier
+        var mMult = (r.moisture && r.moisture.moisture_multiplier != null) ? r.moisture.moisture_multiplier : 1.0;
+        if (mMult > 0 && mMult < 1.0 && zoneGpm > 0) {
+            var origMinsM = actualMins / mMult;
+            var moistSavedGal = (origMinsM - actualMins) * zoneGpm;
+            daySet[day].moistureSaved += moistSavedGal;
+            daySet[day].saved += moistSavedGal;
         }
     }
     var labels = Object.keys(daySet).sort();
@@ -7212,7 +7221,7 @@ function dnTransformSavings(runs, gpmMap) {
 
 function dnTransformMoisture(runs) {
     var points = [];
-    var onRuns = dnGetOnEvents(runs);
+    var onRuns = dnGetRunEvents(runs);
     for (var i = 0; i < onRuns.length; i++) {
         var r = onRuns[i];
         var m = r.moisture || {};
@@ -7268,7 +7277,7 @@ function dnTransformWeather(weatherLog) {
 }
 
 function dnTransformZones(runs, gpmMap) {
-    var onRuns = dnGetOnEvents(runs);
+    var onRuns = dnGetRunEvents(runs);
     var zones = {};
     for (var i = 0; i < onRuns.length; i++) {
         var r = onRuns[i];
@@ -7294,7 +7303,7 @@ function dnTransformZones(runs, gpmMap) {
 function dnTransformHeatmap(runs) {
     var matrix = [];
     for (var d = 0; d < 7; d++) { matrix[d] = []; for (var h = 0; h < 24; h++) matrix[d][h] = 0; }
-    var onRuns = dnGetOnEvents(runs);
+    var onRuns = dnGetRunEvents(runs);
     for (var i = 0; i < onRuns.length; i++) {
         var ts = onRuns[i].timestamp;
         if (!ts) continue;
@@ -7326,14 +7335,20 @@ function dnTransformProbeHealth(probes) {
 
 // --- Summary cards ---
 function dnBuildSummaryCards(data, gpmMap) {
-    var onRuns = dnGetOnEvents(data.runs);
+    var runEvts = dnGetRunEvents(data.runs);
     var totalGal = 0, totalSaved = 0, totalMins = 0;
-    for (var i = 0; i < onRuns.length; i++) {
-        var r = onRuns[i];
+    for (var i = 0; i < runEvts.length; i++) {
+        var r = runEvts[i];
         var mins = (r.duration_seconds || 0) / 60;
+        var zoneGpm = gpmMap[r.entity_id] || 0;
         totalMins += mins;
-        totalGal += mins * (gpmMap[r.entity_id] || 0);
-        totalSaved += r.water_saved_gallons || 0;
+        totalGal += mins * zoneGpm;
+        // Calculate savings from weather multiplier
+        var wMult = (r.weather && r.weather.watering_multiplier != null) ? r.weather.watering_multiplier : 1.0;
+        if (wMult > 0 && wMult < 1.0 && zoneGpm > 0) { totalSaved += ((mins / wMult) - mins) * zoneGpm; }
+        // Calculate savings from moisture multiplier
+        var mMult = (r.moisture && r.moisture.moisture_multiplier != null) ? r.moisture.moisture_multiplier : 1.0;
+        if (mMult > 0 && mMult < 1.0 && zoneGpm > 0) { totalSaved += ((mins / mMult) - mins) * zoneGpm; }
     }
     // Avg moisture from probes
     var moistVals = [], probeKeys = Object.keys(data.probes || {});
@@ -7353,9 +7368,9 @@ function dnBuildSummaryCards(data, gpmMap) {
     html += '<div class="dn-stat-card"><div class="dn-stat-val">' + (avgMoist != null ? avgMoist + '%' : '--') + '</div><div class="dn-stat-label">Avg Moisture</div><div class="dn-stat-sub">' + probeKeys.length + ' probe' + (probeKeys.length !== 1 ? 's' : '') + '</div></div>';
     // Zone count
     var zoneSet = {};
-    for (var z = 0; z < onRuns.length; z++) { zoneSet[onRuns[z].entity_id] = true; }
+    for (var z = 0; z < runEvts.length; z++) { zoneSet[runEvts[z].entity_id] = true; }
     var zoneCount = Object.keys(zoneSet).length;
-    html += '<div class="dn-stat-card"><div class="dn-stat-val">' + zoneCount + '</div><div class="dn-stat-label">Active Zones</div><div class="dn-stat-sub">' + onRuns.length + ' run events</div></div>';
+    html += '<div class="dn-stat-card"><div class="dn-stat-val">' + zoneCount + '</div><div class="dn-stat-label">Active Zones</div><div class="dn-stat-sub">' + runEvts.length + ' run events</div></div>';
     html += '</div>';
     return html;
 }
@@ -7676,7 +7691,7 @@ function dnFmtNum(n) {
 // CSV export
 function dnExportCSV() {
     if (!_dnRawData || !_dnRawData.runs) { showToast('No data to export','warning'); return; }
-    var onRuns = dnGetOnEvents(_dnRawData.runs);
+    var onRuns = dnGetRunEvents(_dnRawData.runs);
     var gpmMap = dnBuildGpmMap(_dnRawData);
     var csv = 'Date,Zone,Duration_Min,Gallons,Saved_Gal,Weather_Mult,Moisture_Mult,Source\\n';
     for (var i = 0; i < onRuns.length; i++) {
