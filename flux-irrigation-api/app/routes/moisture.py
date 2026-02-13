@@ -4125,6 +4125,78 @@ async def api_calibrate_probe(probe_id: str, body: CalibrateRequest, request: Re
         )
 
 
+# ─── Cellular Probe Reading Receiver ──────────────────────────────────────────
+# The management server pushes cellular probe readings here so the HA add-on
+# can incorporate them into moisture factor calculations.
+
+@router.post("/cellular-reading", summary="Receive cellular probe reading from management server")
+async def api_receive_cellular_reading(request: Request):
+    """Receive a cellular probe reading pushed by the management server.
+
+    The management server receives Particle.io webhook data, stores it in
+    PostgreSQL, and pushes it here so the HA add-on can use it for moisture
+    calculations alongside ESPHome probes.
+
+    The HA add-on can see and use cellular probes but cannot add or remove them.
+    """
+    body = await request.json()
+    probe_id = body.get("probe_id", "")
+    device_id = body.get("particle_device_id", "")
+    display_name = body.get("display_name", f"Cellular ({device_id[-6:]})" if device_id else "Cellular Probe")
+    zone_mappings = body.get("zone_mappings", [])
+    thresholds = body.get("thresholds")
+    reading = body.get("reading", {})
+
+    if not probe_id or not device_id:
+        raise HTTPException(status_code=400, detail="Missing probe_id or particle_device_id")
+
+    data = _load_data()
+
+    # Store/update cellular probe in the probes dict with a "cellular_" prefix
+    cellular_key = f"cellular_{probe_id}"
+    existing = data.get("probes", {}).get(cellular_key, {})
+
+    data.setdefault("probes", {})[cellular_key] = {
+        **existing,
+        "probe_id": cellular_key,
+        "display_name": display_name,
+        "device_id": device_id,
+        "probe_type": "cellular",
+        "sensors": {
+            "shallow": f"cellular.{device_id}.shallow",
+            "mid": f"cellular.{device_id}.mid",
+            "deep": f"cellular.{device_id}.deep",
+        },
+        "extra_sensors": {},
+        "zone_mappings": zone_mappings,
+        "thresholds": thresholds,
+        "read_only": True,  # Cannot be managed from HA add-on
+    }
+
+    # Update sensor cache with the reading values
+    _load_sensor_cache()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for depth in ("shallow", "mid", "deep"):
+        val = reading.get(depth)
+        if val is not None:
+            eid = f"cellular.{device_id}.{depth}"
+            _sensor_cache[eid] = {
+                "state": float(val),
+                "raw_state": str(val),
+                "last_updated": reading.get("published_at") or now_iso,
+                "friendly_name": f"{display_name} {depth.title()}",
+                "unit": "%",
+            }
+
+    _save_sensor_cache()
+    _save_data(data)
+
+    print(f"[MOISTURE] Cellular reading received: {display_name} "
+          f"S={reading.get('shallow')} M={reading.get('mid')} D={reading.get('deep')}")
+
+    return {"success": True, "probe_key": cellular_key}
+
+
 @router.get("/settings", summary="Get moisture probe settings")
 async def api_get_settings():
     """Get global moisture probe settings."""
