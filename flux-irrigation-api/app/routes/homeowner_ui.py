@@ -4349,10 +4349,28 @@ async function loadMoisture() {
                 const sensors = probe.sensors_live || {};
                 html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
                 // Header with cellular badge
-                html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">';
+                var cpZones = probe.zone_mappings || [];
+                var cpSkipBadges = '';
+                for (var cpzi = 0; cpzi < cpZones.length; cpzi++) {
+                    var cpzEid = cpZones[cpzi];
+                    var cpzInfo = perZone[cpzEid];
+                    var cpzNum = (cpzEid.match(/zone[_]?(\\d+)/i) || [])[1] || '?';
+                    if (cpzInfo && cpzInfo.skip) {
+                        cpSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-danger-light);color:var(--color-danger);">Z' + cpzNum + ' Skip</span>';
+                    } else if (cpzInfo && cpzInfo.moisture_multiplier != null && cpzInfo.moisture_multiplier !== 1.0) {
+                        cpSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-warning);color:var(--text-warning);">Z' + cpzNum + ' ' + cpzInfo.moisture_multiplier.toFixed(2) + 'x</span>';
+                    } else {
+                        var cpmmVal = cpzInfo ? (cpzInfo.moisture_multiplier != null ? cpzInfo.moisture_multiplier.toFixed(2) : '1.00') : '1.00';
+                        cpSkipBadges += ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--bg-tile);color:var(--text-muted);border:1px solid var(--border-light);">Z' + cpzNum + ' ' + cpmmVal + 'x</span>';
+                    }
+                }
+                html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:' + (cpSkipBadges ? '2' : '10') + 'px;">';
                 html += '<span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(probe.display_name || pid) + '</span>';
                 html += '<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;background:transparent;color:var(--text-success-dark);border:1px solid var(--text-success-dark);flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M2 22V17h3v5H2zm5 0V14h3v8H7zm5 0V11h3v11h-3zm5 0V7h3v15h-3z"/><path d="M4.5 2L2 6h5L4.5 2z" stroke="currentColor" stroke-width="1.5" fill="currentColor"/><line x1="4.5" y1="6" x2="4.5" y2="10" stroke="currentColor" stroke-width="1.5"/></svg> Cellular</span>';
                 html += '</div>';
+                if (cpSkipBadges) {
+                    html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">' + cpSkipBadges + '</div>';
+                }
                 // Depth readings as horizontal bars
                 for (const depth of ['shallow', 'mid', 'deep']) {
                     const s = sensors[depth];
