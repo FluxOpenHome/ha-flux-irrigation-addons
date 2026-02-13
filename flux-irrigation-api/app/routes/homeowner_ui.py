@@ -4274,6 +4274,7 @@ async function loadMoisture() {
                     }
                     window['_wakePrep_' + pid] = _ppWake;
                     window['_wakeSkip_' + pid] = _zoneSkipMap;
+                    window['_wakeScheduleDisabled_' + pid] = !!(probe.wake_schedule_disabled);
                 }
                 const _hasCalibrate = es.calibrate_dry && es.calibrate_dry.length > 0;
                 if (_hasZones || _hasCalibrate) {
@@ -5130,7 +5131,28 @@ async function hoShowWakeSchedule(probeId) {
     } else {
         body = '<div style="font-size:13px;color:var(--text-muted);font-style:italic;padding:8px 0;">No schedule calculated yet. Configure schedule start times and zone durations to enable wake scheduling.</div>';
     }
+
+    // Add wake schedule enable/disable toggle
+    var isDisabled = window['_wakeScheduleDisabled_' + probeId] || false;
+    body += '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">';
+    body += '<div><strong style="font-size:12px;color:var(--text-secondary);">Wake Schedule</strong><br><span style="font-size:11px;color:var(--text-muted);">' + (isDisabled ? 'Probe will NOT be woken for scheduled runs' : 'Probe will wake before scheduled runs') + '</span></div>';
+    body += '<button id="wakeSchedToggleBtn" onclick="hoToggleWakeSchedule(\\'' + esc(probeId) + '\\')" style="padding:4px 12px;font-size:11px;border-radius:4px;cursor:pointer;font-weight:600;border:1px solid ' + (isDisabled ? 'var(--color-success)' : 'var(--color-danger)') + ';background:transparent;color:' + (isDisabled ? 'var(--color-success)' : 'var(--color-danger)') + ';">' + (isDisabled ? 'Enable' : 'Disable') + '</button>';
+    body += '</div>';
+
     showModal('Wake Schedule', body, '440px');
+}
+
+async function hoToggleWakeSchedule(probeId) {
+    var isDisabled = window['_wakeScheduleDisabled_' + probeId] || false;
+    var newState = !isDisabled;
+    try {
+        await mapi('/probes/' + probeId + '/wake-schedule-disabled', 'PUT', { disabled: newState });
+        window['_wakeScheduleDisabled_' + probeId] = newState;
+        showToast('Wake schedule ' + (newState ? 'disabled' : 'enabled'));
+        hoShowWakeSchedule(probeId); // Refresh the modal
+    } catch(e) {
+        showToast('Failed: ' + e.message, 'error');
+    }
 }
 
 async function toggleApplyFactors(enable) {
