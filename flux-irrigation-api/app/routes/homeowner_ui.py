@@ -334,7 +334,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
         <!-- Estimated Gallons Card -->
         <div class="card" id="estGallonsCard" style="display:none;">
             <div class="card-header" onclick="toggleCard('gallons')" style="cursor:pointer;user-select:none;">
-                <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_gallons" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Estimated Gallons</h2>
+                <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_gallons" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> &#128167; Water Settings</h2>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <a href="#" onclick="lockCard('gallons',event)" id="cardLock_gallons" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                     <select id="gallonsRange" onclick="event.stopPropagation()" onchange="loadEstGallons()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
@@ -3250,13 +3250,31 @@ async function showWaterSettingsModal() {
         'background:var(--bg-tile);border-radius:6px;padding:8px 12px;font-size:13px;color:var(--text-muted);">' +
         'Well water has no utility cost. Pump electricity costs are tracked in the Pump Monitor card.</div>';
 
+    // Water Pressure (PSI + bar)
+    var wsPsi = ws.pressure_psi || 50;
+    var wsBar = (wsPsi * 0.0689476).toFixed(2);
+    body += '<div style="margin-top:4px;">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">Water Pressure</label>' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+        '<div style="flex:1;"><input type="number" id="waterPressurePsi" value="' + wsPsi + '" step="1" min="0" ' +
+        'oninput="var b=document.getElementById(\\'waterPressureBar\\');if(b)b.value=(this.value*0.0689476).toFixed(2);" ' +
+        'style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="50">' +
+        '<span style="font-size:10px;color:var(--text-muted);">PSI</span></div>' +
+        '<div style="flex:1;"><input type="number" id="waterPressureBar" value="' + wsBar + '" step="0.01" min="0" ' +
+        'oninput="var p=document.getElementById(\\'waterPressurePsi\\');if(p)p.value=Math.round(this.value/0.0689476);" ' +
+        'style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;" placeholder="3.45">' +
+        '<span style="font-size:10px;color:var(--text-muted);">bar</span></div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">System water pressure (used when no pump is configured)</div>' +
+        '</div>';
+
     body += '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
         '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
         '<button class="btn btn-primary" onclick="saveWaterSettings()">Save</button>' +
         '</div>';
     body += '</div>';
 
-    showModal('\\u{1F4A7} Water Source Settings', body, '420px');
+    showModal('\\u{1F4A7} Water Settings', body, '420px');
 }
 
 function toggleWaterCostField() {
@@ -3268,7 +3286,8 @@ function toggleWaterCostField() {
 async function saveWaterSettings() {
     var payload = {
         water_source: document.getElementById('waterSourceType').value,
-        cost_per_1000_gal: parseFloat(document.getElementById('waterCostPer1000').value) || 0
+        cost_per_1000_gal: parseFloat(document.getElementById('waterCostPer1000').value) || 0,
+        pressure_psi: parseFloat(document.getElementById('waterPressurePsi').value) || 50
     };
     try {
         await api('/water_settings', { method: 'PUT', body: JSON.stringify(payload) });
