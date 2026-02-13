@@ -152,10 +152,24 @@ def log_zone_event(
             except (ValueError, TypeError):
                 pass
 
-    # Calculate water savings on OFF events
-    # Compare actual run time to ORIGINAL schedule set time (base duration, NOT factored)
+    # Calculate water savings on OFF events — ONLY for system-initiated reductions.
+    # Manual starts/stops do NOT count. The system must have reduced or stopped
+    # the zone via weather adjustments, rain sensor, or moisture probes.
+    #
+    # Sources that indicate system-initiated savings:
+    #   weather_pause, pause_enforced  — weather/rain stopped or prevented the run
+    #   moisture_skip                  — zone skipped due to soil saturation
+    #   moisture_cutoff                — zone cut short mid-run due to moisture threshold
+    #   schedule                       — normal schedule run that was shortened by applied factors
+    #
+    # Sources that do NOT count (user-initiated):
+    #   api, dashboard, timed_shutoff, stop_all, unknown
+    SAVINGS_SOURCES = {
+        "weather_pause", "pause_enforced", "moisture_skip",
+        "moisture_cutoff", "schedule", "system_pause",
+    }
     actual_dur = entry.get("duration_seconds")
-    if state in ("off", "closed") and actual_dur and actual_dur > 0:
+    if state in ("off", "closed") and actual_dur and actual_dur > 0 and source in SAVINGS_SOURCES:
         try:
             from routes.moisture import _load_data as _load_moisture_data
             import zone_nozzle_data
@@ -180,17 +194,20 @@ def log_zone_event(
                     heads_data = zone_nozzle_data.get_zone_heads(entity_id)
                     total_gpm = heads_data.get("total_gpm", 0)
 
+                    entry["water_saved_minutes"] = round(saved_minutes, 2)
+                    entry["water_saved_source"] = source
                     if total_gpm > 0:
                         water_saved = round(saved_minutes * total_gpm, 2)
                         entry["water_saved_gallons"] = water_saved
-                        print(f"[RUN_LOG] Water saved: {entity_id} ran {actual_minutes:.1f}min "
-                              f"vs {base_minutes:.1f}min base → saved {saved_minutes:.1f}min × "
-                              f"{total_gpm:.2f}GPM = {water_saved:.2f} gal")
+                        print(f"[RUN_LOG] Water saved ({source}): {entity_id} ran "
+                              f"{actual_minutes:.1f}min vs {base_minutes:.1f}min base → "
+                              f"saved {saved_minutes:.1f}min × {total_gpm:.2f}GPM = "
+                              f"{water_saved:.2f} gal")
                     else:
-                        # No GPM configured — still record time savings for reference
-                        entry["water_saved_minutes"] = round(saved_minutes, 2)
-                        print(f"[RUN_LOG] Time saved (no GPM): {entity_id} ran {actual_minutes:.1f}min "
-                              f"vs {base_minutes:.1f}min base → saved {saved_minutes:.1f}min")
+                        entry["water_saved_no_gpm"] = True
+                        print(f"[RUN_LOG] Time saved ({source}, no GPM): {entity_id} ran "
+                              f"{actual_minutes:.1f}min vs {base_minutes:.1f}min base → "
+                              f"saved {saved_minutes:.1f}min")
         except Exception as e:
             print(f"[RUN_LOG] Water savings calculation error: {e}")
 
