@@ -1899,7 +1899,7 @@ function wifiSignalBadge(sensor) {
     else if (val >= -60) { label = 'Good';  color = 'var(--color-success)'; }
     else if (val >= -70) { label = 'Poor';  color = 'var(--color-warning)'; }
     else                 { label = 'Bad';   color = 'var(--color-danger)'; }
-    return ' <span style="font-weight:600;color:' + color + ';">(' + label + ')</span>';
+    return ' <span style="font-weight:600;color:' + color + ';display:inline-flex;align-items:center;gap:2px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M1.5 8.5a14 14 0 0 1 21 0"/></svg> ' + label + '</span>';
 }
 
 // --- Sensors ---
@@ -4108,10 +4108,26 @@ async function loadMoisture() {
 
         let html = '';
 
-        // Probe tiles
-        if (probeCount > 0) {
+        // Split probes into WiFi and Cellular
+        var wifiProbes = {};
+        var cellularProbes = {};
+        for (const [pid, probe] of Object.entries(probes)) {
+            if (probe.probe_type === 'cellular' || pid.startsWith('cellular_')) {
+                cellularProbes[pid] = probe;
+            } else {
+                wifiProbes[pid] = probe;
+            }
+        }
+        var wifiCount = Object.keys(wifiProbes).length;
+        var cellularCount = Object.keys(cellularProbes).length;
+
+        // WiFi Probe tiles
+        if (wifiCount > 0) {
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+            html += '<span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 20h.01"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M1.5 8.5a14 14 0 0 1 21 0"/></svg> WiFi Probes</span>';
+            html += '</div>';
             html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
-            for (const [pid, probe] of Object.entries(probes)) {
+            for (const [pid, probe] of Object.entries(wifiProbes)) {
                 const sensors = probe.sensors_live || {};
                 const devSensors = probe.device_sensors || {};
                 const es = probe.extra_sensors || {};
@@ -4168,7 +4184,7 @@ async function loadMoisture() {
                         const wv = devSensors.wifi.value;
                         const wLabel = wv == null ? '—' : wv > -50 ? 'Great' : wv > -60 ? 'Good' : wv > -70 ? 'Fair' : 'Poor';
                         const wColor = wv == null ? 'var(--text-muted)' : wv > -50 ? 'var(--text-success-dark)' : wv > -60 ? 'var(--text-success-dark)' : wv > -70 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
-                        html += '<span style="color:' + wColor + ';" title="WiFi Signal: ' + (wv != null ? wv.toFixed(0) + ' dBm' : 'unknown') + '">📶 ' + wLabel + '</span>';
+                        html += '<span style="color:' + wColor + ';display:inline-flex;align-items:center;gap:2px;" title="WiFi Signal: ' + (wv != null ? wv.toFixed(0) + ' dBm' : 'unknown') + '"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.5a10 10 0 0 1 14 0"/><path d="M1.5 8.5a14 14 0 0 1 21 0"/></svg> ' + wLabel + '</span>';
                     }
                     if (devSensors.battery) {
                         const bv = devSensors.battery.value;
@@ -4327,7 +4343,49 @@ async function loadMoisture() {
                 html += '</div>';
             }
             html += '</div>';
-        } else {
+        }
+
+        // Cellular Probe tiles
+        if (cellularCount > 0) {
+            html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:12px;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+            html += '<span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M2 22V17h3v5H2zm5 0V14h3v8H7zm5 0V11h3v11h-3zm5 0V7h3v15h-3z"/><path d="M4.5 2L2 6h5L4.5 2z" stroke="currentColor" stroke-width="1.5" fill="currentColor"/><line x1="4.5" y1="6" x2="4.5" y2="10" stroke="currentColor" stroke-width="1.5"/></svg> Cellular Probes</span>';
+            html += '</div>';
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
+            for (const [pid, probe] of Object.entries(cellularProbes)) {
+                const sensors = probe.sensors_live || {};
+                html += '<div style="background:var(--bg-tile);border-radius:10px;padding:12px;border:1px solid var(--border-light);">';
+                // Header with cellular badge
+                html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">';
+                html += '<span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(probe.display_name || pid) + '</span>';
+                html += '<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;background:transparent;color:var(--text-success-dark);border:1px solid var(--text-success-dark);flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M2 22V17h3v5H2zm5 0V14h3v8H7zm5 0V11h3v11h-3zm5 0V7h3v15h-3z"/><path d="M4.5 2L2 6h5L4.5 2z" stroke="currentColor" stroke-width="1.5" fill="currentColor"/><line x1="4.5" y1="6" x2="4.5" y2="10" stroke="currentColor" stroke-width="1.5"/></svg> Cellular</span>';
+                html += '</div>';
+                // Depth readings as horizontal bars
+                for (const depth of ['shallow', 'mid', 'deep']) {
+                    const s = sensors[depth];
+                    if (!s) continue;
+                    const val = s.value != null ? s.value : null;
+                    const stale = s.stale;
+                    const isCached = s.cached === true;
+                    const pct = val != null ? Math.min(val, 100) : 0;
+                    const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
+                    html += '<div style="margin-bottom:6px;">';
+                    html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:2px;">';
+                    html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + (isCached ? ' <span style="font-size:9px;opacity:0.7;">(retained)</span>' : '') + '</span>';
+                    html += '<span>' + (val != null ? val.toFixed(0) + '%' : '\\u2014') + (stale ? ' \\u23f3' : '') + '</span>';
+                    html += '</div>';
+                    html += '<div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden;">';
+                    html += '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.3s;"></div>';
+                    html += '</div></div>';
+                }
+                // Read-only note
+                html += '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;font-style:italic;">Managed from cloud dashboard</div>';
+                html += '</div>';
+            }
+            html += '</div></div>';
+        }
+
+        if (wifiCount === 0 && cellularCount === 0) {
             html += '<div style="text-align:center;padding:16px;color:var(--text-muted);">No moisture probes configured. Click <strong>Manage Probes</strong> below to discover and add probes.</div>';
         }
 
