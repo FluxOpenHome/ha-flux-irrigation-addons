@@ -5935,7 +5935,7 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     if (_hoSiteMapManaged) {
         // Site-map managed notice
         body += '<div style="margin-bottom:10px;padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:6px;font-size:12px;color:rgba(59,130,246,0.9);">';
-        body += '<strong>&#128205; Site Map Managed</strong> &mdash; This zone\\'s heads are managed by your irrigation company through the Site Map Editor. Head details are shown below for reference but cannot be edited here.';
+        body += '<strong>&#128205; Site Map Managed</strong> &mdash; Head type, name, GPM, arc, and radius are set by your irrigation company via the Site Map Editor (shown greyed out). You can still edit brand, model, mount, pop-up height, PSI, and notes.';
         body += '</div>';
         body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
         body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
@@ -5999,8 +5999,8 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
 
     if (_hoSiteMapManaged) {
         body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
-        body += '<strong>&#128161; Note:</strong> Head details (type, GPM, arc, radius, etc.) are managed by your irrigation company and cannot be edited here. ';
-        body += 'You can still update zone area, soil type, notes, and display preferences above.';
+        body += '<strong>&#128161; Note:</strong> Greyed-out fields (head type, name, GPM, arc, radius) are managed by your irrigation company through the Site Map Editor. ';
+        body += 'You can edit brand, model, mount, pop-up height, PSI, notes, as well as zone area, soil type, and display preferences.';
         body += '</div>';
     } else {
         body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
@@ -6068,10 +6068,12 @@ function hoRenderHeadTable(heads) {
     if (hcEl) hcEl.value = String(heads.length);
     var ref = _hoNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
 
-    // Disabled styling for site-map-managed zones
-    var _dis = siteMapLocked ? ' disabled' : '';
-    var _roAttr = siteMapLocked ? ' readonly' : '';
-    var _lockBg = siteMapLocked ? 'background:var(--bg-hover);color:var(--text-secondary);cursor:not-allowed;opacity:0.7;' : 'background:var(--bg-input);color:var(--text-primary);';
+    // Disabled styling for site-map-controlled fields (nozzle_type, name, gpm, arc, radius)
+    // Brand, model, mount, popup_height, psi, notes remain editable by homeowner.
+    var _smDis = siteMapLocked ? ' disabled' : '';
+    var _smRo = siteMapLocked ? ' readonly' : '';
+    var _smBg = siteMapLocked ? 'background:var(--bg-hover);color:var(--text-secondary);cursor:not-allowed;opacity:0.7;' : 'background:var(--bg-input);color:var(--text-primary);';
+    var _editBg = 'background:var(--bg-input);color:var(--text-primary);';
 
     // Check if boundary_name column should be shown (managed mode + any head has boundary_name)
     var showBoundaryCol = window._hoSystemMode === 'managed' && heads.some(function(h) { return h && h.boundary_name; });
@@ -6108,11 +6110,11 @@ function hoRenderHeadTable(heads) {
         }
         html += '<td style="padding:4px 6px;border:1px solid var(--border-light);text-align:center;font-weight:600;">' + (i+1) + '</td>';
 
-        // Name / Location
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner"' + _roAttr + ' style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
+        // Name / Location — LOCKED by site map editor
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner"' + _smRo + ' style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '"></td>';
 
-        // Head Type dropdown
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
+        // Head Type dropdown — LOCKED by site map editor
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '"' + _smDis + ' style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '">';
         html += '<option value="">—</option>';
         for (var t = 0; t < ref.nozzle_types.length; t++) {
             var nt = ref.nozzle_types[t];
@@ -6120,17 +6122,17 @@ function hoRenderHeadTable(heads) {
         }
         html += '</select></td>';
 
-        // Brand
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="brand" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:70px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
+        // Brand — EDITABLE by homeowner
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="brand" data-row="' + i + '" style="width:100%;min-width:70px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '">';
         html += '<option value="">—</option>';
         for (var b = 0; b < ref.brands.length; b++) {
             html += '<option value="' + esc(ref.brands[b]) + '"' + (h.brand === ref.brands[b] ? ' selected' : '') + '>' + esc(ref.brands[b]) + '</option>';
         }
         html += '</select></td>';
 
-        // Model (picklist filtered by brand+type, with Custom option)
+        // Model — EDITABLE by homeowner
         html += '<td style="padding:2px;border:1px solid var(--border-light);">';
-        html += '<select data-field="model_select" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:100px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
+        html += '<select data-field="model_select" data-row="' + i + '" style="width:100%;min-width:100px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '">';
         html += '<option value="">—</option>';
         var selBrand = h.brand || '';
         var selType = h.nozzle_type || '';
@@ -6146,11 +6148,11 @@ function hoRenderHeadTable(heads) {
         html += '<option value="__custom__"' + (h.model && !foundModel && h.model !== '' ? ' selected' : '') + '>Custom...</option>';
         html += '</select>';
         var showCustom = (h.model && !foundModel && h.model !== '') ? '' : 'display:none;';
-        html += '<input type="text" data-field="model_custom" data-row="' + i + '" value="' + esc((!foundModel ? h.model : '') || '') + '" placeholder="Type model"' + _roAttr + ' style="' + showCustom + 'width:100%;margin-top:2px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
+        html += '<input type="text" data-field="model_custom" data-row="' + i + '" value="' + esc((!foundModel ? h.model : '') || '') + '" placeholder="Type model" style="' + showCustom + 'width:100%;margin-top:2px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '">';
         html += '</td>';
 
-        // Mount type
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="mount" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:65px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
+        // Mount type — EDITABLE by homeowner
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="mount" data-row="' + i + '" style="width:100%;min-width:65px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '">';
         html += '<option value="">—</option>';
         var mounts = ["Pop-Up","Stationary","Riser","Shrub","On-Grade"];
         for (var m = 0; m < mounts.length; m++) {
@@ -6158,17 +6160,17 @@ function hoRenderHeadTable(heads) {
         }
         html += '</select></td>';
 
-        // GPM
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM"' + _roAttr + ' style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
+        // GPM — LOCKED by site map editor
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM"' + _smRo + ' style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '"></td>';
 
-        // Arc
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="arc_degrees" data-row="' + i + '" value="' + (h.arc_degrees || '') + '" min="0" max="360" step="1" placeholder="°"' + _roAttr + ' style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
+        // Arc — LOCKED by site map editor
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="arc_degrees" data-row="' + i + '" value="' + (h.arc_degrees || '') + '" min="0" max="360" step="1" placeholder="°"' + _smRo + ' style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '"></td>';
 
-        // Radius
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="radius_ft" data-row="' + i + '" value="' + (h.radius_ft || '') + '" min="0" max="200" step="0.5" placeholder="ft"' + _roAttr + ' style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
+        // Radius — LOCKED by site map editor
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="radius_ft" data-row="' + i + '" value="' + (h.radius_ft || '') + '" min="0" max="200" step="0.5" placeholder="ft"' + _smRo + ' style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '"></td>';
 
-        // Pop-up Height
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="popup_height" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:50px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
+        // Pop-up Height — EDITABLE by homeowner
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="popup_height" data-row="' + i + '" style="width:100%;min-width:50px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '">';
         html += '<option value="">—</option>';
         var heights = ['2"','3"','4"','6"','12"'];
         var heightVals = ['2','3','4','6','12'];
@@ -6177,18 +6179,17 @@ function hoRenderHeadTable(heads) {
         }
         html += '</select></td>';
 
-        // PSI
-        // PSI field — locked to pump pressure when pump is connected, or locked when site-map managed
+        // PSI — EDITABLE by homeowner (unless pump overrides it)
         var pumpPressureAvail = window._pumpZoneEntity && window._cachedPumpSettings && parseFloat(window._cachedPumpSettings.pressure_psi) > 0;
         var headPsi = pumpPressureAvail ? window._cachedPumpSettings.pressure_psi : (h.psi || '');
-        if (pumpPressureAvail || siteMapLocked) {
-            html += '<td style="padding:2px;border:1px solid var(--border-light);position:relative;"><input type="number" data-field="psi" data-row="' + i + '" value="' + headPsi + '" min="0" max="150" step="1" readonly style="width:100%;min-width:45px;padding:3px 4px;border:1px solid rgba(59,130,246,0.4);border-radius:3px;font-size:11px;background:rgba(59,130,246,0.08);color:var(--text-secondary);cursor:not-allowed;" title="' + (pumpPressureAvail ? 'Pressure set by pump (' + window._cachedPumpSettings.pressure_psi + ' PSI)' : 'Managed by Site Map Editor') + '">' + (pumpPressureAvail ? '<span style="position:absolute;top:1px;right:3px;font-size:7px;color:rgba(59,130,246,0.7);">PUMP</span>' : '') + '</td>';
+        if (pumpPressureAvail) {
+            html += '<td style="padding:2px;border:1px solid var(--border-light);position:relative;"><input type="number" data-field="psi" data-row="' + i + '" value="' + headPsi + '" min="0" max="150" step="1" readonly style="width:100%;min-width:45px;padding:3px 4px;border:1px solid rgba(59,130,246,0.4);border-radius:3px;font-size:11px;background:rgba(59,130,246,0.08);color:var(--text-secondary);cursor:not-allowed;" title="Pressure set by pump (' + window._cachedPumpSettings.pressure_psi + ' PSI)"><span style="position:absolute;top:1px;right:3px;font-size:7px;color:rgba(59,130,246,0.7);">PUMP</span></td>';
         } else {
-            html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+            html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '"></td>';
         }
 
-        // Notes
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes"' + _roAttr + ' style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
+        // Notes — EDITABLE by homeowner
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes" style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '"></td>';
 
         // Boundary Area (only if managed mode + data exists)
         if (showBoundaryCol) html += '<td style="padding:4px 6px;border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);white-space:nowrap;">' + esc(h.boundary_name || '') + '</td>';
@@ -6418,8 +6419,37 @@ function hoCollectHeadData() {
 async function hoSaveZoneHeads() {
     var entityId = window._hoZoneDetailsEntityId;
     if (!entityId) return;
-    // When site-map managed, use original heads (table is read-only)
-    var heads = window._hoZoneSiteMapManaged ? (window._hoZoneDetailsHeads || []) : hoCollectHeadData();
+    var heads;
+    if (window._hoZoneSiteMapManaged) {
+        // Site-map managed: start from original heads, merge editable fields from DOM
+        var origHeads = window._hoZoneDetailsHeads || [];
+        heads = origHeads.map(function(h, idx) {
+            var merged = Object.assign({}, h);
+            // Merge editable fields from DOM (brand, model, mount, popup_height, psi, head_notes)
+            var wrap = document.getElementById('hoHeadTableWrap');
+            if (wrap) {
+                var brandSel = wrap.querySelector('select[data-field="brand"][data-row="' + idx + '"]');
+                if (brandSel) merged.brand = brandSel.value || '';
+                var modelSel = wrap.querySelector('select[data-field="model_select"][data-row="' + idx + '"]');
+                var modelCustom = wrap.querySelector('input[data-field="model_custom"][data-row="' + idx + '"]');
+                if (modelSel) {
+                    if (modelSel.value === '__custom__' && modelCustom) merged.model = modelCustom.value || '';
+                    else if (modelSel.value) merged.model = modelSel.value;
+                }
+                var mountSel = wrap.querySelector('select[data-field="mount"][data-row="' + idx + '"]');
+                if (mountSel) merged.mount = mountSel.value || '';
+                var popSel = wrap.querySelector('select[data-field="popup_height"][data-row="' + idx + '"]');
+                if (popSel) merged.popup_height = popSel.value || '';
+                var psiInput = wrap.querySelector('input[data-field="psi"][data-row="' + idx + '"]');
+                if (psiInput && !psiInput.readOnly) merged.psi = parseFloat(psiInput.value) || 0;
+                var notesInput = wrap.querySelector('input[data-field="head_notes"][data-row="' + idx + '"]');
+                if (notesInput) merged.head_notes = notesInput.value || '';
+            }
+            return merged;
+        });
+    } else {
+        heads = hoCollectHeadData();
+    }
     var notes = (document.getElementById('hoZoneNotes') || {}).value || '';
     var areaSqft = document.getElementById('hoZoneAreaSqft') ? parseFloat(document.getElementById('hoZoneAreaSqft').value) || 0 : 0;
     var soilType = document.getElementById('hoZoneSoilType') ? document.getElementById('hoZoneSoilType').value || '' : '';
