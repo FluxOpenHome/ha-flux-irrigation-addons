@@ -6046,7 +6046,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load system mode (for boundary area column visibility)
     try {
         var smBase = window.location.pathname.replace(/\\/+$/, '');
-        var smRes = await fetch(smBase + '/admin/api/system-mode');
+        var smRes = await fetch(smBase + '/api/system-mode');
         var smData = await smRes.json();
         window._hoSystemMode = smData.mode || 'standalone';
     } catch(e) {
