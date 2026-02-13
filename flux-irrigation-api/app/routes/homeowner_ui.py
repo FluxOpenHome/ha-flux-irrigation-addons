@@ -5926,20 +5926,37 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
         if (resp) zoneData = resp;
     } catch(e) {}
 
-    var body = '<div style="margin-bottom:10px;">';
-    body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
-    body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
-    body += '<input type="number" id="hoHeadCount" min="0" max="50" value="' + (zoneData.heads.length || 0) + '" style="width:60px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
-    body += '<button class="btn btn-primary btn-sm" onclick="hoBuildHeadTable()" style="font-size:11px;">Update Table</button>';
-    body += '</div>';
+    // Detect if site map manages this zone (heads have lat/lng from editor)
+    var _hoSiteMapManaged = zoneData.heads.some(function(h) { return !!(h.lat || h.lng); });
+    window._hoZoneSiteMapManaged = _hoSiteMapManaged;
 
-    body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
-    body += '<label style="font-weight:600;font-size:13px;">Copy From:</label>';
-    body += '<select id="hoCopyFromZone" style="flex:1;max-width:250px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
-    body += '<option value="">\\u2014 Select a zone \\u2014</option>';
-    body += '</select>';
-    body += '<button class="btn btn-sm" onclick="hoCopyFromZone()" style="font-size:11px;background:var(--bg-hover);border:1px solid var(--border-light);color:var(--text-primary);">&#128203; Copy</button>';
-    body += '</div>';
+    var body = '<div style="margin-bottom:10px;">';
+
+    if (_hoSiteMapManaged) {
+        // Site-map managed notice
+        body += '<div style="margin-bottom:10px;padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:6px;font-size:12px;color:rgba(59,130,246,0.9);">';
+        body += '<strong>&#128205; Site Map Managed</strong> &mdash; This zone\\'s heads are managed by your irrigation company through the Site Map Editor. Head details are shown below for reference but cannot be edited here.';
+        body += '</div>';
+        body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
+        body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
+        body += '<span style="font-weight:700;font-size:14px;color:var(--text-primary);padding:4px 8px;background:var(--bg-hover);border-radius:4px;">' + zoneData.heads.length + '</span>';
+        body += '<span style="font-size:11px;color:rgba(59,130,246,0.7);">&#128274; Managed</span>';
+        body += '</div>';
+    } else {
+        body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
+        body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
+        body += '<input type="number" id="hoHeadCount" min="0" max="50" value="' + (zoneData.heads.length || 0) + '" style="width:60px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
+        body += '<button class="btn btn-primary btn-sm" onclick="hoBuildHeadTable()" style="font-size:11px;">Update Table</button>';
+        body += '</div>';
+
+        body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
+        body += '<label style="font-weight:600;font-size:13px;">Copy From:</label>';
+        body += '<select id="hoCopyFromZone" style="flex:1;max-width:250px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
+        body += '<option value="">\\u2014 Select a zone \\u2014</option>';
+        body += '</select>';
+        body += '<button class="btn btn-sm" onclick="hoCopyFromZone()" style="font-size:11px;background:var(--bg-hover);border:1px solid var(--border-light);color:var(--text-primary);">&#128203; Copy</button>';
+        body += '</div>';
+    }
 
     body += '<div id="hoHeadTableWrap"></div>';
 
@@ -5980,10 +5997,17 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     body += '<span id="hoZoneSaveStatus" style="font-size:12px;color:var(--color-success);align-self:center;"></span>';
     body += '</div>';
 
-    body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
-    body += '<strong>&#128161; Tip:</strong> Document each sprinkler head in the zone — type, flow rate (GPM), spray arc, and location. ';
-    body += 'This helps professionals service your system and ensures accurate watering calculations.';
-    body += '</div>';
+    if (_hoSiteMapManaged) {
+        body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
+        body += '<strong>&#128161; Note:</strong> Head details (type, GPM, arc, radius, etc.) are managed by your irrigation company and cannot be edited here. ';
+        body += 'You can still update zone area, soil type, notes, and display preferences above.';
+        body += '</div>';
+    } else {
+        body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
+        body += '<strong>&#128161; Tip:</strong> Document each sprinkler head in the zone — type, flow rate (GPM), spray arc, and location. ';
+        body += 'This helps professionals service your system and ensures accurate watering calculations.';
+        body += '</div>';
+    }
     body += '</div>';
 
     // Store entity ID for save
@@ -6015,6 +6039,10 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
 }
 
 function hoBuildHeadTable() {
+    if (window._hoZoneSiteMapManaged) {
+        showToast('Head count is managed by the Site Map Editor', 'error');
+        return;
+    }
     var count = parseInt(document.getElementById('hoHeadCount').value) || 0;
     if (count < 0) count = 0;
     if (count > 50) count = 50;
@@ -6029,13 +6057,21 @@ function hoBuildHeadTable() {
 
 function hoRenderHeadTable(heads) {
     var wrap = document.getElementById('hoHeadTableWrap');
+    var siteMapLocked = !!window._hoZoneSiteMapManaged;
     if (!heads || heads.length === 0) {
         wrap.innerHTML = '<div style="color:var(--text-secondary);font-size:12px;padding:8px;">No heads configured. Set the number above and click Update Table.</div>';
-        document.getElementById('hoHeadCount').value = '0';
+        var hcEl0 = document.getElementById('hoHeadCount');
+        if (hcEl0) hcEl0.value = '0';
         return;
     }
-    document.getElementById('hoHeadCount').value = String(heads.length);
+    var hcEl = document.getElementById('hoHeadCount');
+    if (hcEl) hcEl.value = String(heads.length);
     var ref = _hoNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
+
+    // Disabled styling for site-map-managed zones
+    var _dis = siteMapLocked ? ' disabled' : '';
+    var _roAttr = siteMapLocked ? ' readonly' : '';
+    var _lockBg = siteMapLocked ? 'background:var(--bg-hover);color:var(--text-secondary);cursor:not-allowed;opacity:0.7;' : 'background:var(--bg-input);color:var(--text-primary);';
 
     // Check if boundary_name column should be shown (managed mode + any head has boundary_name)
     var showBoundaryCol = window._hoSystemMode === 'managed' && heads.some(function(h) { return h && h.boundary_name; });
@@ -6062,17 +6098,21 @@ function hoRenderHeadTable(heads) {
         var h = heads[i] || {};
         var rowBg = i % 2 === 0 ? '' : 'background:var(--bg-hover);';
         html += '<tr style="' + rowBg + '">';
-        html += '<td style="padding:2px 4px;border:1px solid var(--border-light);text-align:center;white-space:nowrap;">';
-        html += '<button onclick="hoCopyHeadDown(' + i + ')" title="Copy to rows below" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">\\u2b07</button>';
-        html += '<button onclick="hoDuplicateHead(' + i + ')" title="Duplicate row" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">+</button>';
-        html += '</td>';
+        if (!siteMapLocked) {
+            html += '<td style="padding:2px 4px;border:1px solid var(--border-light);text-align:center;white-space:nowrap;">';
+            html += '<button onclick="hoCopyHeadDown(' + i + ')" title="Copy to rows below" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">\\u2b07</button>';
+            html += '<button onclick="hoDuplicateHead(' + i + ')" title="Duplicate row" style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px 2px;color:var(--text-secondary);">+</button>';
+            html += '</td>';
+        } else {
+            html += '<td style="padding:2px 4px;border:1px solid var(--border-light);text-align:center;white-space:nowrap;color:var(--text-secondary);font-size:10px;">&#128274;</td>';
+        }
         html += '<td style="padding:4px 6px;border:1px solid var(--border-light);text-align:center;font-weight:600;">' + (i+1) + '</td>';
 
         // Name / Location
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner" style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner"' + _roAttr + ' style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
 
         // Head Type dropdown
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '" style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
         html += '<option value="">—</option>';
         for (var t = 0; t < ref.nozzle_types.length; t++) {
             var nt = ref.nozzle_types[t];
@@ -6081,7 +6121,7 @@ function hoRenderHeadTable(heads) {
         html += '</select></td>';
 
         // Brand
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="brand" data-row="' + i + '" style="width:100%;min-width:70px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="brand" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:70px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
         html += '<option value="">—</option>';
         for (var b = 0; b < ref.brands.length; b++) {
             html += '<option value="' + esc(ref.brands[b]) + '"' + (h.brand === ref.brands[b] ? ' selected' : '') + '>' + esc(ref.brands[b]) + '</option>';
@@ -6090,7 +6130,7 @@ function hoRenderHeadTable(heads) {
 
         // Model (picklist filtered by brand+type, with Custom option)
         html += '<td style="padding:2px;border:1px solid var(--border-light);">';
-        html += '<select data-field="model_select" data-row="' + i + '" style="width:100%;min-width:100px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
+        html += '<select data-field="model_select" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:100px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
         html += '<option value="">—</option>';
         var selBrand = h.brand || '';
         var selType = h.nozzle_type || '';
@@ -6106,11 +6146,11 @@ function hoRenderHeadTable(heads) {
         html += '<option value="__custom__"' + (h.model && !foundModel && h.model !== '' ? ' selected' : '') + '>Custom...</option>';
         html += '</select>';
         var showCustom = (h.model && !foundModel && h.model !== '') ? '' : 'display:none;';
-        html += '<input type="text" data-field="model_custom" data-row="' + i + '" value="' + esc((!foundModel ? h.model : '') || '') + '" placeholder="Type model" style="' + showCustom + 'width:100%;margin-top:2px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
+        html += '<input type="text" data-field="model_custom" data-row="' + i + '" value="' + esc((!foundModel ? h.model : '') || '') + '" placeholder="Type model"' + _roAttr + ' style="' + showCustom + 'width:100%;margin-top:2px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
         html += '</td>';
 
         // Mount type
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="mount" data-row="' + i + '" style="width:100%;min-width:65px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="mount" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:65px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
         html += '<option value="">—</option>';
         var mounts = ["Pop-Up","Stationary","Riser","Shrub","On-Grade"];
         for (var m = 0; m < mounts.length; m++) {
@@ -6119,16 +6159,16 @@ function hoRenderHeadTable(heads) {
         html += '</select></td>';
 
         // GPM
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM" style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="gpm" data-row="' + i + '" value="' + (h.gpm || '') + '" min="0" max="20" step="0.01" placeholder="GPM"' + _roAttr + ' style="width:100%;min-width:50px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
 
         // Arc
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="arc_degrees" data-row="' + i + '" value="' + (h.arc_degrees || '') + '" min="0" max="360" step="1" placeholder="°" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="arc_degrees" data-row="' + i + '" value="' + (h.arc_degrees || '') + '" min="0" max="360" step="1" placeholder="°"' + _roAttr + ' style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
 
         // Radius
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="radius_ft" data-row="' + i + '" value="' + (h.radius_ft || '') + '" min="0" max="200" step="0.5" placeholder="ft" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="radius_ft" data-row="' + i + '" value="' + (h.radius_ft || '') + '" min="0" max="200" step="0.5" placeholder="ft"' + _roAttr + ' style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
 
         // Pop-up Height
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="popup_height" data-row="' + i + '" style="width:100%;min-width:50px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);">';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="popup_height" data-row="' + i + '"' + _dis + ' style="width:100%;min-width:50px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '">';
         html += '<option value="">—</option>';
         var heights = ['2"','3"','4"','6"','12"'];
         var heightVals = ['2','3','4','6','12'];
@@ -6138,17 +6178,17 @@ function hoRenderHeadTable(heads) {
         html += '</select></td>';
 
         // PSI
-        // PSI field — locked to pump pressure when pump is connected
+        // PSI field — locked to pump pressure when pump is connected, or locked when site-map managed
         var pumpPressureAvail = window._pumpZoneEntity && window._cachedPumpSettings && parseFloat(window._cachedPumpSettings.pressure_psi) > 0;
         var headPsi = pumpPressureAvail ? window._cachedPumpSettings.pressure_psi : (h.psi || '');
-        if (pumpPressureAvail) {
-            html += '<td style="padding:2px;border:1px solid var(--border-light);position:relative;"><input type="number" data-field="psi" data-row="' + i + '" value="' + headPsi + '" min="0" max="150" step="1" readonly style="width:100%;min-width:45px;padding:3px 4px;border:1px solid rgba(59,130,246,0.4);border-radius:3px;font-size:11px;background:rgba(59,130,246,0.08);color:var(--text-secondary);cursor:not-allowed;" title="Pressure set by pump (' + window._cachedPumpSettings.pressure_psi + ' PSI)"><span style="position:absolute;top:1px;right:3px;font-size:7px;color:rgba(59,130,246,0.7);">PUMP</span></td>';
+        if (pumpPressureAvail || siteMapLocked) {
+            html += '<td style="padding:2px;border:1px solid var(--border-light);position:relative;"><input type="number" data-field="psi" data-row="' + i + '" value="' + headPsi + '" min="0" max="150" step="1" readonly style="width:100%;min-width:45px;padding:3px 4px;border:1px solid rgba(59,130,246,0.4);border-radius:3px;font-size:11px;background:rgba(59,130,246,0.08);color:var(--text-secondary);cursor:not-allowed;" title="' + (pumpPressureAvail ? 'Pressure set by pump (' + window._cachedPumpSettings.pressure_psi + ' PSI)' : 'Managed by Site Map Editor') + '">' + (pumpPressureAvail ? '<span style="position:absolute;top:1px;right:3px;font-size:7px;color:rgba(59,130,246,0.7);">PUMP</span>' : '') + '</td>';
         } else {
             html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
         }
 
         // Notes
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes" style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;background:var(--bg-input);color:var(--text-primary);"></td>';
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="head_notes" data-row="' + i + '" value="' + esc(h.head_notes || '') + '" placeholder="Notes"' + _roAttr + ' style="width:100%;min-width:80px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _lockBg + '"></td>';
 
         // Boundary Area (only if managed mode + data exists)
         if (showBoundaryCol) html += '<td style="padding:4px 6px;border:1px solid var(--border-light);font-size:11px;color:var(--text-secondary);white-space:nowrap;">' + esc(h.boundary_name || '') + '</td>';
@@ -6378,7 +6418,8 @@ function hoCollectHeadData() {
 async function hoSaveZoneHeads() {
     var entityId = window._hoZoneDetailsEntityId;
     if (!entityId) return;
-    var heads = hoCollectHeadData();
+    // When site-map managed, use original heads (table is read-only)
+    var heads = window._hoZoneSiteMapManaged ? (window._hoZoneDetailsHeads || []) : hoCollectHeadData();
     var notes = (document.getElementById('hoZoneNotes') || {}).value || '';
     var areaSqft = document.getElementById('hoZoneAreaSqft') ? parseFloat(document.getElementById('hoZoneAreaSqft').value) || 0 : 0;
     var soilType = document.getElementById('hoZoneSoilType') ? document.getElementById('hoZoneSoilType').value || '' : '';
