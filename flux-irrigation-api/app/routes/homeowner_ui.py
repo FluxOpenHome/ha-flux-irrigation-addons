@@ -3001,10 +3001,18 @@ async function loadEstGallons() {
         }
         html += '</div>';
         html += '</div>';
-        // Water source badge
+        // Water source badge + pressure
+        var infoLine = [];
         if (waterSettings && waterSettings.water_source) {
             var srcLabel = {city:'City Water', reclaimed:'Reclaimed Water', well:'Well Water'}[waterSettings.water_source] || '';
-            if (srcLabel) html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">' + esc(srcLabel) + '</div>';
+            if (srcLabel) infoLine.push(esc(srcLabel));
+        }
+        if (waterSettings && waterSettings.pressure_psi && !window._pumpZoneEntity) {
+            var wBar = (waterSettings.pressure_psi * 0.0689476).toFixed(1);
+            infoLine.push(waterSettings.pressure_psi + ' PSI (' + wBar + ' bar)');
+        }
+        if (infoLine.length > 0) {
+            html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">' + infoLine.join(' &bull; ') + '</div>';
         }
         // View Zone Details button
         html += '<div style="margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="openGallonsDetailModal()">View Zone Details</button></div>';
@@ -3133,6 +3141,10 @@ async function loadPumpMonitor() {
         var hp = pSettings.hp ? pSettings.hp + ' HP' : (pSettings.kw ? pSettings.kw + ' kW' : 'Not configured');
         html += '<div style="font-size:12px;color:var(--text-muted);text-align:center;">';
         html += esc(brandModel) + ' &bull; ' + esc(String(hp)) + ' &bull; ' + (pSettings.voltage || 240) + 'V';
+        if (pSettings.pressure_psi) {
+            var pBar = (pSettings.pressure_psi * 0.0689476).toFixed(1);
+            html += ' &bull; ' + pSettings.pressure_psi + ' PSI (' + pBar + ' bar)';
+        }
         if (pSettings.year_installed) {
             var pumpAge = new Date().getFullYear() - parseInt(pSettings.year_installed);
             if (pumpAge >= 0) html += ' &bull; ' + pumpAge + (pumpAge === 1 ? ' year old' : ' years old');
@@ -5539,19 +5551,19 @@ const HELP_CONTENT = `
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone name</strong> and source (API, schedule, weather pause, etc.)</li><li style="margin-bottom:4px;"><strong>State</strong> — ON (green) or OFF</li><li style="margin-bottom:4px;"><strong>Time</strong> and <strong>duration</strong> of each run</li><li style="margin-bottom:4px;"><strong>Watering Factor</strong> — The weather-based multiplier applied to schedule-triggered runs (green at 1.0x, yellow below, red above)</li><li style="margin-bottom:4px;"><strong>Probe Factor</strong> — The moisture probe multiplier (only shown when probes are enabled); includes sensor readings at each depth (T=Top/shallow, M=Middle/root zone, B=Bottom/deep) as percentages</li><li style="margin-bottom:4px;"><strong>Weather</strong> — Conditions at the time of the event with any triggered rules</li></ul>
 <p style="margin-bottom:10px;">Use the time range dropdown to view the last 24 hours, 7 days, 30 days, 90 days, or full year. Click <strong>Export CSV</strong> to download history as a spreadsheet. The CSV includes additional columns for probe sensor readings (top, mid, bottom percentages) and moisture profile.</p>
 
-<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">&#128167; Estimated Gallons &amp; Water Source</h4>
-<p style="margin-bottom:10px;">The Estimated Gallons card shows total water usage calculated from zone run times and configured GPM (gallons per minute) values from your Zone Head Details. Click the <strong>&#9881;&#65039; gear</strong> button to configure your water source:</p>
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">&#128167; Water Monitor &amp; Water Source</h4>
+<p style="margin-bottom:10px;">The Water Monitor card shows total water usage calculated from zone run times and configured GPM (gallons per minute) values from your Zone Head Details. Click the <strong>&#9881;&#65039; gear</strong> button to configure your water source:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>City Water</strong> &mdash; Municipal water supply; enter your cost per 1,000 gallons to see estimated water costs</li><li style="margin-bottom:4px;"><strong>Reclaimed Water</strong> &mdash; Recycled/reclaimed water; enter your cost per 1,000 gallons</li><li style="margin-bottom:4px;"><strong>Well Water</strong> &mdash; Private well (auto-detected when a Pump Start Relay is configured); no water utility cost &mdash; electricity costs are tracked in the Pump Monitor card</li></ul>
 <p style="margin-bottom:10px;">When a cost is configured, the estimated water cost appears below the total gallons on the card and in PDF reports.</p>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; If your controller has a Pump Start Relay zone, the water source automatically defaults to Well Water. You can change this at any time.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">&#9889; Pump Monitor</h4>
-<p style="margin-bottom:10px;">If one of your zones is configured as a <strong>Pump Start Relay</strong>, a dedicated Pump Monitor card appears alongside the Estimated Gallons card. The card shows real-time pump usage statistics:</p>
+<p style="margin-bottom:10px;">If one of your zones is configured as a <strong>Pump Start Relay</strong>, a dedicated Pump Monitor card appears alongside the Water Monitor card. The card shows real-time pump usage statistics:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Total Cycles</strong> &mdash; Number of completed pump on/off cycles in the selected time range</li><li style="margin-bottom:4px;"><strong>Run Hours</strong> &mdash; Total hours the pump has been running</li><li style="margin-bottom:4px;"><strong>Power Used</strong> &mdash; Total electricity consumption in kilowatt-hours (kWh), calculated from pump HP/kW rating and run time</li><li style="margin-bottom:4px;"><strong>Estimated Cost</strong> &mdash; Electricity cost based on your configured rate ($/kWh)</li></ul>
 <p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> to filter stats: Last 24 Hours, Last 30 Days (default), Last 90 Days, or Last Year.</p>
 <p style="margin-bottom:10px;">Click the <strong>&#9881;&#65039; gear</strong> button to open Pump Settings where you can configure:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Brand</strong> &mdash; Pump manufacturer (e.g., Pentair, Hayward)</li><li style="margin-bottom:4px;"><strong>Horsepower / Kilowatts</strong> &mdash; Enter either value and the other is auto-calculated (1 HP = 0.7457 kW)</li><li style="margin-bottom:4px;"><strong>Voltage</strong> &mdash; Operating voltage (default 240V)</li><li style="margin-bottom:4px;"><strong>Year Installed</strong> &mdash; Used to calculate pump age displayed on the card</li><li style="margin-bottom:4px;"><strong>Electricity Cost ($/kWh)</strong> &mdash; Your standard electricity rate for cost estimates</li><li style="margin-bottom:4px;"><strong>Peak Rate ($/kWh)</strong> &mdash; Peak hours electricity rate for reference</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The pump relay zone is auto-detected from your controller&rsquo;s zone mode settings. If no pump relay is configured, the Estimated Gallons card stays full-width. The pump info line shows brand, power rating, voltage, and pump age (current year minus year installed).</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The pump relay zone is auto-detected from your controller&rsquo;s zone mode settings. If no pump relay is configured, the Water Monitor card stays full-width. The pump info line shows brand, power rating, voltage, and pump age (current year minus year installed).</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">PDF System Report</h4>
 <p style="margin-bottom:10px;">The <strong>PDF System Report</strong> card appears below the status tiles. Select a time range and click <strong>Generate</strong> to create a comprehensive, professionally branded PDF document covering your entire irrigation system. The report includes:</p>
