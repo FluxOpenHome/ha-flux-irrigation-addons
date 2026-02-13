@@ -3332,7 +3332,12 @@ async def api_autodetect_device_sensors(device_id: str):
 async def api_get_probes():
     """Get all configured probes with their current sensor readings."""
     data = _load_data()
-    probes = data.get("probes", {})
+    # Exclude cellular probes — they are managed by the cloud server
+    # and shown in a separate "Cellular Probes" section
+    probes = {
+        k: v for k, v in data.get("probes", {}).items()
+        if v.get("probe_type") != "cellular" and not k.startswith("cellular_")
+    }
 
     if not probes:
         return {
