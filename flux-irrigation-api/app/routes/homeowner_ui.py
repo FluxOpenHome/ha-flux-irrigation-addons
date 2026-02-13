@@ -13,8 +13,8 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
 <title>Flux Open Home - Homeowner Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="" async></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js" crossorigin="" async></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js" crossorigin=""></script>
 <style>
 :root {
     --bg-body: #f5f6fa;
@@ -567,13 +567,31 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 
 <!-- Change Log Modal -->
 <div id="changelogModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
-    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:720px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:780px;max-height:85vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Configuration Change Log</h3>
             <div style="display:flex;gap:6px;align-items:center;">
                 <button class="btn btn-secondary btn-sm" onclick="exportChangelogCSV()">Export CSV</button>
                 <button onclick="closeChangelogModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
             </div>
+        </div>
+        <div id="changelogFilters" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 24px;border-bottom:1px solid var(--border-light);background:var(--bg-tile);">
+            <select id="clFilterActor" onchange="applyChangelogFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border-light);background:var(--bg-input);color:var(--text-primary);font-size:12px;cursor:pointer;">
+                <option value="all">All Users</option>
+                <option value="Homeowner">Homeowner</option>
+                <option value="Management">Management</option>
+            </select>
+            <select id="clFilterTime" onchange="applyChangelogFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border-light);background:var(--bg-input);color:var(--text-primary);font-size:12px;cursor:pointer;">
+                <option value="7">Last 7 Days</option>
+                <option value="30" selected>Last 30 Days</option>
+                <option value="90">Last 90 Days</option>
+                <option value="365">Last 1 Year</option>
+                <option value="730">Last 2 Years</option>
+            </select>
+            <select id="clFilterCategory" onchange="applyChangelogFilters()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border-light);background:var(--bg-input);color:var(--text-primary);font-size:12px;cursor:pointer;">
+                <option value="all">All Categories</option>
+            </select>
+            <span id="clFilterCount" style="font-size:11px;color:var(--text-muted);margin-left:auto;"></span>
         </div>
         <div id="changelogContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:13px;color:var(--text-secondary);line-height:1.5;">
             Loading...
@@ -6212,53 +6230,85 @@ const HELP_CONTENT = `
 `;
 
 // --- Change Log ---
+var _clAllEntries = [];
 async function showChangelog() {
     document.getElementById('changelogModal').style.display = 'flex';
+    document.getElementById('clFilterActor').value = 'all';
+    document.getElementById('clFilterTime').value = '30';
+    var catSel = document.getElementById('clFilterCategory');
+    catSel.innerHTML = '<option value="all">All Categories</option>';
     loadChangelog();
 }
 function closeChangelogModal() {
     document.getElementById('changelogModal').style.display = 'none';
 }
 async function loadChangelog() {
-    const el = document.getElementById('changelogContent');
+    var el = document.getElementById('changelogContent');
     try {
-        const data = await api('/changelog');
-        const entries = data.entries || [];
-        if (entries.length === 0) {
-            el.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">No changes recorded yet.</div>';
-            return;
-        }
-        let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
-        html += '<thead><tr style="border-bottom:2px solid var(--border-light);text-align:left;">';
-        html += '<th style="padding:6px 8px;">Time</th>';
-        html += '<th style="padding:6px 8px;">Who</th>';
-        html += '<th style="padding:6px 8px;">Category</th>';
-        html += '<th style="padding:6px 8px;">Change</th>';
-        html += '</tr></thead><tbody>';
-        entries.forEach(function(e) {
-            const dt = new Date(e.timestamp);
-            const _clMon = dt.toLocaleDateString('en-US', {month:'short'});
-            const _clDay = dt.getDate();
-            const _clYr = String(dt.getFullYear()).slice(-2);
-            const _clTime = dt.toLocaleTimeString(undefined, {hour:'numeric',minute:'2-digit'});
-            const timeStr = _clMon + ' ' + _clDay + '-' + _clYr + ' ' + _clTime;
-            const isHO = e.actor === 'Homeowner';
-            const badge = '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                'background:' + (isHO ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)') + ';' +
-                'color:' + (isHO ? 'var(--color-info)' : 'var(--color-success)') + ';">' +
-                esc(e.actor) + '</span>';
-            html += '<tr style="border-bottom:1px solid var(--border-light);">';
-            html += '<td style="padding:6px 8px;white-space:nowrap;color:var(--text-muted);">' + esc(timeStr) + '</td>';
-            html += '<td style="padding:6px 8px;">' + badge + '</td>';
-            html += '<td style="padding:6px 8px;color:var(--text-muted);">' + esc(e.category || '') + '</td>';
-            html += '<td style="padding:6px 8px;">' + esc(e.description || '') + '</td>';
-            html += '</tr>';
+        var data = await api('/changelog?limit=1000');
+        _clAllEntries = data.entries || [];
+        // Populate category filter dynamically
+        var cats = {};
+        _clAllEntries.forEach(function(e) { if (e.category) cats[e.category] = true; });
+        var catSel = document.getElementById('clFilterCategory');
+        var prev = catSel.value;
+        catSel.innerHTML = '<option value="all">All Categories</option>';
+        Object.keys(cats).sort().forEach(function(c) {
+            catSel.innerHTML += '<option value="' + esc(c) + '">' + esc(c) + '</option>';
         });
-        html += '</tbody></table>';
-        el.innerHTML = html;
+        catSel.value = prev || 'all';
+        if (!catSel.value) catSel.value = 'all';
+        applyChangelogFilters();
     } catch (err) {
         el.innerHTML = '<div style="color:var(--color-danger);">Failed to load change log.</div>';
     }
+}
+function applyChangelogFilters() {
+    var el = document.getElementById('changelogContent');
+    var actorVal = document.getElementById('clFilterActor').value;
+    var timeDays = parseInt(document.getElementById('clFilterTime').value);
+    var catVal = document.getElementById('clFilterCategory').value;
+    var cutoff = new Date(Date.now() - timeDays * 86400000);
+    var filtered = _clAllEntries.filter(function(e) {
+        if (actorVal !== 'all' && e.actor !== actorVal) return false;
+        if (catVal !== 'all' && (e.category || '') !== catVal) return false;
+        var dt = new Date(e.timestamp);
+        if (dt < cutoff) return false;
+        return true;
+    });
+    document.getElementById('clFilterCount').textContent = filtered.length + ' of ' + _clAllEntries.length + ' entries';
+    if (filtered.length === 0) {
+        el.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;">No changes match the current filters.</div>';
+        return;
+    }
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+    html += '<thead><tr style="border-bottom:2px solid var(--border-light);text-align:left;">';
+    html += '<th style="padding:6px 8px;">Time</th>';
+    html += '<th style="padding:6px 8px;">Who</th>';
+    html += '<th style="padding:6px 8px;">Category</th>';
+    html += '<th style="padding:6px 8px;">Change</th>';
+    html += '</tr></thead><tbody>';
+    filtered.forEach(function(e) {
+        var dt = new Date(e.timestamp);
+        var _clMon = dt.toLocaleDateString('en-US', {month:'short'});
+        var _clDay = dt.getDate();
+        var _clYr = String(dt.getFullYear()).slice(-2);
+        var _clTime = dt.toLocaleTimeString(undefined, {hour:'numeric',minute:'2-digit'});
+        var timeStr = _clMon + ' ' + _clDay + '-' + _clYr + ' ' + _clTime;
+        var isHO = e.actor === 'Homeowner';
+        var badge = '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+            'background:' + (isHO ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)') + ';' +
+            'color:' + (isHO ? 'var(--color-info)' : 'var(--color-success)') + ';">' +
+            esc(e.actor) + '</span>';
+        html += '<tr style="border-bottom:1px solid var(--border-light);">';
+        html += '<td style="padding:6px 8px;white-space:nowrap;color:var(--text-muted);">' + esc(timeStr) + '</td>';
+        html += '<td style="padding:6px 8px;">' + badge + '</td>';
+        html += '<td style="padding:6px 8px;color:var(--text-muted);">' + esc(e.category || '') + '</td>';
+        html += '<td style="padding:6px 8px;">' + esc(e.description || '') + '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
 }
 function exportChangelogCSV() {
     window.open(HBASE + '/changelog/csv', '_blank');
