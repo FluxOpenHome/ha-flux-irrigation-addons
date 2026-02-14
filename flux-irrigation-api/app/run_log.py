@@ -169,7 +169,12 @@ def log_zone_event(
         "moisture_cutoff", "schedule", "system_pause",
     }
     actual_dur = entry.get("duration_seconds")
-    if state in ("off", "closed") and actual_dur and actual_dur > 0 and source in SAVINGS_SOURCES:
+    # For moisture_skip events, the zone never ran — duration is 0 but the
+    # full base duration was saved.  Treat actual_dur=0 as valid for skips.
+    is_skip = state == "moisture_skip"
+    if (state in ("off", "closed", "moisture_skip")
+            and (is_skip or (actual_dur and actual_dur > 0))
+            and source in SAVINGS_SOURCES):
         try:
             from routes.moisture import _load_data as _load_moisture_data
             import zone_nozzle_data
@@ -186,7 +191,7 @@ def log_zone_event(
                     break
 
             if base_minutes is not None and base_minutes > 0:
-                actual_minutes = actual_dur / 60.0
+                actual_minutes = (actual_dur or 0) / 60.0
                 saved_minutes = base_minutes - actual_minutes
 
                 if saved_minutes > 0.05:  # Only record meaningful savings (>3 seconds)

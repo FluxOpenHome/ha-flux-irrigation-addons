@@ -6222,9 +6222,10 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
 
                         run_log.log_zone_event(
                             entity_id=zone_entity_id,
-                            state="off",
+                            state="moisture_skip",
                             source="moisture_skip",
                             zone_name=f"Zone {zone_num}",
+                            duration_seconds=0,
                         )
                         print(f"[MOISTURE] Skip: {zone_entity_id} — "
                               f"{'advanced to next zone' if advanced else 'last zone, stopped'}")
@@ -6313,10 +6314,39 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
         try:
             next_z = _get_next_zone_in_run(zone_entity_id)
             if next_z and next_z.get("moisture_disabled"):
+                import run_log as _rl
+
                 zone_num = _extract_zone_number(zone_entity_id)
                 next_num = next_z["zone_num"]
                 print(f"[MOISTURE] Zone {zone_num} OFF → next zone "
                       f"{next_num} is moisture-disabled — advancing")
+
+                # Log skip events for ALL moisture-disabled zones being
+                # skipped over so they appear in run history and count
+                # toward water savings.
+                seq = _active_schedule_run["zone_sequence"]
+                current_idx = None
+                for i, z in enumerate(seq):
+                    if z["zone_entity_id"] == zone_entity_id:
+                        current_idx = i
+                        break
+                if current_idx is not None:
+                    for j in range(current_idx + 1, len(seq)):
+                        sz = seq[j]
+                        if sz["moisture_disabled"]:
+                            _rl.log_zone_event(
+                                entity_id=sz["zone_entity_id"],
+                                state="moisture_skip",
+                                source="moisture_skip",
+                                zone_name=f"Zone {sz['zone_num']}",
+                                duration_seconds=0,
+                            )
+                            print(f"[MOISTURE] Logged skip for zone "
+                                  f"{sz['zone_num']}")
+                        elif sz["original_enabled"]:
+                            # Reached a runnable zone — stop logging skips
+                            break
+
                 advanced = await _advance_to_next_zone(zone_entity_id)
                 if advanced:
                     print(f"[MOISTURE] Advanced past moisture-disabled zone(s)")
