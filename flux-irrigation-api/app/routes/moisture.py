@@ -5932,6 +5932,42 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                         print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
                               f"{probe_id}")
 
+    # When a zone turns OFF during a schedule, check if the next zone in the
+    # sequence is skip-disabled.  ESPHome does NOT auto-advance past disabled
+    # zones — it just stops the schedule.  We must actively start the next
+    # enabled zone so the schedule continues.
+    if is_off and not is_manual:
+        try:
+            fresh_data = _load_data()
+            skip_disabled = fresh_data.get("skip_disabled_zones", [])
+            if skip_disabled:
+                # There are moisture-disabled zones — check if the schedule
+                # stalled (no zone running).  Give ESPHome a moment to
+                # potentially start the next zone on its own.
+                await asyncio.sleep(2)
+                config_check = get_config()
+                all_zone_states = await ha_client.get_entities_by_ids(
+                    config_check.allowed_zone_entities
+                )
+                any_running = any(
+                    z.get("state") in ("on", "open") for z in all_zone_states
+                )
+                if not any_running:
+                    # Schedule stalled — no zone is running after this one
+                    # turned off.  Advance to the next enabled zone.
+                    zone_num = _extract_zone_number(zone_entity_id)
+                    print(f"[MOISTURE] Schedule stalled after zone {zone_num} "
+                          f"OFF — {len(skip_disabled)} zone(s) skip-disabled, "
+                          f"advancing to next enabled zone")
+                    advanced = await _advance_to_next_zone(zone_entity_id)
+                    if advanced:
+                        print(f"[MOISTURE] Advanced past skip-disabled zone(s)")
+                    else:
+                        print(f"[MOISTURE] No more enabled zones to advance to "
+                              f"— schedule complete")
+        except Exception as e:
+            print(f"[MOISTURE] Skip-advance check error: {e}")
+
     # When all zones are off: re-enable any skip-disabled zones and re-evaluate
     # factors.  This is the PRIMARY mechanism that restores zones after a
     # schedule run where zones were disabled by moisture skip.
