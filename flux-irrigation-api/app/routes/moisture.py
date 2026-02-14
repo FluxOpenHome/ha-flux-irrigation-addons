@@ -970,6 +970,8 @@ async def _handle_prepped_wake(
                     "zone_entity_id": zone_eid,
                     "enable_entity": enable_sw,
                 })
+                # Also record in active run tracker
+                _record_moisture_disable(zone_eid)
                 print(f"[MOISTURE] Schedule skip: zone {zone_num} saturated "
                       f"(mult={zone_result.get('multiplier')}) — disabled {enable_sw}")
             elif success and not was_enabled:
@@ -3285,6 +3287,9 @@ async def apply_adjusted_durations() -> dict:
                 })
                 if disable_ok and was_enabled and enable_eid not in skip_disabled:
                     skip_disabled.append(enable_eid)
+                # Update active run tracker
+                if disable_ok and zone_entity_id:
+                    _record_moisture_disable(zone_entity_id)
                 print(f"[MOISTURE] Skip zone {zone_num}: disabled {enable_eid} "
                       f"(was_enabled={was_enabled}, success={disable_ok})")
             # Still write the adjusted duration using the base value (zone is disabled,
@@ -3300,6 +3305,12 @@ async def apply_adjusted_durations() -> dict:
                 })
                 if enable_ok:
                     skip_disabled.remove(enable_eid)
+                    # Update active run tracker
+                    if zone_entity_id and _active_schedule_run is not None:
+                        for z in _active_schedule_run["zone_sequence"]:
+                            if z["zone_entity_id"] == zone_entity_id:
+                                z["moisture_disabled"] = False
+                                break
                 print(f"[MOISTURE] Re-enabled zone {zone_num}: {enable_eid} "
                       f"(success={enable_ok})")
             combined = weather_mult * moisture_mult
@@ -5407,6 +5418,29 @@ async def _restore_all_schedule_start_times():
 # this up and re-applies.
 _deferred_factor_apply: bool = False
 
+# --- Active Schedule Run State Tracker ---
+# Tracks zone enable states during a schedule run so we can:
+# 1. Distinguish moisture-disabled zones from user-disabled zones
+# 2. Proactively advance past moisture-disabled zones (ESPHome doesn't)
+# 3. Dynamically re-enable zones if moisture drops mid-run
+# 4. Restore all moisture-disabled zones to their original state when the run ends
+#
+# Structure when active:
+# {
+#     "started_at": "ISO timestamp",
+#     "zone_sequence": [
+#         {
+#             "zone_num": 1,
+#             "zone_entity_id": "switch.zone_1",
+#             "enable_entity_id": "switch.enable_zone_1",
+#             "original_enabled": True,    # snapshot at schedule start
+#             "moisture_disabled": False,   # set True when moisture disables
+#         }, ...
+#     ],
+#     "current_zone_entity_id": "switch.zone_1",
+# }
+_active_schedule_run: dict | None = None
+
 
 async def sync_schedule_times_to_probes() -> dict:
     """Sync irrigation controller start times to Gophr schedule_time entities.
@@ -5601,6 +5635,9 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
                 # the current zone directly; let the controller handle it.
                 zone_num = _extract_zone_number(zone_entity_id)
 
+                # Record in active run tracker
+                _record_moisture_disable(zone_entity_id)
+
                 # Advance to next enabled zone (this starts the next
                 # zone, which causes ESPHome to stop the current one).
                 # If this is the last enabled zone, _advance_to_next_zone
@@ -5650,25 +5687,345 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
         print(f"[MOISTURE] Mid-run monitor ended: {zone_entity_id}")
 
 
+# ---------------------------------------------------------------------------
+# Active Schedule Run — helper functions
+# ---------------------------------------------------------------------------
+
+async def _get_all_ordered_zones() -> list[dict]:
+    """Get ALL zones in execution order (including disabled ones).
+
+    Same logic as ``_get_ordered_enabled_zones()`` but does NOT filter out
+    zones where the enable_zone switch is OFF.  Each dict contains:
+        zone_num, zone_entity_id, enable_entity_id, enable_state,
+        duration_entity_id, duration_minutes, mode, is_special
+    """
+    config = get_config()
+
+    enable_entities = [
+        eid for eid in config.allowed_control_entities
+        if eid.startswith("switch.") and "enable_zone" in eid.lower()
+    ]
+    mode_entities = [
+        eid for eid in config.allowed_control_entities
+        if eid.startswith("select.") and re.search(r'zone_\d+_mode', eid.lower())
+    ]
+    duration_entities = _find_duration_entities(config.allowed_control_entities)
+
+    all_eids = enable_entities + mode_entities + duration_entities
+    if not all_eids:
+        return []
+    states = await ha_client.get_entities_by_ids(all_eids)
+    state_map = {s["entity_id"]: s for s in states}
+
+    zone_info: dict[int, dict] = {}
+
+    for eid in enable_entities:
+        m = _ZONE_NUMBER_RE.search(eid)
+        if not m:
+            continue
+        zn = int(m.group(1))
+        if zn not in zone_info:
+            zone_info[zn] = {}
+        zone_info[zn]["enable_state"] = state_map.get(eid, {}).get("state", "off")
+        zone_info[zn]["enable_entity_id"] = eid
+
+    for eid in mode_entities:
+        m = _ZONE_NUMBER_RE.search(eid)
+        if not m:
+            continue
+        zn = int(m.group(1))
+        if zn not in zone_info:
+            zone_info[zn] = {}
+        zone_info[zn]["mode"] = state_map.get(eid, {}).get("state", "Standard")
+
+    for eid in duration_entities:
+        zn = _extract_zone_num_from_duration(eid)
+        if not zn:
+            continue
+        try:
+            dur = float(state_map.get(eid, {}).get("state", "0"))
+        except (ValueError, TypeError):
+            dur = 0.0
+        if zn not in zone_info:
+            zone_info[zn] = {}
+        zone_info[zn]["duration_eid"] = eid
+        zone_info[zn]["duration_minutes"] = dur
+
+    max_zones = config.detected_zone_count if hasattr(config, "detected_zone_count") else 0
+
+    result = []
+    for zn, info in zone_info.items():
+        if max_zones > 0 and zn > max_zones:
+            continue
+        mode = info.get("mode", "Standard")
+        is_special = bool(re.search(r'pump|master|relay', mode, re.IGNORECASE))
+        zone_eid = _find_zone_entity(zn, config)
+        if not zone_eid:
+            continue
+
+        result.append({
+            "zone_num": zn,
+            "zone_entity_id": zone_eid,
+            "enable_entity_id": info.get("enable_entity_id", ""),
+            "enable_state": info.get("enable_state", "off"),
+            "duration_entity_id": info.get("duration_eid", ""),
+            "duration_minutes": info.get("duration_minutes", 0.0),
+            "mode": mode,
+            "is_special": is_special,
+        })
+
+    result.sort(key=lambda z: (1 if z["is_special"] else 0, z["zone_num"]))
+    return result
+
+
+async def _start_active_run():
+    """Snapshot all zone enable states and initialise the active run tracker.
+
+    Called when the first schedule-triggered zone turns ON.
+    """
+    global _active_schedule_run
+
+    all_zones = await _get_all_ordered_zones()
+    if not all_zones:
+        print("[MOISTURE] Active run: no zones found — skipping")
+        return
+
+    zone_sequence = []
+    for z in all_zones:
+        zone_sequence.append({
+            "zone_num": z["zone_num"],
+            "zone_entity_id": z["zone_entity_id"],
+            "enable_entity_id": z.get("enable_entity_id", ""),
+            "original_enabled": z.get("enable_state") == "on",
+            "moisture_disabled": False,
+        })
+
+    _active_schedule_run = {
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "zone_sequence": zone_sequence,
+        "current_zone_entity_id": None,
+    }
+
+    # Persist for crash recovery
+    data = _load_data()
+    data["active_run"] = _active_schedule_run
+    _save_data(data)
+
+    zone_nums = [z["zone_num"] for z in zone_sequence]
+    enabled = [z["zone_num"] for z in zone_sequence if z["original_enabled"]]
+    print(f"[MOISTURE] Active run started: zones={zone_nums}, enabled={enabled}")
+
+
+async def _end_active_run():
+    """Re-enable all moisture-disabled zones and clear the active run.
+
+    Called when all zones have stopped after a schedule run.
+    """
+    global _active_schedule_run
+
+    if _active_schedule_run is None:
+        return
+
+    restored = []
+    for z in _active_schedule_run.get("zone_sequence", []):
+        if z["original_enabled"] and z["moisture_disabled"]:
+            enable_eid = z.get("enable_entity_id")
+            if enable_eid:
+                ok = await ha_client.call_service("switch", "turn_on", {
+                    "entity_id": enable_eid,
+                })
+                if ok:
+                    restored.append(z["zone_num"])
+                    print(f"[MOISTURE] Active run end: re-enabled zone "
+                          f"{z['zone_num']} ({enable_eid})")
+                else:
+                    print(f"[MOISTURE] Active run end: FAILED to re-enable zone "
+                          f"{z['zone_num']} ({enable_eid})")
+
+    if restored:
+        print(f"[MOISTURE] Active run end: restored {len(restored)} zone(s): {restored}")
+    else:
+        print("[MOISTURE] Active run end: no zones needed restoration")
+
+    _active_schedule_run = None
+
+    # Clear persistent state
+    data = _load_data()
+    data.pop("active_run", None)
+    data["skip_disabled_zones"] = []
+    _save_data(data)
+
+
+def _record_moisture_disable(zone_entity_id: str):
+    """Mark a zone as disabled by moisture in the active run tracker.
+
+    Only marks zones that were originally enabled (user-disabled zones
+    are never tracked for re-enable).
+    """
+    global _active_schedule_run
+    if _active_schedule_run is None:
+        return
+
+    for z in _active_schedule_run["zone_sequence"]:
+        if z["zone_entity_id"] == zone_entity_id:
+            if z["original_enabled"] and not z["moisture_disabled"]:
+                z["moisture_disabled"] = True
+                print(f"[MOISTURE] Active run: zone {z['zone_num']} "
+                      f"moisture-disabled")
+                # Persist
+                data = _load_data()
+                data["active_run"] = _active_schedule_run
+                _save_data(data)
+            elif not z["original_enabled"]:
+                print(f"[MOISTURE] Active run: zone {z['zone_num']} "
+                      f"was user-disabled — not tracking")
+            return
+
+
+async def _record_moisture_reenable(zone_entity_id: str) -> bool:
+    """Re-enable a moisture-disabled zone and update the active run tracker.
+
+    Returns True if the zone was re-enabled, False otherwise.
+    """
+    global _active_schedule_run
+    if _active_schedule_run is None:
+        return False
+
+    for z in _active_schedule_run["zone_sequence"]:
+        if z["zone_entity_id"] == zone_entity_id:
+            if z["moisture_disabled"]:
+                enable_eid = z.get("enable_entity_id")
+                if enable_eid:
+                    ok = await ha_client.call_service("switch", "turn_on", {
+                        "entity_id": enable_eid,
+                    })
+                    if ok:
+                        z["moisture_disabled"] = False
+                        print(f"[MOISTURE] Active run: re-enabled zone "
+                              f"{z['zone_num']} ({enable_eid}) — moisture dropped")
+                        # Persist
+                        data = _load_data()
+                        data["active_run"] = _active_schedule_run
+                        # Also remove from skip_disabled_zones if present
+                        skip_disabled = data.get("skip_disabled_zones", [])
+                        if enable_eid in skip_disabled:
+                            skip_disabled.remove(enable_eid)
+                            data["skip_disabled_zones"] = skip_disabled
+                        _save_data(data)
+                        return True
+                    else:
+                        print(f"[MOISTURE] Active run: FAILED to re-enable zone "
+                              f"{z['zone_num']} ({enable_eid})")
+            return False
+    return False
+
+
+def _get_next_zone_in_run(current_zone_eid: str) -> dict | None:
+    """Find the immediately-next zone in the active run sequence (any state).
+
+    Returns the next zone dict or None if current is last.
+    """
+    if _active_schedule_run is None:
+        return None
+
+    seq = _active_schedule_run["zone_sequence"]
+    for i, z in enumerate(seq):
+        if z["zone_entity_id"] == current_zone_eid:
+            if i + 1 < len(seq):
+                return seq[i + 1]
+            return None
+    return None
+
+
 async def _advance_to_next_zone(current_zone_eid: str) -> bool:
-    """Find the next enabled zone and start it with auto advance enabled.
+    """Find the next runnable zone and start it with auto advance enabled.
 
-    Called when a zone is shut off early due to saturation. Enables auto advance
-    so the remaining zones continue running after the next zone finishes.
+    When an active schedule run is tracked, walks the full zone_sequence to
+    find the next zone that is both originally-enabled AND not moisture-disabled.
+    Falls back to the live ``_get_ordered_enabled_zones()`` when there is no
+    active run.
 
-    Returns True if a next zone was started, False if current zone is the last.
+    Returns True if a next zone was started, False if no more runnable zones.
     """
     import run_log
 
     config = get_config()
 
-    # Get the ordered zone execution sequence
+    # --- Active run path: use the full zone sequence ---
+    if _active_schedule_run is not None:
+        seq = _active_schedule_run["zone_sequence"]
+
+        # Find current zone's position
+        current_idx = None
+        for i, z in enumerate(seq):
+            if z["zone_entity_id"] == current_zone_eid:
+                current_idx = i
+                break
+
+        if current_idx is None:
+            print(f"[MOISTURE] Advance: {current_zone_eid} not in active run "
+                  f"sequence — falling back")
+        else:
+            # Walk forward to find the next runnable zone
+            for j in range(current_idx + 1, len(seq)):
+                candidate = seq[j]
+                if not candidate["original_enabled"]:
+                    # User-disabled — skip
+                    continue
+                if candidate["moisture_disabled"]:
+                    # Moisture-disabled — skip
+                    print(f"[MOISTURE] Advance: skipping moisture-disabled "
+                          f"zone {candidate['zone_num']}")
+                    continue
+                # Found a runnable zone
+                next_eid = candidate["zone_entity_id"]
+                next_num = candidate["zone_num"]
+
+                # Enable auto advance
+                auto_advance_entities = [
+                    eid for eid in config.allowed_control_entities
+                    if "auto_advance" in eid.lower() and eid.startswith("switch.")
+                ]
+                for aa_eid in auto_advance_entities:
+                    await ha_client.call_service("switch", "turn_on", {
+                        "entity_id": aa_eid,
+                    })
+                    print(f"[MOISTURE] Advance: enabled auto_advance ({aa_eid})")
+
+                # Start the next zone
+                next_domain = (next_eid.split(".")[0]
+                               if "." in next_eid else "switch")
+                next_svc = "open" if next_domain == "valve" else "turn_on"
+                success = await ha_client.call_service(
+                    next_domain, next_svc, {"entity_id": next_eid}
+                )
+
+                if success:
+                    run_log.log_zone_event(
+                        entity_id=next_eid,
+                        state="on",
+                        source="moisture_advance",
+                        zone_name=f"Zone {next_num}",
+                    )
+                    print(f"[MOISTURE] Advance: started zone {next_num} "
+                          f"({next_eid}), auto_advance ON")
+                    return True
+                else:
+                    print(f"[MOISTURE] Advance: FAILED to start zone "
+                          f"{next_num} ({next_eid})")
+                    return False
+
+            # Walked the entire sequence — no runnable zone found
+            print(f"[MOISTURE] Advance: no more runnable zones after "
+                  f"{current_zone_eid}")
+            return False
+
+    # --- Fallback: no active run, use live enabled zones ---
     ordered_zones = await _get_ordered_enabled_zones()
     if not ordered_zones:
         print(f"[MOISTURE] Advance: no ordered zones found")
         return False
 
-    # Find current zone's position
     current_idx = None
     for i, z in enumerate(ordered_zones):
         if z["zone_entity_id"] == current_zone_eid:
@@ -5676,14 +6033,14 @@ async def _advance_to_next_zone(current_zone_eid: str) -> bool:
             break
 
     if current_idx is None or current_idx + 1 >= len(ordered_zones):
-        print(f"[MOISTURE] Advance: {current_zone_eid} is last zone — no advance needed")
+        print(f"[MOISTURE] Advance: {current_zone_eid} is last zone — "
+              f"no advance needed")
         return False
 
     next_zone = ordered_zones[current_idx + 1]
     next_eid = next_zone["zone_entity_id"]
     next_num = next_zone["zone_num"]
 
-    # Enable auto advance so remaining zones continue automatically
     auto_advance_entities = [
         eid for eid in config.allowed_control_entities
         if "auto_advance" in eid.lower() and eid.startswith("switch.")
@@ -5692,10 +6049,11 @@ async def _advance_to_next_zone(current_zone_eid: str) -> bool:
         await ha_client.call_service("switch", "turn_on", {"entity_id": aa_eid})
         print(f"[MOISTURE] Advance: enabled auto_advance ({aa_eid})")
 
-    # Start the next zone
     next_domain = next_eid.split(".")[0] if "." in next_eid else "switch"
     next_svc = "open" if next_domain == "valve" else "turn_on"
-    success = await ha_client.call_service(next_domain, next_svc, {"entity_id": next_eid})
+    success = await ha_client.call_service(next_domain, next_svc, {
+        "entity_id": next_eid,
+    })
 
     if success:
         run_log.log_zone_event(
@@ -5704,10 +6062,12 @@ async def _advance_to_next_zone(current_zone_eid: str) -> bool:
             source="moisture_advance",
             zone_name=f"Zone {next_num}",
         )
-        print(f"[MOISTURE] Advance: started zone {next_num} ({next_eid}), auto_advance ON")
+        print(f"[MOISTURE] Advance: started zone {next_num} ({next_eid}), "
+              f"auto_advance ON")
         return True
     else:
-        print(f"[MOISTURE] Advance: FAILED to start zone {next_num} ({next_eid})")
+        print(f"[MOISTURE] Advance: FAILED to start zone {next_num} "
+              f"({next_eid})")
         return False
 
 
@@ -5750,6 +6110,15 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
     # Manual runs (API/dashboard) should NOT auto-skip — the user gets a
     # warning popup instead (handled by the zone start API endpoint).
     is_manual = source in ("api", "dashboard")
+
+    # --- Active schedule run tracking ---
+    global _active_schedule_run
+    if is_on and not is_manual and _active_schedule_run is None:
+        # First schedule-triggered zone turning ON — snapshot all zone states
+        await _start_active_run()
+
+    if is_on and _active_schedule_run is not None:
+        _active_schedule_run["current_zone_entity_id"] = zone_entity_id
 
     # Load timeline for probe prep state
     timeline = _load_schedule_timeline()
@@ -5826,6 +6195,9 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                               f"should be skipped (mult="
                               f"{zone_result.get('multiplier')}, reason="
                               f"{zone_result.get('reason')})")
+
+                        # Record in active run tracker
+                        _record_moisture_disable(zone_entity_id)
 
                         # Cancel the just-started monitor
                         monitor_task = _active_moisture_monitors.pop(
@@ -5932,45 +6304,29 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                         print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
                               f"{probe_id}")
 
-    # When a zone turns OFF during a schedule, check if the next zone in the
-    # sequence is skip-disabled.  ESPHome does NOT auto-advance past disabled
-    # zones — it just stops the schedule.  We must actively start the next
-    # enabled zone so the schedule continues.
-    if is_off and not is_manual:
+    # --- Proactive advance past moisture-disabled zones ---
+    # ESPHome does NOT auto-advance past zones disabled AFTER the schedule
+    # started.  When a zone turns OFF, check the active run's zone_sequence
+    # for the immediately-next zone.  If it's moisture-disabled, advance to
+    # the next runnable zone before the pump shuts off.
+    if is_off and not is_manual and _active_schedule_run is not None:
         try:
-            fresh_data = _load_data()
-            skip_disabled = fresh_data.get("skip_disabled_zones", [])
-            if skip_disabled:
-                # There are moisture-disabled zones — check if the schedule
-                # stalled (no zone running).  Give ESPHome a moment to
-                # potentially start the next zone on its own.
-                await asyncio.sleep(2)
-                config_check = get_config()
-                all_zone_states = await ha_client.get_entities_by_ids(
-                    config_check.allowed_zone_entities
-                )
-                any_running = any(
-                    z.get("state") in ("on", "open") for z in all_zone_states
-                )
-                if not any_running:
-                    # Schedule stalled — no zone is running after this one
-                    # turned off.  Advance to the next enabled zone.
-                    zone_num = _extract_zone_number(zone_entity_id)
-                    print(f"[MOISTURE] Schedule stalled after zone {zone_num} "
-                          f"OFF — {len(skip_disabled)} zone(s) skip-disabled, "
-                          f"advancing to next enabled zone")
-                    advanced = await _advance_to_next_zone(zone_entity_id)
-                    if advanced:
-                        print(f"[MOISTURE] Advanced past skip-disabled zone(s)")
-                    else:
-                        print(f"[MOISTURE] No more enabled zones to advance to "
-                              f"— schedule complete")
+            next_z = _get_next_zone_in_run(zone_entity_id)
+            if next_z and next_z.get("moisture_disabled"):
+                zone_num = _extract_zone_number(zone_entity_id)
+                next_num = next_z["zone_num"]
+                print(f"[MOISTURE] Zone {zone_num} OFF → next zone "
+                      f"{next_num} is moisture-disabled — advancing")
+                advanced = await _advance_to_next_zone(zone_entity_id)
+                if advanced:
+                    print(f"[MOISTURE] Advanced past moisture-disabled zone(s)")
+                else:
+                    print(f"[MOISTURE] No more runnable zones — schedule "
+                          f"complete")
         except Exception as e:
-            print(f"[MOISTURE] Skip-advance check error: {e}")
+            print(f"[MOISTURE] Proactive advance error: {e}")
 
-    # When all zones are off: re-enable any skip-disabled zones and re-evaluate
-    # factors.  This is the PRIMARY mechanism that restores zones after a
-    # schedule run where zones were disabled by moisture skip.
+    # --- All zones off: end the active run and restore zones ---
     if is_off:
         try:
             config = get_config()
@@ -5982,35 +6338,15 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                 if z.get("state") in ("on", "open")
             ]
             if not still_running:
-                fresh_data = _load_data()
-                skip_disabled = fresh_data.get("skip_disabled_zones", [])
+                # End the active schedule run — re-enables all moisture-disabled
+                # zones to their original state
+                await _end_active_run()
 
-                if fresh_data.get("apply_factors_to_schedule"):
-                    # Re-run apply_adjusted_durations() which will:
-                    # - Re-enable zones whose moisture dropped below skip
-                    # - Keep disabled zones whose moisture is still above
-                    print("[MOISTURE] All zones stopped — re-evaluating "
-                          "factors (will re-enable zones if moisture dropped)")
+                # Deferred factor re-application (if weather changed mid-run)
+                if _deferred_factor_apply:
+                    print("[MOISTURE] All zones stopped — applying deferred "
+                          "factor re-evaluation")
                     await apply_adjusted_durations()
-                elif skip_disabled:
-                    # Factors not active — just re-enable everything that
-                    # was disabled during this run
-                    print(f"[MOISTURE] All zones stopped — re-enabling "
-                          f"{len(skip_disabled)} skip-disabled zone(s)")
-                    restored = []
-                    for enable_eid in list(skip_disabled):
-                        ok = await ha_client.call_service("switch", "turn_on", {
-                            "entity_id": enable_eid,
-                        })
-                        if ok:
-                            restored.append(enable_eid)
-                            print(f"[MOISTURE] Re-enabled {enable_eid}")
-                        else:
-                            print(f"[MOISTURE] FAILED to re-enable {enable_eid}")
-                    fresh_data["skip_disabled_zones"] = [
-                        e for e in skip_disabled if e not in restored
-                    ]
-                    _save_data(fresh_data)
         except Exception as e:
             print(f"[MOISTURE] Zone-off cleanup error: {e}")
 
@@ -6075,6 +6411,20 @@ async def check_skip_factor_transition(entity_id: str, new_state: str, old_state
             print(f"[MOISTURE] Skip↔factor transition detected: {zone_eid} "
                   f"was_skip={was_skip} → new_skip={new_skip} "
                   f"(triggered by {entity_id}: {old_state} → {new_state})")
+
+            # During an active schedule run, directly re-enable zones whose
+            # moisture dropped below threshold (apply_adjusted_durations would
+            # defer because zones are running).
+            if _active_schedule_run is not None and was_skip and not new_skip:
+                reenabled = await _record_moisture_reenable(zone_eid)
+                if reenabled:
+                    print(f"[MOISTURE] Mid-run re-enable: {zone_eid} moisture "
+                          f"dropped — zone re-enabled for schedule to reach")
+
+            # During active run and moisture INCREASED, record the disable
+            if _active_schedule_run is not None and not was_skip and new_skip:
+                _record_moisture_disable(zone_eid)
+
             return True
 
     return False

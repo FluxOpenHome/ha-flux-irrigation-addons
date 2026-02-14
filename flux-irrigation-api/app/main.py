@@ -464,6 +464,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[MAIN] Moisture startup recovery error: {e}")
 
+    # Active schedule run crash recovery: if the add-on was restarted mid-schedule,
+    # the active_run state in moisture.json may have moisture-disabled zones that
+    # need to be re-enabled.
+    try:
+        from routes.moisture import (
+            _load_data as _load_moisture_data_cr,
+            _end_active_run,
+            _active_schedule_run,
+        )
+        import routes.moisture as moisture_mod
+        cr_data = _load_moisture_data_cr()
+        if cr_data.get("active_run"):
+            print("[MAIN] Active schedule run found from prior session — checking zones")
+            # Re-hydrate the in-memory state
+            moisture_mod._active_schedule_run = cr_data["active_run"]
+            # Check if any zones are actually running
+            from routes.moisture import get_config as get_moisture_config
+            cr_config = get_moisture_config()
+            cr_zones = await ha_client.get_entities_by_ids(
+                cr_config.allowed_zone_entities
+            )
+            still_running = [z for z in cr_zones if z.get("state") in ("on", "open")]
+            if not still_running:
+                print("[MAIN] No zones running — ending active run and restoring zones")
+                await _end_active_run()
+            else:
+                print(f"[MAIN] {len(still_running)} zone(s) still running — "
+                      f"keeping active run state")
+    except Exception as e:
+        print(f"[MAIN] Active run recovery error: {e}")
+
     # Start background tasks
     cleanup_task = asyncio.create_task(_periodic_log_cleanup())
     weather_task = None
