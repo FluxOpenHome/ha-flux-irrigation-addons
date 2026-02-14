@@ -2978,6 +2978,11 @@ async function loadHistory() {
                     }
                 } else if (e.state === 'skip') {
                     stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span><br><span style="color:var(--text-disabled);font-size:11px;">OFF</span>';
+                } else if ((e.state === 'off' || e.state === 'closed') && e.source === 'moisture_cutoff') {
+                    stateCell = '<span style="color:var(--color-danger);font-weight:600;">Stopped</span>';
+                    if (e.mid_sensor_pct != null) {
+                        stateCell += '<div style="font-size:10px;color:var(--text-muted);">Mid: ' + e.mid_sensor_pct + '%</div>';
+                    }
                 } else if (e.state === 'on' || e.state === 'open') {
                     stateCell = '<span style="color:var(--color-success);">ON</span>';
                 } else {
@@ -3025,7 +3030,7 @@ async function loadHistory() {
                 return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' || e.state === 'moisture_skip' ? 'opacity:0.7;' : ''}${isProbeEvent ? 'background:var(--bg-tile);' : ''}">
                 <td style="padding:6px;">${zoneDisplay}${srcLabel}</td>
                 <td style="padding:6px;">${stateCell}</td>
-                <td style="padding:6px;">${formatTime(e.timestamp)}</td>
+                <td style="padding:6px;white-space:nowrap;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
                 ${hasGpmData ? '<td style="padding:6px;">' + gpmCell + '</td><td style="padding:6px;">' + estGalCell + '</td>' : ''}
                 ${hasWaterSaved ? '<td style="padding:6px;">' + waterSavedCell + '</td>' : ''}
