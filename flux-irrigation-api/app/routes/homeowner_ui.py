@@ -327,7 +327,6 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <h1>Irrigation</h1>
     </div>
     <div class="header-actions">
-        <button class="dn-nerd-btn" onclick="dnOpen()" title="Data Nerd View">&#128202; Data Nerd View</button>
         <div class="nav-tabs">
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
@@ -1678,6 +1677,16 @@ async function loadStatus() {
                 </select>
                 <button class="btn btn-primary btn-sm" onclick="generateReport()">Generate</button>
             </div>
+        </div>`;
+        // Data Nerd View mini-card — below PDF report
+        el.innerHTML += `
+        <div style="margin-top:8px;padding:10px 14px;background:var(--bg-tile,var(--card-bg));border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:16px;">&#128202;</span>
+                <span style="font-size:13px;font-weight:600;color:var(--text);">Data Nerd View</span>
+                <span style="font-size:10px;color:var(--text-muted);">Charts, trends &amp; deep analysis</span>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="dnOpen()">Open</button>
         </div>`;
     } catch (e) {
         el.innerHTML = '<div style="color:var(--color-danger);">Failed to load status: ' + esc(e.message) + '</div>';
