@@ -58,6 +58,255 @@ def _get_max_wake_minutes() -> int:
     data = _load_data()
     return data.get("max_wake_minutes", MAX_WAKE_MINUTES_DEFAULT)
 
+
+SCHEDULE_SHIFT_MAX_DEFAULT = 0  # Default: no schedule shifting (0 = disabled)
+
+
+def _get_schedule_shift_max_minutes() -> int:
+    """Get the max allowed schedule start time shift in minutes.  0 = disabled."""
+    data = _load_data()
+    return data.get("schedule_shift_max_minutes", SCHEDULE_SHIFT_MAX_DEFAULT)
+
+
+# --- Predict Realistic Probe Prep Timing ---
+# Uses the probe's actual sleep cycle position (from status_led.last_changed)
+# to determine when it will ACTUALLY wake after a reprogram, rather than
+# using idealized formulas that assume the probe sleeps/wakes at convenient times.
+
+CLOCK_DRIFT_TOLERANCE = 2  # ±2 minutes ESPHome deep sleep timer tolerance
+
+
+def _predict_prep_timing(
+    last_sleep_time: datetime | None,
+    is_awake: bool,
+    current_sleep_min: float,
+    pending_sleep_min: float | None,
+    zone_start_min: float,
+    wake_before_min: float,
+    now: datetime,
+) -> dict:
+    """Predict realistic probe prep timing using actual sleep cycle position.
+
+    Walks forward through the probe's natural wake times to find the best
+    wake at which to apply a reprogram, then calculates when the probe will
+    actually wake after the reprogram.
+
+    Args:
+        last_sleep_time: When the status_led last turned OFF (probe fell asleep).
+            None if unknown (falls back to ideal timing).
+        is_awake: Whether the probe is currently awake.
+        current_sleep_min: Current sleep duration in minutes.
+        pending_sleep_min: Queued sleep duration (applied on next wake), or None.
+        zone_start_min: Minutes-since-midnight when the mapped zone starts.
+        wake_before_min: Target minutes to wake before zone start.
+        now: Current datetime.
+
+    Returns dict with:
+        predicted_wake_minutes: Minutes-since-midnight when probe will actually wake
+            for the zone (after reprogram). None if unknown.
+        reprogram_wake_minutes: Minutes-since-midnight of the natural wake at which
+            the reprogram will be applied. None if awake/unknown.
+        feasible: True/False/None(unknown) — whether the reprogram can succeed.
+        strategy: "direct"/"one_cycle"/"two_cycle"/"impossible"/"unknown"
+        shortfall_minutes: How many minutes late the probe will be (0 if on time,
+            positive if late). None if unknown.
+        next_natural_wake_minutes: Minutes-since-midnight of probe's next natural
+            wake. None if unknown or awake.
+        cycle_info: Dict with last_sleep_minutes, sleep_duration, next_wake_minutes
+            for display purposes.
+    """
+    target_wake_min = (zone_start_min - wake_before_min) % 1440
+    wake_overhead = 1  # ~1 min for wake detection + write delay + re-sleep
+
+    result = {
+        "predicted_wake_minutes": None,
+        "reprogram_wake_minutes": None,
+        "feasible": None,
+        "strategy": "unknown",
+        "shortfall_minutes": None,
+        "next_natural_wake_minutes": None,
+        "cycle_info": None,
+    }
+
+    # --- Case 1: No last_sleep_time data → fall back to ideal timing ---
+    if last_sleep_time is None:
+        result["predicted_wake_minutes"] = target_wake_min
+        result["strategy"] = "unknown"
+        return result
+
+    now_minutes = now.hour * 60 + now.minute + now.second / 60.0
+    last_sleep_min = last_sleep_time.hour * 60 + last_sleep_time.minute + last_sleep_time.second / 60.0
+
+    # Build cycle_info for display
+    result["cycle_info"] = {
+        "last_sleep_minutes": last_sleep_min,
+        "sleep_duration": current_sleep_min,
+        "pending_sleep_duration": pending_sleep_min,
+    }
+
+    # --- Case 2: Probe is awake → direct write ---
+    if is_awake:
+        # Can write sleep duration immediately. Probe will sleep with the new
+        # value when it finishes its current awake cycle (within seconds).
+        sleep_needed = (target_wake_min - now_minutes - wake_overhead) % 1440
+        if sleep_needed < 0.5:
+            sleep_needed = 0.5  # minimum viable sleep
+
+        predicted_wake = (now_minutes + wake_overhead + sleep_needed) % 1440
+        shortfall = _minutes_distance(predicted_wake, target_wake_min)
+
+        result["predicted_wake_minutes"] = round(predicted_wake, 1)
+        result["feasible"] = True
+        result["strategy"] = "direct"
+        result["shortfall_minutes"] = round(shortfall, 1)
+        return result
+
+    # --- Case 3: Probe is sleeping → walk through sleep cycles ---
+    # Compute when it will next wake naturally
+    # Handle day boundary: if last_sleep was yesterday and sleep takes us past midnight
+    elapsed_since_sleep = (now_minutes - last_sleep_min) % 1440
+    if elapsed_since_sleep >= current_sleep_min:
+        # Probe should already be awake (or will wake any moment)
+        next_wake = now_minutes + 0.5  # Expect wake imminently
+    else:
+        remaining = current_sleep_min - elapsed_since_sleep
+        next_wake = (now_minutes + remaining) % 1440
+
+    result["next_natural_wake_minutes"] = round(next_wake, 1)
+    result["cycle_info"]["next_wake_minutes"] = round(next_wake, 1)
+
+    # Determine effective sleep for cycles after the first wake.
+    # If there's a pending sleep, it applies after the first natural wake.
+    # Otherwise the current sleep continues.
+    effective_sleep_after_first = pending_sleep_min if pending_sleep_min is not None else current_sleep_min
+
+    # Walk forward through future wake times, checking if a reprogram at each
+    # wake can produce a target wake before the zone starts.
+    # We check up to 6 cycles (covers even 120-min sleep over 12 hours ahead).
+    best_strategy = None
+    best_predicted_wake = None
+    best_reprogram_wake = None
+    best_shortfall = None
+
+    wake_time = next_wake
+    for cycle in range(6):
+        # At this wake, the probe is awake and can receive a reprogram.
+        # If we set sleep_needed at this wake, the probe re-sleeps after
+        # ~wake_overhead minutes, then wakes at wake_time + wake_overhead + sleep_needed.
+        resleep_time = (wake_time + wake_overhead) % 1440
+
+        # Calculate sleep needed to hit the target wake
+        sleep_needed = (target_wake_min - resleep_time) % 1440
+        if sleep_needed < 0.5:
+            # Target is essentially now or just passed — need to check if we're close enough
+            # This means the target wake is within wake_overhead of this wake
+            # The probe is already awake at the right time!
+            predicted_wake = wake_time
+            shortfall = _minutes_distance(predicted_wake, target_wake_min)
+
+            if shortfall <= wake_before_min + CLOCK_DRIFT_TOLERANCE:
+                strategy = "direct_at_wake" if cycle == 0 else f"cycle_{cycle}"
+                if best_strategy is None or shortfall < (best_shortfall or 9999):
+                    best_strategy = strategy
+                    best_predicted_wake = predicted_wake
+                    best_reprogram_wake = wake_time
+                    best_shortfall = shortfall
+                # This wake IS the target wake — can't do better
+                break
+            continue
+
+        # Check if this reprogram produces a wake BEFORE the zone starts
+        predicted_wake = (resleep_time + sleep_needed) % 1440
+        shortfall = _minutes_distance(predicted_wake, target_wake_min)
+
+        # Verify the reprogram wake happens before the zone and after now
+        # Use minutes-distance to zone_start to confirm we're before the zone
+        dist_to_zone = _minutes_distance(predicted_wake, zone_start_min)
+
+        # The predicted wake should be 0-wake_before_min before zone start
+        # (with tolerance for clock drift)
+        if dist_to_zone <= wake_before_min + CLOCK_DRIFT_TOLERANCE and sleep_needed >= 0.5:
+            strategy = "one_cycle" if cycle == 0 else f"cycle_{cycle + 1}"
+            if best_strategy is None:
+                best_strategy = strategy
+                best_predicted_wake = predicted_wake
+                best_reprogram_wake = wake_time
+                best_shortfall = shortfall
+            break  # Found a viable reprogram point
+
+        # Also check: can we reprogram at this wake so the probe wakes close to target?
+        # Even if sleep_needed is large (the zone is far away), this might be the
+        # right reprogram point. Accept if sleep_needed < zone_start - resleep_time
+        # (the reprogram would fit within the remaining time before the zone).
+        time_until_zone = (zone_start_min - resleep_time) % 1440
+        if sleep_needed < time_until_zone and sleep_needed >= 0.5:
+            strategy = "one_cycle" if cycle == 0 else f"cycle_{cycle + 1}"
+            if best_strategy is None:
+                best_strategy = strategy
+                best_predicted_wake = predicted_wake
+                best_reprogram_wake = wake_time
+                best_shortfall = shortfall
+            # Don't break — a later cycle might be closer to the target
+
+        # Advance to next wake. After first wake, use effective_sleep_after_first.
+        if cycle == 0:
+            wake_time = (wake_time + wake_overhead + effective_sleep_after_first) % 1440
+        else:
+            wake_time = (wake_time + wake_overhead + effective_sleep_after_first) % 1440
+
+    if best_strategy is not None:
+        result["predicted_wake_minutes"] = round(best_predicted_wake, 1)
+        result["reprogram_wake_minutes"] = round(best_reprogram_wake, 1)
+        result["feasible"] = True
+        result["strategy"] = best_strategy
+        result["shortfall_minutes"] = round(best_shortfall, 1)
+    else:
+        # No viable reprogram point found — infeasible
+        result["predicted_wake_minutes"] = target_wake_min  # Show ideal as fallback
+        result["feasible"] = False
+        result["strategy"] = "impossible"
+        result["shortfall_minutes"] = None
+
+    return result
+
+
+def _minutes_distance(a: float, b: float) -> float:
+    """Absolute shortest distance between two minute-of-day values (handles midnight wrap).
+
+    Returns a value 0..720 (max half day).
+    """
+    diff = abs(a - b) % 1440
+    return min(diff, 1440 - diff)
+
+
+async def _fetch_probe_last_sleep_time(probe: dict) -> datetime | None:
+    """Fetch the last sleep time for a probe from status_led.last_changed.
+
+    Returns the datetime when the status LED last turned OFF (= probe fell asleep),
+    or None if unavailable.
+    """
+    extra = probe.get("extra_sensors") or {}
+    status_led_eid = extra.get("status_led")
+    if not status_led_eid:
+        return None
+    try:
+        state_obj = await ha_client.get_entity_state(status_led_eid)
+        if not state_obj:
+            return None
+        last_changed_str = state_obj.get("last_changed", "")
+        if not last_changed_str:
+            return None
+        # HA returns ISO format like "2025-06-15T23:42:15.123456+00:00"
+        # Parse and convert to local time
+        dt = datetime.fromisoformat(last_changed_str)
+        # Convert to local time (naive) for minute-of-day calculations
+        local_dt = dt.astimezone().replace(tzinfo=None)
+        return local_dt
+    except Exception as e:
+        print(f"[MOISTURE] Failed to fetch status_led last_changed for {status_led_eid}: {e}")
+        return None
+
+
 # Keywords used to auto-discover moisture probe sensor entities
 PROBE_KEYWORDS = ["gophr", "moisture", "soil"]
 
@@ -619,17 +868,30 @@ async def _prep_probe_for_schedule(
         #
         # CRITICAL: sleep_needed must be calculated from when the probe will
         # NEXT GO TO SLEEP (after its reprogram wake), NOT from right now.
-        # The flow is: trigger fires NOW → probe wakes naturally in ≤current_sleep
-        # minutes → on_probe_wake() applies the new value (3s delay) → probe
-        # goes back to sleep → sleeps for sleep_needed → wakes at target_wake.
-        #
-        # We estimate the reprogram wake will happen at worst current_sleep minutes
-        # from now, plus ~1 min overhead for the wake/apply/re-sleep cycle.
-        # To be safe, we use the full current_sleep as the worst-case offset.
+        # Use status_led.last_changed to compute the ACTUAL next natural wake
+        # instead of estimating worst-case.
         current_sleep = prep.get("current_sleep_duration", 60)
         wake_overhead = 1  # ~1 min for wake detection + 3s write delay + re-sleep
-        estimated_resleep = current_minutes + current_sleep + wake_overhead
-        sleep_needed = (target_wake - estimated_resleep) % 1440
+
+        # Try to get the real next wake time from status_led.last_changed
+        last_sleep_time = await _fetch_probe_last_sleep_time(probe)
+        if last_sleep_time:
+            elapsed = (now - last_sleep_time).total_seconds() / 60.0
+            if elapsed < current_sleep:
+                remaining = current_sleep - elapsed
+                next_natural_wake_min = (current_minutes + remaining) % 1440
+            else:
+                # Probe should be waking any moment
+                next_natural_wake_min = current_minutes + 0.5
+            actual_resleep = next_natural_wake_min + wake_overhead
+            sleep_needed = (target_wake - actual_resleep) % 1440
+            timing_source = f"actual next wake at {_minutes_to_hhmm(next_natural_wake_min)}, re-sleep at {actual_resleep:.0f} min-of-day"
+        else:
+            # Fallback: estimate worst-case (probe just fell asleep)
+            estimated_resleep = current_minutes + current_sleep + wake_overhead
+            sleep_needed = (target_wake - estimated_resleep) % 1440
+            timing_source = f"estimated re-sleep at {estimated_resleep:.0f} min-of-day (no status_led data)"
+
         if sleep_needed <= 0:
             sleep_needed = 1  # Wake ASAP
 
@@ -640,8 +902,7 @@ async def _prep_probe_for_schedule(
             _save_data(data)
         wake_before = _get_wake_before_minutes()
         print(f"[MOISTURE] Schedule prep: queued {display_name} sleep to "
-              f"{sleep_needed:.1f} min as pending write (calculated from "
-              f"estimated re-sleep at {estimated_resleep:.0f} min-of-day, "
+              f"{sleep_needed:.1f} min as pending write ({timing_source}, "
               f"current_sleep={current_sleep} min) — will be applied on next "
               f"natural wake, then probe sleeps and wakes ~{wake_before} min "
               f"before zone {zone_num} ({sched_time} schedule)")
@@ -873,6 +1134,7 @@ async def _finish_probe_prep_cycle(probe_id: str, prep: dict, timeline: dict):
                 print(f"[MOISTURE] FAILED to re-enable zone {zone_num} ({enable_entity})")
 
     # Reset prep state
+    active_sched_time = prep.get("active_schedule_start_time")
     prep["state"] = "idle"
     prep["skipped_zones"] = []
     prep["active_schedule_start_time"] = None
@@ -880,6 +1142,32 @@ async def _finish_probe_prep_cycle(probe_id: str, prep: dict, timeline: dict):
     prep["active_zone_num"] = None
     _save_schedule_timeline(timeline)
     print(f"[MOISTURE] Schedule prep cycle complete for {probe_id}")
+
+    # Restore shifted schedule start time if ALL prep cycles for this schedule are done.
+    # Only restore after the last probe finishes its cycle for the same schedule.
+    if _original_schedule_start_times and active_sched_time:
+        all_done = True
+        for pid2, pp2 in timeline.get("probe_prep", {}).items():
+            if pid2 == probe_id:
+                continue  # Already set to idle above
+            if pp2.get("state") not in ("idle", None):
+                # Check if this probe is working on the same schedule
+                if pp2.get("active_schedule_start_time") == active_sched_time:
+                    all_done = False
+                    break
+                # Also check original start time in case schedule was shifted
+                for eid, orig in _original_schedule_start_times.items():
+                    if pp2.get("active_schedule_start_time") == orig:
+                        all_done = False
+                        break
+        if all_done:
+            # Find which start_time entity corresponds to this schedule time
+            for eid, orig_val in list(_original_schedule_start_times.items()):
+                # Check if the original matches or the current shifted value matches
+                await _restore_schedule_start_time(eid)
+            # Update timeline persistence
+            timeline["original_start_times"] = dict(_original_schedule_start_times)
+            _save_schedule_timeline(timeline)
 
 
 def start_awake_poller():
@@ -1104,6 +1392,30 @@ async def calculate_irrigation_timeline() -> dict:
             except (ValueError, TypeError):
                 pass
 
+        # Fetch probe's actual sleep cycle position for realistic timing
+        last_sleep_time = await _fetch_probe_last_sleep_time(probe)
+        is_awake = _probe_awake_cache.get(pid, False)
+        pending_sleep = probe.get("pending_sleep_duration")
+        now = datetime.now()
+
+        # Build probe_sleep_state for UI display
+        probe_sleep_state = {
+            "is_awake": is_awake,
+            "current_sleep_duration": current_sleep,
+            "pending_sleep_duration": pending_sleep,
+        }
+        if last_sleep_time:
+            probe_sleep_state["last_sleep_minutes"] = last_sleep_time.hour * 60 + last_sleep_time.minute
+            probe_sleep_state["last_sleep_time_iso"] = last_sleep_time.isoformat()
+            if not is_awake:
+                elapsed = (now - last_sleep_time).total_seconds() / 60.0
+                if elapsed < current_sleep:
+                    next_wake = last_sleep_time + timedelta(minutes=current_sleep)
+                    probe_sleep_state["next_natural_wake_minutes"] = next_wake.hour * 60 + next_wake.minute
+                else:
+                    # Should be waking any moment
+                    probe_sleep_state["next_natural_wake_minutes"] = now.hour * 60 + now.minute
+
         # For each schedule, find ALL mapped zones (for display) and the
         # FIRST mapped zone (for prep timing — probe wakes before this one).
         first_mapped_per_schedule = []
@@ -1137,6 +1449,18 @@ async def calculate_irrigation_timeline() -> dict:
             zone_start_min = fm["zone_start_minutes"]
             prep_trigger = zone_start_min - (2 * current_sleep + PREP_BUFFER_MINUTES)
             target_wake = zone_start_min - wake_before
+
+            # Predict realistic timing using actual sleep cycle position
+            prediction = _predict_prep_timing(
+                last_sleep_time=last_sleep_time,
+                is_awake=is_awake,
+                current_sleep_min=current_sleep,
+                pending_sleep_min=pending_sleep,
+                zone_start_min=zone_start_min,
+                wake_before_min=wake_before,
+                now=now,
+            )
+
             prep_entries.append({
                 "schedule_start_time": fm["schedule_start_time"],
                 "zone_num": fm["zone_num"],
@@ -1144,6 +1468,12 @@ async def calculate_irrigation_timeline() -> dict:
                 "zone_start_minutes": zone_start_min,
                 "prep_trigger_minutes": prep_trigger % 1440,
                 "target_wake_minutes": target_wake % 1440,
+                # Realistic timing from _predict_prep_timing()
+                "predicted_wake_minutes": prediction["predicted_wake_minutes"],
+                "reprogram_wake_minutes": prediction["reprogram_wake_minutes"],
+                "feasible": prediction["feasible"],
+                "strategy": prediction["strategy"],
+                "shortfall_minutes": prediction["shortfall_minutes"],
             })
 
         # Build display entries for ALL mapped zones (wake schedule popup).
@@ -1168,24 +1498,136 @@ async def calculate_irrigation_timeline() -> dict:
                         action = "keep_awake"
                     else:
                         action = "wake"
-                display_entries.append({
+
+                # Add prediction for wake entries (not keep_awake)
+                prediction = None
+                if action == "wake":
+                    prediction = _predict_prep_timing(
+                        last_sleep_time=last_sleep_time,
+                        is_awake=is_awake,
+                        current_sleep_min=current_sleep,
+                        pending_sleep_min=pending_sleep,
+                        zone_start_min=zone_start_min,
+                        wake_before_min=wake_before,
+                        now=now,
+                    )
+
+                de = {
                     "schedule_start_time": am["schedule_start_time"],
                     "zone_num": am["zone_num"],
                     "zone_entity_id": am["zone_entity_id"],
                     "zone_start_minutes": zone_start_min,
                     "target_wake_minutes": target_wake % 1440,
                     "action": action,
-                })
+                }
+                if prediction:
+                    de["predicted_wake_minutes"] = prediction["predicted_wake_minutes"]
+                    de["feasible"] = prediction["feasible"]
+                    de["strategy"] = prediction["strategy"]
+                    de["shortfall_minutes"] = prediction["shortfall_minutes"]
+                display_entries.append(de)
 
         probe_prep[pid] = {
             "original_sleep_duration": current_sleep,
             "current_sleep_duration": current_sleep,
             "prep_entries": prep_entries,
             "display_entries": display_entries,
+            "probe_sleep_state": probe_sleep_state,
             "state": "idle",
             "skipped_zones": [],
             "active_schedule_start_time": None,
         }
+
+    # 7. Schedule shift: if enabled, shift schedule start times to align with
+    #    probe wake cycles.  This moves the actual controller start time earlier
+    #    so zones run when the probe naturally wakes, reducing idle battery drain.
+    shift_max = _get_schedule_shift_max_minutes()
+    if shift_max > 0 and probe_prep:
+        # Load saved originals from previous timeline (survive restarts)
+        old_tl = _load_schedule_timeline()
+        if old_tl and old_tl.get("original_start_times"):
+            for eid, orig_val in old_tl["original_start_times"].items():
+                if eid not in _original_schedule_start_times:
+                    _original_schedule_start_times[eid] = orig_val
+
+        for sched in schedules:
+            sched_eid = sched.get("start_time_entity", "")
+            # Use original start time as baseline (not already-shifted value)
+            if sched_eid in _original_schedule_start_times:
+                original_start_str = _original_schedule_start_times[sched_eid]
+                original_start_min = _parse_time_to_minutes(original_start_str)
+            else:
+                original_start_str = sched["start_time"]
+                original_start_min = sched["start_minutes"]
+
+            # Collect idle gaps from all probes' first mapped zone in this schedule
+            shift_candidates = []
+            for pid, pp in probe_prep.items():
+                for pe in pp.get("prep_entries", []):
+                    if pe.get("schedule_start_time") == sched["start_time"] or pe.get("schedule_start_time") == original_start_str:
+                        if pe.get("feasible") is True and pe.get("predicted_wake_minutes") is not None:
+                            target_wake = pe["target_wake_minutes"]
+                            predicted_wake = pe["predicted_wake_minutes"]
+                            # Idle gap: how many minutes early the probe wakes
+                            idle_gap = (target_wake - predicted_wake) % 1440
+                            if idle_gap > 720:
+                                idle_gap = 1440 - idle_gap  # midnight wrap
+                            if idle_gap > CLOCK_DRIFT_TOLERANCE and idle_gap <= shift_max:
+                                shift_candidates.append(idle_gap)
+                                print(f"[MOISTURE] Schedule shift: probe {pid} would benefit "
+                                      f"from {idle_gap:.0f} min shift on {sched_eid}")
+
+            if shift_candidates:
+                # Use minimum shift that helps the most probes
+                shift_amount = min(shift_candidates)
+                new_start_min = (original_start_min - shift_amount) % 1440
+                new_start_str = _minutes_to_hhmm(new_start_min)
+
+                # Save original if not already saved
+                if sched_eid not in _original_schedule_start_times:
+                    _original_schedule_start_times[sched_eid] = original_start_str
+
+                # Write shifted time to the controller
+                success = await ha_client.call_service("text", "set_value", {
+                    "entity_id": sched_eid,
+                    "value": new_start_str,
+                })
+                if success:
+                    print(f"[MOISTURE] Schedule shift: shifted {sched_eid} by "
+                          f"-{shift_amount:.0f} min ({original_start_str} -> {new_start_str})")
+                    sched["applied_shift_minutes"] = shift_amount
+                    sched["original_start_time"] = original_start_str
+                    # Update schedule's start time values to reflect the shift
+                    sched["start_time"] = new_start_str
+                    sched["start_minutes"] = new_start_min
+                    # Shift all zone timelines in this schedule
+                    for zone in sched["zones"]:
+                        zone["expected_start_minutes"] -= shift_amount
+                        zone["expected_end_minutes"] -= shift_amount
+                        zone["expected_start_time"] = _minutes_to_hhmm(zone["expected_start_minutes"])
+                        zone["expected_end_time"] = _minutes_to_hhmm(zone["expected_end_minutes"])
+                    sched["expected_end_time"] = _minutes_to_hhmm(
+                        new_start_min + sched["total_duration_minutes"])
+                    # Recalculate prep entries with shifted zone start times
+                    for pid, pp in probe_prep.items():
+                        for pe in pp.get("prep_entries", []):
+                            if pe.get("schedule_start_time") == original_start_str or pe.get("schedule_start_time") == sched.get("_pre_shift_start_time", ""):
+                                pe["zone_start_minutes"] -= shift_amount
+                                pe["target_wake_minutes"] = (pe["zone_start_minutes"] - wake_before) % 1440
+                                pe["prep_trigger_minutes"] = (pe["zone_start_minutes"] - (2 * pp["current_sleep_duration"] + PREP_BUFFER_MINUTES)) % 1440
+                        for de in pp.get("display_entries", []):
+                            if de.get("schedule_start_time") == original_start_str:
+                                de["zone_start_minutes"] -= shift_amount
+                                de["target_wake_minutes"] = (de["zone_start_minutes"] - wake_before) % 1440
+                else:
+                    print(f"[MOISTURE] Schedule shift: FAILED to write {sched_eid}")
+            else:
+                # No shift needed (or already aligned) — restore if previously shifted
+                if sched_eid in _original_schedule_start_times:
+                    await _restore_schedule_start_time(sched_eid)
+    elif shift_max == 0 and _original_schedule_start_times:
+        # Setting is disabled — restore all originals
+        await _restore_all_schedule_start_times()
 
     # Preserve in-progress prep state from the previous timeline.
     # If a prep cycle is already underway (pending_reprogram, prep_pending,
@@ -1214,6 +1656,7 @@ async def calculate_irrigation_timeline() -> dict:
         "schedules": schedules,
         "zone_probe_map": {k: v for k, v in zone_probe_map.items()},
         "probe_prep": probe_prep,
+        "original_start_times": dict(_original_schedule_start_times),  # persist for restart recovery
     }
 
     _save_schedule_timeline(timeline)
@@ -1373,6 +1816,11 @@ async def check_timeline_conflicts(
 
         display_name = probe.get("display_name", pid)
 
+        # Fetch actual sleep cycle position for realistic conflict detection
+        last_sleep_time = await _fetch_probe_last_sleep_time(probe)
+        is_awake = _probe_awake_cache.get(pid, False)
+        pending_sleep = probe.get("pending_sleep_duration")
+
         for sched in schedules:
             # Find first mapped zone in this schedule
             first_mapped = None
@@ -1384,17 +1832,54 @@ async def check_timeline_conflicts(
                 continue
 
             zone_start_min = first_mapped["expected_start_minutes"]
-            prep_trigger = zone_start_min - (2 * current_sleep + PREP_BUFFER_MINUTES)
-            prep_trigger_wrapped = prep_trigger % 1440
 
             # Only check schedules that haven't started yet today
             if zone_start_min % 1440 <= now_minutes:
                 # Schedule already ran or is running — next run is tomorrow, no conflict
                 continue
 
-            # Conflict: prep trigger is in the past
-            if prep_trigger_wrapped <= now_minutes:
-                zone_start_time = _minutes_to_hhmm(zone_start_min)
+            # Use realistic timing prediction instead of just formula check
+            prediction = _predict_prep_timing(
+                last_sleep_time=last_sleep_time,
+                is_awake=is_awake,
+                current_sleep_min=current_sleep,
+                pending_sleep_min=pending_sleep,
+                zone_start_min=zone_start_min,
+                wake_before_min=wake_before,
+                now=now,
+            )
+
+            # Also keep the old formula check as a fallback
+            prep_trigger = zone_start_min - (2 * current_sleep + PREP_BUFFER_MINUTES)
+            prep_trigger_wrapped = prep_trigger % 1440
+
+            zone_start_time = _minutes_to_hhmm(zone_start_min)
+
+            if prediction["feasible"] is False:
+                # Realistic prediction says impossible
+                next_wake_str = ""
+                if prediction.get("next_natural_wake_minutes") is not None:
+                    next_wake_str = f" · Next wake: ~{_minutes_to_hhmm(prediction['next_natural_wake_minutes'])}"
+                conflicts.append({
+                    "probe_id": pid,
+                    "probe_name": display_name,
+                    "zone_num": first_mapped["zone_num"],
+                    "zone_start_time": zone_start_time,
+                    "schedule_start_time": sched["start_time"],
+                    "prep_trigger_time": _minutes_to_hhmm(prep_trigger),
+                    "current_time": _minutes_to_hhmm(now_minutes),
+                    "strategy": prediction["strategy"],
+                    "predicted_wake_minutes": prediction["predicted_wake_minutes"],
+                    "next_natural_wake_minutes": prediction.get("next_natural_wake_minutes"),
+                    "sleep_duration": current_sleep,
+                    "message": (
+                        f"{display_name} cannot wake before Zone {first_mapped['zone_num']} "
+                        f"at {zone_start_time} — sleep cycle ({current_sleep:.0f} min) "
+                        f"too long to reach target{next_wake_str}"
+                    ),
+                })
+            elif prep_trigger_wrapped <= now_minutes and prediction["feasible"] is None:
+                # No status_led data — fall back to old formula-based conflict
                 prep_trigger_time = _minutes_to_hhmm(prep_trigger)
                 conflicts.append({
                     "probe_id": pid,
@@ -1404,6 +1889,7 @@ async def check_timeline_conflicts(
                     "schedule_start_time": sched["start_time"],
                     "prep_trigger_time": prep_trigger_time,
                     "current_time": _minutes_to_hhmm(now_minutes),
+                    "strategy": "unknown",
                     "message": (
                         f"{display_name} cannot wake before Zone {first_mapped['zone_num']} "
                         f"at {zone_start_time} — prep needed by {prep_trigger_time} "
@@ -1421,6 +1907,7 @@ DEFAULT_DATA = {
     "enabled": False,
     "apply_factors_to_schedule": False,
     "schedule_sync_enabled": True,
+    "schedule_shift_max_minutes": 0,  # Max minutes to shift schedule start time for probe alignment (0=disabled)
     "multi_probe_mode": "conservative",  # "conservative", "average", "optimistic"
     "skip_disabled_zones": [],  # Zone enable switch entities disabled by moisture skip
     "stale_reading_threshold_minutes": 120,
@@ -2972,6 +3459,7 @@ class MoistureSettingsRequest(BaseModel):
     enabled: Optional[bool] = None
     apply_factors_to_schedule: Optional[bool] = None
     schedule_sync_enabled: Optional[bool] = None
+    schedule_shift_max_minutes: Optional[int] = Field(None, ge=0, le=60)
     wake_before_minutes: Optional[int] = Field(None, ge=2, le=60)
     max_wake_minutes: Optional[int] = Field(None, ge=0, le=480)  # 0 = unlimited
     multi_probe_mode: Optional[str] = None  # "conservative", "average", "optimistic"
@@ -4412,6 +4900,7 @@ async def api_get_settings():
         "enabled": data.get("enabled", False),
         "apply_factors_to_schedule": data.get("apply_factors_to_schedule", False),
         "schedule_sync_enabled": data.get("schedule_sync_enabled", True),
+        "schedule_shift_max_minutes": data.get("schedule_shift_max_minutes", SCHEDULE_SHIFT_MAX_DEFAULT),
         "wake_before_minutes": data.get("wake_before_minutes", TARGET_WAKE_BEFORE_MINUTES),
         "max_wake_minutes": data.get("max_wake_minutes", MAX_WAKE_MINUTES_DEFAULT),
         "multi_probe_mode": data.get("multi_probe_mode", "conservative"),
@@ -4567,6 +5056,20 @@ async def api_update_settings(body: MoistureSettingsRequest, request: Request):
                 f"Probe wake-before time: {old_wake} min -> {body.wake_before_minutes} min"
             )
             # Recalculate timeline with new value
+            asyncio.create_task(calculate_irrigation_timeline())
+
+    # Handle schedule_shift_max_minutes
+    if body.schedule_shift_max_minutes is not None:
+        old_shift = data.get("schedule_shift_max_minutes", SCHEDULE_SHIFT_MAX_DEFAULT)
+        data["schedule_shift_max_minutes"] = body.schedule_shift_max_minutes
+        if old_shift != body.schedule_shift_max_minutes:
+            changes.append(
+                f"Schedule shift max: {old_shift} min -> {body.schedule_shift_max_minutes} min"
+            )
+            if body.schedule_shift_max_minutes == 0 and old_shift > 0:
+                # Disabled — restore any shifted schedule start times immediately
+                await _restore_all_schedule_start_times()
+            # Recalculate timeline with new shift tolerance
             asyncio.create_task(calculate_irrigation_timeline())
 
     # Handle max_wake_minutes
@@ -4834,6 +5337,49 @@ _active_moisture_monitors: dict[str, asyncio.Task] = {}
 
 # Track original sleep durations for restoration after last mapped zone
 _original_sleep_durations: dict[str, int] = {}  # probe_id -> original minutes
+
+# --- Original Schedule Start Times (for schedule shift restore) ---
+# When schedule_shift_max_minutes > 0, we may shift the irrigation controller's
+# start_time entity earlier to align with a probe's natural wake.  We save the
+# original value here so it can be restored after the irrigation cycle finishes.
+_original_schedule_start_times: dict[str, str] = {}  # entity_id -> original time string "5:00"
+
+
+async def _restore_schedule_start_time(entity_id: str) -> bool:
+    """Restore a single schedule start time to its original value."""
+    original = _original_schedule_start_times.pop(entity_id, None)
+    if original is None:
+        return False
+    success = await ha_client.call_service("text", "set_value", {
+        "entity_id": entity_id,
+        "value": str(original),
+    })
+    if success:
+        print(f"[MOISTURE] Schedule shift: restored {entity_id} to original '{original}'")
+    else:
+        print(f"[MOISTURE] Schedule shift: FAILED to restore {entity_id} to '{original}'")
+        # Put it back so we can retry
+        _original_schedule_start_times[entity_id] = original
+    return success
+
+
+async def _restore_all_schedule_start_times():
+    """Restore all shifted schedule start times to their originals."""
+    if not _original_schedule_start_times:
+        return
+    eids = list(_original_schedule_start_times.keys())
+    print(f"[MOISTURE] Schedule shift: restoring {len(eids)} original start time(s)")
+    for eid in eids:
+        await _restore_schedule_start_time(eid)
+    # Also clear from persisted timeline
+    timeline = _load_schedule_timeline()
+    if timeline:
+        timeline.pop("original_start_times", None)
+        for sched in timeline.get("schedules", []):
+            sched.pop("applied_shift_minutes", None)
+            sched.pop("original_start_time", None)
+        _save_schedule_timeline(timeline)
+
 
 # Deferred factor re-application: set when apply_adjusted_durations() is blocked
 # by running zones.  When the last zone turns off, on_zone_state_change() picks
