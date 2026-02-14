@@ -5740,56 +5740,56 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
     timeline = _load_schedule_timeline()
     probe_prep = timeline.get("probe_prep", {}) if timeline else {}
 
-    # Find probes mapped to this zone that have sleep control
+    # Find probes mapped to this zone
     for probe_id, probe in data.get("probes", {}).items():
         if zone_entity_id not in probe.get("zone_mappings", []):
             continue
-        sleep_switch = (probe.get("extra_sensors") or {}).get("sleep_disabled")
-        if not sleep_switch:
-            continue
 
+        sleep_switch = (probe.get("extra_sensors") or {}).get("sleep_disabled")
         prep = probe_prep.get(probe_id, {})
 
         if is_on:
-            # Zone turned on — disable sleep and start monitoring
-            await set_probe_sleep_disabled(probe_id, True)
+            # --- Sleep control (only if probe has sleep capability) ---
+            if sleep_switch:
+                await set_probe_sleep_disabled(probe_id, True)
 
-            # Save original sleep duration on FIRST mapped zone activation
-            if probe_id not in _original_sleep_durations:
-                extra = probe.get("extra_sensors") or {}
-                sleep_sensor_eid = extra.get("sleep_duration")
-                if sleep_sensor_eid:
-                    try:
-                        states = await ha_client.get_entities_by_ids(
-                            [sleep_sensor_eid]
-                        )
-                        if states:
-                            raw = states[0].get("state", "0")
-                            if raw not in ("unavailable", "unknown"):
-                                orig_val = float(raw)
-                                _original_sleep_durations[probe_id] = orig_val
-                                print(f"[MOISTURE] Saved original sleep duration "
-                                      f"for {probe_id}: {orig_val} min")
-                    except (ValueError, TypeError):
-                        pass
+                # Save original sleep duration on FIRST mapped zone activation
+                if probe_id not in _original_sleep_durations:
+                    extra = probe.get("extra_sensors") or {}
+                    sleep_sensor_eid = extra.get("sleep_duration")
+                    if sleep_sensor_eid:
+                        try:
+                            states = await ha_client.get_entities_by_ids(
+                                [sleep_sensor_eid]
+                            )
+                            if states:
+                                raw = states[0].get("state", "0")
+                                if raw not in ("unavailable", "unknown"):
+                                    orig_val = float(raw)
+                                    _original_sleep_durations[probe_id] = orig_val
+                                    print(f"[MOISTURE] Saved original sleep duration "
+                                          f"for {probe_id}: {orig_val} min")
+                        except (ValueError, TypeError):
+                            pass
 
-            # Update prep state if timeline is tracking this
-            if prep.get("state") in ("pending_reprogram", "prep_pending", "monitoring", "sleeping_between"):
-                prep["state"] = "monitoring"
-                prep["active_zone_entity_id"] = zone_entity_id
-                if timeline:
-                    _save_schedule_timeline(timeline)
+                # Update prep state if timeline is tracking this
+                if prep.get("state") in ("pending_reprogram", "prep_pending", "monitoring", "sleeping_between"):
+                    prep["state"] = "monitoring"
+                    prep["active_zone_entity_id"] = zone_entity_id
+                    if timeline:
+                        _save_schedule_timeline(timeline)
 
-            # Start mid-run moisture monitoring
+            # --- Moisture monitoring (runs for ALL mapped probes) ---
             if zone_entity_id not in _active_moisture_monitors:
                 task = asyncio.create_task(
                     monitor_zone_moisture(zone_entity_id, probe_id)
                 )
                 _active_moisture_monitors[zone_entity_id] = task
-                print(f"[MOISTURE] Zone ON → sleep disabled, monitoring started: "
-                      f"{zone_entity_id} → {probe_id}")
+                print(f"[MOISTURE] Zone ON → monitoring started: "
+                      f"{zone_entity_id} → {probe_id}"
+                      f"{' (sleep disabled)' if sleep_switch else ''}")
 
-            # --- Immediate skip check ---
+            # --- Immediate skip check (runs for ALL mapped probes) ---
             # Check if this zone should already be skipped based on current
             # moisture readings. This catches the case where moisture exceeded
             # the threshold BEFORE the zone started (e.g. sensor change during
@@ -5871,68 +5871,70 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
                       f"{zone_entity_id}: {e}")
 
         elif is_off:
-            # Zone turned off — cancel monitoring
+            # Zone turned off — cancel monitoring (runs for ALL mapped probes)
             task = _active_moisture_monitors.get(zone_entity_id)
             if task and not task.done():
                 task.cancel()
                 print(f"[MOISTURE] Zone OFF → cancelling monitor: "
                       f"{zone_entity_id}")
 
-            # Check if the next zone is also mapped to this probe
-            sleep_info = await _calculate_sleep_until_next_mapped_zone(
-                probe_id, zone_entity_id
-            )
-
-            if sleep_info and sleep_info["sleep_minutes"] == 0:
-                # Gap is too short or next zone is consecutive — keep awake
-                print(
-                    f"[MOISTURE] Zone OFF → gap too short "
-                    f"({sleep_info['gap_minutes']:.1f} min), "
-                    f"keeping {probe_id} awake for "
-                    f"{sleep_info['next_zone_entity_id']}"
+            # Sleep management (only if probe has sleep capability)
+            if sleep_switch:
+                # Check if the next zone is also mapped to this probe
+                sleep_info = await _calculate_sleep_until_next_mapped_zone(
+                    probe_id, zone_entity_id
                 )
-                # sleep_disabled stays ON (probe stays awake)
-                if prep:
-                    prep["state"] = "monitoring"
-                    if timeline:
-                        _save_schedule_timeline(timeline)
 
-            elif sleep_info and sleep_info["sleep_minutes"] > 0:
-                # There IS a next mapped zone with a gap — sleep until before it starts
-                wake_before = _get_wake_before_minutes()
-                sleep_mins = max(1, sleep_info["sleep_minutes"] - wake_before)
-                await _set_probe_sleep_duration(probe_id, sleep_mins)
-                await set_probe_sleep_disabled(probe_id, False)
-                print(
-                    f"[MOISTURE] Zone OFF → mid-run sleep: {probe_id} "
-                    f"will sleep {sleep_mins} min "
-                    f"(wake ~{wake_before} min before "
-                    f"{sleep_info['next_zone_entity_id']}, "
-                    f"gap={sleep_info['gap_minutes']:.1f} min)"
-                )
-                if prep:
-                    prep["state"] = "prep_pending"
-                    prep["active_zone_entity_id"] = sleep_info["next_zone_entity_id"]
-                    if timeline:
-                        _save_schedule_timeline(timeline)
+                if sleep_info and sleep_info["sleep_minutes"] == 0:
+                    # Gap is too short or next zone is consecutive — keep awake
+                    print(
+                        f"[MOISTURE] Zone OFF → gap too short "
+                        f"({sleep_info['gap_minutes']:.1f} min), "
+                        f"keeping {probe_id} awake for "
+                        f"{sleep_info['next_zone_entity_id']}"
+                    )
+                    # sleep_disabled stays ON (probe stays awake)
+                    if prep:
+                        prep["state"] = "monitoring"
+                        if timeline:
+                            _save_schedule_timeline(timeline)
 
-            else:
-                # No more mapped zones — finish the cycle
-                if prep and timeline:
-                    await _finish_probe_prep_cycle(probe_id, prep, timeline)
-                else:
-                    # No timeline tracking — simple restore
-                    original = _original_sleep_durations.pop(probe_id, None)
-                    if original is not None:
-                        await _set_probe_sleep_duration(probe_id, original)
-                        print(
-                            f"[MOISTURE] Zone OFF → last mapped zone, "
-                            f"restored sleep duration: {probe_id} = "
-                            f"{original} min"
-                        )
+                elif sleep_info and sleep_info["sleep_minutes"] > 0:
+                    # There IS a next mapped zone with a gap — sleep until before it starts
+                    wake_before = _get_wake_before_minutes()
+                    sleep_mins = max(1, sleep_info["sleep_minutes"] - wake_before)
+                    await _set_probe_sleep_duration(probe_id, sleep_mins)
                     await set_probe_sleep_disabled(probe_id, False)
-                    print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
-                          f"{probe_id}")
+                    print(
+                        f"[MOISTURE] Zone OFF → mid-run sleep: {probe_id} "
+                        f"will sleep {sleep_mins} min "
+                        f"(wake ~{wake_before} min before "
+                        f"{sleep_info['next_zone_entity_id']}, "
+                        f"gap={sleep_info['gap_minutes']:.1f} min)"
+                    )
+                    if prep:
+                        prep["state"] = "prep_pending"
+                        prep["active_zone_entity_id"] = sleep_info["next_zone_entity_id"]
+                        if timeline:
+                            _save_schedule_timeline(timeline)
+
+                else:
+                    # No more mapped zones — finish the cycle
+                    if prep and timeline:
+                        await _finish_probe_prep_cycle(probe_id, prep, timeline)
+                    else:
+                        # No timeline tracking — simple restore
+                        original = _original_sleep_durations.pop(probe_id, None)
+                        if original is not None:
+                            await _set_probe_sleep_duration(probe_id, original)
+                            print(
+                                f"[MOISTURE] Zone OFF → last mapped zone, "
+                                f"restored sleep duration: {probe_id} = "
+                                f"{original} min"
+                            )
+                        await set_probe_sleep_disabled(probe_id, False)
+                        print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
+                              f"{probe_id}")
 
     # Deferred factor re-application: if apply_adjusted_durations() was blocked
     # by running zones (e.g. weather factor changed mid-run), check whether
