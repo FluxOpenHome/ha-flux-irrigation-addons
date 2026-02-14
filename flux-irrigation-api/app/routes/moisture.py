@@ -5583,40 +5583,28 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
             )
 
             if zone_result.get("skip"):
-                # Moisture exceeded threshold — skip zone and advance
+                # Moisture exceeded threshold mid-run. Start the next
+                # enabled zone — ESPHome will automatically stop the
+                # current zone when the next one starts. Do NOT turn off
+                # the current zone directly; let the controller handle it.
                 zone_num = _extract_zone_number(zone_entity_id)
-                config = get_config()
-                enable_sw = _find_enable_zone_switch(
-                    zone_num, config
-                ) if zone_num else ""
 
-                if enable_sw:
-                    # Disable enable switch — ESPHome advances past this
-                    # zone (or ends the schedule if last enabled zone)
-                    await ha_client.call_service("switch", "turn_off", {
-                        "entity_id": enable_sw,
-                    })
-                    # Track for re-enable after schedule completes
-                    track_data = _load_data()
-                    skip_disabled = track_data.get(
-                        "skip_disabled_zones", []
-                    )
-                    if enable_sw not in skip_disabled:
-                        skip_disabled.append(enable_sw)
-                        track_data["skip_disabled_zones"] = skip_disabled
-                        _save_data(track_data)
-                    print(f"[MOISTURE] Mid-run skip: disabled enable "
-                          f"switch {enable_sw} for zone {zone_num}")
-                else:
-                    # No enable switch — turn off zone directly and
-                    # advance to next enabled zone
+                # Advance to next enabled zone (this starts the next
+                # zone, which causes ESPHome to stop the current one).
+                # If this is the last enabled zone, _advance_to_next_zone
+                # returns without starting anything — in that case we
+                # must stop the current zone ourselves.
+                advanced = await _advance_to_next_zone(zone_entity_id)
+                if not advanced:
+                    # Last enabled zone — stop it directly
                     domain = (zone_entity_id.split(".")[0]
                               if "." in zone_entity_id else "switch")
                     svc = "close" if domain == "valve" else "turn_off"
                     await ha_client.call_service(
                         domain, svc, {"entity_id": zone_entity_id}
                     )
-                    await _advance_to_next_zone(zone_entity_id)
+                    print(f"[MOISTURE] Mid-run cutoff: {zone_entity_id} — "
+                          f"last enabled zone, stopped directly")
 
                 # Resolve zone name for logging
                 attrs = (zone_states[0].get("attributes", {})
@@ -5630,7 +5618,7 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
                     zone_name=zone_name,
                 )
                 print(f"[MOISTURE] Mid-run cutoff: {zone_entity_id} — "
-                      f"moisture exceeded threshold "
+                      f"advancing to next enabled zone "
                       f"(mult={zone_result.get('multiplier')}, "
                       f"reason={zone_result.get('reason')})")
                 break
@@ -5650,11 +5638,13 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
         print(f"[MOISTURE] Mid-run monitor ended: {zone_entity_id}")
 
 
-async def _advance_to_next_zone(current_zone_eid: str):
+async def _advance_to_next_zone(current_zone_eid: str) -> bool:
     """Find the next enabled zone and start it with auto advance enabled.
 
     Called when a zone is shut off early due to saturation. Enables auto advance
     so the remaining zones continue running after the next zone finishes.
+
+    Returns True if a next zone was started, False if current zone is the last.
     """
     import run_log
 
@@ -5664,7 +5654,7 @@ async def _advance_to_next_zone(current_zone_eid: str):
     ordered_zones = await _get_ordered_enabled_zones()
     if not ordered_zones:
         print(f"[MOISTURE] Advance: no ordered zones found")
-        return
+        return False
 
     # Find current zone's position
     current_idx = None
@@ -5675,7 +5665,7 @@ async def _advance_to_next_zone(current_zone_eid: str):
 
     if current_idx is None or current_idx + 1 >= len(ordered_zones):
         print(f"[MOISTURE] Advance: {current_zone_eid} is last zone — no advance needed")
-        return
+        return False
 
     next_zone = ordered_zones[current_idx + 1]
     next_eid = next_zone["zone_entity_id"]
@@ -5703,8 +5693,10 @@ async def _advance_to_next_zone(current_zone_eid: str):
             zone_name=f"Zone {next_num}",
         )
         print(f"[MOISTURE] Advance: started zone {next_num} ({next_eid}), auto_advance ON")
+        return True
     else:
         print(f"[MOISTURE] Advance: FAILED to start zone {next_num} ({next_eid})")
+        return False
 
 
 async def on_zone_state_change(zone_entity_id: str, new_state: str,
@@ -5830,35 +5822,13 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                         if monitor_task and not monitor_task.done():
                             monitor_task.cancel()
 
-                        # Use enable_zone switch if available — ESPHome will
-                        # skip this zone and advance to the next one (or end
-                        # the schedule if this was the last enabled zone).
-                        config = get_config()
-                        enable_sw = _find_enable_zone_switch(
-                            zone_num, config
-                        ) if zone_num else ""
-
-                        if enable_sw:
-                            await ha_client.call_service("switch", "turn_off", {
-                                "entity_id": enable_sw,
-                            })
-                            skip_disabled = data.get("skip_disabled_zones", [])
-                            if enable_sw not in skip_disabled:
-                                skip_disabled.append(enable_sw)
-                                data["skip_disabled_zones"] = skip_disabled
-                                _save_data(data)
-
-                            run_log.log_zone_event(
-                                entity_id=zone_entity_id,
-                                state="off",
-                                source="moisture_skip",
-                                zone_name=f"Zone {zone_num}",
-                            )
-                            print(f"[MOISTURE] Skip: disabled enable switch "
-                                  f"{enable_sw} for zone {zone_num}")
-                        else:
-                            # No enable switch — turn off zone directly and
-                            # advance to the next one
+                        # Start the next enabled zone — ESPHome will
+                        # automatically stop the current zone when the
+                        # next one starts. If this is the last enabled
+                        # zone, stop it directly.
+                        advanced = await _advance_to_next_zone(zone_entity_id)
+                        if not advanced:
+                            # Last enabled zone — stop it directly
                             domain = (zone_entity_id.split(".")[0]
                                       if "." in zone_entity_id else "switch")
                             svc = "close" if domain == "valve" else "turn_off"
@@ -5866,17 +5836,14 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                                 domain, svc, {"entity_id": zone_entity_id}
                             )
 
-                            run_log.log_zone_event(
-                                entity_id=zone_entity_id,
-                                state="off",
-                                source="moisture_skip",
-                                zone_name=f"Zone {zone_num}",
-                            )
-                            # Advance to next zone (if last zone, this is a
-                            # no-op and the schedule simply ends)
-                            await _advance_to_next_zone(zone_entity_id)
-                            print(f"[MOISTURE] Skip: no enable switch — "
-                                  f"turned off {zone_entity_id} and advanced")
+                        run_log.log_zone_event(
+                            entity_id=zone_entity_id,
+                            state="off",
+                            source="moisture_skip",
+                            zone_name=f"Zone {zone_num}",
+                        )
+                        print(f"[MOISTURE] Skip: {zone_entity_id} — "
+                              f"{'advanced to next zone' if advanced else 'last zone, stopped'}")
 
                         # Zone is being skipped — skip further probe processing
                         continue
