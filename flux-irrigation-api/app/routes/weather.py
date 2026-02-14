@@ -967,18 +967,17 @@ async def run_weather_evaluation() -> dict:
             )
             print("[WEATHER] System auto-resumed: weather conditions cleared")
 
-    # Log evaluation if any rules triggered
-    if triggered:
-        _log_weather_event("weather_evaluation", {
-            "triggered_rules": [t["rule"] for t in triggered],
-            "actions": [t["action"] for t in triggered],
-            "watering_multiplier": round(multiplier, 2),
-            "should_pause": should_pause,
-            "condition": weather.get("condition"),
-            "temperature": weather.get("temperature"),
-            "humidity": weather.get("humidity"),
-            "wind_speed": weather.get("wind_speed"),
-        })
+    # Log every weather evaluation so Data Nerd charts have data
+    _log_weather_event("weather_evaluation", {
+        "triggered_rules": [t["rule"] for t in triggered] if triggered else [],
+        "actions": [t["action"] for t in triggered] if triggered else [],
+        "watering_multiplier": round(multiplier, 2),
+        "should_pause": should_pause,
+        "condition": weather.get("condition"),
+        "temperature": weather.get("temperature"),
+        "humidity": weather.get("humidity"),
+        "wind_speed": weather.get("wind_speed"),
+    })
 
     # Save evaluation results
     rules_data["last_evaluation"] = datetime.now(timezone.utc).isoformat()
