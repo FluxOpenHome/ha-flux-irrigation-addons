@@ -300,16 +300,14 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest, request: Re
         except Exception as e:
             print(f"[HOMEOWNER] Multiplier lookup failed, using original duration: {e}")
 
-    # If moisture says skip, turn the zone back off and return a skip response
+    # Build warning for moisture skip (zone keeps running — user chose manual start)
+    moisture_warning = ""
     if moisture_skip:
-        svc_domain_off, svc_name_off = _get_zone_service(entity_id, "off")
-        await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": entity_id})
-        run_log.log_zone_event(
-            entity_id=entity_id, state="off", source="moisture_skip",
-            zone_name=_zone_name(entity_id),
-        )
-        return {"success": True, "zone_id": zone_id, "action": "skipped",
-                "message": f"Zone '{zone_id}' skipped — soil moisture above threshold"}
+        try:
+            moisture_warning = mult_result.get("moisture_reason", "Soil moisture above skip threshold")
+        except Exception:
+            moisture_warning = "Soil moisture above skip threshold"
+        print(f"[HOMEOWNER] Manual start with moisture warning: {entity_id} — {moisture_warning}")
 
     if adjusted_duration:
         from routes.zones import _timed_run_tasks, _timed_shutoff
@@ -330,7 +328,10 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest, request: Re
 
     log_change(get_actor(request), "Zone Control", desc, {"entity_id": entity_id})
 
-    return {"success": True, "zone_id": zone_id, "action": "start", "message": message}
+    resp = {"success": True, "zone_id": zone_id, "action": "start", "message": message}
+    if moisture_warning:
+        resp["warning"] = moisture_warning
+    return resp
 
 
 @router.post("/zones/{zone_id}/stop", summary="Stop a zone")

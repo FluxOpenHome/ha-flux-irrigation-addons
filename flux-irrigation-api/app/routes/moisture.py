@@ -5707,7 +5707,8 @@ async def _advance_to_next_zone(current_zone_eid: str):
         print(f"[MOISTURE] Advance: FAILED to start zone {next_num} ({next_eid})")
 
 
-async def on_zone_state_change(zone_entity_id: str, new_state: str):
+async def on_zone_state_change(zone_entity_id: str, new_state: str,
+                               source: str = "schedule"):
     """Called by run_log when a zone state changes.
 
     Handles probe sleep/wake management around irrigation runs:
@@ -5716,6 +5717,8 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
         - Disable sleep on mapped probes (keep awake for moisture readings)
         - Save original sleep duration on first mapped zone activation
         - Start mid-run moisture monitoring task
+        - Immediate skip check (schedule runs only — manual runs get a warning
+          via the API response instead of auto-skipping)
         - If probe was prepped by schedule-aware logic, it's already awake
 
     Zone OFF:
@@ -5725,6 +5728,10 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
             - NO → calculate gap and program sleep to wake before next mapped zone
         - If no more mapped zones → restore original sleep, re-enable skipped zones,
           finish the probe prep cycle
+
+    Args:
+        source: "schedule" for ESPHome-triggered runs, "api"/"dashboard" for manual.
+                Auto-skip only fires for "schedule" runs.
     """
     data = _load_data()
     if not data.get("enabled"):
@@ -5735,6 +5742,10 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
 
     if not (is_on or is_off):
         return
+
+    # Manual runs (API/dashboard) should NOT auto-skip — the user gets a
+    # warning popup instead (handled by the zone start API endpoint).
+    is_manual = source in ("api", "dashboard")
 
     # Load timeline for probe prep state
     timeline = _load_schedule_timeline()
@@ -5779,96 +5790,102 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str):
                     if timeline:
                         _save_schedule_timeline(timeline)
 
-            # --- Moisture monitoring (runs for ALL mapped probes) ---
-            if zone_entity_id not in _active_moisture_monitors:
-                task = asyncio.create_task(
-                    monitor_zone_moisture(zone_entity_id, probe_id)
-                )
-                _active_moisture_monitors[zone_entity_id] = task
-                print(f"[MOISTURE] Zone ON → monitoring started: "
-                      f"{zone_entity_id} → {probe_id}"
-                      f"{' (sleep disabled)' if sleep_switch else ''}")
-
-            # --- Immediate skip check (runs for ALL mapped probes) ---
-            # Check if this zone should already be skipped based on current
-            # moisture readings. This catches the case where moisture exceeded
-            # the threshold BEFORE the zone started (e.g. sensor change during
-            # the schedule run, or apply_adjusted_durations() was deferred
-            # because zones were already running).
-            try:
-                sensor_states = await _get_probe_sensor_states({probe_id: probe})
-                zone_result = calculate_zone_moisture_multiplier(
-                    zone_entity_id, data, sensor_states,
-                )
-                if zone_result.get("skip"):
-                    import run_log
-
-                    zone_num = _extract_zone_number(zone_entity_id)
-                    print(f"[MOISTURE] Zone ON skip-check: {zone_entity_id} "
-                          f"should be skipped (mult="
-                          f"{zone_result.get('multiplier')}, reason="
-                          f"{zone_result.get('reason')})")
-
-                    # Cancel the just-started monitor
-                    monitor_task = _active_moisture_monitors.pop(
-                        zone_entity_id, None
+            # --- Moisture monitoring & auto-skip (schedule runs only) ---
+            # Manual runs (API/dashboard) are allowed to continue — the user
+            # gets a warning popup via the zone start API response instead.
+            if not is_manual:
+                if zone_entity_id not in _active_moisture_monitors:
+                    task = asyncio.create_task(
+                        monitor_zone_moisture(zone_entity_id, probe_id)
                     )
-                    if monitor_task and not monitor_task.done():
-                        monitor_task.cancel()
+                    _active_moisture_monitors[zone_entity_id] = task
+                    print(f"[MOISTURE] Zone ON → monitoring started: "
+                          f"{zone_entity_id} → {probe_id}"
+                          f"{' (sleep disabled)' if sleep_switch else ''}")
 
-                    # Use enable_zone switch if available — ESPHome will
-                    # skip this zone and advance to the next one (or end
-                    # the schedule if this was the last enabled zone).
-                    config = get_config()
-                    enable_sw = _find_enable_zone_switch(
-                        zone_num, config
-                    ) if zone_num else ""
+                # --- Immediate skip check ---
+                # Check if this zone should already be skipped based on current
+                # moisture readings. This catches the case where moisture exceeded
+                # the threshold BEFORE the zone started (e.g. sensor change during
+                # the schedule run, or apply_adjusted_durations() was deferred
+                # because zones were already running).
+                try:
+                    sensor_states = await _get_probe_sensor_states({probe_id: probe})
+                    zone_result = calculate_zone_moisture_multiplier(
+                        zone_entity_id, data, sensor_states,
+                    )
+                    if zone_result.get("skip"):
+                        import run_log
 
-                    if enable_sw:
-                        await ha_client.call_service("switch", "turn_off", {
-                            "entity_id": enable_sw,
-                        })
-                        skip_disabled = data.get("skip_disabled_zones", [])
-                        if enable_sw not in skip_disabled:
-                            skip_disabled.append(enable_sw)
-                            data["skip_disabled_zones"] = skip_disabled
-                            _save_data(data)
+                        zone_num = _extract_zone_number(zone_entity_id)
+                        print(f"[MOISTURE] Zone ON skip-check: {zone_entity_id} "
+                              f"should be skipped (mult="
+                              f"{zone_result.get('multiplier')}, reason="
+                              f"{zone_result.get('reason')})")
 
-                        run_log.log_zone_event(
-                            entity_id=zone_entity_id,
-                            state="off",
-                            source="moisture_skip",
-                            zone_name=f"Zone {zone_num}",
+                        # Cancel the just-started monitor
+                        monitor_task = _active_moisture_monitors.pop(
+                            zone_entity_id, None
                         )
-                        print(f"[MOISTURE] Skip: disabled enable switch "
-                              f"{enable_sw} for zone {zone_num}")
-                    else:
-                        # No enable switch — turn off zone directly and
-                        # advance to the next one
-                        domain = (zone_entity_id.split(".")[0]
-                                  if "." in zone_entity_id else "switch")
-                        svc = "close" if domain == "valve" else "turn_off"
-                        await ha_client.call_service(
-                            domain, svc, {"entity_id": zone_entity_id}
-                        )
+                        if monitor_task and not monitor_task.done():
+                            monitor_task.cancel()
 
-                        run_log.log_zone_event(
-                            entity_id=zone_entity_id,
-                            state="off",
-                            source="moisture_skip",
-                            zone_name=f"Zone {zone_num}",
-                        )
-                        # Advance to next zone (if last zone, this is a
-                        # no-op and the schedule simply ends)
-                        await _advance_to_next_zone(zone_entity_id)
-                        print(f"[MOISTURE] Skip: no enable switch — "
-                              f"turned off {zone_entity_id} and advanced")
+                        # Use enable_zone switch if available — ESPHome will
+                        # skip this zone and advance to the next one (or end
+                        # the schedule if this was the last enabled zone).
+                        config = get_config()
+                        enable_sw = _find_enable_zone_switch(
+                            zone_num, config
+                        ) if zone_num else ""
 
-                    # Zone is being skipped — skip further probe processing
-                    continue
-            except Exception as e:
-                print(f"[MOISTURE] Skip check error for "
-                      f"{zone_entity_id}: {e}")
+                        if enable_sw:
+                            await ha_client.call_service("switch", "turn_off", {
+                                "entity_id": enable_sw,
+                            })
+                            skip_disabled = data.get("skip_disabled_zones", [])
+                            if enable_sw not in skip_disabled:
+                                skip_disabled.append(enable_sw)
+                                data["skip_disabled_zones"] = skip_disabled
+                                _save_data(data)
+
+                            run_log.log_zone_event(
+                                entity_id=zone_entity_id,
+                                state="off",
+                                source="moisture_skip",
+                                zone_name=f"Zone {zone_num}",
+                            )
+                            print(f"[MOISTURE] Skip: disabled enable switch "
+                                  f"{enable_sw} for zone {zone_num}")
+                        else:
+                            # No enable switch — turn off zone directly and
+                            # advance to the next one
+                            domain = (zone_entity_id.split(".")[0]
+                                      if "." in zone_entity_id else "switch")
+                            svc = "close" if domain == "valve" else "turn_off"
+                            await ha_client.call_service(
+                                domain, svc, {"entity_id": zone_entity_id}
+                            )
+
+                            run_log.log_zone_event(
+                                entity_id=zone_entity_id,
+                                state="off",
+                                source="moisture_skip",
+                                zone_name=f"Zone {zone_num}",
+                            )
+                            # Advance to next zone (if last zone, this is a
+                            # no-op and the schedule simply ends)
+                            await _advance_to_next_zone(zone_entity_id)
+                            print(f"[MOISTURE] Skip: no enable switch — "
+                                  f"turned off {zone_entity_id} and advanced")
+
+                        # Zone is being skipped — skip further probe processing
+                        continue
+                except Exception as e:
+                    print(f"[MOISTURE] Skip check error for "
+                          f"{zone_entity_id}: {e}")
+            else:
+                print(f"[MOISTURE] Zone ON (manual) → skip auto-skip for "
+                      f"{zone_entity_id} (source={source})")
 
         elif is_off:
             # Zone turned off — cancel monitoring (runs for ALL mapped probes)

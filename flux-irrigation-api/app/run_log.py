@@ -433,7 +433,13 @@ async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
     if is_on or is_off:
         try:
             from routes.moisture import on_zone_state_change
-            await on_zone_state_change(entity_id, new_state)
+            # Determine effective source: if the event was already logged by
+            # the API endpoint (manual start), use that source so moisture
+            # module knows not to auto-skip manual runs.
+            effective_source = source
+            if already_logged and recent:
+                effective_source = recent[0].get("source", source)
+            await on_zone_state_change(entity_id, new_state, effective_source)
         except Exception as e:
             print(f"[RUN_LOG] Moisture zone state hook error: {e}")
 

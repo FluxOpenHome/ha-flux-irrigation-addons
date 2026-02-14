@@ -716,13 +716,13 @@ let geocodeCache = {};
 let leafletMap = null;
 
 // --- Toast ---
-function showToast(msg, type = 'success') {
+function showToast(msg, type = 'success', duration = 4000) {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
     toast.className = 'toast ' + type;
     toast.textContent = msg;
     container.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+    setTimeout(() => toast.remove(), duration);
 }
 
 // --- Probe Wake Conflict Warning ---
@@ -1850,8 +1850,12 @@ async function startZone(zoneId, durationMinutes) {
         if (durationMinutes && parseInt(durationMinutes) > 0) {
             body.duration_minutes = parseInt(durationMinutes);
         }
-        await api('/zones/' + zoneId + '/start', { method: 'POST', body: JSON.stringify(body) });
-        showToast('Zone started' + (body.duration_minutes ? ' for ' + body.duration_minutes + ' min' : ''));
+        const result = await api('/zones/' + zoneId + '/start', { method: 'POST', body: JSON.stringify(body) });
+        if (result.warning) {
+            showToast('⚠️ Zone started — ' + result.warning, 'error', 8000);
+        } else {
+            showToast('Zone started' + (body.duration_minutes ? ' for ' + body.duration_minutes + ' min' : ''));
+        }
         setTimeout(() => loadZones(), 1000);
     } catch (e) { showToast(e.message, 'error'); }
 }

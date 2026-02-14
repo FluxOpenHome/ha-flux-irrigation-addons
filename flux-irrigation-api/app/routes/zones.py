@@ -73,6 +73,7 @@ class ZoneActionResponse(BaseModel):
     zone_id: str
     action: str
     message: str
+    warning: str = ""
 
 
 def _zone_name(entity_id: str) -> str:
@@ -271,20 +272,14 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
         except Exception as e:
             print(f"[ZONES] Multiplier lookup failed, using original duration: {e}")
 
-    # If moisture says skip, turn the zone back off and return a skip response
+    # Build warning for moisture skip (zone keeps running — user chose manual start)
+    moisture_warning = ""
     if moisture_skip:
-        svc_domain_off, svc_name_off = _get_zone_service(entity_id, "off")
-        await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": entity_id})
-        run_log.log_zone_event(
-            entity_id=entity_id, state="off", source="moisture_skip",
-            zone_name=_zone_name(entity_id),
-        )
-        return ZoneActionResponse(
-            success=True,
-            zone_id=zone_id,
-            action="skipped",
-            message=f"Zone '{zone_id}' skipped — soil moisture above threshold",
-        )
+        try:
+            moisture_warning = mult_result.get("moisture_reason", "Soil moisture above skip threshold")
+        except Exception:
+            moisture_warning = "Soil moisture above skip threshold"
+        print(f"[ZONES] Manual start with moisture warning: {entity_id} — {moisture_warning}")
 
     if adjusted_duration:
         # Cancel any existing timed run for this entity
@@ -329,6 +324,7 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
         zone_id=zone_id,
         action="start",
         message=message,
+        warning=moisture_warning,
     )
 
 
