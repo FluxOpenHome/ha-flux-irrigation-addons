@@ -952,15 +952,19 @@ async def _handle_prepped_wake(
     zone_result = calculate_zone_moisture_multiplier(zone_eid, data, sensor_states)
 
     if zone_result.get("skip"):
-        # SATURATED — skip the zone by disabling its enable_zone switch
+        # SATURATED — skip the zone by disabling its enable_zone switch.
+        # Only track zones that were ENABLED before — don't re-enable zones
+        # the user intentionally disabled.
         config = get_config()
         enable_sw = _find_enable_zone_switch(zone_num, config)
         if enable_sw:
+            current = await ha_client.get_entity_state(enable_sw)
+            was_enabled = (current or {}).get("state") == "on"
             success = await ha_client.call_service("switch", "turn_off", {
                 "entity_id": enable_sw,
             })
-            if success:
-                # Track skipped zone for re-enable later
+            if success and was_enabled:
+                # Track skipped zone for re-enable later (only if was enabled)
                 prep.setdefault("skipped_zones", []).append({
                     "zone_num": zone_num,
                     "zone_entity_id": zone_eid,
@@ -968,6 +972,9 @@ async def _handle_prepped_wake(
                 })
                 print(f"[MOISTURE] Schedule skip: zone {zone_num} saturated "
                       f"(mult={zone_result.get('multiplier')}) — disabled {enable_sw}")
+            elif success and not was_enabled:
+                print(f"[MOISTURE] Schedule skip: zone {zone_num} saturated "
+                      f"— already disabled (user-disabled), not tracking for re-enable")
             else:
                 print(f"[MOISTURE] Schedule skip: FAILED to disable {enable_sw} for zone {zone_num}")
         else:
@@ -3266,15 +3273,20 @@ async def apply_adjusted_durations() -> dict:
         if skip:
             # Disable the zone's enable switch instead of setting duration to 0.
             # This lets ESPHome skip the zone cleanly without blocking the schedule.
+            # Only track zones that were ENABLED before — we don't want to re-enable
+            # zones the user intentionally disabled.
             enable_eid = _find_enable_zone_switch(zone_num, config)
             if enable_eid:
+                # Check current state before disabling — only track if was ON
+                current = await ha_client.get_entity_state(enable_eid)
+                was_enabled = (current or {}).get("state") == "on"
                 disable_ok = await ha_client.call_service("switch", "turn_off", {
                     "entity_id": enable_eid,
                 })
-                if disable_ok and enable_eid not in skip_disabled:
+                if disable_ok and was_enabled and enable_eid not in skip_disabled:
                     skip_disabled.append(enable_eid)
                 print(f"[MOISTURE] Skip zone {zone_num}: disabled {enable_eid} "
-                      f"(success={disable_ok})")
+                      f"(was_enabled={was_enabled}, success={disable_ok})")
             # Still write the adjusted duration using the base value (zone is disabled,
             # but keep duration intact for when it's re-enabled)
             combined = weather_mult * moisture_mult
@@ -5920,10 +5932,10 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                         print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
                               f"{probe_id}")
 
-    # Deferred factor re-application: if apply_adjusted_durations() was blocked
-    # by running zones (e.g. weather factor changed mid-run), check whether
-    # ALL zones are now off after this zone-off event and re-apply.
-    if is_off and _deferred_factor_apply:
+    # When all zones are off: re-enable any skip-disabled zones and re-evaluate
+    # factors.  This is the PRIMARY mechanism that restores zones after a
+    # schedule run where zones were disabled by moisture skip.
+    if is_off:
         try:
             config = get_config()
             all_zones = await ha_client.get_entities_by_ids(
@@ -5934,11 +5946,37 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                 if z.get("state") in ("on", "open")
             ]
             if not still_running:
-                print("[MOISTURE] All zones stopped — applying deferred "
-                      "factor re-evaluation")
-                await apply_adjusted_durations()
+                fresh_data = _load_data()
+                skip_disabled = fresh_data.get("skip_disabled_zones", [])
+
+                if fresh_data.get("apply_factors_to_schedule"):
+                    # Re-run apply_adjusted_durations() which will:
+                    # - Re-enable zones whose moisture dropped below skip
+                    # - Keep disabled zones whose moisture is still above
+                    print("[MOISTURE] All zones stopped — re-evaluating "
+                          "factors (will re-enable zones if moisture dropped)")
+                    await apply_adjusted_durations()
+                elif skip_disabled:
+                    # Factors not active — just re-enable everything that
+                    # was disabled during this run
+                    print(f"[MOISTURE] All zones stopped — re-enabling "
+                          f"{len(skip_disabled)} skip-disabled zone(s)")
+                    restored = []
+                    for enable_eid in list(skip_disabled):
+                        ok = await ha_client.call_service("switch", "turn_on", {
+                            "entity_id": enable_eid,
+                        })
+                        if ok:
+                            restored.append(enable_eid)
+                            print(f"[MOISTURE] Re-enabled {enable_eid}")
+                        else:
+                            print(f"[MOISTURE] FAILED to re-enable {enable_eid}")
+                    fresh_data["skip_disabled_zones"] = [
+                        e for e in skip_disabled if e not in restored
+                    ]
+                    _save_data(fresh_data)
         except Exception as e:
-            print(f"[MOISTURE] Deferred factor re-apply error: {e}")
+            print(f"[MOISTURE] Zone-off cleanup error: {e}")
 
 
 async def check_skip_factor_transition(entity_id: str, new_state: str, old_state: str) -> bool:
