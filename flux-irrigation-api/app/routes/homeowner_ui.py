@@ -7631,6 +7631,9 @@ function dnRenderAllCharts(data) {
     var grid = document.getElementById('dnGrid');
     if (!grid) return;
     var gpmMap = dnBuildGpmMap(data);
+    // Detect if customer has any probes
+    var probeKeys = Object.keys(data.probes || {});
+    var hasProbes = probeKeys.length > 0;
     var html = '';
     // 1. Summary cards
     html += '<div class="dn-full">' + dnBuildSummaryCards(data, gpmMap) + '</div>';
@@ -7645,14 +7648,18 @@ function dnRenderAllCharts(data) {
     html += '<span class="dn-pill" style="background:rgba(46,204,113,0.15);color:rgba(46,204,113,0.9);">Moisture: ' + dnFmtNum(sv.totalMoisture) + ' gal</span>';
     html += '<span class="dn-pill" style="background:rgba(155,89,182,0.15);color:rgba(155,89,182,0.9);">Total: ' + dnFmtNum(sv.totalSaved) + ' gal</span>';
     html += '</div></div>';
-    // 4. Moisture Trends
-    html += '<div class="dn-panel"><div class="dn-panel-title">Moisture Trends</div><div class="dn-chart-wrap"><canvas id="dnChartMoisture"></canvas></div></div>';
+    // 4. Moisture Trends (only if probes exist)
+    if (hasProbes) {
+        html += '<div class="dn-panel"><div class="dn-panel-title">Moisture Trends</div><div class="dn-chart-wrap"><canvas id="dnChartMoisture"></canvas></div></div>';
+    }
     // 5. Weather Impact
     html += '<div class="dn-panel"><div class="dn-panel-title">Weather Impact</div><div class="dn-chart-wrap"><canvas id="dnChartWeather"></canvas></div></div>';
     // 6. Zone Performance — with bar/radar toggle
     html += '<div class="dn-panel"><div class="dn-panel-title">Zone Performance <div class="dn-tab-group"><button class="dn-tab-btn active" onclick="dnZoneView(&quot;bar&quot;,this)">Bar</button><button class="dn-tab-btn" onclick="dnZoneView(&quot;radar&quot;,this)">Radar</button></div></div><div class="dn-chart-wrap" id="dnZoneWrap"><canvas id="dnChartZoneBar"></canvas></div></div>';
-    // 7. Probe Health
-    html += '<div class="dn-panel"><div class="dn-panel-title">Probe Health</div><div id="dnProbeHealth"></div></div>';
+    // 7. Probe Health (only if probes exist)
+    if (hasProbes) {
+        html += '<div class="dn-panel"><div class="dn-panel-title">Probe Health</div><div id="dnProbeHealth"></div></div>';
+    }
     // 8. Heatmap
     html += '<div class="dn-panel dn-full"><div class="dn-panel-title">Watering Activity Heatmap</div><div id="dnHeatmap"></div></div>';
 
@@ -7662,11 +7669,11 @@ function dnRenderAllCharts(data) {
     setTimeout(function() {
         dnBuildWaterUsage('dnChartUsage', data, gpmMap);
         dnBuildSavings('dnChartSavings', data, gpmMap);
-        dnBuildMoisture('dnChartMoisture', data);
+        if (hasProbes) dnBuildMoisture('dnChartMoisture', data);
         dnBuildWeather('dnChartWeather', data);
         dnBuildZoneBar('dnChartZoneBar', data, gpmMap);
         dnBuildHeatmap('dnHeatmap', data);
-        dnBuildProbeHealth('dnProbeHealth', data);
+        if (hasProbes) dnBuildProbeHealth('dnProbeHealth', data);
     }, 50);
 }
 
