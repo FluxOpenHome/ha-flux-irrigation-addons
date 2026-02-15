@@ -18,6 +18,7 @@ DEFAULT_SETTINGS = {
     "water_source": "",           # "city", "reclaimed", "well", or "" (not configured)
     "cost_per_1000_gal": 0.0,     # $/1,000 gallons (for city/reclaimed)
     "pressure_psi": 50.0,         # Water pressure in PSI (default 50, used when no pump)
+    "water_savings_reset_at": None,  # ISO timestamp — savings counter shows only events after this
 }
 
 

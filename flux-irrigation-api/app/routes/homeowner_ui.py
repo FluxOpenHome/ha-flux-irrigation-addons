@@ -1542,6 +1542,18 @@ function showMap(lat, lon, label) {
         lockBtn.title = 'Unlock map interaction';
         lockBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleMapLock(); });
         mapEl.appendChild(lockBtn);
+        // Recenter button (under lock)
+        var rcBtn = document.createElement('button');
+        rcBtn.id = 'mapRecenterBtn';
+        rcBtn.className = 'map-lock-btn';
+        rcBtn.style.cssText = 'top:46px;right:10px;';
+        rcBtn.innerHTML = '&#8982;';
+        rcBtn.title = 'Recenter';
+        rcBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (leafletMap && mapCenter) leafletMap.setView([mapCenter.lat, mapCenter.lon], 16);
+        });
+        mapEl.appendChild(rcBtn);
     });
 }
 
@@ -2635,6 +2647,7 @@ function renderScheduleCard(sched, durData, multData) {
                 var zoneSkip = false;
                 var zoneCombined = liveWeatherMult;
                 var zoneHasMoisture = false;
+                var zoneSensorReadings = null;
                 for (var pzKey in perZoneMult) {
                     var pzMatch = pzKey.match(/zone[_]?(\\d+)/i);
                     if (pzMatch && pzMatch[1] === String(zn)) {
@@ -2642,6 +2655,7 @@ function renderScheduleCard(sched, durData, multData) {
                         zoneSkip = perZoneMult[pzKey].skip || false;
                         zoneCombined = perZoneMult[pzKey].combined || liveWeatherMult;
                         zoneHasMoisture = true;
+                        zoneSensorReadings = perZoneMult[pzKey].sensor_readings || null;
                         break;
                     }
                 }
@@ -2650,8 +2664,18 @@ function renderScheduleCard(sched, durData, multData) {
                 var factorBadge = '';
                 if ((adj && adj.skip) || zoneSkip) {
                     // Skip triggered — from applied factors or live moisture data
-                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-danger-light);color:var(--color-danger);">Skip Watering</span>';
+                    var skipReadings = '';
+                    var sr = (adj && adj.sensor_readings) || zoneSensorReadings;
+                    if (sr && zoneHasMoisture) {
+                        var parts = [];
+                        if (sr.T != null) parts.push('T:' + sr.T + '%');
+                        if (sr.M != null) parts.push('M:' + sr.M + '%');
+                        if (sr.B != null) parts.push('B:' + sr.B + '%');
+                        if (parts.length) skipReadings = ' <span style="font-weight:400;font-size:9px;opacity:0.85;">' + parts.join(' ') + '</span>';
+                    }
+                    var gophrIcon = zoneHasMoisture ? ' <img src="' + HBASE + '/assets/gophr-logo" style="height:14px;vertical-align:middle;margin-left:3px;" alt="Gophr">' : '';
+                    factorBadge = ' <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-danger-light);color:var(--color-danger);">Skip Watering' + skipReadings + gophrIcon + '</span>';
                 } else if (adj) {
                     // Factors are actively applied — show applied adjusted value
                     factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
@@ -2659,8 +2683,17 @@ function renderScheduleCard(sched, durData, multData) {
                         adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)</span>';
                 } else if (zoneSkip) {
                     // Factors not applied but skip would trigger for THIS zone
-                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-tile);color:var(--color-danger);opacity:0.8;" title="Watering would be skipped if Apply Factors is enabled">Skip Watering</span>';
+                    var skipReadings2 = '';
+                    if (zoneSensorReadings && zoneHasMoisture) {
+                        var parts2 = [];
+                        if (zoneSensorReadings.T != null) parts2.push('T:' + zoneSensorReadings.T + '%');
+                        if (zoneSensorReadings.M != null) parts2.push('M:' + zoneSensorReadings.M + '%');
+                        if (zoneSensorReadings.B != null) parts2.push('B:' + zoneSensorReadings.B + '%');
+                        if (parts2.length) skipReadings2 = ' <span style="font-weight:400;font-size:9px;opacity:0.85;">' + parts2.join(' ') + '</span>';
+                    }
+                    var gophrIcon2 = zoneHasMoisture ? ' <img src="' + HBASE + '/assets/gophr-logo" style="height:14px;vertical-align:middle;margin-left:3px;" alt="Gophr">' : '';
+                    factorBadge = ' <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-tile);color:var(--color-danger);opacity:0.8;" title="Watering would be skipped if Apply Factors is enabled">Skip Watering' + skipReadings2 + gophrIcon2 + '</span>';
                 } else if (Math.abs(zoneCombined - 1.0) >= 0.005) {
                     // Factors not applied but multiplier differs from 1.0 — show preview
                     var curVal = parseFloat(duration.state) || 0;
@@ -3068,10 +3101,21 @@ async function loadEstGallons() {
         const hours = parseInt(hoursRaw, 10) || 24;
         const data = await api('/history/runs?hours=' + hours);
         const events = data.events || [];
+        // Fetch water settings early — needed for savings reset filter and cost display
+        var waterSettings = null;
+        try { waterSettings = await api('/water_settings?t=' + Date.now()); } catch(e) {}
+        if (waterSettings) window._cachedWaterSettings = waterSettings;
         // Filter to events with duration and GPM (duration_seconds is set on OFF events)
         const relevant = events.filter(e => e.duration_seconds > 0 && gpmMap[e.entity_id]);
         // Also collect water_saved_gallons from all events
-        const savingsEvents = events.filter(e => e.water_saved_gallons > 0);
+        // Filter by water_savings_reset_at if set (homeowner can reset savings
+        // counter without clearing run history)
+        const resetAt = (waterSettings && waterSettings.water_savings_reset_at) || null;
+        const savingsEvents = events.filter(e => {
+            if (!(e.water_saved_gallons > 0)) return false;
+            if (resetAt && e.timestamp && e.timestamp < resetAt) return false;
+            return true;
+        });
         const hasAnyData = relevant.length > 0 || savingsEvents.length > 0;
         if (!hasAnyData) {
             card.style.display = '';
@@ -3105,10 +3149,6 @@ async function loadEstGallons() {
         // Sort zones by gallons desc
         const allZoneIds = [...new Set([...Object.keys(zoneGallons), ...Object.keys(zoneSaved)])];
         const sorted = allZoneIds.sort((a, b) => (zoneGallons[b] || 0) - (zoneGallons[a] || 0));
-        // Fetch water settings for cost display
-        var waterSettings = null;
-        try { waterSettings = await api('/water_settings?t=' + Date.now()); } catch(e) {}
-        if (waterSettings) window._cachedWaterSettings = waterSettings;
         const hasCost = waterSettings && waterSettings.cost_per_1000_gal > 0 &&
             (waterSettings.water_source === 'city' || waterSettings.water_source === 'reclaimed');
         const costPer1000 = hasCost ? waterSettings.cost_per_1000_gal : 0;
@@ -3133,6 +3173,13 @@ async function loadEstGallons() {
             var savedCost = (totalSaved / 1000) * costPer1000;
             html += '<div style="font-size:15px;color:var(--color-success);font-weight:600;margin-top:4px;">$' +
                 savedCost.toFixed(2) + ' est. savings</div>';
+        }
+        if (resetAt) {
+            var resetDate = new Date(resetAt);
+            html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">since ' + resetDate.toLocaleDateString() + '</div>';
+        }
+        if (totalSaved > 0) {
+            html += '<div style="margin-top:4px;"><a href="#" onclick="event.preventDefault();event.stopPropagation();resetWaterSavings()" style="font-size:11px;color:var(--text-muted);text-decoration:underline;">Reset</a></div>';
         }
         html += '</div>';
         html += '</div>';
@@ -4164,6 +4211,19 @@ async function clearRunHistory() {
             setTimeout(() => loadHistory(), 1000);
         } else {
             showToast(result.error || 'Failed to clear history', 'error');
+        }
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function resetWaterSavings() {
+    if (!confirm('Reset the water savings counter? Run history will be kept.')) return;
+    try {
+        const result = await api('/water_settings/reset_savings', { method: 'POST' });
+        if (result.success) {
+            showToast('Water savings counter reset');
+            loadWaterGallons();
+        } else {
+            showToast(result.error || 'Failed to reset savings', 'error');
         }
     } catch (e) { showToast(e.message, 'error'); }
 }

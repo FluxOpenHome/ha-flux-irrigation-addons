@@ -858,6 +858,23 @@ async def homeowner_clear_history(request: Request):
     return {"success": False, "error": "Failed to clear run history"}
 
 
+@router.get("/debug/moisture-log", summary="Get moisture skip debug log")
+async def homeowner_moisture_debug_log(lines: int = Query(200, ge=1, le=500)):
+    """Get the moisture skip debug log for troubleshooting schedule skip issues."""
+    _require_homeowner_mode()
+    from routes.moisture import get_debug_log, clear_debug_log
+    return {"lines": get_debug_log(lines)}
+
+
+@router.delete("/debug/moisture-log", summary="Clear moisture debug log")
+async def homeowner_clear_moisture_debug_log():
+    """Clear the moisture skip debug log."""
+    _require_homeowner_mode()
+    from routes.moisture import clear_debug_log
+    clear_debug_log()
+    return {"success": True}
+
+
 @router.get("/zone_aliases", summary="Get zone aliases")
 async def homeowner_get_aliases():
     """Get the homeowner's zone display name aliases."""
@@ -1094,6 +1111,22 @@ async def homeowner_save_water_settings(body: SaveWaterSettingsRequest, request:
     return result
 
 
+@router.post("/water_settings/reset_savings", summary="Reset water savings counter")
+async def homeowner_reset_water_savings(request: Request):
+    """Set a timestamp so the water savings counter only shows events after now.
+
+    Run history is NOT deleted — only the savings display resets.
+    """
+    _require_homeowner_mode()
+    import water_data
+    from datetime import datetime, timezone
+    settings = water_data.get_water_settings()
+    settings["water_savings_reset_at"] = datetime.now(timezone.utc).isoformat()
+    water_data.save_water_settings(settings)
+    log_change(get_actor(request), "Water Settings", "Reset water savings counter")
+    return {"success": True, "water_savings_reset_at": settings["water_savings_reset_at"]}
+
+
 # --- Report Settings ---
 
 
@@ -1198,6 +1231,18 @@ async def get_report_logo():
     if not path:
         raise HTTPException(404, "No custom logo")
     return FileResponse(path, media_type="image/png")
+
+
+@router.get("/assets/gophr-logo", summary="Serve Gophr logo SVG")
+async def homeowner_gophr_logo():
+    """Serve the Gophr logo SVG for inline display."""
+    import os
+    svg_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "gophr.svg")
+    svg_path = os.path.abspath(svg_path)
+    if not os.path.exists(svg_path):
+        raise HTTPException(404, "Logo not found")
+    return FileResponse(svg_path, media_type="image/svg+xml",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 # --- Notification Preferences ---
