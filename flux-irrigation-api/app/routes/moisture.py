@@ -6725,21 +6725,44 @@ async def check_skip_factor_transition(entity_id: str, new_state: str, old_state
             if _active_schedule_run is not None and not was_skip and new_skip:
                 _record_moisture_disable(zone_eid)
 
-                # If a zone is currently running and this newly-skipped zone
-                # is next in line, set a preemptive timer (if not already set).
                 current_eid = _active_schedule_run.get("current_zone_entity_id")
-                if current_eid and current_eid not in _preemptive_advance_timers:
+
+                # INSTANT CUTOFF: if THIS zone is currently running, cut
+                # it NOW — don't wait for the 30-second poll.
+                if current_eid == zone_eid:
+                    zone_num = _extract_zone_number(zone_eid)
+                    _debug_log(f"INSTANT CUTOFF: zone {zone_num} crossed skip "
+                               f"threshold while running — advancing immediately")
+                    try:
+                        advanced = await _advance_to_next_zone(zone_eid)
+                        if not advanced:
+                            domain = (zone_eid.split(".")[0]
+                                      if "." in zone_eid else "switch")
+                            svc = "close" if domain == "valve" else "turn_off"
+                            await ha_client.call_service(
+                                domain, svc, {"entity_id": zone_eid}
+                            )
+                        import run_log as _rl_cutoff
+                        _rl_cutoff.log_zone_event(
+                            entity_id=zone_eid,
+                            state="off",
+                            source="moisture_cutoff",
+                            zone_name=f"Zone {zone_num}",
+                        )
+                        _debug_log(f"INSTANT CUTOFF: zone {zone_num} — "
+                                   f"{'advanced' if advanced else 'last zone, stopped'}")
+                    except Exception as e:
+                        _debug_log(f"INSTANT CUTOFF ERROR: {e}")
+
+                # If this newly-skipped zone is NEXT in line after the
+                # currently running zone, set a preemptive timer.
+                elif current_eid and current_eid not in _preemptive_advance_timers:
                     next_z = _get_next_zone_in_run(current_eid)
                     if next_z and next_z["zone_entity_id"] == zone_eid:
-                        # Find how long the current zone has left
                         for z in _active_schedule_run["zone_sequence"]:
                             if z["zone_entity_id"] == current_eid:
                                 dur_sec = z.get("duration_minutes", 0) * 60
                                 if dur_sec > 5:
-                                    # We don't know exactly how long it's been
-                                    # running, so set a short timer (2s) as a
-                                    # safety net — the zone OFF backup will
-                                    # catch it if we're too late.
                                     delay = max(0, dur_sec - 2)
                                     timer = asyncio.create_task(
                                         _preemptive_advance_timer(current_eid, delay)

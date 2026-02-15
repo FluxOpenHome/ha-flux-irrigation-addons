@@ -10,6 +10,7 @@ RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt
 
 # Copy application
 COPY app/ /app/
+COPY gophr.svg /app/gophr.svg
 COPY run.sh /
 
 RUN chmod a+x /run.sh

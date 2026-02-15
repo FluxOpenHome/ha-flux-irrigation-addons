@@ -1237,7 +1237,12 @@ async def get_report_logo():
 async def homeowner_gophr_logo():
     """Serve the Gophr logo SVG for inline display."""
     import os
-    svg_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "gophr.svg")
+    # In Docker, gophr.svg is at /app/gophr.svg (same dir as the app package).
+    # Locally it's one level up from app/.
+    app_dir = os.path.dirname(os.path.dirname(__file__))  # app/
+    svg_path = os.path.join(app_dir, "gophr.svg")
+    if not os.path.exists(svg_path):
+        svg_path = os.path.join(app_dir, "..", "gophr.svg")
     svg_path = os.path.abspath(svg_path)
     if not os.path.exists(svg_path):
         raise HTTPException(404, "Logo not found")
