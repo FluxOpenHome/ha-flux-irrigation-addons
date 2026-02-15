@@ -6725,8 +6725,8 @@ function hoRenderHeadTable(heads) {
     if (hcEl) hcEl.value = String(heads.length);
     var ref = _hoNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
 
-    // Disabled styling for site-map-controlled fields (nozzle_type, name, gpm, arc, radius)
-    // Brand, model, mount, popup_height, psi, notes remain editable by homeowner.
+    // Disabled styling for site-map-controlled fields (nozzle_type, gpm, arc, radius)
+    // Name, brand, model, mount, popup_height, psi, notes remain editable by homeowner.
     var _smDis = siteMapLocked ? ' disabled' : '';
     var _smRo = siteMapLocked ? ' readonly' : '';
     var _smBg = siteMapLocked ? 'background:var(--bg-hover);color:var(--text-secondary);cursor:not-allowed;opacity:0.7;' : 'background:var(--bg-input);color:var(--text-primary);';
@@ -6768,8 +6768,8 @@ function hoRenderHeadTable(heads) {
         }
         html += '<td style="padding:4px 6px;border:1px solid var(--border-light);text-align:center;font-weight:600;">' + (i+1) + '</td>';
 
-        // Name / Location — LOCKED by site map editor
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner"' + _smRo + ' style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '"></td>';
+        // Name / Location — always editable (site map inherits the name)
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner" style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '"></td>';
 
         // Head Type dropdown — LOCKED by site map editor
         html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '"' + _smDis + ' style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '">';
