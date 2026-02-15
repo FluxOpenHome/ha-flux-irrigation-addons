@@ -1365,6 +1365,31 @@ ADMIN_HTML = """<!DOCTYPE html>
             </div>
             <button onclick="saveSystemMode()" class="btn btn-primary" style="min-width:120px;">Save</button>
             <span id="systemModeStatus" style="margin-left:12px;font-size:13px;"></span>
+
+            <!-- Switch to Stand Alone Confirmation Modal -->
+            <div id="standaloneModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">
+                <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                        <span style="font-size:28px;">&#9888;</span>
+                        <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--color-danger);">Switch to Stand Alone?</h3>
+                    </div>
+                    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:12px;">
+                        This will <strong>immediately disconnect</strong> your irrigation management company. They will:
+                    </p>
+                    <ul style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;padding-left:20px;line-height:1.8;">
+                        <li>Lose all access to your irrigation system</li>
+                        <li>See your property as <strong style="color:var(--color-danger);">Access Revoked</strong> on their dashboard</li>
+                        <li>Need a <strong>new connection key</strong> to reconnect</li>
+                    </ul>
+                    <p style="font-size:13px;color:var(--text-hint);margin-bottom:20px;">
+                        Your irrigation system will continue running on its current schedule. You will have full control of all settings and data.
+                    </p>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-secondary" onclick="closeStandaloneModal()">Cancel</button>
+                        <button class="btn btn-danger" onclick="executeStandaloneSwitch()">Yes, Switch to Stand Alone</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2978,25 +3003,31 @@ ADMIN_HTML = """<!DOCTYPE html>
 
     async function saveSystemMode() {
         const mode = document.querySelector('input[name="systemMode"]:checked').value;
-        const statusEl = document.getElementById('systemModeStatus');
 
         // Warn when switching from managed → standalone
         if (_currentSystemMode === 'managed' && mode === 'standalone') {
-            var warned = confirm(
-                'ARE YOU SURE?\\n\\n' +
-                'Your management company will LOSE ACCESS to your irrigation system if you switch to Stand Alone mode.\\n\\n' +
-                'You will need to generate and send a new connection key to reconnect them.\\n\\n' +
-                'Press OK to disconnect and switch to Stand Alone, or Cancel to stay in Managed mode.'
-            );
-            if (!warned) {
-                // Reset radio back to managed
-                var radio = document.querySelector('input[name="systemMode"][value="managed"]');
-                if (radio) radio.checked = true;
-                selectSystemMode('managed');
-                return;
-            }
+            document.getElementById('standaloneModal').style.display = 'flex';
+            return;
         }
 
+        await _doSaveSystemMode(mode);
+    }
+
+    function closeStandaloneModal() {
+        document.getElementById('standaloneModal').style.display = 'none';
+        // Reset radio back to managed
+        var radio = document.querySelector('input[name="systemMode"][value="managed"]');
+        if (radio) radio.checked = true;
+        selectSystemMode('managed');
+    }
+
+    async function executeStandaloneSwitch() {
+        document.getElementById('standaloneModal').style.display = 'none';
+        await _doSaveSystemMode('standalone');
+    }
+
+    async function _doSaveSystemMode(mode) {
+        const statusEl = document.getElementById('systemModeStatus');
         try {
             statusEl.textContent = 'Saving...';
             statusEl.style.color = 'var(--text-secondary)';
@@ -3021,6 +3052,16 @@ ADMIN_HTML = """<!DOCTYPE html>
             statusEl.style.color = 'var(--color-danger)';
         }
     }
+
+    // Close standalone modal on Escape key or backdrop click
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('standaloneModal').style.display === 'flex') {
+            closeStandaloneModal();
+        }
+    });
+    document.getElementById('standaloneModal').addEventListener('click', function(e) {
+        if (e.target === this) closeStandaloneModal();
+    });
 
     async function loadSystemMode() {
         try {
