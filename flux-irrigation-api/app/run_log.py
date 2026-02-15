@@ -165,14 +165,14 @@ def log_zone_event(
     # Sources that do NOT count (user-initiated):
     #   api, dashboard, timed_shutoff, stop_all, unknown
     SAVINGS_SOURCES = {
-        "weather_pause", "pause_enforced", "moisture_skip",
+        "weather_pause", "pause_enforced", "moisture_skip", "weather_skip",
         "moisture_cutoff", "schedule", "system_pause",
     }
     actual_dur = entry.get("duration_seconds")
-    # For moisture_skip events, the zone never ran — duration is 0 but the
-    # full base duration was saved.  Treat actual_dur=0 as valid for skips.
-    is_skip = state == "moisture_skip"
-    if (state in ("off", "closed", "moisture_skip")
+    # For moisture_skip / weather_skip events, the zone never ran — duration
+    # is 0 but the full base duration was saved.  Treat actual_dur=0 as valid.
+    is_skip = state in ("moisture_skip", "weather_skip")
+    if (state in ("off", "closed", "moisture_skip", "weather_skip")
             and (is_skip or (actual_dur and actual_dur > 0))
             and source in SAVINGS_SOURCES):
         try:

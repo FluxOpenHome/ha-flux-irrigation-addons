@@ -937,6 +937,43 @@ async def run_weather_evaluation() -> dict:
                         zone_name=attrs.get("friendly_name", entity_id),
                     )
 
+            # Log weather_skip events for zones that WOULD have run but
+            # never started (schedules are now disabled).  Only log for
+            # zones NOT currently ON (already handled by the OFF loop above).
+            try:
+                from routes.moisture import _get_ordered_enabled_zones
+                running_eids = {
+                    z["entity_id"] for z in zones
+                    if z.get("state") in ("on", "open")
+                }
+                enabled_zones = await _get_ordered_enabled_zones()
+                skip_count = 0
+                for ez in enabled_zones:
+                    zone_eid = ez["zone_entity_id"]
+                    if zone_eid in running_eids:
+                        continue  # Already handled by OFF loop above
+                    if ez.get("is_special"):
+                        continue  # Skip pump/master/relay zones
+                    zone_name = f"Zone {ez.get('zone_num', 0)}"
+                    for z in zones:
+                        if z.get("entity_id") == zone_eid:
+                            zone_name = z.get("attributes", {}).get(
+                                "friendly_name", zone_name
+                            )
+                            break
+                    run_log.log_zone_event(
+                        entity_id=zone_eid,
+                        state="weather_skip",
+                        source="weather_skip",
+                        zone_name=zone_name,
+                        duration_seconds=0,
+                    )
+                    skip_count += 1
+                print(f"[WEATHER] Logged weather_skip for "
+                      f"{skip_count} prevented zones")
+            except Exception as e:
+                print(f"[WEATHER] Error logging weather_skip events: {e}")
+
             await ha_client.fire_event("flux_irrigation_weather_pause", {
                 "reason": pause_reason,
                 "rules_triggered": [t["rule"] for t in triggered],

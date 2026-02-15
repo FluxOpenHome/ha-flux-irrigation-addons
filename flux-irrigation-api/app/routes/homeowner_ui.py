@@ -349,6 +349,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div class="nav-tabs">
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
+        <button class="dark-toggle" id="timeFormatBtn" onclick="toggleTimeFormat()" title="Toggle 12hr/24hr time" style="font-size:12px;font-weight:700;min-width:36px;"><script>document.write(localStorage.getItem('flux_time_format')==='24h'?'24h':'12h')</script></button>
         <button class="dark-toggle" id="stickyHeaderBtn" onclick="toggleStickyHeader()" title="Pin header"><span data-fi="pin" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log"><span data-fi="clipboard" data-fs="28"></span></button>
@@ -1369,7 +1370,7 @@ function renderActiveIssuesBanner(issues) {
         const _isMon = dt.toLocaleDateString('en-US', {month:'short'});
         const _isDay = dt.getDate();
         const _isYr = String(dt.getFullYear()).slice(-2);
-        const _isTime = dt.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+        const _isTime = fluxFormatTime(dt);
         const timeStr = _isMon + ' ' + _isDay + '-' + _isYr + ' ' + _isTime;
         html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);' + (isResolved ? 'opacity:0.85;' : '') + '">';
         if (isResolved) {
@@ -3347,6 +3348,8 @@ async function loadHistory() {
                     if (e.mid_sensor_pct != null) {
                         stateCell += '<div style="font-size:10px;color:var(--text-muted);">Mid: ' + e.mid_sensor_pct + '%</div>';
                     }
+                } else if (e.state === 'weather_skip') {
+                    stateCell = '<span style="color:var(--color-warning);font-weight:600;">Weather Skip</span>';
                 } else if (e.state === 'skip') {
                     stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span><br><span style="color:var(--text-disabled);font-size:11px;">OFF</span>';
                 } else if ((e.state === 'off' || e.state === 'closed') && e.source === 'moisture_cutoff') {
@@ -3362,7 +3365,7 @@ async function loadHistory() {
                 // Water Saved cell — shows gallons saved, or time saved if no GPM
                 let waterSavedCell = '<span style="color:var(--text-disabled);">—</span>';
                 if (e.water_saved_gallons > 0) {
-                    var saveSrc = e.water_saved_source === 'moisture_skip' || e.water_saved_source === 'moisture_cutoff' ? 'Moisture' : e.water_saved_source === 'weather_pause' || e.water_saved_source === 'pause_enforced' ? 'Weather' : '';
+                    var saveSrc = e.water_saved_source === 'moisture_skip' || e.water_saved_source === 'moisture_cutoff' ? 'Moisture' : e.water_saved_source === 'weather_pause' || e.water_saved_source === 'pause_enforced' || e.water_saved_source === 'weather_skip' ? 'Weather' : '';
                     waterSavedCell = '<span style="color:var(--color-success);font-weight:600;">' + fluxIcon('droplet',14) + ' ' + e.water_saved_gallons.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + ' gal</span>';
                     if (saveSrc) waterSavedCell += '<div style="font-size:10px;color:var(--text-muted);">' + saveSrc + '</div>';
                 } else if (e.water_saved_minutes > 0 && e.water_saved_no_gpm) {
@@ -3398,7 +3401,7 @@ async function loadHistory() {
                         }
                     }
                 }
-                return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' || e.state === 'moisture_skip' ? 'opacity:0.7;' : ''}${isProbeEvent ? 'background:var(--bg-tile);' : ''}">
+                return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' || e.state === 'moisture_skip' || e.state === 'weather_skip' ? 'opacity:0.7;' : ''}${isProbeEvent ? 'background:var(--bg-tile);' : ''}">
                 <td style="padding:6px;">${zoneDisplay}${srcLabel}</td>
                 <td style="padding:6px;">${stateCell}</td>
                 <td style="padding:6px;white-space:nowrap;">${formatTime(e.timestamp)}</td>
@@ -3422,7 +3425,7 @@ function formatTime(ts) {
         const mon = d.toLocaleDateString('en-US', {month:'short'});
         const day = d.getDate();
         const yr = String(d.getFullYear()).slice(-2);
-        const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const time = fluxFormatTime(d);
         return mon + ' ' + day + '-' + yr + ' ' + time;
     } catch { return ts; }
 }
@@ -6401,6 +6404,35 @@ async function toggleNotifPref(key, enabled) {
     }
 }
 
+// --- Time Format ---
+function fluxTimeIs24h() {
+    return localStorage.getItem('flux_time_format') === '24h';
+}
+function fluxFormatTime(date, extraOpts) {
+    if (!(date instanceof Date)) date = new Date(date);
+    var is24 = fluxTimeIs24h();
+    var opts = { hour: is24 ? '2-digit' : 'numeric', minute: '2-digit', hour12: !is24 };
+    if (extraOpts) { for (var k in extraOpts) opts[k] = extraOpts[k]; }
+    return date.toLocaleTimeString(is24 ? 'en-GB' : 'en-US', opts);
+}
+function fluxFormatDateTime(date, extraOpts) {
+    if (!(date instanceof Date)) date = new Date(date);
+    var dateStr = (date.getMonth()+1) + '/' + date.getDate();
+    return dateStr + ' - ' + fluxFormatTime(date, extraOpts);
+}
+function toggleTimeFormat() {
+    var cur = localStorage.getItem('flux_time_format') || '12h';
+    var next = cur === '24h' ? '12h' : '24h';
+    localStorage.setItem('flux_time_format', next);
+    showToast('Time format: ' + next);
+    var btn = document.getElementById('timeFormatBtn');
+    if (btn) btn.innerHTML = next === '24h' ? '24h' : '12h';
+    if (typeof startHomeClock === 'function' && typeof _homeTimezone !== 'undefined') {
+        var el = document.getElementById('dashTimezone');
+        if (el) { var st = el.getAttribute('data-state'); if (st) startHomeClock(st); }
+    }
+}
+
 // --- Dark Mode ---
 function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
@@ -6462,11 +6494,9 @@ function startHomeClock(state) {
     function tick() {
         try {
             const now = new Date();
-            const opts = {hour: 'numeric', minute: '2-digit', hour12: true};
-            const abbrOpts = {timeZoneName: 'short'};
-            if (_homeTimezone) { opts.timeZone = _homeTimezone; abbrOpts.timeZone = _homeTimezone; }
-            const time = now.toLocaleTimeString('en-US', opts);
-            const abbr = now.toLocaleTimeString('en-US', Object.assign({}, opts, abbrOpts)).split(' ').pop();
+            const tzOpts = _homeTimezone ? {timeZone: _homeTimezone} : {};
+            const time = fluxFormatTime(now, tzOpts);
+            const abbr = now.toLocaleTimeString('en-US', Object.assign({timeZoneName: 'short'}, tzOpts)).split(' ').pop();
             el.textContent = time + ' ' + abbr;
         } catch(e) {}
     }
@@ -7634,7 +7664,7 @@ function dnChartDefaults() {
             }
         },
         scales: {
-            x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 45 } },
+            x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 45, callback: function(value) { var label = this.getLabelForValue(value); if (!label) return label; var d = new Date(label); if (isNaN(d)) return label; return fluxFormatDateTime(d); } } },
             y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } }, beginAtZero: true }
         }
     };
@@ -7792,6 +7822,7 @@ function dnTransformWeather(weatherLog) {
                 temp: w.temperature != null ? w.temperature : null,
                 humidity: w.humidity != null ? w.humidity : null,
                 multiplier: w.watering_multiplier != null ? w.watering_multiplier : null,
+                wind_speed: w.wind_speed != null ? w.wind_speed : null,
                 condition: w.condition || ''
             });
         }
@@ -7808,7 +7839,9 @@ function dnTransformWeather(weatherLog) {
         labels: points.map(function(p) { return p.ts; }),
         temperature: points.map(function(p) { return p.temp; }),
         humidity: points.map(function(p) { return p.humidity; }),
-        multiplier: points.map(function(p) { return p.multiplier; })
+        multiplier: points.map(function(p) { return p.multiplier; }),
+        wind_speed: points.map(function(p) { return p.wind_speed; }),
+        condition: points.map(function(p) { return p.condition; })
     };
 }
 
@@ -8024,24 +8057,29 @@ function dnBuildWeather(canvasId, data) {
     var cfg = dnChartDefaults();
     var ctx = document.getElementById(canvasId);
     if (!ctx) return null;
+    var datasets = [
+        { label: 'Temperature', data: td.temperature, borderColor: 'rgba(231,76,60,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yTemp' },
+        { label: 'Humidity %', data: td.humidity, borderColor: 'rgba(52,152,219,0.5)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yHumid' },
+        { label: 'Multiplier', data: td.multiplier, borderColor: 'rgba(46,204,113,0.9)', backgroundColor: 'rgba(46,204,113,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2.5, yAxisID: 'yMult' }
+    ];
+    var scales = {
+        x: cfg.scales.x,
+        yTemp: { position: 'left', grid: { color: cfg.scales.x.grid.color }, ticks: { color: 'rgba(231,76,60,0.7)', font: { size: 10 } }, title: { display: true, text: 'Temp', color: 'rgba(231,76,60,0.7)' } },
+        yHumid: { display: false },
+        yMult: { position: 'right', min: 0, max: 2, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(46,204,113,0.8)', font: { size: 10 } }, title: { display: true, text: 'Multiplier', color: 'rgba(46,204,113,0.8)' } }
+    };
+    if (td.wind_speed && td.wind_speed.some(function(v) { return v != null; })) {
+        datasets.push({ label: 'Wind (mph)', data: td.wind_speed, borderColor: 'rgba(155,89,182,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yWind' });
+        scales.yWind = { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: 'rgba(155,89,182,0.7)', font: { size: 10 } }, title: { display: true, text: 'Wind (mph)', color: 'rgba(155,89,182,0.7)' } };
+    }
+    var weatherTooltip = { callbacks: { title: function(items) { if (!items.length) return ''; var label = items[0].label || ''; var d = new Date(label); if (isNaN(d)) return label; return fluxFormatDateTime(d); }, afterBody: function(items) { if (!items.length || !td.condition) return ''; var idx = items[0].dataIndex; var cond = td.condition[idx]; return cond ? 'Condition: ' + cond : ''; } } };
     _dnCharts[canvasId] = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: td.labels,
-            datasets: [
-                { label: 'Temperature', data: td.temperature, borderColor: 'rgba(231,76,60,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yTemp' },
-                { label: 'Humidity %', data: td.humidity, borderColor: 'rgba(52,152,219,0.5)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yHumid' },
-                { label: 'Multiplier', data: td.multiplier, borderColor: 'rgba(46,204,113,0.9)', backgroundColor: 'rgba(46,204,113,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2.5, yAxisID: 'yMult' }
-            ]
-        },
+        data: { labels: td.labels, datasets: datasets },
         options: Object.assign({}, cfg, {
-            scales: {
-                x: cfg.scales.x,
-                yTemp: { position: 'left', grid: { color: cfg.scales.x.grid.color }, ticks: { color: 'rgba(231,76,60,0.7)', font: { size: 10 } }, title: { display: true, text: 'Temp', color: 'rgba(231,76,60,0.7)' } },
-                yHumid: { display: false },
-                yMult: { position: 'right', min: 0, max: 2, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(46,204,113,0.8)', font: { size: 10 } }, title: { display: true, text: 'Multiplier', color: 'rgba(46,204,113,0.8)' } }
-            },
-            interaction: { mode: 'index', intersect: false }
+            scales: scales,
+            interaction: { mode: 'index', intersect: false },
+            plugins: Object.assign({}, cfg.plugins, { tooltip: Object.assign({}, cfg.plugins.tooltip || {}, weatherTooltip) })
         })
     });
     return _dnCharts[canvasId];
