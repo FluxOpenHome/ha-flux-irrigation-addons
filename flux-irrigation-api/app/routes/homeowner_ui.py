@@ -1539,6 +1539,33 @@ function resolveZoneName(entityId, fallbackName) {
     return fallbackName || entityId;
 }
 
+// --- Not Used Zones ---
+function _notUsedKey() { return 'flux_not_used_zones'; }
+function getNotUsedZones() {
+    try { return JSON.parse(localStorage.getItem(_notUsedKey()) || '{}'); } catch(e) { return {}; }
+}
+function setNotUsedZones(map) {
+    localStorage.setItem(_notUsedKey(), JSON.stringify(map));
+}
+function isZoneNotUsed(zoneNum) {
+    return !!getNotUsedZones()[String(zoneNum)];
+}
+function toggleNotUsed(zoneNum) {
+    var map = getNotUsedZones();
+    var zn = String(zoneNum);
+    if (map[zn]) { delete map[zn]; } else { map[zn] = true; }
+    setNotUsedZones(map);
+    if (typeof loadScheduleCard === 'function') loadScheduleCard();
+    if (typeof loadZones === 'function') loadZones();
+}
+function guardNotUsedEnable(zoneNum, enableEid) {
+    if (!confirm('Zone ' + zoneNum + ' is marked as Not Used.\\n\\nPlease verify this zone is tied to a physical valve before enabling.\\n\\nEnable anyway?')) return;
+    var map = getNotUsedZones();
+    delete map[String(zoneNum)];
+    setNotUsedZones(map);
+    setEntityValue(enableEid, 'switch', {state: 'on'});
+}
+
 function getZoneLabel(zoneNum) {
     const aliases = window._currentZoneAliases || {};
     const modes = window._zoneModes || {};
@@ -1915,6 +1942,13 @@ async function loadZones() {
                 return !m || parseInt(m[1]) <= maxZ;
             });
         }
+        // Filter out "not used" zones
+        var notUsedMap = getNotUsedZones();
+        zones = zones.filter(function(z) {
+            var m = z.entity_id.match(/zone[_]?(\d+)/i);
+            if (m && notUsedMap[m[1]]) return false;
+            return true;
+        });
         if (zones.length === 0) { el.innerHTML = '<div class="empty-state"><p>No zones found</p></div>'; return; }
         // Sort: normal zones first (by zone number), then Pump Start Relay / Master Valve at the end
         zones.sort(function(a, b) {
@@ -2807,7 +2841,7 @@ function renderScheduleCard(sched, durData, multData) {
 
         html += '<table class="zone-settings-table"><thead><tr>' +
             '<th>Zone</th>' + (hasMode ? '<th>Mode</th>' : '') +
-            '<th>Schedule Enable</th><th>Run Duration</th></tr></thead><tbody>';
+            '<th>Not Used</th><th>Schedule Enable</th><th>Run Duration</th></tr></thead><tbody>';
         for (const zn of sortedZones) {
             const { enable, duration, mode } = zoneMap[zn];
             const zoneLabel = getZoneLabel(zn);
@@ -2829,12 +2863,23 @@ function renderScheduleCard(sched, durData, multData) {
                     html += '<td style="color:var(--text-disabled);">-</td>';
                 }
             }
+            // Not Used toggle
+            var zoneNotUsed = isZoneNotUsed(zn);
+            html += '<td><button class="btn ' + (zoneNotUsed ? 'btn-danger' : 'btn-secondary') + ' btn-sm" style="font-size:11px;padding:3px 8px;' + (zoneNotUsed ? '' : 'opacity:0.5;') + '" ' +
+                'onclick="toggleNotUsed(' + zn + ')">' +
+                (zoneNotUsed ? 'Not Used' : '—') + '</button></td>';
             if (enable) {
-                const isOn = enable.state === 'on';
-                html += '<td><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
-                    'onclick="setEntityValue(\\'' + enable.entity_id + '\\',\\'switch\\',' +
-                    '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
-                    (isOn ? 'Enabled' : 'Disabled') + '</button></td>';
+                if (zoneNotUsed) {
+                    html += '<td><button class="btn btn-secondary btn-sm" style="opacity:0.35;cursor:not-allowed;" ' +
+                        'onclick="guardNotUsedEnable(' + zn + ',\\'' + enable.entity_id + '\\')">' +
+                        'Disabled</button></td>';
+                } else {
+                    const isOn = enable.state === 'on';
+                    html += '<td><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
+                        'onclick="setEntityValue(\\'' + enable.entity_id + '\\',\\'switch\\',' +
+                        '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
+                        (isOn ? 'Enabled' : 'Disabled') + '</button></td>';
+                }
             } else {
                 html += '<td style="color:var(--text-disabled);">-</td>';
             }
