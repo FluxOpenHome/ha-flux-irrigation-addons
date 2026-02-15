@@ -3297,7 +3297,10 @@ async def apply_adjusted_durations() -> dict:
             combined = weather_mult * moisture_mult
             adjusted_value = float(max(1, round(base * combined))) if combined > 0 else base
         else:
-            # If this zone was previously skip-disabled, re-enable it
+            # If this zone was previously skip-disabled by moisture, re-enable it.
+            # Only re-enable zones tracked in skip_disabled_zones — this list only
+            # contains zones that were ON before moisture disabled them, so we never
+            # accidentally re-enable zones the user intentionally disabled.
             enable_eid = _find_enable_zone_switch(zone_num, config)
             if enable_eid and enable_eid in skip_disabled:
                 enable_ok = await ha_client.call_service("switch", "turn_on", {
@@ -5817,42 +5820,46 @@ async def _start_active_run():
 
 
 async def _end_active_run():
-    """Re-enable all moisture-disabled zones and clear the active run.
+    """Clean up the active run and hand off zone state to apply_adjusted_durations.
 
     Called when all zones have stopped after a schedule run.
+
+    Does NOT re-enable zones here — moisture may still be high.  Instead,
+    ensures every moisture-disabled zone (that was originally user-enabled)
+    is tracked in ``skip_disabled_zones`` so that
+    ``apply_adjusted_durations()`` will re-enable them automatically the
+    next time moisture drops below the skip threshold.
     """
     global _active_schedule_run
 
     if _active_schedule_run is None:
         return
 
-    restored = []
+    data = _load_data()
+    skip_disabled = list(data.get("skip_disabled_zones", []))
+
+    # Make sure every moisture-disabled zone is in skip_disabled_zones
+    # so apply_adjusted_durations() can re-enable it when moisture drops.
+    added = []
     for z in _active_schedule_run.get("zone_sequence", []):
         if z["original_enabled"] and z["moisture_disabled"]:
             enable_eid = z.get("enable_entity_id")
-            if enable_eid:
-                ok = await ha_client.call_service("switch", "turn_on", {
-                    "entity_id": enable_eid,
-                })
-                if ok:
-                    restored.append(z["zone_num"])
-                    print(f"[MOISTURE] Active run end: re-enabled zone "
-                          f"{z['zone_num']} ({enable_eid})")
-                else:
-                    print(f"[MOISTURE] Active run end: FAILED to re-enable zone "
-                          f"{z['zone_num']} ({enable_eid})")
+            if enable_eid and enable_eid not in skip_disabled:
+                skip_disabled.append(enable_eid)
+                added.append(z["zone_num"])
 
-    if restored:
-        print(f"[MOISTURE] Active run end: restored {len(restored)} zone(s): {restored}")
+    if added:
+        print(f"[MOISTURE] Active run end: ensured {len(added)} moisture-disabled "
+              f"zone(s) tracked for re-enable: {added}")
     else:
-        print("[MOISTURE] Active run end: no zones needed restoration")
+        print("[MOISTURE] Active run end: no moisture-disabled zones to track")
 
     _active_schedule_run = None
 
-    # Clear persistent state
-    data = _load_data()
+    # Persist — clear active_run, preserve skip_disabled_zones so
+    # apply_adjusted_durations() re-enables zones when moisture drops
     data.pop("active_run", None)
-    data["skip_disabled_zones"] = []
+    data["skip_disabled_zones"] = skip_disabled
     _save_data(data)
 
 
