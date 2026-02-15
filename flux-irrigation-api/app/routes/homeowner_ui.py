@@ -733,7 +733,7 @@ const HBASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api/homeowner'
 let _systemMode = 'standalone';
 (async function() {
     try {
-        var r = await fetch(HBASE.replace('/api/homeowner', '/admin/api/system-mode'));
+        var r = await fetch(HBASE.replace('/api/homeowner', '/api/system-mode'));
         var d = await r.json();
         _systemMode = d.mode || 'standalone';
         if (_systemMode === 'managed') {
