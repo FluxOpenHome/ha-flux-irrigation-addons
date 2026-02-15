@@ -140,7 +140,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-icon { padding: 6px 10px; }
 
 /* Zone/Sensor Tiles */
-.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
 .tile { background: var(--bg-tile); border-radius: 10px; padding: 16px; border: 1px solid var(--border-light); min-height: 140px; position: relative; display:flex; flex-direction:column; }
 #cardBody_status .tile { min-height: auto; flex-direction:row; align-items:center; gap:12px; }
 #cardBody_status .tile .status-tile-text { flex:1; min-width:0; }
@@ -156,7 +156,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
 .tile-state.on { color: var(--color-success); font-weight: 500; }
 .tile-actions { display: flex; align-items:center; gap: 8px; flex-wrap:wrap; }
-.tile-bottom-row { display:flex; align-items:flex-end; justify-content:space-between; margin-top:auto; gap:16px; }
+.tile-bottom-row { display:flex; align-items:flex-end; justify-content:space-between; margin-top:auto; gap:24px; }
 .tile-sprinkler-icon { display:flex; align-items:flex-end; gap:2px; color:var(--text-muted); pointer-events:none; flex-shrink:0; }
 .tile-sprinkler-icon svg { opacity:0.4; transition:opacity 0.3s ease; }
 .tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
