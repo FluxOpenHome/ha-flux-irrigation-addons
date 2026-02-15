@@ -54,15 +54,19 @@ def _require_data_control(request: Request):
     """Block destructive data operations in managed mode.
 
     When system_mode is 'managed', only requests from the management
-    company (identified by X-Actor: Management header) are allowed to
-    clear logs, reset data, etc.  Homeowner requests get a 403.
+    company (identified by X-Actor: Management header or query param)
+    are allowed to clear logs, reset data, etc.  Homeowner requests
+    get a 403.
 
     In standalone mode, no restrictions — homeowner has full control.
+
+    Note: Nabu Casa proxy passes extra_headers as query params because
+    HA rest_command cannot forward custom HTTP headers.
     """
     config = get_config()
     if config.system_mode != "managed":
         return  # Standalone — no restrictions
-    actor = request.headers.get("X-Actor", "")
+    actor = request.headers.get("X-Actor", "") or request.query_params.get("X-Actor", "")
     if actor == "Management":
         return  # Management company — allowed
     raise HTTPException(

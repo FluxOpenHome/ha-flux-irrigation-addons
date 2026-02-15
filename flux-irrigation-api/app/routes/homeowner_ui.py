@@ -6648,10 +6648,13 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     body += '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;"><input type="checkbox" id="hoShowHeadCountOnCard"' + (zoneData.show_head_count_on_card ? ' checked' : '') + '> Show head count on zone card</label>';
     body += '</div>';
 
-    body += '<div style="margin-top:10px;display:flex;gap:8px;">';
-    body += '<button class="btn btn-primary managed-disabled" onclick="hoSaveZoneHeads()" style="font-size:13px;">&#128190; Save</button>';
-    body += '<button class="btn btn-sm" onclick="closeDynamicModal()" style="font-size:13px;background:transparent;border:1px solid var(--border-light);color:var(--text-secondary);">Cancel</button>';
+    body += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-light);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
+    body += '<button class="btn btn-primary" onclick="hoSaveZoneHeads()" style="font-size:13px;">&#128190; Save</button>';
+    body += '<button class="btn" onclick="hoSaveZoneHeadsAndClose()" style="font-size:13px;background:var(--accent-primary,var(--color-primary));border:1px solid var(--accent-primary,var(--color-primary));color:#fff;">&#128190; Save &amp; Close</button>';
     body += '<span id="hoZoneSaveStatus" style="font-size:12px;color:var(--color-success);align-self:center;"></span>';
+    body += '<div style="flex:1;"></div>';
+    body += '<button class="btn btn-sm" onclick="closeDynamicModal()" style="font-size:13px;background:transparent;border:1px solid var(--border-light);color:var(--text-secondary);">Close</button>';
+    body += '<button class="btn btn-sm" onclick="hoCancelZoneDetails()" style="font-size:13px;background:transparent;border:1px solid var(--color-danger,#e74c3c);color:var(--color-danger,#e74c3c);">Cancel</button>';
     body += '</div>';
 
     if (_hoSiteMapManaged) {
@@ -7089,7 +7092,6 @@ function hoCollectHeadData() {
 }
 
 async function hoSaveZoneHeads() {
-    if (managedGuard()) return;
     var entityId = window._hoZoneDetailsEntityId;
     if (!entityId) return;
     var heads;
@@ -7161,6 +7163,22 @@ async function hoSaveZoneHeads() {
         statusEl.style.color = 'var(--color-danger)';
         showToast('Failed to save: ' + e.message, 'error');
     }
+}
+
+async function hoSaveZoneHeadsAndClose() {
+    await hoSaveZoneHeads();
+    var statusEl = document.getElementById('hoZoneSaveStatus');
+    if (!statusEl || !statusEl.textContent.includes('Error')) {
+        closeDynamicModal();
+    }
+}
+
+async function hoCancelZoneDetails() {
+    var ok = await showConfirm({ title: 'Discard Changes', message: 'Discard unsaved changes to this zone?', confirmText: 'Discard', confirmClass: 'btn-warning', icon: '&#9888;' });
+    if (!ok) return;
+    window._hoZoneDetailsEntityId = null;
+    window._hoZoneDetailsHeads = null;
+    closeDynamicModal();
 }
 
 
