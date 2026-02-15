@@ -2925,57 +2925,114 @@ function renderScheduleCard(sched, durData, multData) {
                     }
                 }
                 if (!zoneHasMoisture) zoneCombined = liveWeatherMult;
-                // Compute projected adjusted duration using per-zone multiplier
+                // --- Build factor cards: Moisture, Weather, Combined ---
                 var factorBadge = '';
-                // Helper: stacked T/M/B readings + gophr icon for moisture-mapped zones
                 var _sr = (adj && adj.sensor_readings) || zoneSensorReadings;
-                var _tmbStack = '';
-                if (_sr && zoneHasMoisture) {
-                    var _lines = [];
-                    if (_sr.T != null) _lines.push('T: ' + _sr.T + '%');
-                    if (_sr.M != null) _lines.push('M: ' + _sr.M + '%');
-                    if (_sr.B != null) _lines.push('B: ' + _sr.B + '%');
-                    if (_lines.length) _tmbStack = '<div style="font-size:9px;font-weight:400;opacity:0.85;line-height:1.4;margin-top:1px;">' + _lines.join('<br>') + '</div>';
+                var _gophrImg = '<img src="' + HBASE + '/assets/gophr-logo" class="gophr-logo" style="height:16px;" alt="Gophr">';
+
+                var _hasWeather = Math.abs(liveWeatherMult - 1.0) >= 0.005 || _activeWeatherAdj.length > 0;
+                var _hasMoisture = zoneHasMoisture;
+                var _isSkip = (adj && adj.skip) || zoneSkip;
+                var _isApplied = !!adj;
+                var _baseVal = parseFloat(duration.state) || 0;
+
+                // --- Card box style: bordered card with left content + right graphic ---
+                var _fCardBox = 'display:inline-flex;align-items:stretch;border-radius:6px;font-size:11px;margin-right:6px;vertical-align:top;overflow:hidden;';
+                var _fCardLeft = 'display:flex;flex-direction:column;justify-content:center;padding:4px 8px;';
+                var _fCardRight = 'display:flex;align-items:center;justify-content:center;padding:4px 6px;border-left:1px solid rgba(128,128,128,0.15);';
+                var _fCardTitle = 'font-weight:700;font-size:11px;line-height:1.3;';
+                var _fCardDetail = 'font-size:9px;font-weight:400;opacity:0.85;line-height:1.35;margin-top:2px;';
+
+                // --- Moisture Factor Card ---
+                var moistureCard = '';
+                if (_hasMoisture) {
+                    var _tmbLines = [];
+                    if (_sr) {
+                        if (_sr.T != null) _tmbLines.push('T: ' + _sr.T + '%');
+                        if (_sr.M != null) _tmbLines.push('M: ' + _sr.M + '%');
+                        if (_sr.B != null) _tmbLines.push('B: ' + _sr.B + '%');
+                    }
+                    var _tmbHtml = _tmbLines.length ? '<div style="' + _fCardDetail + '">' + _tmbLines.join('<br>') + '</div>' : '';
+                    var _mColor = zoneSkip ? 'var(--color-danger)' : (Math.abs(zoneMoistMult - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)');
+                    var _mBg = zoneSkip ? 'var(--bg-danger-light)' : 'var(--bg-active-tile)';
+                    var _moistAdjMin = zoneSkip ? 0 : Math.max(1, Math.round(_baseVal * zoneMoistMult));
+                    var _moistTitle = zoneSkip ? 'Skip' : (_moistAdjMin + ' ' + esc(unit) + ' (' + zoneMoistMult.toFixed(2) + 'x)');
+                    moistureCard = '<span style="' + _fCardBox + 'background:' + _mBg + ';color:' + _mColor + ';">' +
+                        '<span style="' + _fCardLeft + '">' +
+                            '<span style="' + _fCardTitle + '">' + _moistTitle + '</span>' +
+                            _tmbHtml +
+                        '</span>' +
+                        '<span style="' + _fCardRight + 'background:var(--bg-hover);" title="Gophr probe">' + _gophrImg + '</span>' +
+                        '</span>';
                 }
-                var _gophr = zoneHasMoisture ? ' <img src="' + HBASE + '/assets/gophr-logo" class="gophr-logo" style="height:22px;vertical-align:middle;margin-left:4px;" alt="Gophr">' : '';
-                // Combine source icons: gophr (moisture) + weather component emojis
-                var _sourceIcons = _gophr + _weatherIcons;
-                if ((adj && adj.skip) || zoneSkip) {
-                    // Skip triggered — from applied factors or live moisture data
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-danger-light);color:var(--color-danger);">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">Skip Watering' + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
-                } else if (adj) {
-                    // Factors are actively applied — show applied adjusted value
-                    var _adjColor = Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)';
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-active-tile);color:' + _adjColor + ';">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">' + adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)' + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
-                } else if (zoneSkip) {
-                    // Factors not applied but skip would trigger for THIS zone
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-tile);color:var(--color-danger);opacity:0.8;" title="Watering would be skipped if Apply Factors is enabled">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">Skip Watering' + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
-                } else if (Math.abs(zoneCombined - 1.0) >= 0.005) {
-                    // Factors not applied but multiplier differs from 1.0 — show preview
-                    var curVal = parseFloat(duration.state) || 0;
-                    var projVal = Math.max(1, Math.round(curVal * zoneCombined));
-                    var tooltipParts = 'W:' + liveWeatherMult.toFixed(2);
-                    if (zoneHasMoisture) tooltipParts += ' × M:' + zoneMoistMult.toFixed(2);
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-tile);color:var(--color-warning);opacity:0.8;" title="Projected duration if Apply Factors is enabled (' +
-                        tooltipParts + ')">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">' + projVal + ' ' + esc(unit) + ' (' + zoneCombined.toFixed(2) + 'x)' + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
-                } else if (zoneHasMoisture) {
-                    // Zone has moisture probe but multiplier is 1.0 — show probe-monitored indicator
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-tile);color:var(--text-muted);border:1px solid var(--border-light);" title="Moisture probe monitoring this zone (M:' + zoneMoistMult.toFixed(2) + 'x)">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">' + zoneMoistMult.toFixed(2) + 'x ' + fluxIcon('droplet',14) + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
+
+                // --- Weather Factor Card ---
+                var weatherCard = '';
+                if (_hasWeather) {
+                    var _ruleIconMap2 = {rain_detection:'rain',rain_forecast:'rain',precipitation_threshold:'rain',temperature_freeze:'snowflake',temperature_cool:'thermometer_cool',temperature_hot:'flame',wind_speed:'wind',humidity:'droplet',seasonal_adjustment:'calendar'};
+                    var _primaryIcon = 'sun';
+                    if (_activeWeatherAdj.length > 0) _primaryIcon = _ruleIconMap2[_activeWeatherAdj[0].rule] || 'sun';
+                    var _wIconBig = fluxIcon(_primaryIcon, 28);
+                    var _wLines = [];
+                    for (var _wai = 0; _wai < _activeWeatherAdj.length; _wai++) {
+                        var _wa = _activeWeatherAdj[_wai];
+                        var _wRuleLabel = {rain_detection:'Rain',rain_forecast:'Forecast',precipitation_threshold:'Precip',temperature_freeze:'Freeze',temperature_cool:'Cool',temperature_hot:'Heat',wind_speed:'Wind',humidity:'Humidity',seasonal_adjustment:'Season'}[_wa.rule] || _wa.rule;
+                        var _wFactor = _wa.factor != null ? _wa.factor.toFixed(2) + 'x' : _wa.action;
+                        var _wRuleIcon = fluxIcon(_ruleIconMap2[_wa.rule] || 'sun', 10);
+                        _wLines.push('<span style="display:inline-flex;align-items:center;gap:2px;">' + _wRuleIcon + ' ' + _wRuleLabel + ': ' + _wFactor + '</span>');
+                    }
+                    var _wStack = _wLines.length ? '<div style="' + _fCardDetail + '">' + _wLines.join('<br>') + '</div>' : '';
+                    var _wSkip = _activeWeatherAdj.some(function(a) { return a.action === 'pause' || a.action === 'skip'; });
+                    var _wColor = _wSkip ? 'var(--color-danger)' : 'var(--color-info)';
+                    var _wBg = _wSkip ? 'var(--bg-danger-light)' : 'var(--bg-weather)';
+                    var _wAdjMin = _wSkip ? 0 : Math.max(1, Math.round(_baseVal * liveWeatherMult));
+                    var _wTitle = _wSkip ? 'Skip' : (_wAdjMin + ' ' + esc(unit) + ' (' + liveWeatherMult.toFixed(2) + 'x)');
+                    weatherCard = '<span style="' + _fCardBox + 'background:' + _wBg + ';color:' + _wColor + ';">' +
+                        '<span style="' + _fCardLeft + '">' +
+                            '<span style="' + _fCardTitle + '">' + _wTitle + '</span>' +
+                            _wStack +
+                        '</span>' +
+                        '<span style="' + _fCardRight + 'opacity:0.7;">' + _wIconBig + '</span>' +
+                        '</span>';
+                }
+
+                // --- Combined Factor Card (only when BOTH moisture AND weather are active) ---
+                var combinedCard = '';
+                if (_hasMoisture && _hasWeather) {
+                    var _cBg, _cColor, _cTitle;
+                    if (_isSkip) {
+                        _cBg = 'var(--bg-danger-light)'; _cColor = 'var(--color-danger)';
+                        _cTitle = 'Skip Watering';
+                    } else if (_isApplied) {
+                        _cColor = Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)';
+                        _cBg = 'var(--bg-active-tile)';
+                        _cTitle = adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)';
+                    } else {
+                        var _cAdj = Math.max(1, Math.round(_baseVal * zoneCombined));
+                        _cColor = Math.abs(zoneCombined - 1.0) < 0.005 ? 'var(--text-muted)' : 'var(--color-warning)';
+                        _cBg = 'var(--bg-tile)';
+                        _cTitle = _cAdj + ' ' + esc(unit) + ' (' + zoneCombined.toFixed(2) + 'x)';
+                    }
+                    var _cBreakdown = 'W: ' + liveWeatherMult.toFixed(2) + 'x × M: ' + zoneMoistMult.toFixed(2) + 'x';
+                    combinedCard = '<span style="' + _fCardBox + 'background:' + _cBg + ';color:' + _cColor + ';border:1px solid ' + _cColor + '25;">' +
+                        '<span style="' + _fCardLeft + '">' +
+                            '<span style="' + _fCardTitle + '">' + _cTitle + '</span>' +
+                            '<div style="' + _fCardDetail + '">' + _cBreakdown + '</div>' +
+                        '</span>' +
+                        '<span style="' + _fCardRight + 'opacity:0.6;font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;writing-mode:vertical-rl;text-orientation:mixed;">Combined</span>' +
+                        '</span>';
+                }
+
+                // Assemble factor cards
+                if (_isSkip && !_hasMoisture && !_hasWeather) {
+                    factorBadge = ' <span style="' + _fCardBox + 'background:var(--bg-danger-light);color:var(--color-danger);padding:4px 8px;">' +
+                        '<span style="font-weight:700;">Skip Watering</span></span>';
+                } else if (_hasMoisture && _hasWeather) {
+                    factorBadge = ' ' + moistureCard + weatherCard + combinedCard;
+                } else if (_hasMoisture) {
+                    factorBadge = ' ' + moistureCard;
+                } else if (_hasWeather) {
+                    factorBadge = ' ' + weatherCard;
                 }
                 html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
