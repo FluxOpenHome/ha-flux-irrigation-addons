@@ -123,7 +123,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .card { background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-card); margin-bottom: 20px; overflow: hidden; }
 .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
 .card-header h2 { font-size: 16px; font-weight: 600; }
-.card-header a[id^="cardLock_"] { order: 99; }
 .card-body { padding: 20px; }
 .card-body > *:last-child { margin-bottom: 0; }
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s ease; }
@@ -331,12 +330,11 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div class="nav-tabs">
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
-        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="16"></span></button>
-        <button class="dark-toggle" onclick="showChangelog()" title="Change Log"><span data-fi="clipboard" data-fs="14"></span></button>
-        <button class="dark-toggle" onclick="showHelp()" title="Help"><span data-fi="help" data-fs="14"></span></button>
-        <button class="dark-toggle" onclick="showDebugLog()" title="Debug Log"><span data-fi="bug" data-fs="14"></span></button>
-        <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue"><span data-fi="warning" data-fs="14"></span></button>
-        <button class="dark-toggle notif-bell-btn" onclick="openNotificationsPanel()" title="Notifications"><span data-fi="bell" data-fs="14"></span><span class="notif-badge" id="notifBellBadge" style="display:none;">0</span></button>
+        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
+        <button class="dark-toggle" onclick="showChangelog()" title="Change Log">📋</button>
+        <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
+        <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue">&#9888;&#65039;</button>
+        <button class="dark-toggle notif-bell-btn" onclick="openNotificationsPanel()" title="Notifications">&#128276;<span class="notif-badge" id="notifBellBadge" style="display:none;">0</span></button>
     </div>
 </div>
 
@@ -357,12 +355,12 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
     <!-- Upcoming Service Banner -->
     <div id="upcomingServiceBanner" onclick="addServiceToCalendar()" style="display:none;background:linear-gradient(135deg,#1abc9c,#16a085);color:white;border-radius:12px;padding:16px 20px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.1);cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)';" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)';">
         <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:20px;" data-fi="wrench" data-fs="20"></span>
+            <span style="font-size:20px;">&#128295;</span>
             <div style="flex:1;">
                 <div style="font-weight:600;font-size:15px;" id="upcomingServiceDate"></div>
                 <div style="font-size:13px;opacity:0.9;margin-top:2px;" id="upcomingServiceNote"></div>
             </div>
-            <span style="font-size:18px;opacity:0.8;" title="Add to Calendar" data-fi="calendar" data-fs="18"></span>
+            <span style="font-size:18px;opacity:0.8;" title="Add to Calendar">&#128197;</span>
         </div>
         <div style="font-size:11px;opacity:0.7;margin-top:6px;text-align:center;">Tap to add to calendar</div>
     </div>
@@ -392,7 +390,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <!-- Estimated Gallons Card -->
         <div class="card" id="estGallonsCard" style="display:none;">
             <div class="card-header" onclick="toggleCard('gallons')" style="cursor:pointer;user-select:none;">
-                <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_gallons" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> <span data-fi="water_monitor" data-fs="18"></span> Water Monitor</h2>
+                <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_gallons" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> &#128167; Water Monitor</h2>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <a href="#" onclick="lockCard('gallons',event)" id="cardLock_gallons" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                     <select id="gallonsRange" onclick="event.stopPropagation()" onchange="loadEstGallons()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
@@ -402,7 +400,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
                         <option value="2160">Last 90 days</option>
                         <option value="8760">Last year</option>
                     </select>
-                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings"><span data-fi="gear" data-fs="14"></span></button>
+                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings">&#9881;&#65039;</button>
                 </div>
             </div>
             <div class="card-body" id="cardBody_gallons">
@@ -413,7 +411,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <!-- Pump Monitor Card -->
         <div class="card" id="pumpMonitorCard" style="display:none;">
             <div class="card-header" onclick="toggleCard('pump')" style="cursor:pointer;user-select:none;">
-                <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_pump" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> <span data-fi="pump" data-fs="18"></span> Pump Monitor</h2>
+                <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_pump" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> &#9889; Pump Monitor</h2>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <a href="#" onclick="lockCard('pump',event)" id="cardLock_pump" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                     <select id="pumpRange" onclick="event.stopPropagation()" onchange="loadPumpMonitor()" style="padding:4px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;background:var(--bg-input,var(--bg-tile));color:var(--text-primary);">
@@ -422,7 +420,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
                         <option value="2160">Last 90 days</option>
                         <option value="8760">Last year</option>
                     </select>
-                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings"><span data-fi="gear" data-fs="14"></span></button>
+                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings">&#9881;&#65039;</button>
                 </div>
             </div>
             <div class="card-body" id="cardBody_pump">
@@ -434,7 +432,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
     <!-- Rain Sensor Card -->
     <div class="card" id="rainSensorCard" style="display:none;">
         <div class="card-header" onclick="toggleCard('rain')" style="cursor:pointer;user-select:none;">
-            <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_rain" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> <span data-fi="rain_sensor" data-fs="18"></span> Rain Sensor</h2>
+            <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_rain" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> &#127783;&#65039; Rain Sensor</h2>
             <div style="display:flex;align-items:center;gap:8px;">
                 <a href="#" onclick="lockCard('rain',event)" id="cardLock_rain" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <span id="rainStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">&#8212;</span>
@@ -529,7 +527,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
     <!-- Expansion Boards Card (collapsible, collapsed by default) -->
     <div class="card" id="expansionCard" style="display:none;">
         <div class="card-header" onclick="toggleCard('expansion')" style="cursor:pointer;user-select:none;">
-            <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_expansion" style="font-size:12px;transition:transform 0.2s;display:inline-block;">&#9654;</span> <span data-fi="expansion" data-fs="18"></span> Expansion Boards</h2>
+            <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_expansion" style="font-size:12px;transition:transform 0.2s;display:inline-block;">&#9654;</span> &#128268; Expansion Boards</h2>
             <div style="display:flex;align-items:center;gap:8px;">
                 <a href="#" onclick="lockCard('expansion',event)" id="cardLock_expansion" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <span id="expansionStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">&#8212;</span>
@@ -557,7 +555,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
                     <option value="8760">Last year</option>
                 </select>
                 <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();exportHistoryCSV()">Export CSV</button>
-                <button class="btn btn-danger btn-sm managed-disabled" onclick="event.stopPropagation();clearRunHistory()">Clear History</button>
+                <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();clearRunHistory()">Clear History</button>
             </div>
         </div>
         <div class="card-body" id="cardBody_history">
@@ -615,7 +613,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 <div id="reportIssueModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:500px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
-            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);"><span data-fi="warning" data-fs="16"></span> Report an Issue</h3>
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#9888;&#65039; Report an Issue</h3>
             <button onclick="closeReportIssue()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
         </div>
         <div style="padding:20px 24px 24px 24px;">
@@ -658,21 +656,6 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- Confirmation Modal -->
-<div id="confirmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10100;align-items:center;justify-content:center;" onclick="if(event.target===this)_confirmCancel()">
-    <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-            <span id="confirmIcon" style="font-size:28px;"></span>
-            <h3 id="confirmTitle" style="font-size:16px;font-weight:600;margin:0;"></h3>
-        </div>
-        <div id="confirmBody" style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6;"></div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-            <button class="btn btn-secondary" onclick="_confirmCancel()">Cancel</button>
-            <button id="confirmOkBtn" class="btn" onclick="_confirmOk()"></button>
-        </div>
-    </div>
-</div>
-
 <!-- Generic Dynamic Modal -->
 <div id="dynamicModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;" onclick="if(event.target===this)closeDynamicModal()">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:400px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
@@ -688,7 +671,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 <div id="gallonsDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10001;align-items:center;justify-content:center;" onclick="if(event.target===this)closeGallonsDetailModal()">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:92%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;max-height:80vh;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);flex-shrink:0;">
-            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);"><span data-fi="water_monitor" data-fs="16"></span> Zone Water Usage</h3>
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128167; Zone Water Usage</h3>
             <button onclick="closeGallonsDetailModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
         </div>
         <div id="gallonsDetailBody" style="overflow-y:auto;flex:1;min-height:0;padding:16px 24px 24px 24px;"></div>
@@ -699,9 +682,9 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 <div id="notifPanelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10001;align-items:center;justify-content:center;" onclick="if(event.target===this)closeNotificationsPanel()">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:92%;max-width:500px;max-height:85vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);flex-shrink:0;">
-            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);"><span data-fi="bell" data-fs="16"></span> Notifications</h3>
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">&#128276; Notifications</h3>
             <div style="display:flex;align-items:center;gap:6px;">
-                <button onclick="showNotifSettingsView()" title="Notification Settings" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;"><span data-fi="gear" data-fs="16"></span></button>
+                <button onclick="showNotifSettingsView()" title="Notification Settings" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&#9881;&#65039;</button>
                 <button class="btn btn-secondary btn-sm" id="notifMarkAllBtn" onclick="markAllNotificationsRead()" style="font-size:11px;display:none;">Mark all read</button>
                 <button class="btn btn-secondary btn-sm" id="notifClearAllBtn" onclick="clearAllNotifications()" style="font-size:11px;display:none;">Clear</button>
                 <button onclick="closeNotificationsPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
@@ -723,82 +706,23 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div style="padding:12px 20px 24px 20px;display:flex;flex-direction:column;gap:10px;" id="calendarPickerOptions"></div>
     </div>
 </div>
-<style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-body.managed-mode .managed-hide { display:none !important; }
-body.managed-mode .managed-disabled { opacity:0.45; cursor:not-allowed !important; filter:grayscale(100%) !important; }
-</style>
+<style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>
 
 <script>
 // Homeowner API base — all calls go through /admin/api/homeowner/*
 const HBASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api/homeowner';
-let _systemMode = 'standalone';
-(async function() {
-    try {
-        var smUrl = HBASE.replace('/api/homeowner', '/api/system-mode');
-        console.log('[FLUX] Fetching system mode from:', smUrl);
-        var r = await fetch(smUrl);
-        if (!r.ok) { console.warn('[FLUX] system-mode fetch failed:', r.status, r.statusText); return; }
-        var d = await r.json();
-        _systemMode = d.mode || 'standalone';
-        console.log('[FLUX] System mode:', _systemMode);
-        if (_systemMode === 'managed') {
-            document.body.classList.add('managed-mode');
-            console.log('[FLUX] Managed mode active — restrictions applied');
-        }
-    } catch(e) { console.warn('[FLUX] system-mode error:', e); }
-})();
-function isManaged() { return _systemMode === 'managed'; }
-function managedGuard() {
-    if (!isManaged()) return false;
-    showConfirm({
-        title: 'Professionally Managed',
-        message: 'Your irrigation system is in <strong>Professionally Managed</strong> mode.<br><br>This action is restricted because modifying or deleting data could cause <strong>misalignments with your management company\\'s server-side records</strong>.<br><br>Contact your management company if you need changes made.',
-        confirmText: 'OK',
-        confirmClass: 'btn-primary',
-        icon: '&#128274;'
-    });
-    return true;
-}
 let refreshTimer = null;
 let geocodeCache = {};
 let leafletMap = null;
 
-// --- Confirm Modal ---
-var _confirmResolveFn = null;
-function showConfirm(opts) {
-    // opts: { title, message, confirmText, confirmClass, icon }
-    // confirmClass: 'btn-danger' (red), 'btn-primary' (green), 'btn-warning' (orange)
-    // icon: fluxIcon() SVG string e.g. fluxIcon('warning',28), fluxIcon('trash',28)
-    var titleColor = 'var(--color-danger)';
-    if (opts.confirmClass === 'btn-primary') titleColor = 'var(--color-primary)';
-    else if (opts.confirmClass === 'btn-warning') titleColor = 'var(--color-warning)';
-    document.getElementById('confirmIcon').innerHTML = opts.icon || fluxIcon('warning',28);
-    document.getElementById('confirmTitle').textContent = opts.title || 'Are you sure?';
-    document.getElementById('confirmTitle').style.color = titleColor;
-    document.getElementById('confirmBody').innerHTML = opts.message || '';
-    var okBtn = document.getElementById('confirmOkBtn');
-    okBtn.textContent = opts.confirmText || 'Confirm';
-    okBtn.className = 'btn ' + (opts.confirmClass || 'btn-danger');
-    document.getElementById('confirmModal').style.display = 'flex';
-    return new Promise(function(resolve) { _confirmResolveFn = resolve; });
-}
-function _confirmOk() {
-    document.getElementById('confirmModal').style.display = 'none';
-    if (_confirmResolveFn) { _confirmResolveFn(true); _confirmResolveFn = null; }
-}
-function _confirmCancel() {
-    document.getElementById('confirmModal').style.display = 'none';
-    if (_confirmResolveFn) { _confirmResolveFn(false); _confirmResolveFn = null; }
-}
-
 // --- Toast ---
-function showToast(msg, type = 'success', duration = 4000) {
+function showToast(msg, type = 'success') {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
     toast.className = 'toast ' + type;
     toast.textContent = msg;
     container.appendChild(toast);
-    setTimeout(() => toast.remove(), duration);
+    setTimeout(() => toast.remove(), 4000);
 }
 
 // --- Probe Wake Conflict Warning ---
@@ -932,72 +856,6 @@ function getLockSvg(locked, size) {
             + '</svg>';
     }
 }
-
-// --- Flux Icon System ---
-var _fluxIcons = {
-    sun: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" WIDTH HEIGHT><circle cx="12" cy="12" r="4.5" fill="rgba(251,191,36,0.6)"/><g stroke="rgba(251,191,36,0.55)" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="5.3" y1="5.3" x2="7" y2="7"/><line x1="17" y1="17" x2="18.7" y2="18.7"/><line x1="5.3" y1="18.7" x2="7" y2="17"/><line x1="17" y1="7" x2="18.7" y2="5.3"/></g></svg>',
-    moon: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M21 12.79A9 9 0 0 1 11.21 3 7 7 0 1 0 21 12.79Z" opacity="0.55"/></svg>',
-    cloud: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M19 11a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 11Z" opacity="0.45"/></svg>',
-    partlycloudy: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><circle cx="9" cy="8" r="3.5" fill="rgba(251,191,36,0.5)"/><g stroke="rgba(251,191,36,0.4)" stroke-width="1.5" stroke-linecap="round"><line x1="9" y1="2" x2="9" y2="3.5"/><line x1="3" y1="8" x2="4.5" y2="8"/><line x1="5" y1="4" x2="6" y2="5"/></g><path d="M20 14a3 3 0 0 1 0 6H8a4 4 0 0 1-.4-7.97A5.5 5.5 0 0 1 18 13c.7 0 1.37.12 2 .34Z" fill="currentColor" opacity="0.45"/></svg>',
-    rain: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 10a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 10Z" fill="currentColor" opacity="0.4"/><g stroke="rgba(59,130,246,0.6)" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="19" x2="7" y2="22"/><line x1="12" y1="19" x2="11" y2="22"/><line x1="16" y1="19" x2="15" y2="22"/></g></svg>',
-    snow: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 10a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 10Z" fill="currentColor" opacity="0.4"/><g fill="rgba(147,197,253,0.7)"><circle cx="8" cy="20" r="1.2"/><circle cx="12" cy="21" r="1.2"/><circle cx="16" cy="20" r="1.2"/></g></svg>',
-    wind: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9.6 4.4A2.5 2.5 0 1 1 12 8H2" opacity="0.55"/><path d="M14.8 3.2A3 3 0 1 1 18 7H2" opacity="0.4"/><path d="M15.4 19.8A2.5 2.5 0 1 0 18 17H2" opacity="0.55"/><path d="M8.5 21.5A2 2 0 1 0 10 19H2" opacity="0.35"/></svg>',
-    fog: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6" opacity="0.25"/><line x1="3" y1="10" x2="18" y2="10" opacity="0.4"/><line x1="3" y1="14" x2="21" y2="14" opacity="0.55"/><line x1="5" y1="18" x2="19" y2="18" opacity="0.35"/></svg>',
-    lightning: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 9a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 9Z" fill="currentColor" opacity="0.35"/><path d="M13 11l-2 5h3l-2 5" stroke="rgba(251,191,36,0.75)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    thunderstorm: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 8a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 8Z" fill="currentColor" opacity="0.35"/><path d="M12 12l-1.5 4h3L12 20" stroke="rgba(251,191,36,0.7)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><g stroke="rgba(59,130,246,0.5)" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="17" x2="7.3" y2="19.5"/><line x1="16" y1="17" x2="15.3" y2="19.5"/></g></svg>',
-    hail: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 9a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 9Z" fill="currentColor" opacity="0.4"/><g fill="rgba(147,197,253,0.65)"><circle cx="8" cy="19.5" r="1.5"/><circle cx="12.5" cy="20.5" r="1.5"/><circle cx="16.5" cy="19" r="1.5"/></g></svg>',
-    snowflake: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none" stroke="rgba(147,197,253,0.7)" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="5" y1="5" x2="19" y2="19" opacity="0.5"/><line x1="19" y1="5" x2="5" y2="19" opacity="0.5"/><line x1="12" y1="2" x2="9" y2="5" stroke-width="1.5" opacity="0.6"/><line x1="12" y1="2" x2="15" y2="5" stroke-width="1.5" opacity="0.6"/></svg>',
-    thermometer_cool: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><rect x="10" y="2" width="4" height="15" rx="2" fill="currentColor" opacity="0.3"/><rect x="10.5" y="10" width="3" height="6.5" rx="1.5" fill="rgba(59,130,246,0.5)"/><circle cx="12" cy="19" r="3" fill="rgba(59,130,246,0.55)"/><circle cx="12" cy="19" r="1.5" fill="rgba(59,130,246,0.8)"/></svg>',
-    thermometer_hot: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><rect x="10" y="2" width="4" height="15" rx="2" fill="currentColor" opacity="0.3"/><rect x="10.5" y="5" width="3" height="11.5" rx="1.5" fill="rgba(239,68,68,0.5)"/><circle cx="12" cy="19" r="3" fill="rgba(239,68,68,0.55)"/><circle cx="12" cy="19" r="1.5" fill="rgba(239,68,68,0.8)"/></svg>',
-    flame: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M12 2c0 4-5 7-5 12a5 5 0 0 0 10 0c0-5-5-8-5-12Z" fill="rgba(239,68,68,0.5)"/><path d="M12 10c0 2-2.5 3.5-2.5 6a2.5 2.5 0 0 0 5 0c0-2.5-2.5-4-2.5-6Z" fill="rgba(251,146,60,0.6)"/></svg>',
-    droplet: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT><path d="M12 2C12 2 6 10 6 15a6 6 0 0 0 12 0C18 10 12 2 12 2Z" fill="rgba(59,130,246,0.5)"/><path d="M10 15.5a2 2 0 0 1-1.5-2.5" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>',
-    calendar: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="3" y="4" width="18" height="18" rx="2" opacity="0.4"/><rect x="3" y="4" width="18" height="5" rx="2" opacity="0.6"/><line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.7"/><line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.7"/><rect x="7" y="12" width="3" height="2.5" rx="0.5" opacity="0.5"/><rect x="14" y="12" width="3" height="2.5" rx="0.5" opacity="0.35"/><rect x="7" y="16.5" width="3" height="2.5" rx="0.5" opacity="0.35"/></svg>',
-    water_monitor: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT><path d="M12 2C12 2 6 10 6 15a6 6 0 0 0 12 0C18 10 12 2 12 2Z" fill="rgba(59,130,246,0.5)"/><path d="M10 15.5a2 2 0 0 1-1.5-2.5" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>',
-    pump: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="10" cy="14" r="6" opacity="0.35"/><circle cx="10" cy="14" r="3.5" opacity="0.6"/><rect x="14" y="12" width="8" height="4" rx="1" opacity="0.5"/><rect x="1" y="12.5" width="4" height="3" rx="0.5" opacity="0.35"/><rect x="7" y="6" width="6" height="3" rx="1" opacity="0.3"/><rect x="9" y="3" width="2" height="3" rx="0.5" opacity="0.25"/></svg>',
-    rain_sensor: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 10a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 10Z" fill="currentColor" opacity="0.4"/><g stroke="rgba(59,130,246,0.6)" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="19" x2="7" y2="22"/><line x1="12" y1="19" x2="11" y2="22"/><line x1="16" y1="19" x2="15" y2="22"/></g></svg>',
-    expansion: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="3" y="5" width="18" height="14" rx="2" opacity="0.35"/><rect x="6" y="8" width="3" height="3" rx="0.5" opacity="0.6"/><rect x="10.5" y="8" width="3" height="3" rx="0.5" opacity="0.5"/><rect x="15" y="8" width="3" height="3" rx="0.5" opacity="0.4"/><line x1="6" y1="14" x2="18" y2="14" stroke="currentColor" stroke-width="1" opacity="0.3"/><circle cx="7.5" cy="16.5" r="1" opacity="0.5"/><circle cx="12" cy="16.5" r="1" opacity="0.5"/><circle cx="16.5" cy="16.5" r="1" opacity="0.5"/></svg>',
-    gear: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="12" cy="12" r="3" opacity="0.7"/><path d="M12 1l1.5 3.3a7.5 7.5 0 0 1 2.8 1.6L19.6 4.6 21 7.5l-2.7 2a7.5 7.5 0 0 1 0 3.2l2.7 2-1.4 2.8-3.3-1.2a7.5 7.5 0 0 1-2.8 1.6L12 21l-1.5-3.3a7.5 7.5 0 0 1-2.8-1.6L4.4 17.4 3 14.5l2.7-2a7.5 7.5 0 0 1 0-3.2l-2.7-2 1.4-2.8 3.3 1.2a7.5 7.5 0 0 1 2.8-1.6Z" opacity="0.4"/></svg>',
-    help: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="12" cy="12" r="10" opacity="0.35"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7"/><circle cx="12" cy="16.5" r="1.2" opacity="0.7"/></svg>',
-    bug: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><ellipse cx="12" cy="15" rx="5" ry="6" opacity="0.45"/><circle cx="12" cy="7" r="3" opacity="0.55"/><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"><line x1="3" y1="10" x2="7" y2="12"/><line x1="21" y1="10" x2="17" y2="12"/><line x1="3" y1="16" x2="7" y2="15"/><line x1="21" y1="16" x2="17" y2="15"/></g><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"><line x1="9" y1="4" x2="7" y2="1.5"/><line x1="15" y1="4" x2="17" y2="1.5"/></g></svg>',
-    warning: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M12 2L2 22h20L12 2Z" opacity="0.4"/><line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.75"/><circle cx="12" cy="18.5" r="1.3" opacity="0.75"/></svg>',
-    bell: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9Z" opacity="0.45"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.6"/></svg>',
-    clipboard: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="5" y="3" width="14" height="19" rx="2" opacity="0.35"/><rect x="8" y="1" width="8" height="4" rx="1.5" opacity="0.6"/><line x1="8" y1="10" x2="16" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/><line x1="8" y1="13.5" x2="14" y2="13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.35"/><line x1="8" y1="17" x2="12" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/></svg>',
-    wrench: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.77 3.77Z" opacity="0.5"/></svg>',
-    pencil: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" opacity="0.5"/><path d="M15 5l4 4" stroke="currentColor" stroke-width="1.5" opacity="0.3" fill="none"/></svg>',
-    info: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="12" cy="12" r="10" opacity="0.35"/><line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.7"/><circle cx="12" cy="7.5" r="1.3" opacity="0.7"/></svg>',
-    stop: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(239,68,68,0.55)"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86L7.86 2Z"/><line x1="8" y1="8" x2="16" y2="16" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.8"/><line x1="16" y1="8" x2="8" y2="16" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.8"/></svg>',
-    trash: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="5" y="6" width="14" height="15" rx="1.5" opacity="0.4"/><line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.55"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5"/><line x1="10" y1="10" x2="10" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.35"/><line x1="14" y1="10" x2="14" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.35"/></svg>',
-    key: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="8" cy="15" r="5" opacity="0.4"/><circle cx="8" cy="15" r="2" opacity="0.65"/><path d="M12 11l8-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.55" fill="none"/><path d="M18 5l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.45" fill="none"/></svg>',
-    chat: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10Z" opacity="0.45"/></svg>',
-    check: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" opacity="0.65"/></svg>',
-    person: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="12" cy="7" r="4" opacity="0.55"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" opacity="0.4"/></svg>',
-    people: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="9" cy="7" r="3.5" opacity="0.5"/><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" opacity="0.35"/><circle cx="17" cy="8" r="2.5" opacity="0.4"/><path d="M22 21v-1.5a3 3 0 0 0-3-3h-.5" opacity="0.3"/></svg>',
-    chart: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="3" y="12" width="4" height="9" rx="1" opacity="0.4"/><rect x="10" y="6" width="4" height="15" rx="1" opacity="0.55"/><rect x="17" y="2" width="4" height="19" rx="1" opacity="0.4"/></svg>',
-    document: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="5" y="2" width="14" height="20" rx="2" opacity="0.4"/><line x1="9" y1="7" x2="15" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/><line x1="9" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/><line x1="9" y1="15" x2="12" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/></svg>',
-    notepad: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="5" y="2" width="14" height="20" rx="2" opacity="0.4"/><path d="M15 5l-7 7v3h3l7-7L15 5Z" opacity="0.55"/></svg>',
-    phone: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.35a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.75.32 1.54.55 2.35.68A2 2 0 0 1 22 16.92Z" opacity="0.5"/></svg>',
-    lightbulb: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(251,191,36,0.5)"><path d="M9 21h6M12 3a6 6 0 0 0-3 11.2V17a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-2.8A6 6 0 0 0 12 3Z"/><line x1="9.5" y1="19" x2="14.5" y2="19" stroke="rgba(251,191,36,0.6)" stroke-width="1.5" stroke-linecap="round"/></svg>',
-    globe: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10" opacity="0.4"/><ellipse cx="12" cy="12" rx="4" ry="10" opacity="0.35"/><line x1="2" y1="12" x2="22" y2="12" opacity="0.3"/><path d="M3.5 7h17M3.5 17h17" opacity="0.25"/></svg>',
-    map_pin: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7Z" opacity="0.45"/><circle cx="12" cy="9" r="2.5" opacity="0.7"/></svg>',
-    refresh: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6" opacity="0.5"/><path d="M23 20v-6h-6" opacity="0.5"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10" opacity="0.55"/><path d="M3.51 15a9 9 0 0 0 14.85 3.36L23 14" opacity="0.55"/></svg>',
-    robot: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="4" y="8" width="16" height="12" rx="3" opacity="0.4"/><circle cx="9" cy="14" r="2" opacity="0.6"/><circle cx="15" cy="14" r="2" opacity="0.6"/><line x1="12" y1="4" x2="12" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/><circle cx="12" cy="3" r="1.5" opacity="0.5"/></svg>',
-    book: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M2 4h7a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H2V4Z" opacity="0.4"/><path d="M22 4h-7a3 3 0 0 0-3 3v14a2 2 0 0 1 2-2h8V4Z" opacity="0.35"/></svg>',
-    hamburger: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6" opacity="0.55"/><line x1="3" y1="12" x2="21" y2="12" opacity="0.55"/><line x1="3" y1="18" x2="21" y2="18" opacity="0.55"/></svg>',
-    plug: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="8" y="2" width="2.5" height="7" rx="1" opacity="0.5"/><rect x="13.5" y="2" width="2.5" height="7" rx="1" opacity="0.5"/><rect x="6" y="7" width="12" height="5" rx="2" opacity="0.45"/><rect x="10" y="12" width="4" height="4" rx="0.5" opacity="0.55"/><rect x="9" y="16" width="6" height="3" rx="1.5" opacity="0.4"/><line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.35"/></svg>',
-    game: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="2" y="6" width="20" height="12" rx="4" opacity="0.4"/><line x1="7" y1="10" x2="7" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.6"/><line x1="5" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.6"/><circle cx="16" cy="11" r="1.2" opacity="0.55"/><circle cx="18.5" cy="13" r="1.2" opacity="0.55"/></svg>',
-    qr: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1" opacity="0.5"/><rect x="4" y="4" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="14" y="2" width="8" height="8" rx="1" opacity="0.5"/><rect x="16" y="4" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="2" y="14" width="8" height="8" rx="1" opacity="0.5"/><rect x="4" y="16" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="14" y="14" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="19" y="14" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="14" y="19" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="19" y="19" width="3" height="3" rx="0.5" opacity="0.4"/></svg>',
-};
-function fluxIcon(name, size) {
-    var s = size || 16;
-    var svg = _fluxIcons[name] || '';
-    return svg.replace('WIDTH', 'width="' + s + '"').replace('HEIGHT', 'height="' + s + '"');
-}
-// Init data-fi placeholders in static HTML
-(function() {
-    document.querySelectorAll('[data-fi]').forEach(function(el) {
-        el.innerHTML = fluxIcon(el.getAttribute('data-fi'), parseInt(el.getAttribute('data-fs')) || 16);
-    });
-})();
 
 // --- Collapsible Cards ---
 var _cardLocks = {};
@@ -1352,7 +1210,7 @@ function renderActiveIssuesBanner(issues) {
         const timeStr = _isMon + ' ' + _isDay + '-' + _isYr + ' ' + _isTime;
         html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);' + (isResolved ? 'opacity:0.85;' : '') + '">';
         if (isResolved) {
-            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#27ae6022;color:#27ae60;white-space:nowrap;">' + fluxIcon('check',12) + ' Resolved</span>';
+            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#27ae6022;color:#27ae60;white-space:nowrap;">&#10003; Resolved</span>';
         } else if (isReturned) {
             html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#e74c3c22;color:#e74c3c;white-space:nowrap;">&#8635; Returned</span>';
         } else {
@@ -1362,10 +1220,10 @@ function renderActiveIssuesBanner(issues) {
         html += '<div style="font-size:13px;color:var(--text-primary);word-break:break-word;">' + esc(issue.description) + '</div>';
         html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + esc(timeStr) + ' &middot; ' + esc(statusLabels[issue.status] || issue.status) + '</div>';
         if (issue.management_note) {
-            html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;padding:6px 10px;background:var(--bg-tile);border-radius:6px;border-left:3px solid var(--color-primary);">' + fluxIcon('chat',14) + ' <strong>Management:</strong> ' + esc(issue.management_note) + '</div>';
+            html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;padding:6px 10px;background:var(--bg-tile);border-radius:6px;border-left:3px solid var(--color-primary);">&#128172; <strong>Management:</strong> ' + esc(issue.management_note) + '</div>';
         }
         if (issue.return_reason) {
-            html += '<div style="font-size:12px;color:#e74c3c;margin-top:4px;padding:6px 10px;background:#e74c3c11;border-radius:6px;border-left:3px solid #e74c3c;">' + fluxIcon('warning',14) + ' <strong>Your note:</strong> ' + esc(issue.return_reason) + '</div>';
+            html += '<div style="font-size:12px;color:#e74c3c;margin-top:4px;padding:6px 10px;background:#e74c3c11;border-radius:6px;border-left:3px solid #e74c3c;">&#9888;&#65039; <strong>Your note:</strong> ' + esc(issue.return_reason) + '</div>';
         }
         if (isResolved) {
             html += '<div style="margin-top:6px;display:flex;gap:6px;">';
@@ -1684,18 +1542,6 @@ function showMap(lat, lon, label) {
         lockBtn.title = 'Unlock map interaction';
         lockBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleMapLock(); });
         mapEl.appendChild(lockBtn);
-        // Recenter button (under lock)
-        var rcBtn = document.createElement('button');
-        rcBtn.id = 'mapRecenterBtn';
-        rcBtn.className = 'map-lock-btn';
-        rcBtn.style.cssText = 'top:46px;right:10px;';
-        rcBtn.innerHTML = '&#8982;';
-        rcBtn.title = 'Recenter';
-        rcBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (leafletMap && mapCenter) leafletMap.setView([mapCenter.lat, mapCenter.lon], 16);
-        });
-        mapEl.appendChild(rcBtn);
     });
 }
 
@@ -1755,8 +1601,7 @@ function generateReport() {
 }
 
 async function cloneToDashboard() {
-    var ok = await showConfirm({ title: 'Create HA Dashboard', message: 'Create (or update) a native Home Assistant dashboard called <strong>"Flux Irrigation"</strong> from your current system configuration?', confirmText: 'Create Dashboard', confirmClass: 'btn-primary', icon: fluxIcon('gear',28) });
-    if (!ok) return;
+    if (!confirm('Create (or update) a native Home Assistant dashboard called "Flux Irrigation" from your current system configuration?')) return;
     try {
         const resp = await fetch(HBASE + '/dashboard/clone-to-ha', { method: 'POST' });
         const result = await resp.json();
@@ -1819,7 +1664,7 @@ async function loadStatus() {
         el.innerHTML += `
         <div style="margin-top:12px;padding:10px 14px;background:var(--bg-tile,var(--card-bg));border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:16px;">${fluxIcon('document',16)}</span>
+                <span style="font-size:16px;">&#128196;</span>
                 <span style="font-size:13px;font-weight:600;color:var(--text);">PDF System Report</span>
             </div>
             <div style="display:flex;align-items:center;gap:8px;">
@@ -1837,7 +1682,7 @@ async function loadStatus() {
         el.innerHTML += `
         <div style="margin-top:8px;padding:10px 14px;background:var(--bg-tile,var(--card-bg));border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
             <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:16px;">${fluxIcon('chart',16)}</span>
+                <span style="font-size:16px;">&#128202;</span>
                 <span style="font-size:13px;font-weight:600;color:var(--text);">Data Nerd View</span>
                 <span style="font-size:10px;color:var(--text-muted);">Charts, trends &amp; deep analysis</span>
             </div>
@@ -1850,10 +1695,7 @@ async function loadStatus() {
 
 async function togglePauseResume() {
     const action = currentSystemPaused ? 'resume' : 'pause';
-    if (!currentSystemPaused) {
-        var ok = await showConfirm({ title: 'Pause System', message: 'Pause the irrigation system? <strong>All active zones will be stopped.</strong>', confirmText: 'Pause System', confirmClass: 'btn-warning', icon: fluxIcon('stop',28) });
-        if (!ok) return;
-    }
+    if (!currentSystemPaused && !confirm('Pause the irrigation system? All active zones will be stopped.')) return;
     try {
         await api('/system/' + action, { method: 'POST' });
         showToast('System ' + (action === 'pause' ? 'paused' : 'resumed'));
@@ -1932,18 +1774,18 @@ async function loadZones() {
                 <div class="tile-name">
                     ${esc(displayName)}
                     <span style="cursor:pointer;font-size:20px;color:var(--color-primary);margin-left:6px;"
-                          onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">${fluxIcon('pencil',14)}</span>
+                          onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">&#9998;</span>
                     ${(function() {
                         var zn = extractZoneNumber(z.entity_id, 'zone');
                         var modes = window._zoneModes || {};
                         var mv = (zn && modes[zn]) ? (modes[zn].state || '').toLowerCase() : '';
                         if (/pump|relay/.test(mv)) {
-                            return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings">' + fluxIcon('info',20) + '</span>';
+                            return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings">&#9432;</span>';
                         }
                         if (/master|valve/.test(mv)) {
-                            return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings">' + fluxIcon('info',20) + '</span>';
+                            return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings">&#9432;</span>';
                         }
-                        return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'' + z.entity_id + '\\', decodeURIComponent(\\'' + encodeURIComponent(displayName) + '\\'))" title="Zone head details">' + fluxIcon('info',20) + '</span>';
+                        return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'' + z.entity_id + '\\', decodeURIComponent(\\'' + encodeURIComponent(displayName) + '\\'))" title="Zone head details">&#9432;</span>';
                     })()}
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
@@ -2008,12 +1850,8 @@ async function startZone(zoneId, durationMinutes) {
         if (durationMinutes && parseInt(durationMinutes) > 0) {
             body.duration_minutes = parseInt(durationMinutes);
         }
-        const result = await api('/zones/' + zoneId + '/start', { method: 'POST', body: JSON.stringify(body) });
-        if (result.warning) {
-            showToast('⚠️ Zone started — ' + result.warning, 'error', 8000);
-        } else {
-            showToast('Zone started' + (body.duration_minutes ? ' for ' + body.duration_minutes + ' min' : ''));
-        }
+        await api('/zones/' + zoneId + '/start', { method: 'POST', body: JSON.stringify(body) });
+        showToast('Zone started' + (body.duration_minutes ? ' for ' + body.duration_minutes + ' min' : ''));
         setTimeout(() => loadZones(), 1000);
     } catch (e) { showToast(e.message, 'error'); }
 }
@@ -2027,8 +1865,7 @@ async function stopZone(zoneId) {
 }
 
 async function stopAllZones() {
-    var ok = await showConfirm({ title: 'Emergency Stop', message: 'Stop <strong>ALL</strong> running zones immediately?', confirmText: 'Stop All Zones', confirmClass: 'btn-danger', icon: fluxIcon('stop',28) });
-    if (!ok) return;
+    if (!confirm('Emergency stop ALL zones?')) return;
     try {
         await api('/zones/stop_all', { method: 'POST' });
         showToast('All zones stopped');
@@ -2444,7 +2281,7 @@ function renderRainSensorCard() {
         const stateText = isRaining ? 'Rain Detected' : 'Dry';
         const bgColor = isRaining ? 'var(--bg-danger-light)' : 'var(--bg-success-light)';
         html += '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:8px;margin-bottom:16px;background:' + bgColor + ';">' +
-            '<div style="font-size:24px;">' + (isRaining ? fluxIcon('rain',24) : fluxIcon('sun',24)) + '</div>' +
+            '<div style="font-size:24px;">' + (isRaining ? '&#127783;&#65039;' : '&#9728;&#65039;') + '</div>' +
             '<div><div style="font-size:15px;font-weight:600;color:' + stateColor + ';">' + stateText + '</div>' +
             '<div style="font-size:12px;color:var(--text-muted);">Hardware rain sensor state</div></div></div>';
     }
@@ -2567,7 +2404,7 @@ function renderExpansionCard() {
 
     // Zone count banner
     html += '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:8px;margin-bottom:16px;background:var(--bg-tile);">' +
-        '<div style="font-size:24px;">' + fluxIcon('expansion',24) + '</div>' +
+        '<div style="font-size:24px;">&#128268;</div>' +
         '<div><div style="font-size:15px;font-weight:600;color:var(--text-primary);">' + zoneCount + ' Zones Detected</div>' +
         '<div style="font-size:12px;color:var(--text-muted);">' + (noBoards ? 'No expansion boards connected' : boards.length + ' expansion board' + (boards.length !== 1 ? 's' : '') + ' connected') + '</div></div></div>';
 
@@ -2590,7 +2427,7 @@ function renderExpansionCard() {
     // Rescan button
     if (rescanEntity) {
         html += '<div style="margin-top:12px;text-align:center;">' +
-            '<button class="btn btn-secondary btn-sm" onclick="setEntityValue(\\'' + rescanEntity.entity_id + '\\',\\'button\\',{})">' + fluxIcon('refresh',14) + ' Rescan Expansion Boards</button>' +
+            '<button class="btn btn-secondary btn-sm" onclick="setEntityValue(\\'' + rescanEntity.entity_id + '\\',\\'button\\',{})">&#128260; Rescan Expansion Boards</button>' +
             '</div>';
     }
 
@@ -2611,19 +2448,6 @@ function renderScheduleCard(sched, durData, multData) {
     const liveWeatherMult = (multData && multData.weather_multiplier != null) ? multData.weather_multiplier : 1.0;
     const perZoneMult = (multData && multData.per_zone) || {};
     const moistureEnabled = multData && multData.moisture_enabled;
-    // Build weather component icons from active adjustments
-    var _weatherIcons = '';
-    var _activeWeatherAdj = (multData && multData.active_weather_adjustments) || [];
-    if (_activeWeatherAdj.length > 0 && Math.abs(liveWeatherMult - 1.0) >= 0.005) {
-        var _ruleIconMap = {rain_detection:fluxIcon('rain',14),rain_forecast:fluxIcon('rain',14),precipitation_threshold:fluxIcon('rain',14),temperature_freeze:fluxIcon('snowflake',14),temperature_cool:fluxIcon('thermometer_cool',14),temperature_hot:fluxIcon('flame',14),wind_speed:fluxIcon('wind',14),humidity:fluxIcon('droplet',14),seasonal_adjustment:fluxIcon('calendar',14)};
-        var _seen = {};
-        var _wIcons = [];
-        for (var _wi = 0; _wi < _activeWeatherAdj.length; _wi++) {
-            var _ico = _ruleIconMap[_activeWeatherAdj[_wi].rule];
-            if (_ico && !_seen[_ico]) { _wIcons.push(_ico); _seen[_ico] = true; }
-        }
-        if (_wIcons.length) _weatherIcons = ' <span title="Weather: ' + _activeWeatherAdj.map(function(a){return a.reason||a.rule;}).join(', ') + '" style="cursor:help;"> + ' + _wIcons.join('') + '</span>';
-    }
     const total = schedule_enable.length + day_switches.length + start_times.length + run_durations.length +
         repeat_cycles.length + zone_enables.length + zone_modes.length + system_controls.length;
 
@@ -2643,25 +2467,7 @@ function renderScheduleCard(sched, durData, multData) {
             'padding:12px 16px;border-radius:8px;background:' + (isOn ? 'var(--bg-active-tile)' : 'var(--bg-inactive-tile)') + ';">' +
             '<div><div style="font-size:15px;font-weight:600;color:' + (isOn ? 'var(--color-success)' : 'var(--color-danger)') + ';">' +
             'Schedule ' + (isOn ? 'Enabled' : 'Disabled') + '</div>' +
-            '<div style="font-size:12px;color:var(--text-muted);">Master schedule on/off</div>' +
-            (function() {
-                if (isOn) return '';
-                var reasons = [];
-                var _adj = (multData && multData.active_weather_adjustments) || [];
-                var _rMap = {rain_detection:fluxIcon('rain',13),rain_forecast:fluxIcon('rain',13),precipitation_threshold:fluxIcon('rain',13),temperature_freeze:fluxIcon('snowflake',13),temperature_cool:fluxIcon('thermometer_cool',13),temperature_hot:fluxIcon('flame',13),wind_speed:fluxIcon('wind',13),humidity:fluxIcon('droplet',13),seasonal_adjustment:fluxIcon('calendar',13)};
-                for (var _ri = 0; _ri < _adj.length; _ri++) {
-                    var _a = _adj[_ri];
-                    if (_a.skip_irrigation) reasons.push((_rMap[_a.rule]||'') + ' ' + (_a.reason || _a.rule.replace(/_/g,' ')));
-                }
-                var _rSensors = window._rainSensors || [];
-                for (var _si = 0; _si < _rSensors.length; _si++) {
-                    if (_rSensors[_si].state === 'on') { reasons.push(fluxIcon('rain_sensor',13) + ' Rain sensor active'); break; }
-                }
-                if (!reasons.length) return '';
-                return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' +
-                    reasons.map(function(r){ return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tile);color:var(--text-warning);">' + r + '</span>'; }).join('') + '</div>';
-            })() +
-            '</div>' +
+            '<div style="font-size:12px;color:var(--text-muted);">Master schedule on/off</div></div>' +
             '<button class="btn ' + (isOn ? 'btn-danger' : 'btn-primary') + '" ' +
             'onclick="setEntityValue(\\'' + se.entity_id + '\\',\\'switch\\',' +
             '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
@@ -2686,7 +2492,7 @@ function renderScheduleCard(sched, durData, multData) {
         '<div><div style="font-size:14px;font-weight:600;color:' + (afOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
         'Apply Factors to Schedule</div>' +
         '<div style="font-size:12px;color:var(--text-muted);">' + factorSummary + '</div></div>' +
-        '<button class="btn ' + (afOn ? 'btn-danger' : 'btn-primary') + ' btn-sm managed-disabled" ' +
+        '<button class="btn ' + (afOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
         'onclick="toggleApplyFactors(' + !afOn + ')">' +
         (afOn ? 'Disable' : 'Enable') + '</button></div>';
 
@@ -2825,7 +2631,6 @@ function renderScheduleCard(sched, durData, multData) {
                 var zoneSkip = false;
                 var zoneCombined = liveWeatherMult;
                 var zoneHasMoisture = false;
-                var zoneSensorReadings = null;
                 for (var pzKey in perZoneMult) {
                     var pzMatch = pzKey.match(/zone[_]?(\\d+)/i);
                     if (pzMatch && pzMatch[1] === String(zn)) {
@@ -2833,62 +2638,40 @@ function renderScheduleCard(sched, durData, multData) {
                         zoneSkip = perZoneMult[pzKey].skip || false;
                         zoneCombined = perZoneMult[pzKey].combined || liveWeatherMult;
                         zoneHasMoisture = true;
-                        zoneSensorReadings = perZoneMult[pzKey].sensor_readings || null;
                         break;
                     }
                 }
                 if (!zoneHasMoisture) zoneCombined = liveWeatherMult;
                 // Compute projected adjusted duration using per-zone multiplier
                 var factorBadge = '';
-                // Helper: stacked T/M/B readings + gophr icon for moisture-mapped zones
-                var _sr = (adj && adj.sensor_readings) || zoneSensorReadings;
-                var _tmbStack = '';
-                if (_sr && zoneHasMoisture) {
-                    var _lines = [];
-                    if (_sr.T != null) _lines.push('T: ' + _sr.T + '%');
-                    if (_sr.M != null) _lines.push('M: ' + _sr.M + '%');
-                    if (_sr.B != null) _lines.push('B: ' + _sr.B + '%');
-                    if (_lines.length) _tmbStack = '<div style="font-size:9px;font-weight:400;opacity:0.85;line-height:1.4;margin-top:1px;">' + _lines.join('<br>') + '</div>';
-                }
-                var _gophr = zoneHasMoisture ? ' <img src="' + HBASE + '/assets/gophr-logo" style="height:14px;vertical-align:middle;margin-left:3px;" alt="Gophr">' : '';
-                // Combine source icons: gophr (moisture) + weather component emojis
-                var _sourceIcons = _gophr + _weatherIcons;
                 if ((adj && adj.skip) || zoneSkip) {
                     // Skip triggered — from applied factors or live moisture data
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-danger-light);color:var(--color-danger);">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">Skip Watering' + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-danger-light);color:var(--color-danger);">Skip Watering</span>';
                 } else if (adj) {
                     // Factors are actively applied — show applied adjusted value
-                    var _adjColor = Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)';
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-active-tile);color:' + _adjColor + ';">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">' + adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)' + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-active-tile);color:' + (Math.abs(adj.combined_multiplier - 1.0) < 0.005 ? 'var(--color-success)' : 'var(--color-warning)') + ';">' +
+                        adj.adjusted + ' ' + esc(unit) + ' (' + adj.combined_multiplier.toFixed(2) + 'x)</span>';
                 } else if (zoneSkip) {
                     // Factors not applied but skip would trigger for THIS zone
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
-                        'background:var(--bg-tile);color:var(--color-danger);opacity:0.8;" title="Watering would be skipped if Apply Factors is enabled">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">Skip Watering' + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                        'background:var(--bg-tile);color:var(--color-danger);opacity:0.8;" title="Watering would be skipped if Apply Factors is enabled">Skip Watering</span>';
                 } else if (Math.abs(zoneCombined - 1.0) >= 0.005) {
                     // Factors not applied but multiplier differs from 1.0 — show preview
                     var curVal = parseFloat(duration.state) || 0;
                     var projVal = Math.max(1, Math.round(curVal * zoneCombined));
                     var tooltipParts = 'W:' + liveWeatherMult.toFixed(2);
                     if (zoneHasMoisture) tooltipParts += ' × M:' + zoneMoistMult.toFixed(2);
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                         'background:var(--bg-tile);color:var(--color-warning);opacity:0.8;" title="Projected duration if Apply Factors is enabled (' +
                         tooltipParts + ')">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">' + projVal + ' ' + esc(unit) + ' (' + zoneCombined.toFixed(2) + 'x)' + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
+                        projVal + ' ' + esc(unit) + ' (' + zoneCombined.toFixed(2) + 'x)</span>';
                 } else if (zoneHasMoisture) {
                     // Zone has moisture probe but multiplier is 1.0 — show probe-monitored indicator
-                    factorBadge = ' <span style="display:inline-flex;flex-direction:column;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
+                    factorBadge = ' <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
                         'background:var(--bg-tile);color:var(--text-muted);border:1px solid var(--border-light);" title="Moisture probe monitoring this zone (M:' + zoneMoistMult.toFixed(2) + 'x)">' +
-                        '<span style="display:inline-flex;align-items:center;gap:3px;">' + zoneMoistMult.toFixed(2) + 'x ' + fluxIcon('droplet',14) + _sourceIcons + '</span>' +
-                        _tmbStack + '</span>';
+                        zoneMoistMult.toFixed(2) + 'x 💧</span>';
                 }
                 html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
                     'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
@@ -3013,17 +2796,6 @@ function renderControlTile(e) {
 }
 
 async function setEntityValue(entityId, domain, bodyObj, force) {
-    // In managed mode, block configuration changes but allow manual zone on/off
-    if (isManaged()) {
-        var eid = entityId.toLowerCase();
-        var isManualZone = (domain === 'switch' || domain === 'valve') &&
-            /zone[_]?\d+/.test(eid) && !/_enable/.test(eid) && !/enable_zone/.test(eid);
-        var isPauseResume = /pause|resume/.test(eid);
-        if (!isManualZone && !isPauseResume) {
-            managedGuard();
-            return;
-        }
-    }
     try {
         var url = '/entities/' + entityId + '/set';
         if (force) url += '?force=true';
@@ -3046,7 +2818,6 @@ async function setEntityValue(entityId, domain, bodyObj, force) {
 }
 
 async function hoZoneModeChanged(modeEntityId, newMode) {
-    if (managedGuard()) return;
     // Clear alias for this zone so mode name shows through
     var zoneEid = modeEntityId.replace('select.', 'switch.').replace(/_mode$/, '');
     var aliases = window._currentZoneAliases || {};
@@ -3113,16 +2884,16 @@ async function loadHistory() {
         const cw = data.current_weather || {};
         let weatherSummary = '';
         if (cw.condition) {
-            const condIcons = {'sunny':fluxIcon('sun',18),'clear-night':fluxIcon('moon',18),'partlycloudy':fluxIcon('partlycloudy',18),'cloudy':fluxIcon('cloud',18),'rainy':fluxIcon('rain',18),'pouring':fluxIcon('rain',18),'snowy':fluxIcon('snow',18),'windy':fluxIcon('wind',18),'fog':fluxIcon('fog',18),'lightning':fluxIcon('lightning',18),'lightning-rainy':fluxIcon('thunderstorm',18),'hail':fluxIcon('hail',18)};
-            const wIcon = condIcons[cw.condition] || fluxIcon('thermometer_hot',18);
+            const condIcons = {'sunny':'☀️','clear-night':'🌙','partlycloudy':'⛅','cloudy':'☁️','rainy':'🌧️','pouring':'🌧️','snowy':'❄️','windy':'💨','fog':'🌫️','lightning':'⚡','lightning-rainy':'⛈️','hail':'🧊'};
+            const wIcon = condIcons[cw.condition] || '🌡️';
             const mult = cw.watering_multiplier != null ? cw.watering_multiplier : 1.0;
             const multColor = mult === 1.0 ? 'var(--text-success-dark)' : mult < 1 ? 'var(--text-warning)' : 'var(--text-danger-dark)';
             const multBg = mult === 1.0 ? 'var(--bg-success-light)' : mult < 1 ? 'var(--bg-warning)' : 'var(--bg-danger-light)';
             weatherSummary = '<div style="margin-bottom:12px;padding:8px 12px;background:var(--bg-weather);border-radius:8px;font-size:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
                 '<span>' + wIcon + ' <strong>' + esc(cw.condition) + '</strong></span>' +
-                (cw.temperature != null ? '<span>' + fluxIcon('thermometer_hot',14) + ' ' + cw.temperature + '°</span>' : '') +
-                (cw.humidity != null ? '<span>' + fluxIcon('droplet',14) + ' ' + cw.humidity + '%</span>' : '') +
-                (cw.wind_speed != null ? '<span>' + fluxIcon('wind',14) + ' ' + cw.wind_speed + ' mph</span>' : '') +
+                (cw.temperature != null ? '<span>🌡️ ' + cw.temperature + '°</span>' : '') +
+                (cw.humidity != null ? '<span>💧 ' + cw.humidity + '%</span>' : '') +
+                (cw.wind_speed != null ? '<span>💨 ' + cw.wind_speed + ' mph</span>' : '') +
                 '<span style="background:' + multBg + ';color:' + multColor + ';padding:2px 8px;border-radius:10px;font-weight:600;">' + mult + 'x</span>' +
                 '</div>';
         }
@@ -3148,8 +2919,8 @@ async function loadHistory() {
                 const wx = e.weather || {};
                 let wxCell = '-';
                 if (wx.condition) {
-                    const ci = {'sunny':fluxIcon('sun',18),'clear-night':fluxIcon('moon',18),'partlycloudy':fluxIcon('partlycloudy',18),'cloudy':fluxIcon('cloud',18),'rainy':fluxIcon('rain',18),'pouring':fluxIcon('rain',18),'snowy':fluxIcon('snow',18),'windy':fluxIcon('wind',18),'fog':fluxIcon('fog',18),'lightning':fluxIcon('lightning',18),'lightning-rainy':fluxIcon('thunderstorm',18),'hail':fluxIcon('hail',18)};
-                    const wi = ci[wx.condition] || fluxIcon('thermometer_hot',18);
+                    const ci = {'sunny':'☀️','clear-night':'🌙','partlycloudy':'⛅','cloudy':'☁️','rainy':'🌧️','pouring':'🌧️','snowy':'❄️','windy':'💨','fog':'🌫️','lightning':'⚡','lightning-rainy':'⛈️','hail':'🧊'};
+                    const wi = ci[wx.condition] || '🌡️';
                     const wm = wx.watering_multiplier != null ? wx.watering_multiplier : '';
                     const wmColor = wm === 1.0 ? 'var(--color-success)' : wm < 1 ? 'var(--color-warning)' : wm > 1 ? 'var(--color-danger)' : 'var(--text-placeholder)';
                     wxCell = wi + ' ' + (wx.temperature != null ? wx.temperature + '° ' : '') +
@@ -3203,11 +2974,6 @@ async function loadHistory() {
                     }
                 } else if (e.state === 'skip') {
                     stateCell = '<span style="color:var(--color-danger);font-weight:600;">Skipped</span><br><span style="color:var(--text-disabled);font-size:11px;">OFF</span>';
-                } else if ((e.state === 'off' || e.state === 'closed') && e.source === 'moisture_cutoff') {
-                    stateCell = '<span style="color:var(--color-danger);font-weight:600;">Stopped</span>';
-                    if (e.mid_sensor_pct != null) {
-                        stateCell += '<div style="font-size:10px;color:var(--text-muted);">Mid: ' + e.mid_sensor_pct + '%</div>';
-                    }
                 } else if (e.state === 'on' || e.state === 'open') {
                     stateCell = '<span style="color:var(--color-success);">ON</span>';
                 } else {
@@ -3217,7 +2983,7 @@ async function loadHistory() {
                 let waterSavedCell = '<span style="color:var(--text-disabled);">—</span>';
                 if (e.water_saved_gallons > 0) {
                     var saveSrc = e.water_saved_source === 'moisture_skip' || e.water_saved_source === 'moisture_cutoff' ? 'Moisture' : e.water_saved_source === 'weather_pause' || e.water_saved_source === 'pause_enforced' ? 'Weather' : '';
-                    waterSavedCell = '<span style="color:var(--color-success);font-weight:600;">' + fluxIcon('droplet',14) + ' ' + e.water_saved_gallons.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + ' gal</span>';
+                    waterSavedCell = '<span style="color:var(--color-success);font-weight:600;">&#x1F4A7; ' + e.water_saved_gallons.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) + ' gal</span>';
                     if (saveSrc) waterSavedCell += '<div style="font-size:10px;color:var(--text-muted);">' + saveSrc + '</div>';
                 } else if (e.water_saved_minutes > 0 && e.water_saved_no_gpm) {
                     waterSavedCell = '<span style="color:var(--color-warning);">' + e.water_saved_minutes.toFixed(1) + ' min</span><div style="font-size:10px;color:var(--text-muted);">No GPM set</div>';
@@ -3255,7 +3021,7 @@ async function loadHistory() {
                 return `<tr style="border-bottom:1px solid var(--border-row);${e.state === 'skip' || e.state === 'moisture_skip' ? 'opacity:0.7;' : ''}${isProbeEvent ? 'background:var(--bg-tile);' : ''}">
                 <td style="padding:6px;">${zoneDisplay}${srcLabel}</td>
                 <td style="padding:6px;">${stateCell}</td>
-                <td style="padding:6px;white-space:nowrap;">${formatTime(e.timestamp)}</td>
+                <td style="padding:6px;">${formatTime(e.timestamp)}</td>
                 <td style="padding:6px;">${e.duration_seconds ? Math.round(e.duration_seconds / 60) + ' min' : '-'}</td>
                 ${hasGpmData ? '<td style="padding:6px;">' + gpmCell + '</td><td style="padding:6px;">' + estGalCell + '</td>' : ''}
                 ${hasWaterSaved ? '<td style="padding:6px;">' + waterSavedCell + '</td>' : ''}
@@ -3293,21 +3059,10 @@ async function loadEstGallons() {
         const hours = parseInt(hoursRaw, 10) || 24;
         const data = await api('/history/runs?hours=' + hours);
         const events = data.events || [];
-        // Fetch water settings early — needed for savings reset filter and cost display
-        var waterSettings = null;
-        try { waterSettings = await api('/water_settings?t=' + Date.now()); } catch(e) {}
-        if (waterSettings) window._cachedWaterSettings = waterSettings;
         // Filter to events with duration and GPM (duration_seconds is set on OFF events)
         const relevant = events.filter(e => e.duration_seconds > 0 && gpmMap[e.entity_id]);
         // Also collect water_saved_gallons from all events
-        // Filter by water_savings_reset_at if set (homeowner can reset savings
-        // counter without clearing run history)
-        const resetAt = (waterSettings && waterSettings.water_savings_reset_at) || null;
-        const savingsEvents = events.filter(e => {
-            if (!(e.water_saved_gallons > 0)) return false;
-            if (resetAt && e.timestamp && e.timestamp < resetAt) return false;
-            return true;
-        });
+        const savingsEvents = events.filter(e => e.water_saved_gallons > 0);
         const hasAnyData = relevant.length > 0 || savingsEvents.length > 0;
         if (!hasAnyData) {
             card.style.display = '';
@@ -3341,6 +3096,10 @@ async function loadEstGallons() {
         // Sort zones by gallons desc
         const allZoneIds = [...new Set([...Object.keys(zoneGallons), ...Object.keys(zoneSaved)])];
         const sorted = allZoneIds.sort((a, b) => (zoneGallons[b] || 0) - (zoneGallons[a] || 0));
+        // Fetch water settings for cost display
+        var waterSettings = null;
+        try { waterSettings = await api('/water_settings?t=' + Date.now()); } catch(e) {}
+        if (waterSettings) window._cachedWaterSettings = waterSettings;
         const hasCost = waterSettings && waterSettings.cost_per_1000_gal > 0 &&
             (waterSettings.water_source === 'city' || waterSettings.water_source === 'reclaimed');
         const costPer1000 = hasCost ? waterSettings.cost_per_1000_gal : 0;
@@ -3360,18 +3119,11 @@ async function loadEstGallons() {
         // --- Saved column ---
         html += '<div style="text-align:center;flex:1;min-width:120px;">' +
             '<div style="font-size:32px;font-weight:700;color:var(--color-success);">' + (totalSaved > 0 ? totalSaved.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) : '-') + '</div>' +
-            '<div style="font-size:13px;color:var(--color-success);">' + fluxIcon('droplet',14) + ' est. gallons saved</div>';
+            '<div style="font-size:13px;color:var(--color-success);">&#x1F4A7; est. gallons saved</div>';
         if (hasCost && totalSaved > 0) {
             var savedCost = (totalSaved / 1000) * costPer1000;
             html += '<div style="font-size:15px;color:var(--color-success);font-weight:600;margin-top:4px;">$' +
                 savedCost.toFixed(2) + ' est. savings</div>';
-        }
-        if (resetAt) {
-            var resetDate = new Date(resetAt);
-            html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">since ' + resetDate.toLocaleDateString() + '</div>';
-        }
-        if (totalSaved > 0) {
-            html += '<div style="margin-top:4px;"><a href="#" onclick="event.preventDefault();event.stopPropagation();resetWaterSavings()" class="managed-disabled" style="font-size:11px;color:var(--text-muted);text-decoration:underline;">Reset</a></div>';
         }
         html += '</div>';
         html += '</div>';
@@ -3415,7 +3167,7 @@ function openGallonsDetailModal() {
     html += '</div>';
     html += '<div style="text-align:center;flex:1;min-width:100px;">' +
         '<div style="font-size:28px;font-weight:700;color:var(--color-success);">' + (d.totalSaved > 0 ? d.totalSaved.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1}) : '-') + '</div>' +
-        '<div style="font-size:13px;color:var(--color-success);">' + fluxIcon('droplet',14) + ' est. gallons saved</div>';
+        '<div style="font-size:13px;color:var(--color-success);">&#x1F4A7; est. gallons saved</div>';
     if (d.hasCost && d.totalSaved > 0) {
         html += '<div style="font-size:14px;color:var(--color-success);font-weight:600;margin-top:2px;">$' + ((d.totalSaved / 1000) * d.costPer1000).toFixed(2) + ' saved</div>';
     }
@@ -3780,7 +3532,7 @@ async function showPumpSettingsModal() {
 
     body += '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
         '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
-        '<button class="btn btn-primary managed-disabled" onclick="savePumpSettings()">Save</button>' +
+        '<button class="btn btn-primary" onclick="savePumpSettings()">Save</button>' +
         '</div>';
 
     body += '</div>';
@@ -3791,7 +3543,6 @@ async function showPumpSettingsModal() {
 }
 
 async function savePumpSettings() {
-    if (managedGuard()) return;
     // Determine brand/model from dropdown or custom input
     var brandSel = document.getElementById('hoPumpBrandSel');
     var modelSel = document.getElementById('hoPumpModelSel');
@@ -3879,7 +3630,7 @@ async function showWaterSettingsModal() {
 
     body += '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
         '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
-        '<button class="btn btn-primary managed-disabled" onclick="saveWaterSettings()">Save</button>' +
+        '<button class="btn btn-primary" onclick="saveWaterSettings()">Save</button>' +
         '</div>';
     body += '</div>';
 
@@ -3893,7 +3644,6 @@ function toggleWaterCostField() {
 }
 
 async function saveWaterSettings() {
-    if (managedGuard()) return;
     var payload = {
         water_source: document.getElementById('waterSourceType').value,
         cost_per_1000_gal: parseFloat(document.getElementById('waterCostPer1000').value) || 0,
@@ -3934,10 +3684,10 @@ const _userSleepDurValues = {};  // probe_id -> user-typed value (string)
 let _weatherCardBuilt = false;
 
 const _condIcons = {
-    'sunny': fluxIcon('sun',18), 'clear-night': fluxIcon('moon',18), 'partlycloudy': fluxIcon('partlycloudy',18),
-    'cloudy': fluxIcon('cloud',18), 'rainy': fluxIcon('rain',18), 'pouring': fluxIcon('rain',18),
-    'snowy': fluxIcon('snow',18), 'windy': fluxIcon('wind',18), 'fog': fluxIcon('fog',18),
-    'lightning': fluxIcon('lightning',18), 'lightning-rainy': fluxIcon('thunderstorm',18), 'hail': fluxIcon('hail',18),
+    'sunny': '☀️', 'clear-night': '🌙', 'partlycloudy': '⛅',
+    'cloudy': '☁️', 'rainy': '🌧️', 'pouring': '🌧️',
+    'snowy': '❄️', 'windy': '💨', 'fog': '🌫️',
+    'lightning': '⚡', 'lightning-rainy': '⛈️', 'hail': '🧊',
 };
 
 function _buildWeatherCardShell() {
@@ -3972,7 +3722,7 @@ function _buildWeatherCardShell() {
     html += '<div style="display:flex;gap:6px;">';
     html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();evaluateWeatherNow()">Test Rules Now</button>';
     html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();exportWeatherLogCSV()">Export Log</button>';
-    html += '<button class="btn btn-danger btn-sm managed-disabled" onclick="event.stopPropagation();clearWeatherLog()">Clear Log</button>';
+    html += '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();clearWeatherLog()">Clear Log</button>';
     html += '</div>';
     html += '</div>';
     html += '<div id="weatherRulesContainer" style="display:none;margin-top:12px;"><div class="loading">Loading rules...</div></div>';
@@ -4031,7 +3781,7 @@ async function loadWeather() {
         }
 
         // --- Targeted updates: only change text/styles, no DOM rebuild ---
-        const icon = _condIcons[w.condition] || fluxIcon('thermometer_hot',18);
+        const icon = _condIcons[w.condition] || '🌡️';
         const mult = data.watering_multiplier != null ? data.watering_multiplier : 1.0;
 
         // Badge — show skip message if a pause/skip adjustment is active
@@ -4104,7 +3854,7 @@ async function loadWeather() {
                 const f = forecast[i];
                 const dt = f.datetime ? new Date(f.datetime) : null;
                 var dayLabel = dt ? dt.toLocaleDateString('en-US', { weekday: 'short' }) : '';
-                const fIcon = _condIcons[f.condition] || fluxIcon('thermometer_hot',18);
+                const fIcon = _condIcons[f.condition] || '🌡️';
                 const precip = f.precipitation_probability || 0;
                 fh += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:8px 10px;text-align:center;min-width:64px;">';
                 fh += '<div style="font-size:10px;color:var(--text-placeholder);white-space:nowrap;">' + esc(dayLabel) + '</div>';
@@ -4114,7 +3864,7 @@ async function loadWeather() {
                     fh += '<div style="font-size:11px;color:var(--text-muted);">' + f.templow + '°</div>';
                 }
                 if (precip > 0) {
-                    fh += '<div style="font-size:10px;color:var(--color-link);">' + fluxIcon('droplet',14) + ' ' + precip + '%</div>';
+                    fh += '<div style="font-size:10px;color:var(--color-link);">💧 ' + precip + '%</div>';
                 }
                 fh += '</div>';
             }
@@ -4237,7 +3987,7 @@ async function loadWeatherRules() {
 
         // Save button
         html += '<div style="margin-top:12px;display:flex;gap:8px;">';
-        html += '<button class="btn btn-primary managed-disabled" onclick="saveWeatherRules()">Save Weather Rules</button>';
+        html += '<button class="btn btn-primary" onclick="saveWeatherRules()">Save Weather Rules</button>';
         html += '</div>';
 
         container.innerHTML = html;
@@ -4274,7 +4024,6 @@ function buildRuleRow(ruleId, name, description, enabled, fields) {
 }
 
 async function saveWeatherRules() {
-    if (managedGuard()) return;
     try {
         const rules = {
             rain_detection: {
@@ -4398,9 +4147,7 @@ function exportWeatherLogCSV() {
 
 // --- Clear Logs ---
 async function clearRunHistory() {
-    if (managedGuard()) return;
-    var ok = await showConfirm({ title: 'Clear Run History', message: 'Clear all run history? <strong>This cannot be undone.</strong>', confirmText: 'Clear History', confirmClass: 'btn-danger', icon: fluxIcon('trash',28) });
-    if (!ok) return;
+    if (!confirm('Clear all run history? This cannot be undone.')) return;
     try {
         const result = await api('/history/runs', { method: 'DELETE' });
         if (result.success) {
@@ -4412,25 +4159,8 @@ async function clearRunHistory() {
     } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function resetWaterSavings() {
-    if (managedGuard()) return;
-    var ok = await showConfirm({ title: 'Reset Water Savings', message: 'Reset the water savings counter to zero? Run history will be kept.', confirmText: 'Reset Savings', confirmClass: 'btn-warning', icon: fluxIcon('droplet',28) });
-    if (!ok) return;
-    try {
-        const result = await api('/water_settings/reset_savings', { method: 'POST' });
-        if (result.success) {
-            showToast('Water savings counter reset');
-            loadEstGallons();
-        } else {
-            showToast(result.error || 'Failed to reset savings', 'error');
-        }
-    } catch (e) { showToast(e.message, 'error'); }
-}
-
 async function clearWeatherLog() {
-    if (managedGuard()) return;
-    var ok = await showConfirm({ title: 'Clear Weather Log', message: 'Clear all weather log entries? <strong>This cannot be undone.</strong>', confirmText: 'Clear Log', confirmClass: 'btn-danger', icon: fluxIcon('sun',28) });
-    if (!ok) return;
+    if (!confirm('Clear all weather log entries? This cannot be undone.')) return;
     try {
         const result = await api('/weather/log', { method: 'DELETE' });
         if (result.success) {
@@ -4526,7 +4256,7 @@ async function loadMoisture() {
                 }
                 html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:' + (probeSkipBadges ? '2' : '10') + 'px;">';
                 html += '<span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(probe.display_name || pid) + '</span>';
-                html += '<a href="#" onclick="renameProbe(\\'' + esc(pid) + '\\');return false;" title="Rename probe" style="font-size:12px;color:var(--text-muted);text-decoration:none;flex-shrink:0;">' + fluxIcon('pencil',14) + '</a>';
+                html += '<a href="#" onclick="renameProbe(\\'' + esc(pid) + '\\');return false;" title="Rename probe" style="font-size:12px;color:var(--text-muted);text-decoration:none;flex-shrink:0;">&#9998;</a>';
                 html += '</div>';
                 if (probeSkipBadges) {
                     html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">' + probeSkipBadges + '</div>';
@@ -4573,7 +4303,7 @@ async function loadMoisture() {
                         const scVal = (scLive && scLive !== 'unavailable' && scLive !== 'unknown') ? scLive : scCached;
                         const isCharging = scVal === 'on';
                         const scRetained = (scLive === 'unavailable' || scLive === 'unknown') && scCached;
-                        html += '<span style="color:' + (isCharging ? 'var(--color-warning)' : 'var(--text-muted)') + ';" title="Solar Charging: ' + (isCharging ? 'Active' : 'Inactive') + (scRetained ? ' (retained)' : '') + '">' + (isCharging ? fluxIcon('sun',14) + ' Charging' : fluxIcon('moon',14) + ' No Solar') + (scRetained ? ' <span style="font-size:9px;opacity:0.7;">(retained)</span>' : '') + '</span>';
+                        html += '<span style="color:' + (isCharging ? 'var(--color-warning)' : 'var(--text-muted)') + ';" title="Solar Charging: ' + (isCharging ? 'Active' : 'Inactive') + (scRetained ? ' (retained)' : '') + '">' + (isCharging ? '☀️ Charging' : '🌙 No Solar') + (scRetained ? ' <span style="font-size:9px;opacity:0.7;">(retained)</span>' : '') + '</span>';
                     }
                     html += '</div>';
                 }
@@ -4612,7 +4342,7 @@ async function loadMoisture() {
                             } catch(e) {}
                         }
                         html += '<span style="font-weight:600;color:' + (isAwake ? 'var(--color-success)' : 'var(--text-muted)') + ';">' +
-                            (isAwake ? fluxIcon('sun',14) + ' Awake' : sleepLabel) + '</span>';
+                            (isAwake ? '☀️ Awake' : sleepLabel) + '</span>';
                         var probePrep = (timelineData.probe_prep || {})[pid];
                         if (probePrep && probePrep.state !== 'idle') {
                             var prepState = probePrep.state;
@@ -4713,7 +4443,7 @@ async function loadMoisture() {
                 html += '<button class="btn btn-secondary btn-sm" onclick="hoProbeZonesSelectAll(\\'' + esc(pid) + '\\',false)">Select None</button>';
                 html += '</div>';
                 html += '<div id="hoProbeZoneCbs_' + esc(pid) + '" style="font-size:12px;">Loading zones...</div>';
-                html += '<button class="btn btn-primary btn-sm managed-disabled" style="margin-top:6px;" onclick="hoSaveProbeZones(\\'' + esc(pid) + '\\')">Save Zone Mapping</button>';
+                html += '<button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="hoSaveProbeZones(\\'' + esc(pid) + '\\')">Save Zone Mapping</button>';
                 html += '</div>';
                 html += '</div>';
             }
@@ -4904,7 +4634,7 @@ async function loadMoisture() {
         }
         html += '</div></div>';
 
-        html += '<button class="btn btn-primary btn-sm managed-disabled" style="margin-top:4px;" onclick="saveMoistureSettings()">Save Settings</button>';
+        html += '<button class="btn btn-primary btn-sm" style="margin-top:4px;" onclick="saveMoistureSettings()">Save Settings</button>';
         html += '</div></div>';
 
         // Probe Management
@@ -4925,7 +4655,7 @@ async function loadMoisture() {
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
                 html += '<div style="display:flex;align-items:center;gap:6px;">';
                 html += '<strong style="font-size:14px;">' + esc(probe.display_name || pid) + '</strong>';
-                html += '<a href="#" onclick="renameProbe(\\'' + esc(pid) + '\\');return false;" title="Rename probe" style="font-size:12px;color:var(--text-muted);text-decoration:none;">' + fluxIcon('pencil',14) + '</a>';
+                html += '<a href="#" onclick="renameProbe(\\'' + esc(pid) + '\\');return false;" title="Rename probe" style="font-size:12px;color:var(--text-muted);text-decoration:none;">&#9998;</a>';
                 html += '</div>';
                 html += '<div style="display:flex;gap:6px;">';
                 html += '<button class="btn btn-secondary btn-sm" onclick="updateProbeEntities(\\'' + esc(pid) + '\\')">Update Entities</button>';
@@ -5158,7 +4888,6 @@ function toggleMoistureSection(section) {
 }
 
 async function saveMoistureSettings() {
-    if (managedGuard()) return;
     try {
         const payload = {
             enabled: document.getElementById('moistureEnabled').checked,
@@ -5243,7 +4972,6 @@ function hoProbeZonesSelectAll(probeId, selectAll) {
 }
 
 async function hoSaveProbeZones(probeId) {
-    if (managedGuard()) return;
     const c = document.getElementById('hoProbeZoneCbs_' + probeId);
     if (!c) return;
     const selected = [];
@@ -5455,8 +5183,7 @@ async function addHoProbeFromDevice() {
 }
 
 async function deleteMoistureProbe(probeId) {
-    var ok = await showConfirm({ title: 'Remove Probe', message: 'Remove probe <strong>"' + probeId.replace(/</g,'&lt;') + '"</strong>? This will delete its configuration and zone mappings.', confirmText: 'Remove Probe', confirmClass: 'btn-danger', icon: fluxIcon('expansion',28) });
-    if (!ok) return;
+    if (!confirm('Remove probe "' + probeId + '"?')) return;
     try {
         await mapi('/probes/' + encodeURIComponent(probeId), 'DELETE');
         showToast('Probe removed');
@@ -5653,14 +5380,14 @@ async function hoUpdateCalPrereqs(probeId) {
             var reasons = [];
             if (!isAwake) reasons.push('probe is sleeping');
             if (!isSleepDisabled) reasons.push('sleep is not disabled');
-            prereqDiv.innerHTML = '<div style="padding:8px 10px;background:var(--bg-danger-light);border-radius:6px;font-size:12px;color:var(--color-danger);">' + fluxIcon('warning',14) + ' Cannot calibrate: ' + reasons.join(' and ') + '. Wake the probe and disable sleep before calibrating.</div>';
+            prereqDiv.innerHTML = '<div style="padding:8px 10px;background:var(--bg-danger-light);border-radius:6px;font-size:12px;color:var(--color-danger);">&#9888;&#65039; Cannot calibrate: ' + reasons.join(' and ') + '. Wake the probe and disable sleep before calibrating.</div>';
             dryBtn.disabled = true;
             dryBtn.style.background = 'var(--bg-tile)';
             dryBtn.style.color = 'var(--text-muted)';
             dryBtn.style.border = '2px solid var(--border-light)';
             dryBtn.style.cursor = 'not-allowed';
         } else {
-            prereqDiv.innerHTML = '<div style="padding:8px 10px;background:var(--bg-success-light);border-radius:6px;font-size:12px;color:var(--text-success-dark);">' + fluxIcon('check',12) + ' Probe is awake and sleep is disabled. Ready to calibrate.</div>';
+            prereqDiv.innerHTML = '<div style="padding:8px 10px;background:var(--bg-success-light);border-radius:6px;font-size:12px;color:var(--text-success-dark);">&#10003; Probe is awake and sleep is disabled. Ready to calibrate.</div>';
             dryBtn.disabled = false;
             dryBtn.style.background = 'var(--color-warning)';
             dryBtn.style.color = '#fff';
@@ -5826,7 +5553,6 @@ async function hoToggleWakeSchedule(probeId) {
 }
 
 async function toggleApplyFactors(enable) {
-    if (managedGuard()) return;
     try {
         const result = await mapi('/settings', 'PUT', { apply_factors_to_schedule: enable });
         const isError = result.success === false;
@@ -5937,8 +5663,7 @@ async function markAllNotificationsRead() {
 }
 
 async function clearAllNotifications() {
-    var ok = await showConfirm({ title: 'Clear Notifications', message: 'Clear all notifications? <strong>This cannot be undone.</strong>', confirmText: 'Clear All', confirmClass: 'btn-danger', icon: fluxIcon('bell',28) });
-    if (!ok) return;
+    if (!confirm('Clear all notifications? This cannot be undone.')) return;
     try {
         await api('/notifications/clear', { method: 'DELETE' });
         _notifPanelEvents = [];
@@ -6028,7 +5753,7 @@ function renderNotifMain() {
         var issueCount = [_notifPrefs.service_appointments].filter(Boolean).length;
         html += '<div onclick="_notifSubView=\\'issues\\';renderNotifSettingsView();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
         html += '<div style="display:flex;align-items:center;gap:10px;">';
-        html += '<span style="font-size:18px;">' + fluxIcon('wrench',18) + '</span>';
+        html += '<span style="font-size:18px;">&#128295;</span>';
         html += '<div><div style="font-size:13px;font-weight:600;color:var(--text-primary);">Issue Notifications</div>';
         html += '<div style="font-size:11px;color:var(--text-muted);">Service appointments &amp; issue updates</div></div>';
         html += '</div>';
@@ -6040,7 +5765,7 @@ function renderNotifMain() {
         var sysCount = sysKeys.filter(function(k) { return !!_notifPrefs[k]; }).length;
         html += '<div onclick="_notifSubView=\\'system\\';renderNotifSettingsView();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-tile);border-radius:10px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border-light);transition:background 0.15s;" onmouseover="this.style.borderColor=\\'var(--color-primary)\\'" onmouseout="this.style.borderColor=\\'var(--border-light)\\'">';
         html += '<div style="display:flex;align-items:center;gap:10px;">';
-        html += '<span style="font-size:18px;">' + fluxIcon('gear',18) + '</span>';
+        html += '<span style="font-size:18px;">&#9881;</span>';
         html += '<div><div style="font-size:13px;font-weight:600;color:var(--text-primary);">System Change Notifications</div>';
         html += '<div style="font-size:11px;color:var(--text-muted);">Weather, moisture, equipment &amp; more</div></div>';
         html += '</div>';
@@ -6081,7 +5806,7 @@ function renderNotifIssues() {
     var body = document.getElementById('notifPanelBody');
     var html = '<div style="padding:16px 20px 20px 20px;">';
     html += _notifBackBtn();
-    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">' + fluxIcon('wrench',14) + ' Issue Notifications</h4>';
+    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">&#128295; Issue Notifications</h4>';
     html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px 0;">Notifications related to service appointments and issue tracking.</p>';
     html += _notifToggleRow('service_appointments', 'Service Appointments', 'When a service visit is scheduled or rescheduled');
     html += '</div>';
@@ -6092,7 +5817,7 @@ function renderNotifSystem() {
     var body = document.getElementById('notifPanelBody');
     var html = '<div style="padding:16px 20px 20px 20px;">';
     html += _notifBackBtn();
-    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">' + fluxIcon('gear',14) + ' System Change Notifications</h4>';
+    html += '<h4 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary);">&#9881; System Change Notifications</h4>';
     html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px 0;">Notifications when management modifies your system settings.</p>';
     html += _notifToggleRow('system_changes', 'System Pause / Resume', 'When management pauses or resumes your irrigation system');
     html += _notifToggleRow('weather_changes', 'Weather Rules', 'When weather adjustment rules are changed');
@@ -6148,7 +5873,7 @@ function renderNotifHA() {
 
     // Action buttons
     html += '<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;">';
-    html += '<button class="btn btn-secondary btn-sm" onclick="testHomeownerHANotification()">' + fluxIcon('chat',14) + ' Test</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="testHomeownerHANotification()">&#128172; Test</button>';
     html += '<button class="btn btn-primary btn-sm" onclick="saveHomeownerHANotifSettings()">Save</button>';
     html += '</div>';
     html += '<div id="hoHaNotifStatus" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>';
@@ -6259,12 +5984,12 @@ async function toggleNotifPref(key, enabled) {
 function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
     localStorage.setItem('flux_dark_mode_homeowner', isDark);
-    document.querySelector('.dark-toggle').innerHTML = isDark ? fluxIcon('sun',16) : fluxIcon('moon',16);
+    document.querySelector('.dark-toggle').textContent = isDark ? '☀️' : '🌙';
     _applyDarkTiles();
 }
 (function initDarkToggleIcon() {
     const btn = document.querySelector('.dark-toggle');
-    if (btn && document.body.classList.contains('dark-mode')) btn.innerHTML = fluxIcon('sun',16);
+    if (btn && document.body.classList.contains('dark-mode')) btn.textContent = '☀️';
 })();
 
 // --- Live Clock ---
@@ -6374,17 +6099,17 @@ const HELP_CONTENT = `
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Zone Control</h4>
 <p style="margin-bottom:10px;">Each zone tile shows the current state (running or off). Zones are displayed as "Zone 1", "Zone 2", etc. by default — use aliases to give them friendly names. You can:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Start</strong> — Turn a zone on immediately with no time limit</li><li style="margin-bottom:4px;"><strong>Timed Start</strong> — Enter a duration in minutes and click <strong>Timed</strong> to run the zone for a set period, then auto-shutoff</li><li style="margin-bottom:4px;"><strong>Stop</strong> — Turn off a running zone immediately</li><li style="margin-bottom:4px;"><strong>Emergency Stop All</strong> — Instantly stops every active zone on the system</li><li style="margin-bottom:4px;"><strong>Auto Advance</strong> — Toggle at the top of the zone card. To run all enabled zones sequentially: start the first zone with a timed run, then click Auto Advance to enable it. Each zone will automatically advance to the next enabled zone when its timer expires. Turn Auto Advance off at any time to stop the sequence after the current zone finishes.</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> Green-highlighted tiles indicate zones that are currently running. If your controller has expansion boards, only the physically connected zones are shown — extra pre-created entities are automatically hidden.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Green-highlighted tiles indicate zones that are currently running. If your controller has expansion boards, only the physically connected zones are shown — extra pre-created entities are automatically hidden.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">🔩 Zone Head Details</h4>
-<p style="margin-bottom:10px;">Click the <strong><span data-fi="info" data-fs="14"></span></strong> icon on any zone tile to open the Zone Details modal. This lets you document every sprinkler head in the zone:</p>
+<p style="margin-bottom:10px;">Click the <strong>ℹ</strong> icon on any zone tile to open the Zone Details modal. This lets you document every sprinkler head in the zone:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Number of Heads</strong> — Set how many sprinkler heads are in the zone, then click Update Table to build the inventory</li><li style="margin-bottom:4px;"><strong>Head Type</strong> — Pop-up spray, rotary nozzle, gear rotor, impact rotor, micro-spray, bubbler, drip emitter, drip line, fixed spray, or strip nozzle</li><li style="margin-bottom:4px;"><strong>Brand & Model</strong> — Select a manufacturer, then pick a model from the filtered picklist. Known models auto-fill the GPM field. Choose "Custom..." to type any model not in the list. The model database is stored in <code>sprinkler_models.json</code> and can be easily extended.</li><li style="margin-bottom:4px;"><strong>Mount Type</strong> — Pop-up, stationary, riser, shrub, or on-grade</li><li style="margin-bottom:4px;"><strong>GPM</strong> — Flow rate in gallons per minute. Auto-populated when you select a known model, or type your own value. The total zone flow is calculated automatically and displayed on the zone card.</li><li style="margin-bottom:4px;"><strong>Arc & Radius</strong> — Spray arc in degrees and throw radius in feet</li><li style="margin-bottom:4px;"><strong>Pop-Up Height</strong> — Riser height (2", 3", 4", 6", or 12")</li><li style="margin-bottom:4px;"><strong>PSI & Notes</strong> — Operating pressure and any location/condition notes</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> Documenting your heads helps irrigation professionals service your system and ensures accurate watering calculations. Give each head a name/location (e.g. "Front left corner") so they can be easily found on the property.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Documenting your heads helps irrigation professionals service your system and ensures accurate watering calculations. Give each head a name/location (e.g. "Front left corner") so they can be easily found on the property.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Rain Sensor</h4>
 <p style="margin-bottom:10px;">If your irrigation controller has a rain sensor connected, a dedicated Rain Sensor card appears showing:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Status Banner</strong> — Shows current state: Dry (green), Rain Detected (red), Rain Delay (yellow), or Disabled (gray)</li><li style="margin-bottom:4px;"><strong>Rain Sensor Enable</strong> — Toggle rain sensor monitoring on or off</li><li style="margin-bottom:4px;"><strong>Sensor Type</strong> — Set to NC (Normally Closed) or NO (Normally Open) to match your hardware wiring</li><li style="margin-bottom:4px;"><strong>Rain Delay Enable</strong> — Toggle the rain delay feature on or off</li><li style="margin-bottom:4px;"><strong>Delay Duration</strong> — How many hours to delay watering after rain is detected (1-72 hours)</li><li style="margin-bottom:4px;"><strong>Rain Delay Active</strong> — Shows whether rain delay is currently active</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> The rain sensor card only appears when rain sensor entities are detected on your irrigation controller.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The rain sensor card only appears when rain sensor entities are detected on your irrigation controller.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Sensors</h4>
 <p style="margin-bottom:10px;">The sensors card shows real-time readings from your irrigation controller — soil moisture, temperature, Wi-Fi signal strength, and any other sensors exposed by your device. Wi-Fi signal includes a quality badge (Great/Good/Poor/Bad) based on signal strength in dBm.</p>
@@ -6392,7 +6117,7 @@ const HELP_CONTENT = `
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Schedule Management</h4>
 <p style="margin-bottom:10px;">Your irrigation schedule is configured through your Flux Open Home controller and managed via its ESPHome entities:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Schedule Enable/Disable</strong> — Master toggle to turn the entire schedule on or off</li><li style="margin-bottom:4px;"><strong>Days of Week</strong> — Click day buttons to toggle which days the schedule runs</li><li style="margin-bottom:4px;"><strong>Start Times</strong> — Set when each schedule program begins (HH:MM format)</li><li style="margin-bottom:4px;"><strong>Zone Settings</strong> — Enable/disable individual zones and set run durations for each</li><li style="margin-bottom:4px;"><strong>Zone Modes</strong> — Some zones may have special modes (Pump Start Relay, Master Valve) that are firmware-controlled</li><li style="margin-bottom:4px;"><strong>Apply Factors to Schedule</strong> — When enabled, automatically adjusts ESPHome run durations using the combined watering factor (weather &times; moisture). The input field shows the base duration (what you set), and a badge next to it shows the adjusted duration and factor (e.g. &quot;24 min (0.80x)&quot;). The base is what you control; the adjusted value is what the controller actually runs. Durations update automatically as conditions change and restore to originals when disabled. Even when this toggle is OFF, a preview badge shows what the projected duration would be given the current combined factor, so you can always see how weather and moisture conditions would affect your schedule.</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> Schedule changes take effect immediately on your controller — no restart needed.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Schedule changes take effect immediately on your controller — no restart needed.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather-Based Control</h4>
 <p style="margin-bottom:10px;">When weather is enabled (configured on the Configuration page), the dashboard shows current conditions and a <strong>watering multiplier</strong>:</p>
@@ -6442,11 +6167,11 @@ const HELP_CONTENT = `
 <li style="margin-bottom:4px;"><strong>Average</strong> &mdash; Averages all probe readings. Skips the zone only if a majority of probes detect saturated soil. Good for zones with variable soil conditions.</li>
 <li style="margin-bottom:4px;"><strong>Optimistic</strong> &mdash; Uses the driest probe reading (highest multiplier). Skips the zone only if ALL probes detect saturated soil. Best for preventing under-watering in zones with dry spots.</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:0 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> For zones with only one probe, the Multi-Probe Mode setting has no effect.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:0 0 12px 0;font-size:13px;">💡 For zones with only one probe, the Multi-Probe Mode setting has no effect.</div>
 
 <p style="margin-bottom:10px;">The moisture card also shows:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Probe tiles</strong> — Color-coded bars showing moisture level at each depth, with stale-data indicators</li><li style="margin-bottom:4px;"><strong>Device status</strong> — WiFi signal strength, battery percentage, solar charging state, sleep duration, and estimated next wake time are shown below the moisture readings when available (auto-detected from the Gophr device). When sleeping, the badge shows "Wake in X min" or "Wake at HH:MM" based on when the probe fell asleep plus the sleep duration.</li><li style="margin-bottom:4px;"><strong>Settings</strong> — Root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li><li style="margin-bottom:4px;"><strong>Manage Probes</strong> — Select a Gophr device from the dropdown to auto-detect sensors, add/remove probes, assign to zones</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. The algorithm integrates weather forecast data for rain detection — if the shallow sensor shows a wetting front and rain is forecasted, watering is automatically reduced or skipped. Gophr devices sleep between readings — while the device is asleep, the system uses the last known good sensor values so the moisture multiplier stays active. If the cached readings become older than the Stale Reading Threshold, they are treated as stale and the multiplier reverts to neutral (1.0x).</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Moisture probes adjust both timed API/dashboard runs and ESPHome scheduled runs. The algorithm integrates weather forecast data for rain detection — if the shallow sensor shows a wetting front and rain is forecasted, watering is automatically reduced or skipped. Gophr devices sleep between readings — while the device is asleep, the system uses the last known good sensor values so the moisture multiplier stays active. If the cached readings become older than the Stale Reading Threshold, they are treated as stale and the multiplier reverts to neutral (1.0x).</div>
 
 <p style="margin-bottom:6px;font-weight:600;font-size:13px;">Probe-Aware Irrigation (Schedule Timeline)</p>
 <p style="margin-bottom:6px;font-size:13px;">The system automatically manages probe sleep/wake cycles around scheduled irrigation runs. For each probe with mapped zones, it:</p>
@@ -6454,50 +6179,50 @@ const HELP_CONTENT = `
 <p style="margin-bottom:6px;font-size:13px;">Click <strong>Wake Schedule</strong> on a probe card to see all mapped zones with their expected wake/run times. Each entry shows one of three states:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;">&#9200; <strong>Wake at HH:MM</strong> &mdash; The probe will wake from sleep before this zone runs</li><li style="margin-bottom:4px;">&#128065; <strong>Keep Awake</strong> &mdash; The probe stays awake from the previous zone (gap is shorter than sleep duration)</li><li style="margin-bottom:4px;">&#9940; <strong>Skip</strong> &mdash; The zone is saturated and will be skipped; the probe will not wake for it</li></ul>
 <p style="margin-bottom:6px;font-size:13px;">The next upcoming entry is highlighted with a <strong>NEXT</strong> badge. All times use your configured timezone. The timeline recalculates automatically whenever schedule start times, zone durations, zone enable states, or probe mappings change.</p>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> The timeline uses the <strong>current adjusted durations</strong> (factored by weather and moisture) when &ldquo;Apply Factors to Schedule&rdquo; is enabled. This means probe wake times automatically shift when factors change.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The timeline uses the <strong>current adjusted durations</strong> (factored by weather and moisture) when &ldquo;Apply Factors to Schedule&rdquo; is enabled. This means probe wake times automatically shift when factors change.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Run History</h4>
 <p style="margin-bottom:10px;">The run history table shows every zone on/off event with:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone name</strong> and source (API, schedule, weather pause, etc.)</li><li style="margin-bottom:4px;"><strong>State</strong> — ON (green) or OFF</li><li style="margin-bottom:4px;"><strong>Time</strong> and <strong>duration</strong> of each run</li><li style="margin-bottom:4px;"><strong>Watering Factor</strong> — The weather-based multiplier applied to schedule-triggered runs (green at 1.0x, yellow below, red above)</li><li style="margin-bottom:4px;"><strong>Probe Factor</strong> — The moisture probe multiplier (only shown when probes are enabled); includes sensor readings at each depth (T=Top/shallow, M=Middle/root zone, B=Bottom/deep) as percentages</li><li style="margin-bottom:4px;"><strong>Weather</strong> — Conditions at the time of the event with any triggered rules</li></ul>
 <p style="margin-bottom:10px;">Use the time range dropdown to view the last 24 hours, 7 days, 30 days, 90 days, or full year. Click <strong>Export CSV</strong> to download history as a spreadsheet. The CSV includes additional columns for probe sensor readings (top, mid, bottom percentages) and moisture profile.</p>
 
-<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;"><span data-fi="water_monitor" data-fs="16"></span> Water Monitor &amp; Water Source</h4>
-<p style="margin-bottom:10px;">The Water Monitor card shows total water usage calculated from zone run times and configured GPM (gallons per minute) values from your Zone Head Details. Click the <strong><span data-fi="gear" data-fs="14"></span> gear</strong> button to configure your water source:</p>
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">&#128167; Water Monitor &amp; Water Source</h4>
+<p style="margin-bottom:10px;">The Water Monitor card shows total water usage calculated from zone run times and configured GPM (gallons per minute) values from your Zone Head Details. Click the <strong>&#9881;&#65039; gear</strong> button to configure your water source:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>City Water</strong> &mdash; Municipal water supply; enter your cost per 1,000 gallons to see estimated water costs</li><li style="margin-bottom:4px;"><strong>Reclaimed Water</strong> &mdash; Recycled/reclaimed water; enter your cost per 1,000 gallons</li><li style="margin-bottom:4px;"><strong>Well Water</strong> &mdash; Private well (auto-detected when a Pump Start Relay is configured); no water utility cost &mdash; electricity costs are tracked in the Pump Monitor card</li></ul>
 <p style="margin-bottom:10px;">When a cost is configured, the estimated water cost appears below the total gallons on the card and in PDF reports.</p>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> If your controller has a Pump Start Relay zone, the water source automatically defaults to Well Water. You can change this at any time.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; If your controller has a Pump Start Relay zone, the water source automatically defaults to Well Water. You can change this at any time.</div>
 
-<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;"><span data-fi="pump" data-fs="16"></span> Pump Monitor</h4>
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">&#9889; Pump Monitor</h4>
 <p style="margin-bottom:10px;">If one of your zones is configured as a <strong>Pump Start Relay</strong>, a dedicated Pump Monitor card appears alongside the Water Monitor card. The card shows real-time pump usage statistics:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Total Cycles</strong> &mdash; Number of completed pump on/off cycles in the selected time range</li><li style="margin-bottom:4px;"><strong>Run Hours</strong> &mdash; Total hours the pump has been running</li><li style="margin-bottom:4px;"><strong>Power Used</strong> &mdash; Total electricity consumption in kilowatt-hours (kWh), calculated from pump HP/kW rating and run time</li><li style="margin-bottom:4px;"><strong>Estimated Cost</strong> &mdash; Electricity cost based on your configured rate ($/kWh)</li></ul>
 <p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> to filter stats: Last 24 Hours, Last 30 Days (default), Last 90 Days, or Last Year.</p>
-<p style="margin-bottom:10px;">Click the <strong><span data-fi="gear" data-fs="14"></span> gear</strong> button to open Pump Settings where you can configure:</p>
+<p style="margin-bottom:10px;">Click the <strong>&#9881;&#65039; gear</strong> button to open Pump Settings where you can configure:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Brand</strong> &mdash; Pump manufacturer (e.g., Pentair, Hayward)</li><li style="margin-bottom:4px;"><strong>Horsepower / Kilowatts</strong> &mdash; Enter either value and the other is auto-calculated (1 HP = 0.7457 kW)</li><li style="margin-bottom:4px;"><strong>Voltage</strong> &mdash; Operating voltage (default 240V)</li><li style="margin-bottom:4px;"><strong>Year Installed</strong> &mdash; Used to calculate pump age displayed on the card</li><li style="margin-bottom:4px;"><strong>Electricity Cost ($/kWh)</strong> &mdash; Your standard electricity rate for cost estimates</li><li style="margin-bottom:4px;"><strong>Peak Rate ($/kWh)</strong> &mdash; Peak hours electricity rate for reference</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> The pump relay zone is auto-detected from your controller&rsquo;s zone mode settings. If no pump relay is configured, the Water Monitor card stays full-width. The pump info line shows brand, power rating, voltage, and pump age (current year minus year installed).</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The pump relay zone is auto-detected from your controller&rsquo;s zone mode settings. If no pump relay is configured, the Water Monitor card stays full-width. The pump info line shows brand, power rating, voltage, and pump age (current year minus year installed).</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">PDF System Report</h4>
 <p style="margin-bottom:10px;">The <strong>PDF System Report</strong> card appears below the status tiles. Select a time range and click <strong>Generate</strong> to create a comprehensive, professionally branded PDF document covering your entire irrigation system. The report includes:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>System Status</strong> &mdash; Online/offline, paused/active, weather multiplier, moisture status</li><li style="margin-bottom:4px;"><strong>Active Issues</strong> &mdash; Any reported issues with severity, description, and status</li><li style="margin-bottom:4px;"><strong>Zones Overview</strong> &mdash; All zones with name, state, GPM, and head count</li><li style="margin-bottom:4px;"><strong>Zone Head Details</strong> &mdash; Complete sprinkler head inventory per zone (type, brand, model, GPM, arc, radius, PSI)</li><li style="margin-bottom:4px;"><strong>Weather Settings</strong> &mdash; Current conditions, multiplier, and active adjustment rules</li><li style="margin-bottom:4px;"><strong>Moisture Probes</strong> &mdash; Probe configuration, mapped zones, and thresholds</li><li style="margin-bottom:4px;"><strong>Sensors</strong> &mdash; All sensor readings with values and units</li><li style="margin-bottom:4px;"><strong>Estimated Water Usage</strong> &mdash; Total gallons, per-zone breakdown, water source type, and estimated cost (when configured)</li><li style="margin-bottom:4px;"><strong>Run History</strong> &mdash; Recent zone run events with durations and sources</li></ul>
 <p style="margin-bottom:10px;">Use the <strong>time range dropdown</strong> to select the period for history and water usage data: 24 Hours, 7 Days, 30 Days (default), 90 Days, or 1 Year. The PDF opens in a new tab for viewing or downloading.</p>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> The report is generated server-side and branded with Flux Open Home and Gophr logos. Your management company can customize the report with their own logo, company name, accent color, section visibility, and footer text.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The report is generated server-side and branded with Flux Open Home and Gophr logos. Your management company can customize the report with their own logo, company name, accent color, section visibility, and footer text.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Expansion Boards</h4>
 <p style="margin-bottom:10px;">If your controller supports I2C expansion boards for additional zones, the Expansion Boards card shows:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Zone Count</strong> — Total number of zones detected (base board + expansion)</li><li style="margin-bottom:4px;"><strong>Board Details</strong> — I2C addresses of connected expansion boards, with the zone range each board controls</li><li style="margin-bottom:4px;"><strong>Rescan</strong> — Trigger an I2C bus rescan to detect newly connected or disconnected boards</li></ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> The firmware pre-creates entities for up to 32 zones (to support up to 3 expansion boards). The system automatically detects how many zones are physically connected and only shows those zones throughout the dashboard — zone tiles, schedule settings, enables, and durations are all filtered to match.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">&#128161; The firmware pre-creates entities for up to 32 zones (to support up to 3 expansion boards). The system automatically detects how many zones are physically connected and only shows those zones throughout the dashboard — zone tiles, schedule settings, enables, and durations are all filtered to match.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">System Pause / Resume</h4>
 <p style="margin-bottom:10px;"><strong>Pause System</strong> immediately stops all active zones and prevents any new zones from starting — including ESPHome schedule programs. While paused, any zone that tries to turn on will be automatically shut off.</p>
 <p style="margin-bottom:10px;"><strong>Resume System</strong> lifts the pause and allows normal operation. Weather-triggered pauses auto-resume when conditions clear; manual pauses require clicking Resume.</p>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;"><span data-fi="lightbulb" data-fs="16"></span> Use <strong>Emergency Stop All</strong> for a quick one-time stop. Use <strong>Pause System</strong> when you need to keep everything off until you manually resume.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Use <strong>Emergency Stop All</strong> for a quick one-time stop. Use <strong>Pause System</strong> when you need to keep everything off until you manually resume.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Configuration Change Log</h4>
-<p style="margin-bottom:10px;">Click the <strong><span data-fi="clipboard" data-fs="14"></span> Log</strong> button in the header to view a log of all configuration changes. Every change records:</p>
+<p style="margin-bottom:10px;">Click the <strong>&#128203; Log</strong> button in the header to view a log of all configuration changes. Every change records:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Time</strong> — When the change was made (shown in your local timezone)</li><li style="margin-bottom:4px;"><strong>Who</strong> — Whether the change was made by the Homeowner (blue badge) or Management company (green badge)</li><li style="margin-bottom:4px;"><strong>Category</strong> — What type of setting was changed (Schedule, Weather Rules, Moisture Probes, System, Zone Control, Device Config, Connection Key, etc.)</li><li style="margin-bottom:4px;"><strong>Change</strong> — A detailed description of what was changed, showing old and new values (e.g., &quot;Humidity Threshold (%): 80 -&gt; 90&quot;, &quot;Zone alias Zone 1: Front Yard -&gt; Front Garden&quot;)</li></ul>
 <p style="margin-bottom:10px;">The system stores up to 1,000 entries. When the limit is reached, the oldest entries are automatically overwritten. Records cannot be deleted. Click <strong>Export CSV</strong> to download the full log as a spreadsheet.</p>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Report an Issue</h4>
-<p style="margin-bottom:10px;">Click the <strong><span data-fi="warning" data-fs="14"></span> Warning</strong> button in the header to report an issue to your management company. You can:</p>
+<p style="margin-bottom:10px;">Click the <strong>&#9888;&#65039; Warning</strong> button in the header to report an issue to your management company. You can:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Select Severity</strong> — Choose from three levels: <span style="color:#3498db;font-weight:600;">Clarification</span> (question or minor request), <span style="color:#f39c12;font-weight:600;">Annoyance</span> (something bothering you), or <span style="color:#e74c3c;font-weight:600;">Severe Issue</span> (urgent problem needing immediate attention)</li><li style="margin-bottom:4px;"><strong>Describe the Issue</strong> — Provide details about what you are experiencing (up to 1,000 characters)</li></ul>
 <p style="margin-bottom:10px;">After submitting, your issue appears in the <strong>Your Reported Issues</strong> section below the dashboard title. You can track the status of each issue:</p>
 <ul style="margin:4px 0 12px 20px;"><li style="margin-bottom:4px;"><strong>Submitted</strong> — Your issue has been sent to management</li><li style="margin-bottom:4px;"><strong>Acknowledged</strong> — Management has reviewed your issue and may have left a note</li><li style="margin-bottom:4px;"><strong>Service Scheduled</strong> — A service date has been set</li><li style="margin-bottom:4px;"><strong>Resolved</strong> — Management has marked your issue as complete. You will see their response and can click <strong>Dismiss</strong> to remove it from your dashboard</li></ul>
@@ -6509,7 +6234,7 @@ const HELP_CONTENT = `
 <p style="margin-bottom:10px;">Your property address is shown below the dashboard title. <strong>Tap the address</strong> to open it in your default maps application (Apple Maps on iOS/Mac, Google Maps on other devices).</p>
 
 <div style="border-top:1px solid var(--border-light);margin-top:20px;padding-top:16px;text-align:center;">
-<a href="https://github.com/FluxOpenHome/ha-flux-irrigation-addons/blob/main/flux-irrigation-api/README.md" target="_blank" style="color:var(--color-primary);font-size:14px;font-weight:500;text-decoration:none;"><span data-fi="book" data-fs="14"></span> Full Documentation on GitHub</a>
+<a href="https://github.com/FluxOpenHome/ha-flux-irrigation-addons/blob/main/flux-irrigation-api/README.md" target="_blank" style="color:var(--color-primary);font-size:14px;font-weight:500;text-decoration:none;">&#128214; Full Documentation on GitHub</a>
 </div>
 `;
 
@@ -6615,56 +6340,6 @@ function closeHelpModal() {
     document.getElementById('helpModal').style.display = 'none';
 }
 
-// --- Debug Log ---
-async function showDebugLog() {
-    try {
-        var resp = await fetch(HBASE + '/debug/moisture-log?lines=500');
-        var data = await resp.json();
-        var lines = data.lines || [];
-        if (!lines.length) {
-            showModal('Debug Log', '<p style="color:var(--text-muted);">No debug log entries yet.</p>', '800px');
-            return;
-        }
-        var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
-        html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
-        html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
-        html += '</div>';
-        html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:70vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i].replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            // Color-code key events
-            if (line.indexOf('FAST SKIP') >= 0 || line.indexOf('IMMEDIATE SKIP') >= 0)
-                html += '<span style="color:#e74c3c;font-weight:600;">' + line + '</span>\\n';
-            else if (line.indexOf('PREEMPTIVE TIMER') >= 0)
-                html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
-            else if (line.indexOf('BACKUP ADVANCE') >= 0)
-                html += '<span style="color:#e67e22;">' + line + '</span>\\n';
-            else if (line.indexOf('_advance_to_next_zone') >= 0)
-                html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
-            else if (line.indexOf('ERROR') >= 0)
-                html += '<span style="color:#e74c3c;">' + line + '</span>\\n';
-            else if (line.indexOf('on_zone_state_change') >= 0)
-                html += '<span style="color:#3498db;">' + line + '</span>\\n';
-            else
-                html += line + '\\n';
-        }
-        html += '</pre>';
-        showModal('Moisture Debug Log', html, '900px');
-    } catch(e) {
-        showModal('Debug Log', '<p style="color:var(--color-danger);">Failed to load debug log: ' + e.message + '</p>', '400px');
-    }
-}
-async function clearDebugLog() {
-    if (managedGuard()) return;
-    var ok = await showConfirm({ title: 'Clear Debug Log', message: 'Clear the moisture debug log?', confirmText: 'Clear Log', confirmClass: 'btn-danger', icon: fluxIcon('bug',28) });
-    if (!ok) return;
-    try {
-        await fetch(HBASE + '/debug/moisture-log', { method: 'DELETE' });
-        showToast('Debug log cleared');
-        closeDynamicModal();
-    } catch(e) { showToast(e.message, 'error'); }
-}
-
 // --- Zone Head Details ---
 var _hoNozzleRef = null;
 
@@ -6689,7 +6364,7 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     if (_hoSiteMapManaged) {
         // Site-map managed notice
         body += '<div style="margin-bottom:10px;padding:8px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:6px;font-size:12px;color:rgba(59,130,246,0.9);">';
-        body += '<strong>' + fluxIcon('map_pin',14) + ' Site Map Managed</strong> &mdash; Head type, name, arc, radius, and zone area are set by your irrigation company via the Site Map Editor (shown greyed out). You can still edit GPM, brand, model, mount, pop-up height, PSI, and notes.';
+        body += '<strong>&#128205; Site Map Managed</strong> &mdash; Head type, name, arc, radius, and zone area are set by your irrigation company via the Site Map Editor (shown greyed out). You can still edit GPM, brand, model, mount, pop-up height, PSI, and notes.';
         body += '</div>';
         body += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
         body += '<label style="font-weight:600;font-size:13px;">Number of Heads:</label>';
@@ -6708,7 +6383,7 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
         body += '<select id="hoCopyFromZone" style="flex:1;max-width:250px;padding:4px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:13px;background:var(--bg-input);color:var(--text-primary);">';
         body += '<option value="">\\u2014 Select a zone \\u2014</option>';
         body += '</select>';
-        body += '<button class="btn btn-sm" onclick="hoCopyFromZone()" style="font-size:11px;background:var(--bg-hover);border:1px solid var(--border-light);color:var(--text-primary);">' + fluxIcon('clipboard',14) + ' Copy</button>';
+        body += '<button class="btn btn-sm" onclick="hoCopyFromZone()" style="font-size:11px;background:var(--bg-hover);border:1px solid var(--border-light);color:var(--text-primary);">&#128203; Copy</button>';
         body += '</div>';
     }
 
@@ -6748,23 +6423,20 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     body += '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;"><input type="checkbox" id="hoShowHeadCountOnCard"' + (zoneData.show_head_count_on_card ? ' checked' : '') + '> Show head count on zone card</label>';
     body += '</div>';
 
-    body += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-light);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
+    body += '<div style="margin-top:10px;display:flex;gap:8px;">';
     body += '<button class="btn btn-primary" onclick="hoSaveZoneHeads()" style="font-size:13px;">&#128190; Save</button>';
-    body += '<button class="btn" onclick="hoSaveZoneHeadsAndClose()" style="font-size:13px;background:var(--accent-primary,var(--color-primary));border:1px solid var(--accent-primary,var(--color-primary));color:#fff;">&#128190; Save &amp; Close</button>';
+    body += '<button class="btn btn-sm" onclick="closeDynamicModal()" style="font-size:13px;background:transparent;border:1px solid var(--border-light);color:var(--text-secondary);">Cancel</button>';
     body += '<span id="hoZoneSaveStatus" style="font-size:12px;color:var(--color-success);align-self:center;"></span>';
-    body += '<div style="flex:1;"></div>';
-    body += '<button class="btn btn-sm" onclick="closeDynamicModal()" style="font-size:13px;background:transparent;border:1px solid var(--border-light);color:var(--text-secondary);">Close</button>';
-    body += '<button class="btn btn-sm" onclick="hoCancelZoneDetails()" style="font-size:13px;background:transparent;border:1px solid var(--color-danger,#e74c3c);color:var(--color-danger,#e74c3c);">Cancel</button>';
     body += '</div>';
 
     if (_hoSiteMapManaged) {
         body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
-        body += '<strong>' + fluxIcon('lightbulb',16) + ' Note:</strong> Greyed-out fields (head type, name, arc, radius) are managed by your irrigation company through the Site Map Editor. ';
+        body += '<strong>&#128161; Note:</strong> Greyed-out fields (head type, name, arc, radius) are managed by your irrigation company through the Site Map Editor. ';
         body += 'You can edit GPM, brand, model, mount, pop-up height, PSI, notes, as well as zone area, soil type, and display preferences.';
         body += '</div>';
     } else {
         body += '<div style="margin-top:12px;padding:8px;background:var(--bg-hover);border-radius:6px;font-size:11px;color:var(--text-secondary);">';
-        body += '<strong>' + fluxIcon('lightbulb',16) + ' Tip:</strong> Document each sprinkler head in the zone — type, flow rate (GPM), spray arc, and location. ';
+        body += '<strong>&#128161; Tip:</strong> Document each sprinkler head in the zone — type, flow rate (GPM), spray arc, and location. ';
         body += 'This helps professionals service your system and ensures accurate watering calculations.';
         body += '</div>';
     }
@@ -6828,8 +6500,8 @@ function hoRenderHeadTable(heads) {
     if (hcEl) hcEl.value = String(heads.length);
     var ref = _hoNozzleRef || {nozzle_types:[],brands:[],standard_arcs:[],models:[]};
 
-    // Disabled styling for site-map-controlled fields (nozzle_type, gpm, arc, radius)
-    // Name, brand, model, mount, popup_height, psi, notes remain editable by homeowner.
+    // Disabled styling for site-map-controlled fields (nozzle_type, name, gpm, arc, radius)
+    // Brand, model, mount, popup_height, psi, notes remain editable by homeowner.
     var _smDis = siteMapLocked ? ' disabled' : '';
     var _smRo = siteMapLocked ? ' readonly' : '';
     var _smBg = siteMapLocked ? 'background:var(--bg-hover);color:var(--text-secondary);cursor:not-allowed;opacity:0.7;' : 'background:var(--bg-input);color:var(--text-primary);';
@@ -6871,8 +6543,8 @@ function hoRenderHeadTable(heads) {
         }
         html += '<td style="padding:4px 6px;border:1px solid var(--border-light);text-align:center;font-weight:600;">' + (i+1) + '</td>';
 
-        // Name / Location — always editable (site map inherits the name)
-        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner" style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '"></td>';
+        // Name / Location — LOCKED by site map editor
+        html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="text" data-field="name" data-row="' + i + '" value="' + esc(h.name || '') + '" placeholder="e.g. Front left corner"' + _smRo + ' style="width:100%;min-width:100px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '"></td>';
 
         // Head Type dropdown — LOCKED by site map editor
         html += '<td style="padding:2px;border:1px solid var(--border-light);"><select data-field="nozzle_type" data-row="' + i + '"' + _smDis + ' style="width:100%;min-width:90px;padding:3px 2px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _smBg + '">';
@@ -6944,7 +6616,7 @@ function hoRenderHeadTable(heads) {
         var pumpPressureAvail = window._pumpZoneEntity && window._cachedPumpSettings && parseFloat(window._cachedPumpSettings.pressure_psi) > 0;
         var headPsi = pumpPressureAvail ? window._cachedPumpSettings.pressure_psi : (h.psi || '');
         if (pumpPressureAvail) {
-            html += '<td style="padding:2px;border:1px solid var(--border-light);position:relative;"><input type="number" data-field="psi" data-row="' + i + '" value="' + headPsi + '" min="0" max="150" step="1" readonly style="width:100%;min-width:45px;padding:3px 4px;border:1px solid rgba(59,130,246,0.4);border-radius:3px;font-size:11px;background:rgba(59,130,246,0.08);color:var(--text-secondary);cursor:not-allowed;" title="Pressure set by pump (' + window._cachedPumpSettings.pressure_psi + ' PSI)"><span style="position:absolute;bottom:1px;left:3px;font-size:7px;color:rgba(59,130,246,0.7);line-height:1;">PUMP</span></td>';
+            html += '<td style="padding:2px;border:1px solid var(--border-light);position:relative;"><input type="number" data-field="psi" data-row="' + i + '" value="' + headPsi + '" min="0" max="150" step="1" readonly style="width:100%;min-width:45px;padding:3px 4px;border:1px solid rgba(59,130,246,0.4);border-radius:3px;font-size:11px;background:rgba(59,130,246,0.08);color:var(--text-secondary);cursor:not-allowed;" title="Pressure set by pump (' + window._cachedPumpSettings.pressure_psi + ' PSI)"><span style="position:absolute;top:1px;right:3px;font-size:7px;color:rgba(59,130,246,0.7);">PUMP</span></td>';
         } else {
             html += '<td style="padding:2px;border:1px solid var(--border-light);"><input type="number" data-field="psi" data-row="' + i + '" value="' + (h.psi || '') + '" min="0" max="150" step="1" placeholder="PSI" style="width:100%;min-width:45px;padding:3px 4px;border:1px solid var(--border-input);border-radius:3px;font-size:11px;' + _editBg + '"></td>';
         }
@@ -7089,9 +6761,8 @@ function hoDuplicateHead(sourceRow) {
     showToast('Row duplicated');
 }
 
-async function hoDeleteHead(rowIdx) {
-    var ok = await showConfirm({ title: 'Delete Head', message: 'Delete head <strong>#' + (rowIdx + 1) + '</strong> from this zone?', confirmText: 'Delete Head', confirmClass: 'btn-danger', icon: fluxIcon('trash',28) });
-    if (!ok) return;
+function hoDeleteHead(rowIdx) {
+    if (!confirm('Delete head #' + (rowIdx + 1) + '?')) return;
     var heads = hoCollectHeadData();
     if (rowIdx >= heads.length) return;
     heads.splice(rowIdx, 1);
@@ -7113,8 +6784,7 @@ async function hoCopyFromZone() {
     // Check if target zone has existing data — confirm overwrite
     var existingHeads = hoCollectHeadData();
     if (existingHeads.length > 0) {
-        var ok = await showConfirm({ title: 'Replace Zone Heads', message: 'This will replace all <strong>' + existingHeads.length + '</strong> existing head(s) in this zone with data from <strong>' + sourceName.replace(/</g,'&lt;') + '</strong>.', confirmText: 'Replace Heads', confirmClass: 'btn-warning', icon: fluxIcon('refresh',28) });
-        if (!ok) {
+        if (!confirm('This will replace all ' + existingHeads.length + ' existing head(s) in this zone with data from ' + sourceName + '. Continue?')) {
             return;
         }
     }
@@ -7265,22 +6935,6 @@ async function hoSaveZoneHeads() {
     }
 }
 
-async function hoSaveZoneHeadsAndClose() {
-    await hoSaveZoneHeads();
-    var statusEl = document.getElementById('hoZoneSaveStatus');
-    if (!statusEl || !statusEl.textContent.includes('Error')) {
-        closeDynamicModal();
-    }
-}
-
-async function hoCancelZoneDetails() {
-    var ok = await showConfirm({ title: 'Discard Changes', message: 'Discard unsaved changes to this zone?', confirmText: 'Discard', confirmClass: 'btn-warning', icon: fluxIcon('warning',28) });
-    if (!ok) return;
-    window._hoZoneDetailsEntityId = null;
-    window._hoZoneDetailsHeads = null;
-    closeDynamicModal();
-}
-
 
 function showModal(title, bodyHtml, maxWidth) {
     document.getElementById('dynamicModalTitle').textContent = title;
@@ -7299,7 +6953,6 @@ function closeDynamicModal() {
 }
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-        if (document.getElementById('confirmModal').style.display === 'flex') { _confirmCancel(); return; }
         if (document.getElementById('dataNerdOverlay')) { dnClose(); return; }
         if (document.getElementById('notifPanelModal').style.display === 'flex') closeNotificationsPanel();
         else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
@@ -7335,7 +6988,7 @@ function dnOpen() {
     overlay.id = 'dataNerdOverlay';
     overlay.innerHTML = '<div id="dnToolbar">' +
         '<button class="dn-toolbar-btn" onclick="dnClose()" title="Close">&#10005; Close</button>' +
-        '<span style="font-size:15px;font-weight:700;color:var(--text-primary);letter-spacing:0.3px;">' + fluxIcon('chart',14) + ' Data Nerd View</span>' +
+        '<span style="font-size:15px;font-weight:700;color:var(--text-primary);letter-spacing:0.3px;">&#128202; Data Nerd View</span>' +
         '<div style="flex:1;"></div>' +
         '<div class="dn-range-group">' +
         '<button class="dn-range-btn" onclick="dnSetTimeRange(168)" data-range="168">7d</button>' +

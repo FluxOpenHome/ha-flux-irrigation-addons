@@ -952,18 +952,27 @@ async def _handle_prepped_wake(
     zone_result = calculate_zone_moisture_multiplier(zone_eid, data, sensor_states)
 
     if zone_result.get("skip"):
-        # SATURATED — mark the zone as moisture-disabled in the active run
-        # tracker.  Enable switches are never toggled.  The preemptive
-        # advance timer or immediate skip check will handle the actual skip
-        # when the schedule reaches this zone.
-        _record_moisture_disable(zone_eid)
-        # Track in prep for logging purposes (no enable switch entity needed)
-        prep.setdefault("skipped_zones", []).append({
-            "zone_num": zone_num,
-            "zone_entity_id": zone_eid,
-        })
-        print(f"[MOISTURE] Schedule skip: zone {zone_num} saturated "
-              f"(mult={zone_result.get('multiplier')}) — marked moisture-disabled")
+        # SATURATED — skip the zone by disabling its enable_zone switch
+        config = get_config()
+        enable_sw = _find_enable_zone_switch(zone_num, config)
+        if enable_sw:
+            success = await ha_client.call_service("switch", "turn_off", {
+                "entity_id": enable_sw,
+            })
+            if success:
+                # Track skipped zone for re-enable later
+                prep.setdefault("skipped_zones", []).append({
+                    "zone_num": zone_num,
+                    "zone_entity_id": zone_eid,
+                    "enable_entity": enable_sw,
+                })
+                print(f"[MOISTURE] Schedule skip: zone {zone_num} saturated "
+                      f"(mult={zone_result.get('multiplier')}) — disabled {enable_sw}")
+            else:
+                print(f"[MOISTURE] Schedule skip: FAILED to disable {enable_sw} for zone {zone_num}")
+        else:
+            print(f"[MOISTURE] Schedule skip: zone {zone_num} saturated but "
+                  f"no enable_zone switch found")
 
         # Log moisture skip event to run history
         try:
@@ -1111,12 +1120,18 @@ async def _finish_probe_prep_cycle(probe_id: str, prep: dict, timeline: dict):
     # Re-enable sleep
     await set_probe_sleep_disabled(probe_id, False)
 
-    # No enable switches to re-enable — moisture skip is tracked in-memory only.
-    # Just log the skipped zones for clarity.
-    skipped_zones = prep.get("skipped_zones", [])
-    if skipped_zones:
-        nums = [str(s.get("zone_num", "?")) for s in skipped_zones]
-        print(f"[MOISTURE] Prep cycle done — zones skipped by moisture: {', '.join(nums)}")
+    # Re-enable any skipped zones
+    for skipped in prep.get("skipped_zones", []):
+        enable_entity = skipped.get("enable_entity")
+        zone_num = skipped.get("zone_num")
+        if enable_entity:
+            success = await ha_client.call_service("switch", "turn_on", {
+                "entity_id": enable_entity,
+            })
+            if success:
+                print(f"[MOISTURE] Re-enabled zone {zone_num} ({enable_entity}) after schedule cycle")
+            else:
+                print(f"[MOISTURE] FAILED to re-enable zone {zone_num} ({enable_entity})")
 
     # Reset prep state
     active_sched_time = prep.get("active_schedule_start_time")
@@ -1894,6 +1909,7 @@ DEFAULT_DATA = {
     "schedule_sync_enabled": True,
     "schedule_shift_max_minutes": 0,  # Max minutes to shift schedule start time for probe alignment (0=disabled)
     "multi_probe_mode": "conservative",  # "conservative", "average", "optimistic"
+    "skip_disabled_zones": [],  # Zone enable switch entities disabled by moisture skip
     "stale_reading_threshold_minutes": 120,
     # Legacy depth_weights kept for migration — no longer used in algorithm
     "depth_weights": {"shallow": 0.2, "mid": 0.5, "deep": 0.3},
@@ -2942,15 +2958,6 @@ def _find_enable_zone_switch(zone_num: int, config) -> str:
     return ""
 
 
-def _extract_zone_number(zone_entity_id: str) -> int:
-    """Extract zone number from entity ID like 'switch.irrigation_system_zone_3'.
-
-    Returns the zone number as an integer, or 0 if not found.
-    """
-    m = _ZONE_NUMBER_RE.search(zone_entity_id)
-    return int(m.group(1)) if m else 0
-
-
 async def _get_ordered_enabled_zones() -> list[dict]:
     """Get the ordered list of enabled zones matching ESPHome execution order.
 
@@ -3228,6 +3235,7 @@ async def apply_adjusted_durations() -> dict:
     adjusted = {}
     applied_count = 0
     failed = []
+    skip_disabled = list(data.get("skip_disabled_zones", []))  # Track zones disabled by skip
 
     print(f"[MOISTURE] Applying per-zone factors: {len(base_durations)} duration entities, "
           f"weather_mult={weather_mult}")
@@ -3247,28 +3255,32 @@ async def apply_adjusted_durations() -> dict:
         skip = zone_result.get("skip", False)
 
         if skip:
-            # Record skip in active run tracker (if running).  Enable
-            # switches are NEVER toggled — the preemptive advance timer
-            # or the immediate skip check handles actually skipping the
-            # zone when ESPHome reaches it.
-            if _active_schedule_run is not None and zone_entity_id:
-                _record_moisture_disable(zone_entity_id)
-            print(f"[MOISTURE] Skip zone {zone_num}: moisture above threshold"
-                  f"{' (active run)' if _active_schedule_run else ''}")
-            # Keep duration intact (zone is tracked for skip, but duration
-            # stays so it runs normally if moisture clears before it starts)
+            # Disable the zone's enable switch instead of setting duration to 0.
+            # This lets ESPHome skip the zone cleanly without blocking the schedule.
+            enable_eid = _find_enable_zone_switch(zone_num, config)
+            if enable_eid:
+                disable_ok = await ha_client.call_service("switch", "turn_off", {
+                    "entity_id": enable_eid,
+                })
+                if disable_ok and enable_eid not in skip_disabled:
+                    skip_disabled.append(enable_eid)
+                print(f"[MOISTURE] Skip zone {zone_num}: disabled {enable_eid} "
+                      f"(success={disable_ok})")
+            # Still write the adjusted duration using the base value (zone is disabled,
+            # but keep duration intact for when it's re-enabled)
             combined = weather_mult * moisture_mult
             adjusted_value = float(max(1, round(base * combined))) if combined > 0 else base
         else:
-            # If this zone was previously moisture-disabled in the active
-            # run, clear the flag so it runs normally.
-            if _active_schedule_run is not None and zone_entity_id:
-                for z in _active_schedule_run["zone_sequence"]:
-                    if z["zone_entity_id"] == zone_entity_id and z["moisture_disabled"]:
-                        z["moisture_disabled"] = False
-                        print(f"[MOISTURE] Cleared moisture-disabled for zone "
-                              f"{zone_num} (moisture dropped)")
-                        break
+            # If this zone was previously skip-disabled, re-enable it
+            enable_eid = _find_enable_zone_switch(zone_num, config)
+            if enable_eid and enable_eid in skip_disabled:
+                enable_ok = await ha_client.call_service("switch", "turn_on", {
+                    "entity_id": enable_eid,
+                })
+                if enable_ok:
+                    skip_disabled.remove(enable_eid)
+                print(f"[MOISTURE] Re-enabled zone {zone_num}: {enable_eid} "
+                      f"(success={enable_ok})")
             combined = weather_mult * moisture_mult
             adjusted_value = float(max(1, round(base * combined)))
 
@@ -3319,7 +3331,7 @@ async def apply_adjusted_durations() -> dict:
             failed.append(dur_eid)
             print(f"[MOISTURE] FAILED to set {dur_eid} to {adjusted_value}")
 
-    data.pop("skip_disabled_zones", None)  # Legacy cleanup
+    data["skip_disabled_zones"] = skip_disabled
     data["duration_adjustment_active"] = applied_count > 0
     data["adjusted_durations"] = adjusted
     data["last_evaluation"] = datetime.now(timezone.utc).isoformat()
@@ -3365,6 +3377,14 @@ async def restore_base_durations() -> dict:
             if _extract_zone_num_from_duration(eid) <= max_zones
         }
 
+    # Re-enable any zones that were disabled by moisture skip
+    skip_disabled = data.get("skip_disabled_zones", [])
+    for enable_eid in skip_disabled:
+        enable_ok = await ha_client.call_service("switch", "turn_on", {
+            "entity_id": enable_eid,
+        })
+        print(f"[MOISTURE] Restore: re-enabled {enable_eid} (success={enable_ok})")
+
     restored_count = 0
     for dur_eid, dur_data in base_durations.items():
         base_value = float(dur_data["base_value"])
@@ -3380,7 +3400,7 @@ async def restore_base_durations() -> dict:
 
     data["duration_adjustment_active"] = False
     data["adjusted_durations"] = {}
-    data.pop("skip_disabled_zones", None)  # Legacy cleanup
+    data["skip_disabled_zones"] = []
     _save_data(data)
 
     return {"success": True, "restored": restored_count}
@@ -5218,20 +5238,9 @@ async def api_overall_multiplier():
     config = get_config()
     weather_mult = get_weather_multiplier()
 
-    # Load active weather adjustments so the UI can show which weather
-    # components are contributing to the factor (wind, rain, humidity, etc.)
-    active_weather_adj = []
-    try:
-        from routes.weather import _load_weather_rules
-        weather_rules_data = _load_weather_rules()
-        active_weather_adj = weather_rules_data.get("active_adjustments", [])
-    except Exception:
-        pass
-
     if not data.get("enabled"):
         return {
             "weather_multiplier": weather_mult,
-            "active_weather_adjustments": active_weather_adj,
             "moisture_enabled": False,
             "per_zone": {},
         }
@@ -5253,30 +5262,15 @@ async def api_overall_multiplier():
         moisture_mult = zone_result.get("multiplier", 1.0)
         skip = zone_result.get("skip", False)
         combined = round(weather_mult * moisture_mult, 3) if not skip else 0.0
-        # Extract sensor readings for UI display (T=top/shallow, M=mid, B=bottom/deep)
-        sensor_readings = {}
-        for detail in zone_result.get("probe_details", []):
-            readings = detail.get("depth_readings", {})
-            if readings:
-                if "shallow" in readings and readings["shallow"].get("value") is not None:
-                    sensor_readings["T"] = round(readings["shallow"]["value"], 1)
-                if "mid" in readings and readings["mid"].get("value") is not None:
-                    sensor_readings["M"] = round(readings["mid"]["value"], 1)
-                if "deep" in readings and readings["deep"].get("value") is not None:
-                    sensor_readings["B"] = round(readings["deep"]["value"], 1)
-                break  # Use first probe's readings
-
         per_zone[zone_eid] = {
             "moisture_multiplier": moisture_mult,
             "combined": combined,
             "skip": skip,
             "reason": zone_result.get("reason", ""),
-            "sensor_readings": sensor_readings,
         }
 
     return {
         "weather_multiplier": weather_mult,
-        "active_weather_adjustments": active_weather_adj,
         "moisture_enabled": True,
         "per_zone": per_zone,
     }
@@ -5391,140 +5385,6 @@ async def _restore_all_schedule_start_times():
 # by running zones.  When the last zone turns off, on_zone_state_change() picks
 # this up and re-applies.
 _deferred_factor_apply: bool = False
-
-# --- Active Schedule Run State Tracker ---
-# Tracks zone enable states during a schedule run so we can:
-# 1. Distinguish moisture-disabled zones from user-disabled zones
-# 2. Proactively advance past moisture-disabled zones (ESPHome doesn't)
-# 3. Dynamically re-enable zones if moisture drops mid-run
-# 4. Restore all moisture-disabled zones to their original state when the run ends
-#
-# Structure when active:
-# {
-#     "started_at": "ISO timestamp",
-#     "zone_sequence": [
-#         {
-#             "zone_num": 1,
-#             "zone_entity_id": "switch.zone_1",
-#             "enable_entity_id": "switch.enable_zone_1",
-#             "original_enabled": True,    # snapshot at schedule start
-#             "moisture_disabled": False,   # set True when moisture disables
-#         }, ...
-#     ],
-#     "current_zone_entity_id": "switch.zone_1",
-# }
-_active_schedule_run: dict | None = None
-
-# Preemptive advance timers — one per running zone.  Each timer fires
-# ~2 seconds before the zone's duration expires.  If the next zone in the
-# active-run sequence is moisture-disabled, the timer starts the next
-# runnable zone so ESPHome never tries to start a skipped zone.
-_preemptive_advance_timers: dict[str, asyncio.Task] = {}
-
-# --- Debug log for schedule skip troubleshooting ---
-_DEBUG_LOG_FILE = "/data/moisture_debug.log"
-_DEBUG_LOG_MAX_LINES = 500
-
-
-def _debug_log(msg: str):
-    """Write a timestamped message to both console and the debug log file."""
-    from datetime import datetime, timezone
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{ts}] {msg}"
-    print(f"[MOISTURE] {msg}")
-    try:
-        with open(_DEBUG_LOG_FILE, "a") as f:
-            f.write(line + "\n")
-    except Exception:
-        pass
-
-
-def get_debug_log(max_lines: int = 200) -> list[str]:
-    """Read the last N lines of the debug log."""
-    import os
-    if not os.path.exists(_DEBUG_LOG_FILE):
-        return []
-    try:
-        with open(_DEBUG_LOG_FILE, "r") as f:
-            lines = f.readlines()
-        return [l.rstrip() for l in lines[-max_lines:]]
-    except Exception:
-        return []
-
-
-def clear_debug_log():
-    """Clear the debug log file."""
-    try:
-        with open(_DEBUG_LOG_FILE, "w") as f:
-            f.write("")
-    except Exception:
-        pass
-
-
-async def _preemptive_advance_timer(zone_entity_id: str, delay_seconds: float):
-    """Sleep until just before a zone ends, then advance past any skipped zones.
-
-    Called via asyncio.create_task when a zone turns ON and a subsequent zone
-    in the active-run sequence is moisture-disabled.
-    """
-    zone_num = _extract_zone_number(zone_entity_id)
-    _debug_log(f"PREEMPTIVE TIMER STARTED: zone {zone_num}, delay={delay_seconds:.1f}s")
-    try:
-        await asyncio.sleep(max(0, delay_seconds))
-    except asyncio.CancelledError:
-        _debug_log(f"PREEMPTIVE TIMER CANCELLED: zone {zone_num}")
-        return
-
-    _debug_log(f"PREEMPTIVE TIMER FIRED: zone {zone_num} (after {delay_seconds:.1f}s)")
-
-    if _active_schedule_run is None:
-        _debug_log(f"PREEMPTIVE TIMER: no active run — aborting")
-        return
-
-    # Re-check — moisture may have cleared while we slept
-    next_z = _get_next_zone_in_run(zone_entity_id)
-    if not next_z or not next_z.get("moisture_disabled"):
-        _debug_log(f"PREEMPTIVE TIMER: next zone no longer moisture-disabled "
-                   f"(next={next_z['zone_num'] if next_z else 'None'}, "
-                   f"moisture_disabled={next_z.get('moisture_disabled') if next_z else 'N/A'})")
-        return
-
-    import run_log as _rl
-
-    # Log skip events for all consecutive moisture-disabled zones
-    seq = _active_schedule_run["zone_sequence"]
-    current_idx = None
-    for i, z in enumerate(seq):
-        if z["zone_entity_id"] == zone_entity_id:
-            current_idx = i
-            break
-    if current_idx is not None:
-        for j in range(current_idx + 1, len(seq)):
-            sz = seq[j]
-            if sz["moisture_disabled"]:
-                _rl.log_zone_event(
-                    entity_id=sz["zone_entity_id"],
-                    state="moisture_skip",
-                    source="moisture_skip",
-                    zone_name=f"Zone {sz['zone_num']}",
-                    duration_seconds=0,
-                )
-                _debug_log(f"PREEMPTIVE TIMER: logged skip for zone {sz['zone_num']}")
-            elif sz["original_enabled"]:
-                # Reached a runnable zone — stop logging skips
-                break
-
-    _debug_log(f"PREEMPTIVE TIMER: calling _advance_to_next_zone({zone_entity_id})")
-    advanced = await _advance_to_next_zone(zone_entity_id)
-    if advanced:
-        _debug_log(f"PREEMPTIVE TIMER: SUCCESS — advanced past moisture-disabled zone(s)")
-    else:
-        # No more runnable zones — stop the current zone (pump off)
-        domain = (zone_entity_id.split(".")[0]
-                  if "." in zone_entity_id else "switch")
-        svc = "close" if domain == "valve" else "turn_off"
-        await ha_client.call_service(domain, svc, {"entity_id": zone_entity_id})
-        _debug_log(f"PREEMPTIVE TIMER: no more runnable zones — stopped {zone_entity_id}")
 
 
 async def sync_schedule_times_to_probes() -> dict:
@@ -5714,35 +5574,13 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
             )
 
             if zone_result.get("skip"):
-                # Moisture exceeded threshold mid-run. Start the next
-                # enabled zone — ESPHome will automatically stop the
-                # current zone when the next one starts. Do NOT turn off
-                # the current zone directly; let the controller handle it.
-                zone_num = _extract_zone_number(zone_entity_id)
-
-                # Record in active run tracker
-                _record_moisture_disable(zone_entity_id)
-
-                # Advance to next enabled zone (this starts the next
-                # zone, which causes ESPHome to stop the current one).
-                # If this is the last enabled zone, _advance_to_next_zone
-                # returns without starting anything — in that case we
-                # must stop the current zone ourselves.
-                advanced = await _advance_to_next_zone(zone_entity_id)
-                if not advanced:
-                    # Last enabled zone — stop it directly
-                    domain = (zone_entity_id.split(".")[0]
-                              if "." in zone_entity_id else "switch")
-                    svc = "close" if domain == "valve" else "turn_off"
-                    await ha_client.call_service(
-                        domain, svc, {"entity_id": zone_entity_id}
-                    )
-                    print(f"[MOISTURE] Mid-run cutoff: {zone_entity_id} — "
-                          f"last enabled zone, stopped directly")
+                # Moisture exceeded threshold — shut off zone and advance
+                domain = zone_entity_id.split(".")[0] if "." in zone_entity_id else "switch"
+                svc = "close" if domain == "valve" else "turn_off"
+                await ha_client.call_service(domain, svc, {"entity_id": zone_entity_id})
 
                 # Resolve zone name for logging
-                attrs = (zone_states[0].get("attributes", {})
-                         if zone_states else {})
+                attrs = zone_states[0].get("attributes", {}) if zone_states else {}
                 zone_name = attrs.get("friendly_name", zone_entity_id)
 
                 run_log.log_zone_event(
@@ -5751,10 +5589,11 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
                     source="moisture_cutoff",
                     zone_name=zone_name,
                 )
-                print(f"[MOISTURE] Mid-run cutoff: {zone_entity_id} — "
-                      f"advancing to next enabled zone "
-                      f"(mult={zone_result.get('multiplier')}, "
-                      f"reason={zone_result.get('reason')})")
+                print(f"[MOISTURE] Mid-run cutoff: {zone_entity_id} — moisture exceeded threshold "
+                      f"(mult={zone_result.get('multiplier')}, reason={zone_result.get('reason')})")
+
+                # --- Skip-and-Advance: start the next zone ---
+                await _advance_to_next_zone(zone_entity_id)
                 break
             else:
                 mult = zone_result.get("multiplier", 1.0)
@@ -5772,394 +5611,23 @@ async def monitor_zone_moisture(zone_entity_id: str, probe_id: str):
         print(f"[MOISTURE] Mid-run monitor ended: {zone_entity_id}")
 
 
-# ---------------------------------------------------------------------------
-# Active Schedule Run — helper functions
-# ---------------------------------------------------------------------------
+async def _advance_to_next_zone(current_zone_eid: str):
+    """Find the next enabled zone and start it with auto advance enabled.
 
-async def _get_all_ordered_zones() -> list[dict]:
-    """Get ALL zones in execution order (including disabled ones).
-
-    Same logic as ``_get_ordered_enabled_zones()`` but does NOT filter out
-    zones where the enable_zone switch is OFF.  Each dict contains:
-        zone_num, zone_entity_id, enable_entity_id, enable_state,
-        duration_entity_id, duration_minutes, mode, is_special
-    """
-    config = get_config()
-
-    enable_entities = [
-        eid for eid in config.allowed_control_entities
-        if eid.startswith("switch.") and "enable_zone" in eid.lower()
-    ]
-    mode_entities = [
-        eid for eid in config.allowed_control_entities
-        if eid.startswith("select.") and re.search(r'zone_\d+_mode', eid.lower())
-    ]
-    duration_entities = _find_duration_entities(config.allowed_control_entities)
-
-    all_eids = enable_entities + mode_entities + duration_entities
-    if not all_eids:
-        return []
-    states = await ha_client.get_entities_by_ids(all_eids)
-    state_map = {s["entity_id"]: s for s in states}
-
-    zone_info: dict[int, dict] = {}
-
-    for eid in enable_entities:
-        m = _ZONE_NUMBER_RE.search(eid)
-        if not m:
-            continue
-        zn = int(m.group(1))
-        if zn not in zone_info:
-            zone_info[zn] = {}
-        zone_info[zn]["enable_state"] = state_map.get(eid, {}).get("state", "off")
-        zone_info[zn]["enable_entity_id"] = eid
-
-    for eid in mode_entities:
-        m = _ZONE_NUMBER_RE.search(eid)
-        if not m:
-            continue
-        zn = int(m.group(1))
-        if zn not in zone_info:
-            zone_info[zn] = {}
-        zone_info[zn]["mode"] = state_map.get(eid, {}).get("state", "Standard")
-
-    for eid in duration_entities:
-        zn = _extract_zone_num_from_duration(eid)
-        if not zn:
-            continue
-        try:
-            dur = float(state_map.get(eid, {}).get("state", "0"))
-        except (ValueError, TypeError):
-            dur = 0.0
-        if zn not in zone_info:
-            zone_info[zn] = {}
-        zone_info[zn]["duration_eid"] = eid
-        zone_info[zn]["duration_minutes"] = dur
-
-    max_zones = config.detected_zone_count if hasattr(config, "detected_zone_count") else 0
-
-    result = []
-    for zn, info in zone_info.items():
-        if max_zones > 0 and zn > max_zones:
-            continue
-        mode = info.get("mode", "Standard")
-        is_special = bool(re.search(r'pump|master|relay', mode, re.IGNORECASE))
-        zone_eid = _find_zone_entity(zn, config)
-        if not zone_eid:
-            continue
-
-        result.append({
-            "zone_num": zn,
-            "zone_entity_id": zone_eid,
-            "enable_entity_id": info.get("enable_entity_id", ""),
-            "enable_state": info.get("enable_state", "off"),
-            "duration_entity_id": info.get("duration_eid", ""),
-            "duration_minutes": info.get("duration_minutes", 0.0),
-            "mode": mode,
-            "is_special": is_special,
-        })
-
-    result.sort(key=lambda z: (1 if z["is_special"] else 0, z["zone_num"]))
-    return result
-
-
-async def _start_active_run():
-    """Snapshot all zone states and initialise the active run tracker.
-
-    Called when the first schedule-triggered zone turns ON.
-
-    Enable switches are never toggled.  ``original_enabled`` is read from
-    the live enable switch state — if it's OFF the user disabled it.
-    ``moisture_disabled`` is set for zones whose last evaluation had
-    ``skip=True`` in ``adjusted_durations``.
-    """
-    global _active_schedule_run
-
-    all_zones = await _get_all_ordered_zones()
-    if not all_zones:
-        print("[MOISTURE] Active run: no zones found — skipping")
-        return
-
-    data = _load_data()
-    adj = data.get("adjusted_durations", {})
-
-    # Build a set of zone_entity_ids that were marked skip=True in the
-    # last factor evaluation (moisture was above threshold).
-    skip_zone_eids = set()
-    for dur_eid, adj_data in adj.items():
-        if adj_data.get("skip"):
-            zeid = adj_data.get("zone_entity_id")
-            if zeid:
-                skip_zone_eids.add(zeid)
-
-    zone_sequence = []
-    for z in all_zones:
-        enable_eid = z.get("enable_entity_id", "")
-        switch_is_on = z.get("enable_state") == "on"
-        zone_eid = z["zone_entity_id"]
-        # If enable switch is ON but zone is marked skip → moisture-disabled
-        # If enable switch is OFF → user-disabled (original_enabled=False)
-        is_moisture_skip = switch_is_on and zone_eid in skip_zone_eids
-        zone_sequence.append({
-            "zone_num": z["zone_num"],
-            "zone_entity_id": zone_eid,
-            "enable_entity_id": enable_eid,
-            "duration_minutes": z.get("duration_minutes", 0),
-            "original_enabled": switch_is_on,
-            "moisture_disabled": is_moisture_skip,
-        })
-
-    _active_schedule_run = {
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "zone_sequence": zone_sequence,
-        "current_zone_entity_id": None,
-    }
-
-    # Persist for crash recovery
-    data["active_run"] = _active_schedule_run
-    _save_data(data)
-
-    zone_nums = [z["zone_num"] for z in zone_sequence]
-    enabled = [z["zone_num"] for z in zone_sequence if z["original_enabled"]]
-    moisture_skip = [z["zone_num"] for z in zone_sequence if z["moisture_disabled"]]
-    print(f"[MOISTURE] Active run started: zones={zone_nums}, "
-          f"enabled={enabled}, moisture-skip={moisture_skip}")
-
-
-async def _end_active_run():
-    """Clean up the active run tracker and cancel preemptive timers.
-
-    Called when all zones have stopped after a schedule run.
-    Enable switches are never touched — nothing to restore.
-    """
-    global _active_schedule_run
-
-    if _active_schedule_run is None:
-        return
-
-    # Cancel any pending preemptive advance timers
-    for zone_eid, task in list(_preemptive_advance_timers.items()):
-        if task and not task.done():
-            task.cancel()
-    _preemptive_advance_timers.clear()
-
-    skipped = [z["zone_num"] for z in _active_schedule_run.get("zone_sequence", [])
-               if z["moisture_disabled"]]
-    print(f"[MOISTURE] Active run end"
-          f"{': moisture-skipped zones were ' + str(skipped) if skipped else ''}")
-
-    _active_schedule_run = None
-
-    # Persist — clear active_run
-    data = _load_data()
-    data.pop("active_run", None)
-    _save_data(data)
-
-
-def _record_moisture_disable(zone_entity_id: str):
-    """Mark a zone as disabled by moisture in the active run tracker.
-
-    Only marks zones that were originally enabled (user-disabled zones
-    are never tracked for re-enable).
-    """
-    global _active_schedule_run
-    if _active_schedule_run is None:
-        return
-
-    for z in _active_schedule_run["zone_sequence"]:
-        if z["zone_entity_id"] == zone_entity_id:
-            if z["original_enabled"] and not z["moisture_disabled"]:
-                z["moisture_disabled"] = True
-                print(f"[MOISTURE] Active run: zone {z['zone_num']} "
-                      f"moisture-disabled")
-                # Persist
-                data = _load_data()
-                data["active_run"] = _active_schedule_run
-                _save_data(data)
-            elif not z["original_enabled"]:
-                print(f"[MOISTURE] Active run: zone {z['zone_num']} "
-                      f"was user-disabled — not tracking")
-            return
-
-
-def _record_moisture_reenable(zone_entity_id: str) -> bool:
-    """Clear the moisture-disabled flag for a zone in the active run tracker.
-
-    Enable switches are never toggled — this only updates the in-memory
-    tracker so the preemptive timer and immediate skip check know the
-    zone is runnable again.
-
-    Returns True if the flag was cleared, False otherwise.
-    """
-    global _active_schedule_run
-    if _active_schedule_run is None:
-        return False
-
-    for z in _active_schedule_run["zone_sequence"]:
-        if z["zone_entity_id"] == zone_entity_id:
-            if z["moisture_disabled"]:
-                z["moisture_disabled"] = False
-                print(f"[MOISTURE] Active run: cleared moisture-disabled for "
-                      f"zone {z['zone_num']} — moisture dropped")
-                # Persist
-                data = _load_data()
-                data["active_run"] = _active_schedule_run
-                _save_data(data)
-                return True
-            return False
-    return False
-
-
-async def _refresh_moisture_disabled_flags():
-    """Re-evaluate moisture for all zones in the active run and update flags.
-
-    Called before advancing so that zones whose moisture has changed since
-    _start_active_run() are correctly marked/unmarked.
-    """
-    global _active_schedule_run
-    if _active_schedule_run is None:
-        return
-
-    data = _load_data()
-    probes = data.get("probes", {})
-    if not probes:
-        return
-
-    try:
-        sensor_states = await _get_probe_sensor_states(probes)
-    except Exception as e:
-        _debug_log(f"_refresh_moisture_disabled_flags: sensor fetch error: {e}")
-        return
-
-    changed = False
-    for z in _active_schedule_run["zone_sequence"]:
-        if not z["original_enabled"]:
-            continue  # user-disabled — don't touch
-        zone_eid = z["zone_entity_id"]
-        zone_result = calculate_zone_moisture_multiplier(zone_eid, data, sensor_states)
-        should_skip = bool(zone_result.get("skip"))
-        old_skip = z.get("moisture_disabled", False)
-        if should_skip != old_skip:
-            z["moisture_disabled"] = should_skip
-            _debug_log(f"REFRESH FLAGS: zone {z['zone_num']} moisture_disabled "
-                       f"{'False → True' if should_skip else 'True → False'}")
-            changed = True
-
-    if changed:
-        data["active_run"] = _active_schedule_run
-        _save_data(data)
-
-
-def _get_next_zone_in_run(current_zone_eid: str) -> dict | None:
-    """Find the immediately-next zone in the active run sequence (any state).
-
-    Returns the next zone dict or None if current is last.
-    """
-    if _active_schedule_run is None:
-        return None
-
-    seq = _active_schedule_run["zone_sequence"]
-    for i, z in enumerate(seq):
-        if z["zone_entity_id"] == current_zone_eid:
-            if i + 1 < len(seq):
-                return seq[i + 1]
-            return None
-    return None
-
-
-async def _advance_to_next_zone(current_zone_eid: str) -> bool:
-    """Find the next runnable zone and start it with auto advance enabled.
-
-    When an active schedule run is tracked, walks the full zone_sequence to
-    find the next zone that is both originally-enabled AND not moisture-disabled.
-    Falls back to the live ``_get_ordered_enabled_zones()`` when there is no
-    active run.
-
-    Returns True if a next zone was started, False if no more runnable zones.
+    Called when a zone is shut off early due to saturation. Enables auto advance
+    so the remaining zones continue running after the next zone finishes.
     """
     import run_log
 
     config = get_config()
-    current_num = _extract_zone_number(current_zone_eid)
-    _debug_log(f"_advance_to_next_zone called: from zone {current_num} ({current_zone_eid})")
 
-    # --- Active run path: use the full zone sequence ---
-    if _active_schedule_run is not None:
-        seq = _active_schedule_run["zone_sequence"]
-
-        # Find current zone's position
-        current_idx = None
-        for i, z in enumerate(seq):
-            if z["zone_entity_id"] == current_zone_eid:
-                current_idx = i
-                break
-
-        if current_idx is None:
-            _debug_log(f"  zone {current_num} NOT FOUND in active run sequence — falling back")
-        else:
-            _debug_log(f"  zone {current_num} is at index {current_idx}/{len(seq)-1}")
-            # Walk forward to find the next runnable zone
-            for j in range(current_idx + 1, len(seq)):
-                candidate = seq[j]
-                _debug_log(f"  checking zone {candidate['zone_num']}: "
-                           f"enabled={candidate['original_enabled']}, "
-                           f"moisture_disabled={candidate['moisture_disabled']}")
-                if not candidate["original_enabled"]:
-                    # User-disabled — skip
-                    _debug_log(f"  zone {candidate['zone_num']}: user-disabled → skip")
-                    continue
-                if candidate["moisture_disabled"]:
-                    # Moisture-disabled — skip
-                    _debug_log(f"  zone {candidate['zone_num']}: moisture-disabled → skip")
-                    continue
-                # Found a runnable zone
-                next_eid = candidate["zone_entity_id"]
-                next_num = candidate["zone_num"]
-                _debug_log(f"  FOUND runnable zone {next_num} ({next_eid})")
-
-                # Enable auto advance
-                auto_advance_entities = [
-                    eid for eid in config.allowed_control_entities
-                    if "auto_advance" in eid.lower() and eid.startswith("switch.")
-                ]
-                for aa_eid in auto_advance_entities:
-                    await ha_client.call_service("switch", "turn_on", {
-                        "entity_id": aa_eid,
-                    })
-                    _debug_log(f"  auto_advance enabled: {aa_eid}")
-
-                # Start the next zone
-                next_domain = (next_eid.split(".")[0]
-                               if "." in next_eid else "switch")
-                next_svc = "open" if next_domain == "valve" else "turn_on"
-                _debug_log(f"  calling ha_client.call_service({next_domain}, {next_svc}, {next_eid})")
-                success = await ha_client.call_service(
-                    next_domain, next_svc, {"entity_id": next_eid}
-                )
-
-                if success:
-                    run_log.log_zone_event(
-                        entity_id=next_eid,
-                        state="on",
-                        source="moisture_advance",
-                        zone_name=f"Zone {next_num}",
-                    )
-                    _debug_log(f"  SUCCESS: started zone {next_num}")
-                    return True
-                else:
-                    _debug_log(f"  FAILED: ha_client returned False for zone {next_num}")
-                    return False
-
-            # Walked the entire sequence — no runnable zone found
-            _debug_log(f"  NO runnable zones after zone {current_num}")
-            return False
-
-    # --- Fallback: no active run, use live enabled zones ---
+    # Get the ordered zone execution sequence
     ordered_zones = await _get_ordered_enabled_zones()
     if not ordered_zones:
         print(f"[MOISTURE] Advance: no ordered zones found")
-        return False
+        return
 
+    # Find current zone's position
     current_idx = None
     for i, z in enumerate(ordered_zones):
         if z["zone_entity_id"] == current_zone_eid:
@@ -6167,14 +5635,14 @@ async def _advance_to_next_zone(current_zone_eid: str) -> bool:
             break
 
     if current_idx is None or current_idx + 1 >= len(ordered_zones):
-        print(f"[MOISTURE] Advance: {current_zone_eid} is last zone — "
-              f"no advance needed")
-        return False
+        print(f"[MOISTURE] Advance: {current_zone_eid} is last zone — no advance needed")
+        return
 
     next_zone = ordered_zones[current_idx + 1]
     next_eid = next_zone["zone_entity_id"]
     next_num = next_zone["zone_num"]
 
+    # Enable auto advance so remaining zones continue automatically
     auto_advance_entities = [
         eid for eid in config.allowed_control_entities
         if "auto_advance" in eid.lower() and eid.startswith("switch.")
@@ -6183,11 +5651,10 @@ async def _advance_to_next_zone(current_zone_eid: str) -> bool:
         await ha_client.call_service("switch", "turn_on", {"entity_id": aa_eid})
         print(f"[MOISTURE] Advance: enabled auto_advance ({aa_eid})")
 
+    # Start the next zone
     next_domain = next_eid.split(".")[0] if "." in next_eid else "switch"
     next_svc = "open" if next_domain == "valve" else "turn_on"
-    success = await ha_client.call_service(next_domain, next_svc, {
-        "entity_id": next_eid,
-    })
+    success = await ha_client.call_service(next_domain, next_svc, {"entity_id": next_eid})
 
     if success:
         run_log.log_zone_event(
@@ -6196,17 +5663,12 @@ async def _advance_to_next_zone(current_zone_eid: str) -> bool:
             source="moisture_advance",
             zone_name=f"Zone {next_num}",
         )
-        print(f"[MOISTURE] Advance: started zone {next_num} ({next_eid}), "
-              f"auto_advance ON")
-        return True
+        print(f"[MOISTURE] Advance: started zone {next_num} ({next_eid}), auto_advance ON")
     else:
-        print(f"[MOISTURE] Advance: FAILED to start zone {next_num} "
-              f"({next_eid})")
-        return False
+        print(f"[MOISTURE] Advance: FAILED to start zone {next_num} ({next_eid})")
 
 
-async def on_zone_state_change(zone_entity_id: str, new_state: str,
-                               source: str = "schedule"):
+async def on_zone_state_change(zone_entity_id: str, new_state: str):
     """Called by run_log when a zone state changes.
 
     Handles probe sleep/wake management around irrigation runs:
@@ -6215,8 +5677,6 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
         - Disable sleep on mapped probes (keep awake for moisture readings)
         - Save original sleep duration on first mapped zone activation
         - Start mid-run moisture monitoring task
-        - Immediate skip check (schedule runs only — manual runs get a warning
-          via the API response instead of auto-skipping)
         - If probe was prepped by schedule-aware logic, it's already awake
 
     Zone OFF:
@@ -6226,10 +5686,6 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
             - NO → calculate gap and program sleep to wake before next mapped zone
         - If no more mapped zones → restore original sleep, re-enable skipped zones,
           finish the probe prep cycle
-
-    Args:
-        source: "schedule" for ESPHome-triggered runs, "api"/"dashboard" for manual.
-                Auto-skip only fires for "schedule" runs.
     """
     data = _load_data()
     if not data.get("enabled"):
@@ -6241,393 +5697,128 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
     if not (is_on or is_off):
         return
 
-    # Manual runs (API/dashboard) should NOT auto-skip — the user gets a
-    # warning popup instead (handled by the zone start API endpoint).
-    is_manual = source in ("api", "dashboard")
-
-    # --- Active schedule run tracking ---
-    global _active_schedule_run
-    zone_num_debug = _extract_zone_number(zone_entity_id)
-    _debug_log(f"on_zone_state_change: zone {zone_num_debug} → {new_state} (source={source})")
-    if is_on and not is_manual and _active_schedule_run is None:
-        # First schedule-triggered zone turning ON — snapshot all zone states
-        await _start_active_run()
-        # Log the full zone sequence for debugging
-        if _active_schedule_run:
-            for z in _active_schedule_run["zone_sequence"]:
-                _debug_log(f"  Zone {z['zone_num']}: enabled={z['original_enabled']}, "
-                           f"moisture_disabled={z['moisture_disabled']}, "
-                           f"duration={z['duration_minutes']}min")
-
-    if is_on and _active_schedule_run is not None:
-        _active_schedule_run["current_zone_entity_id"] = zone_entity_id
-
-    # --- Cancel preemptive advance timer on zone OFF ---
-    if is_off:
-        timer_task = _preemptive_advance_timers.pop(zone_entity_id, None)
-        if timer_task and not timer_task.done():
-            timer_task.cancel()
-            print(f"[MOISTURE] Zone OFF → cancelled preemptive timer: {zone_entity_id}")
-
-    # --- FAST SKIP: probe-independent immediate skip ---
-    # This check runs BEFORE the probe loop.  If the active run tracker says
-    # this zone is moisture_disabled, skip it immediately by starting the next
-    # runnable zone.  This catches zones that ESPHome auto-advances to even
-    # though our preemptive timer tried to prevent it.
-    if is_on and not is_manual and _active_schedule_run is not None:
-        try:
-            for z in _active_schedule_run["zone_sequence"]:
-                if z["zone_entity_id"] == zone_entity_id and z.get("moisture_disabled"):
-                    import run_log as _rl_fast
-
-                    zone_num = _extract_zone_number(zone_entity_id)
-                    _debug_log(f"FAST SKIP: zone {zone_num} is moisture_disabled in "
-                               f"active run — immediately advancing")
-
-                    # Start the next runnable zone
-                    advanced = await _advance_to_next_zone(zone_entity_id)
-                    if not advanced:
-                        # Last enabled zone — stop it directly
-                        domain = (zone_entity_id.split(".")[0]
-                                  if "." in zone_entity_id else "switch")
-                        svc = "close" if domain == "valve" else "turn_off"
-                        await ha_client.call_service(
-                            domain, svc, {"entity_id": zone_entity_id}
-                        )
-
-                    _rl_fast.log_zone_event(
-                        entity_id=zone_entity_id,
-                        state="moisture_skip",
-                        source="moisture_skip",
-                        zone_name=f"Zone {zone_num}",
-                        duration_seconds=0,
-                    )
-                    _debug_log(f"FAST SKIP: zone {zone_num} — "
-                               f"{'advanced' if advanced else 'last zone, stopped'}")
-                    # Zone was skipped — skip the rest of on_zone_state_change
-                    return
-        except Exception as e:
-            _debug_log(f"FAST SKIP ERROR: {e}")
-            import traceback
-            _debug_log(traceback.format_exc())
-        # (if not moisture_disabled, continue normally below)
-
     # Load timeline for probe prep state
     timeline = _load_schedule_timeline()
     probe_prep = timeline.get("probe_prep", {}) if timeline else {}
 
-    # Find probes mapped to this zone
+    # Find probes mapped to this zone that have sleep control
     for probe_id, probe in data.get("probes", {}).items():
         if zone_entity_id not in probe.get("zone_mappings", []):
             continue
-
         sleep_switch = (probe.get("extra_sensors") or {}).get("sleep_disabled")
+        if not sleep_switch:
+            continue
+
         prep = probe_prep.get(probe_id, {})
 
         if is_on:
-            # --- Sleep control (only if probe has sleep capability) ---
-            if sleep_switch:
-                await set_probe_sleep_disabled(probe_id, True)
+            # Zone turned on — disable sleep and start monitoring
+            await set_probe_sleep_disabled(probe_id, True)
 
-                # Save original sleep duration on FIRST mapped zone activation
-                if probe_id not in _original_sleep_durations:
-                    extra = probe.get("extra_sensors") or {}
-                    sleep_sensor_eid = extra.get("sleep_duration")
-                    if sleep_sensor_eid:
-                        try:
-                            states = await ha_client.get_entities_by_ids(
-                                [sleep_sensor_eid]
-                            )
-                            if states:
-                                raw = states[0].get("state", "0")
-                                if raw not in ("unavailable", "unknown"):
-                                    orig_val = float(raw)
-                                    _original_sleep_durations[probe_id] = orig_val
-                                    print(f"[MOISTURE] Saved original sleep duration "
-                                          f"for {probe_id}: {orig_val} min")
-                        except (ValueError, TypeError):
-                            pass
-
-                # Update prep state if timeline is tracking this
-                if prep.get("state") in ("pending_reprogram", "prep_pending", "monitoring", "sleeping_between"):
-                    prep["state"] = "monitoring"
-                    prep["active_zone_entity_id"] = zone_entity_id
-                    if timeline:
-                        _save_schedule_timeline(timeline)
-
-            # --- Moisture monitoring & auto-skip (schedule runs only) ---
-            # Manual runs (API/dashboard) are allowed to continue — the user
-            # gets a warning popup via the zone start API response instead.
-            if not is_manual:
-                if zone_entity_id not in _active_moisture_monitors:
-                    task = asyncio.create_task(
-                        monitor_zone_moisture(zone_entity_id, probe_id)
-                    )
-                    _active_moisture_monitors[zone_entity_id] = task
-                    print(f"[MOISTURE] Zone ON → monitoring started: "
-                          f"{zone_entity_id} → {probe_id}"
-                          f"{' (sleep disabled)' if sleep_switch else ''}")
-
-                # --- Immediate skip check ---
-                # Check if this zone should already be skipped based on current
-                # moisture readings. This catches the case where moisture exceeded
-                # the threshold BEFORE the zone started (e.g. sensor change during
-                # the schedule run, or apply_adjusted_durations() was deferred
-                # because zones were already running).
-                try:
-                    sensor_states = await _get_probe_sensor_states({probe_id: probe})
-                    zone_result = calculate_zone_moisture_multiplier(
-                        zone_entity_id, data, sensor_states,
-                    )
-                    zone_num = _extract_zone_number(zone_entity_id)
-                    _debug_log(f"IMMEDIATE SKIP CHECK: zone {zone_num}, "
-                               f"skip={zone_result.get('skip')}, "
-                               f"mult={zone_result.get('multiplier')}, "
-                               f"reason={zone_result.get('reason')}")
-
-                    # Also check active_schedule_run moisture_disabled flag
-                    run_skip = False
-                    if _active_schedule_run:
-                        for z in _active_schedule_run["zone_sequence"]:
-                            if z["zone_entity_id"] == zone_entity_id:
-                                run_skip = z.get("moisture_disabled", False)
-                                break
-                    _debug_log(f"  active_run moisture_disabled={run_skip}")
-
-                    if zone_result.get("skip") or run_skip:
-                        import run_log
-
-                        _debug_log(f"IMMEDIATE SKIP: zone {zone_num} → advancing")
-
-                        # Record in active run tracker
-                        _record_moisture_disable(zone_entity_id)
-
-                        # Cancel the just-started monitor
-                        monitor_task = _active_moisture_monitors.pop(
-                            zone_entity_id, None
+            # Save original sleep duration on FIRST mapped zone activation
+            if probe_id not in _original_sleep_durations:
+                extra = probe.get("extra_sensors") or {}
+                sleep_sensor_eid = extra.get("sleep_duration")
+                if sleep_sensor_eid:
+                    try:
+                        states = await ha_client.get_entities_by_ids(
+                            [sleep_sensor_eid]
                         )
-                        if monitor_task and not monitor_task.done():
-                            monitor_task.cancel()
+                        if states:
+                            raw = states[0].get("state", "0")
+                            if raw not in ("unavailable", "unknown"):
+                                orig_val = float(raw)
+                                _original_sleep_durations[probe_id] = orig_val
+                                print(f"[MOISTURE] Saved original sleep duration "
+                                      f"for {probe_id}: {orig_val} min")
+                    except (ValueError, TypeError):
+                        pass
 
-                        # Start the next enabled zone — ESPHome will
-                        # automatically stop the current zone when the
-                        # next one starts. If this is the last enabled
-                        # zone, stop it directly.
-                        advanced = await _advance_to_next_zone(zone_entity_id)
-                        if not advanced:
-                            # Last enabled zone — stop it directly
-                            domain = (zone_entity_id.split(".")[0]
-                                      if "." in zone_entity_id else "switch")
-                            svc = "close" if domain == "valve" else "turn_off"
-                            await ha_client.call_service(
-                                domain, svc, {"entity_id": zone_entity_id}
-                            )
+            # Update prep state if timeline is tracking this
+            if prep.get("state") in ("pending_reprogram", "prep_pending", "monitoring", "sleeping_between"):
+                prep["state"] = "monitoring"
+                prep["active_zone_entity_id"] = zone_entity_id
+                if timeline:
+                    _save_schedule_timeline(timeline)
 
-                        run_log.log_zone_event(
-                            entity_id=zone_entity_id,
-                            state="moisture_skip",
-                            source="moisture_skip",
-                            zone_name=f"Zone {zone_num}",
-                            duration_seconds=0,
-                        )
-                        _debug_log(f"IMMEDIATE SKIP: zone {zone_num} — "
-                                   f"{'advanced' if advanced else 'last zone, stopped'}")
-
-                        # Zone is being skipped — skip further probe processing
-                        continue
-                except Exception as e:
-                    _debug_log(f"IMMEDIATE SKIP ERROR: {zone_entity_id}: {e}")
-                    print(f"[MOISTURE] Skip check error for "
-                          f"{zone_entity_id}: {e}")
-            else:
-                print(f"[MOISTURE] Zone ON (manual) → skip auto-skip for "
-                      f"{zone_entity_id} (source={source})")
+            # Start mid-run moisture monitoring
+            if zone_entity_id not in _active_moisture_monitors:
+                task = asyncio.create_task(
+                    monitor_zone_moisture(zone_entity_id, probe_id)
+                )
+                _active_moisture_monitors[zone_entity_id] = task
+                print(f"[MOISTURE] Zone ON → sleep disabled, monitoring started: "
+                      f"{zone_entity_id} → {probe_id}")
 
         elif is_off:
-            # Zone turned off — cancel monitoring (runs for ALL mapped probes)
+            # Zone turned off — cancel monitoring
             task = _active_moisture_monitors.get(zone_entity_id)
             if task and not task.done():
                 task.cancel()
                 print(f"[MOISTURE] Zone OFF → cancelling monitor: "
                       f"{zone_entity_id}")
 
-            # Sleep management (only if probe has sleep capability)
-            if sleep_switch:
-                # Check if the next zone is also mapped to this probe
-                sleep_info = await _calculate_sleep_until_next_mapped_zone(
-                    probe_id, zone_entity_id
+            # Check if the next zone is also mapped to this probe
+            sleep_info = await _calculate_sleep_until_next_mapped_zone(
+                probe_id, zone_entity_id
+            )
+
+            if sleep_info and sleep_info["sleep_minutes"] == 0:
+                # Gap is too short or next zone is consecutive — keep awake
+                print(
+                    f"[MOISTURE] Zone OFF → gap too short "
+                    f"({sleep_info['gap_minutes']:.1f} min), "
+                    f"keeping {probe_id} awake for "
+                    f"{sleep_info['next_zone_entity_id']}"
                 )
+                # sleep_disabled stays ON (probe stays awake)
+                if prep:
+                    prep["state"] = "monitoring"
+                    if timeline:
+                        _save_schedule_timeline(timeline)
 
-                if sleep_info and sleep_info["sleep_minutes"] == 0:
-                    # Gap is too short or next zone is consecutive — keep awake
-                    print(
-                        f"[MOISTURE] Zone OFF → gap too short "
-                        f"({sleep_info['gap_minutes']:.1f} min), "
-                        f"keeping {probe_id} awake for "
-                        f"{sleep_info['next_zone_entity_id']}"
-                    )
-                    # sleep_disabled stays ON (probe stays awake)
-                    if prep:
-                        prep["state"] = "monitoring"
-                        if timeline:
-                            _save_schedule_timeline(timeline)
+            elif sleep_info and sleep_info["sleep_minutes"] > 0:
+                # There IS a next mapped zone with a gap — sleep until before it starts
+                wake_before = _get_wake_before_minutes()
+                sleep_mins = max(1, sleep_info["sleep_minutes"] - wake_before)
+                await _set_probe_sleep_duration(probe_id, sleep_mins)
+                await set_probe_sleep_disabled(probe_id, False)
+                print(
+                    f"[MOISTURE] Zone OFF → mid-run sleep: {probe_id} "
+                    f"will sleep {sleep_mins} min "
+                    f"(wake ~{wake_before} min before "
+                    f"{sleep_info['next_zone_entity_id']}, "
+                    f"gap={sleep_info['gap_minutes']:.1f} min)"
+                )
+                if prep:
+                    prep["state"] = "prep_pending"
+                    prep["active_zone_entity_id"] = sleep_info["next_zone_entity_id"]
+                    if timeline:
+                        _save_schedule_timeline(timeline)
 
-                elif sleep_info and sleep_info["sleep_minutes"] > 0:
-                    # There IS a next mapped zone with a gap — sleep until before it starts
-                    wake_before = _get_wake_before_minutes()
-                    sleep_mins = max(1, sleep_info["sleep_minutes"] - wake_before)
-                    await _set_probe_sleep_duration(probe_id, sleep_mins)
-                    await set_probe_sleep_disabled(probe_id, False)
-                    print(
-                        f"[MOISTURE] Zone OFF → mid-run sleep: {probe_id} "
-                        f"will sleep {sleep_mins} min "
-                        f"(wake ~{wake_before} min before "
-                        f"{sleep_info['next_zone_entity_id']}, "
-                        f"gap={sleep_info['gap_minutes']:.1f} min)"
-                    )
-                    if prep:
-                        prep["state"] = "prep_pending"
-                        prep["active_zone_entity_id"] = sleep_info["next_zone_entity_id"]
-                        if timeline:
-                            _save_schedule_timeline(timeline)
-
-                else:
-                    # No more mapped zones — finish the cycle
-                    if prep and timeline:
-                        await _finish_probe_prep_cycle(probe_id, prep, timeline)
-                    else:
-                        # No timeline tracking — simple restore
-                        original = _original_sleep_durations.pop(probe_id, None)
-                        if original is not None:
-                            await _set_probe_sleep_duration(probe_id, original)
-                            print(
-                                f"[MOISTURE] Zone OFF → last mapped zone, "
-                                f"restored sleep duration: {probe_id} = "
-                                f"{original} min"
-                            )
-                        await set_probe_sleep_disabled(probe_id, False)
-                        print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
-                              f"{probe_id}")
-
-    # --- Preemptive advance timer (zone ON, schedule runs only) ---
-    # When a zone starts during an active schedule run, set a timer that
-    # fires 2 seconds before the zone ends.  If the NEXT zone is moisture-
-    # disabled, the timer starts the next runnable zone — ESPHome seamlessly
-    # switches without the pump cycling off.
-    if is_on and not is_manual and _active_schedule_run is not None:
-        zn_debug = _extract_zone_number(zone_entity_id)
-        if zone_entity_id not in _preemptive_advance_timers:
-            # Look up this zone's duration from the active run tracker
-            duration_seconds = 0
-            for z in _active_schedule_run["zone_sequence"]:
-                if z["zone_entity_id"] == zone_entity_id:
-                    duration_seconds = z.get("duration_minutes", 0) * 60
-                    break
-
-            next_z = _get_next_zone_in_run(zone_entity_id)
-            _debug_log(f"PREEMPTIVE TIMER EVAL: zone {zn_debug}, "
-                       f"duration={duration_seconds:.0f}s, "
-                       f"next_zone={next_z['zone_num'] if next_z else 'None'}, "
-                       f"next_moisture_disabled={next_z.get('moisture_disabled') if next_z else 'N/A'}")
-
-            if duration_seconds > 5:
-                has_upcoming_skip = next_z and next_z.get("moisture_disabled")
-
-                if has_upcoming_skip:
-                    delay = max(0, duration_seconds - 2)
-                    timer = asyncio.create_task(
-                        _preemptive_advance_timer(zone_entity_id, delay)
-                    )
-                    _preemptive_advance_timers[zone_entity_id] = timer
-                    _debug_log(f"PREEMPTIVE TIMER SET: zone {zn_debug}, "
-                               f"delay={delay:.0f}s (duration={duration_seconds:.0f}s)")
-                else:
-                    _debug_log(f"PREEMPTIVE TIMER: not needed — next zone is "
-                               f"not moisture-disabled")
-            elif duration_seconds > 0:
-                _debug_log(f"PREEMPTIVE TIMER: zone {zn_debug} duration too short "
-                           f"({duration_seconds:.0f}s)")
-        else:
-            _debug_log(f"PREEMPTIVE TIMER: zone {zn_debug} already has a timer")
-
-    # --- Schedule continuation on zone OFF ---
-    # Once we start a zone via _advance_to_next_zone (moisture_advance),
-    # ESPHome no longer owns the schedule — it won't auto-advance to the
-    # next zone.  We must continue advancing ourselves.
-    #
-    # Additionally, if the next zone is moisture-disabled, we skip it and
-    # log the skip event (original backup advance behavior).
-    #
-    # This block fires for EVERY zone OFF during an active schedule run.
-    # If ESPHome would have advanced on its own, our call is harmless
-    # (starting an already-running zone is a no-op).
-    if is_off and not is_manual and _active_schedule_run is not None:
-        try:
-            zn_off = _extract_zone_number(zone_entity_id)
-            next_z = _get_next_zone_in_run(zone_entity_id)
-            _debug_log(f"SCHEDULE CONTINUE CHECK: zone {zn_off} OFF, "
-                       f"next={next_z['zone_num'] if next_z else 'None'}, "
-                       f"next_moisture_disabled={next_z.get('moisture_disabled') if next_z else 'N/A'}, "
-                       f"next_original_enabled={next_z.get('original_enabled') if next_z else 'N/A'}")
-
-            if next_z and next_z.get("original_enabled"):
-                import run_log as _rl
-
-                # Log skip events for moisture-disabled zones being skipped
-                if next_z.get("moisture_disabled"):
-                    seq = _active_schedule_run["zone_sequence"]
-                    current_idx = None
-                    for i, z in enumerate(seq):
-                        if z["zone_entity_id"] == zone_entity_id:
-                            current_idx = i
-                            break
-                    if current_idx is not None:
-                        for j in range(current_idx + 1, len(seq)):
-                            sz = seq[j]
-                            if sz["moisture_disabled"]:
-                                _rl.log_zone_event(
-                                    entity_id=sz["zone_entity_id"],
-                                    state="moisture_skip",
-                                    source="moisture_skip",
-                                    zone_name=f"Zone {sz['zone_num']}",
-                                    duration_seconds=0,
-                                )
-                                _debug_log(f"SCHEDULE CONTINUE: logged skip for zone {sz['zone_num']}")
-                            elif sz["original_enabled"]:
-                                break
-
-                # Before advancing, re-check moisture for the next zone.
-                # Moisture may have risen since the schedule started.
-                await _refresh_moisture_disabled_flags()
-
-                _debug_log(f"SCHEDULE CONTINUE: advancing from zone {zn_off}")
-                advanced = await _advance_to_next_zone(zone_entity_id)
-                if advanced:
-                    _debug_log(f"SCHEDULE CONTINUE: SUCCESS — started next zone")
-                else:
-                    _debug_log(f"SCHEDULE CONTINUE: no more runnable zones — schedule complete")
-            elif next_z:
-                _debug_log(f"SCHEDULE CONTINUE: next zone {next_z['zone_num']} is user-disabled — skipping")
-                # Walk past user-disabled zones too
-                await _refresh_moisture_disabled_flags()
-                advanced = await _advance_to_next_zone(zone_entity_id)
-                if advanced:
-                    _debug_log(f"SCHEDULE CONTINUE: SUCCESS — advanced past disabled zone(s)")
-                else:
-                    _debug_log(f"SCHEDULE CONTINUE: no more runnable zones — schedule complete")
             else:
-                _debug_log(f"SCHEDULE CONTINUE: zone {zn_off} is last zone — schedule complete")
-        except Exception as e:
-            _debug_log(f"SCHEDULE CONTINUE ERROR: {e}")
-            import traceback
-            _debug_log(traceback.format_exc())
+                # No more mapped zones — finish the cycle
+                if prep and timeline:
+                    await _finish_probe_prep_cycle(probe_id, prep, timeline)
+                else:
+                    # No timeline tracking — simple restore
+                    original = _original_sleep_durations.pop(probe_id, None)
+                    if original is not None:
+                        await _set_probe_sleep_duration(probe_id, original)
+                        print(
+                            f"[MOISTURE] Zone OFF → last mapped zone, "
+                            f"restored sleep duration: {probe_id} = "
+                            f"{original} min"
+                        )
+                    await set_probe_sleep_disabled(probe_id, False)
+                    print(f"[MOISTURE] Zone OFF → sleep re-enabled: "
+                          f"{probe_id}")
 
-    # --- All zones off: end the active run and restore zones ---
-    # Wait a moment for any zone we just started (SCHEDULE CONTINUE) to
-    # register in HA before checking whether all zones are off.
-    if is_off:
+    # Deferred factor re-application: if apply_adjusted_durations() was blocked
+    # by running zones (e.g. weather factor changed mid-run), check whether
+    # ALL zones are now off after this zone-off event and re-apply.
+    if is_off and _deferred_factor_apply:
         try:
-            await asyncio.sleep(1.5)
             config = get_config()
             all_zones = await ha_client.get_entities_by_ids(
                 config.allowed_zone_entities
@@ -6637,17 +5828,11 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                 if z.get("state") in ("on", "open")
             ]
             if not still_running:
-                # End the active schedule run — re-enables all moisture-disabled
-                # zones to their original state
-                await _end_active_run()
-
-                # Deferred factor re-application (if weather changed mid-run)
-                if _deferred_factor_apply:
-                    print("[MOISTURE] All zones stopped — applying deferred "
-                          "factor re-evaluation")
-                    await apply_adjusted_durations()
+                print("[MOISTURE] All zones stopped — applying deferred "
+                      "factor re-evaluation")
+                await apply_adjusted_durations()
         except Exception as e:
-            print(f"[MOISTURE] Zone-off cleanup error: {e}")
+            print(f"[MOISTURE] Deferred factor re-apply error: {e}")
 
 
 async def check_skip_factor_transition(entity_id: str, new_state: str, old_state: str) -> bool:
@@ -6710,82 +5895,6 @@ async def check_skip_factor_transition(entity_id: str, new_state: str, old_state
             print(f"[MOISTURE] Skip↔factor transition detected: {zone_eid} "
                   f"was_skip={was_skip} → new_skip={new_skip} "
                   f"(triggered by {entity_id}: {old_state} → {new_state})")
-
-            # During an active schedule run, directly re-enable zones whose
-            # moisture dropped below threshold (apply_adjusted_durations would
-            # defer because zones are running).
-            if _active_schedule_run is not None and was_skip and not new_skip:
-                reenabled = _record_moisture_reenable(zone_eid)
-                if reenabled:
-                    print(f"[MOISTURE] Mid-run re-enable: {zone_eid} moisture "
-                          f"dropped — zone re-enabled for schedule to reach")
-
-                    # If a preemptive timer is pending for the currently-
-                    # running zone that was going to skip this zone, cancel
-                    # it and re-evaluate (the zone it was going to skip is
-                    # now runnable).
-                    current_eid = _active_schedule_run.get("current_zone_entity_id")
-                    if current_eid and current_eid in _preemptive_advance_timers:
-                        old_timer = _preemptive_advance_timers.pop(current_eid, None)
-                        if old_timer and not old_timer.done():
-                            old_timer.cancel()
-                            print(f"[MOISTURE] Cancelled preemptive timer for "
-                                  f"{current_eid} — next zone {zone_eid} is now "
-                                  f"runnable")
-
-            # During active run and moisture INCREASED, record the disable
-            if _active_schedule_run is not None and not was_skip and new_skip:
-                _record_moisture_disable(zone_eid)
-
-                current_eid = _active_schedule_run.get("current_zone_entity_id")
-
-                # INSTANT CUTOFF: if THIS zone is currently running, cut
-                # it NOW — don't wait for the 30-second poll.
-                if current_eid == zone_eid:
-                    zone_num = _extract_zone_number(zone_eid)
-                    _debug_log(f"INSTANT CUTOFF: zone {zone_num} crossed skip "
-                               f"threshold while running — advancing immediately")
-                    try:
-                        advanced = await _advance_to_next_zone(zone_eid)
-                        if not advanced:
-                            domain = (zone_eid.split(".")[0]
-                                      if "." in zone_eid else "switch")
-                            svc = "close" if domain == "valve" else "turn_off"
-                            await ha_client.call_service(
-                                domain, svc, {"entity_id": zone_eid}
-                            )
-                        import run_log as _rl_cutoff
-                        _rl_cutoff.log_zone_event(
-                            entity_id=zone_eid,
-                            state="off",
-                            source="moisture_cutoff",
-                            zone_name=f"Zone {zone_num}",
-                        )
-                        _debug_log(f"INSTANT CUTOFF: zone {zone_num} — "
-                                   f"{'advanced' if advanced else 'last zone, stopped'}")
-                    except Exception as e:
-                        _debug_log(f"INSTANT CUTOFF ERROR: {e}")
-
-                # If this newly-skipped zone is NEXT in line after the
-                # currently running zone, set a preemptive timer.
-                elif current_eid and current_eid not in _preemptive_advance_timers:
-                    next_z = _get_next_zone_in_run(current_eid)
-                    if next_z and next_z["zone_entity_id"] == zone_eid:
-                        for z in _active_schedule_run["zone_sequence"]:
-                            if z["zone_entity_id"] == current_eid:
-                                dur_sec = z.get("duration_minutes", 0) * 60
-                                if dur_sec > 5:
-                                    delay = max(0, dur_sec - 2)
-                                    timer = asyncio.create_task(
-                                        _preemptive_advance_timer(current_eid, delay)
-                                    )
-                                    _preemptive_advance_timers[current_eid] = timer
-                                    print(f"[MOISTURE] Set preemptive timer for "
-                                          f"{current_eid} — next zone {zone_eid} "
-                                          f"is now moisture-disabled "
-                                          f"(delay={delay:.0f}s)")
-                                break
-
             return True
 
     return False
