@@ -903,10 +903,13 @@ async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str)
         timeline = _load_schedule_timeline()
         schedules = timeline.get("schedules", [])
         if not schedules:
+            print("[WEATHER] _log_skipped_schedules: no schedules in timeline — nothing to check")
             return
 
         now = datetime.now()  # local time (schedule times are local)
         today_str = now.strftime("%Y-%m-%d")
+        print(f"[WEATHER] _log_skipped_schedules: checking {len(schedules)} "
+              f"schedule(s), time now = {now.strftime('%H:%M')}")
 
         # Clean out old entries (older than 2 days)
         cutoff = (now - timedelta(days=2)).strftime("%Y-%m-%d")
@@ -920,15 +923,27 @@ async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str)
             if not start_time_str:
                 continue
 
-            # Build a datetime for today's occurrence of this schedule
+            # Build a datetime for today's occurrence of this schedule.
+            # The timeline stores start_minutes (minutes-since-midnight)
+            # which is already parsed from any time format (12h/24h).
+            # Fall back to parsing the string if start_minutes is missing.
             try:
-                # start_time is "HH:MM" format
-                parts = start_time_str.split(":")
-                sched_hour = int(parts[0])
-                sched_min = int(parts[1]) if len(parts) > 1 else 0
+                start_mins = sched.get("start_minutes")
+                if start_mins is not None:
+                    sched_hour = int(start_mins) // 60
+                    sched_min = int(start_mins) % 60
+                else:
+                    # Fallback: use _parse_time_to_minutes which handles
+                    # "7:00 AM", "5:00 PM", "17:30", etc.
+                    from routes.moisture import _parse_time_to_minutes
+                    total_mins = _parse_time_to_minutes(start_time_str)
+                    sched_hour = total_mins // 60
+                    sched_min = total_mins % 60
                 sched_dt = now.replace(hour=sched_hour, minute=sched_min,
                                        second=0, microsecond=0)
-            except (ValueError, IndexError):
+            except (ValueError, IndexError) as parse_err:
+                print(f"[WEATHER] _log_skipped_schedules: could not parse "
+                      f"start_time '{start_time_str}' (start_minutes={sched.get('start_minutes')}): {parse_err}")
                 continue
 
             # Only process schedules that have already passed today
@@ -1365,15 +1380,31 @@ async def run_weather_evaluation() -> dict:
                     skip_count += 1
                 print(f"[WEATHER] Logged weather_skip for "
                       f"{skip_count} prevented zones")
-                # Mark current schedule times as logged so the
-                # already-paused detector doesn't double-log them
+                # Mark schedule times that have ALREADY PASSED today as logged
+                # so the already-paused detector doesn't double-log them.
+                # IMPORTANT: Do NOT mark future schedule times — they need to
+                # be logged individually when they pass.  The initial pause
+                # only covers the current/most-recent schedule cycle.
                 try:
-                    from routes.moisture import _load_schedule_timeline
+                    from routes.moisture import (
+                        _load_schedule_timeline, _parse_time_to_minutes,
+                    )
                     tl = _load_schedule_timeline()
-                    today_str = datetime.now().strftime("%Y-%m-%d")
+                    mark_now = datetime.now()
+                    today_str = mark_now.strftime("%Y-%m-%d")
+                    now_minutes = mark_now.hour * 60 + mark_now.minute
                     for s in tl.get("schedules", []):
                         st = s.get("start_time", "")
-                        if st:
+                        if not st:
+                            continue
+                        # Only mark if this schedule has already passed
+                        s_mins = s.get("start_minutes")
+                        if s_mins is None:
+                            try:
+                                s_mins = _parse_time_to_minutes(st)
+                            except (ValueError, IndexError):
+                                continue
+                        if s_mins <= now_minutes:
                             _logged_schedule_skips[f"{today_str} {st}"] = True
                 except Exception:
                     pass
