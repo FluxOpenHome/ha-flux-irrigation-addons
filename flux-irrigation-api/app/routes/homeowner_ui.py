@@ -4314,7 +4314,7 @@ async function loadWeatherRules() {
         html += '<button onclick="setRainMode(\\\'rain_holds\\\', this)" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;cursor:pointer;' + (rainMode === 'rain_holds' ? 'background:var(--color-primary);color:#fff;' : 'background:var(--bg-input);color:var(--text-secondary);') + '">Rain Holds</button>';
         html += '<button onclick="setRainMode(\\\'intelligent_precip\\\', this)" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-left:1px solid var(--border-input);cursor:pointer;' + (rainMode === 'intelligent_precip' ? 'background:var(--color-primary);color:#fff;' : 'background:var(--bg-input);color:var(--text-secondary);') + '">Smart Precip</button>';
         html += '</div>';
-        html += '<div style="font-size:11px;color:var(--text-placeholder);margin-top:4px;">' + (rainMode === 'intelligent_precip' ? 'Reduces zone run times based on expected rainfall. Always pauses during active rain. Requires zone nozzle data (GPM &amp; area).' : 'Pauses irrigation when rain is detected or forecasted. Simple and conservative.') + '</div>';
+        html += '<div id="rainModeDesc" style="font-size:11px;color:var(--text-placeholder);margin-top:4px;">' + (rainMode === 'intelligent_precip' ? 'Adjusts zone run times proportionally based on forecasted rainfall amounts. Always pauses during active rain. Zones without nozzle data fall back to Rain Holds.' : 'Pauses irrigation when rain is detected or forecasted. Simple and conservative.') + '</div>';
         html += '</div>';
 
         // Rain Detection — always shown (forced ON in intelligent mode)
@@ -4449,6 +4449,11 @@ function setRainMode(mode, btn) {
     });
     btn.style.background = 'var(--color-primary)';
     btn.style.color = '#fff';
+    // Update mode description
+    var descEl = document.getElementById('rainModeDesc');
+    if (descEl) descEl.textContent = mode === 'intelligent_precip'
+        ? 'Adjusts zone run times proportionally based on forecasted rainfall amounts. Always pauses during active rain. Zones without nozzle data fall back to Rain Holds.'
+        : 'Pauses irrigation when rain is detected or forecasted. Simple and conservative.';
     var holdsDiv = document.getElementById('rainHoldsRules');
     var smartDiv = document.getElementById('smartPrecipRules');
     if (holdsDiv) holdsDiv.style.display = mode === 'rain_holds' ? 'block' : 'none';
