@@ -721,6 +721,7 @@ async def run_weather_evaluation() -> dict:
             triggered.append({"rule": "rain_detection", "action": "pause", "reason": pause_reason})
             new_adjustments.append({
                 "rule": "rain_detection", "action": "pause",
+                "factor": 0,
                 "reason": pause_reason,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
                 "expires_at": (datetime.now(timezone.utc) + timedelta(hours=delay_hours)).isoformat(),
@@ -762,6 +763,7 @@ async def run_weather_evaluation() -> dict:
                 triggered.append({"rule": "rain_forecast", "action": "skip", "reason": reason})
                 new_adjustments.append({
                     "rule": "rain_forecast", "action": "skip",
+                    "factor": 0,
                     "reason": reason,
                     "applied_at": datetime.now(timezone.utc).isoformat(),
                 })
@@ -780,6 +782,7 @@ async def run_weather_evaluation() -> dict:
             triggered.append({"rule": "precipitation_threshold", "action": "skip", "reason": reason})
             new_adjustments.append({
                 "rule": "precipitation_threshold", "action": "skip",
+                "factor": 0,
                 "reason": reason,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -797,6 +800,7 @@ async def run_weather_evaluation() -> dict:
             triggered.append({"rule": "temperature_freeze", "action": "skip", "reason": reason})
             new_adjustments.append({
                 "rule": "temperature_freeze", "action": "skip",
+                "factor": 0,
                 "reason": reason,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -809,11 +813,13 @@ async def run_weather_evaluation() -> dict:
         threshold = rule.get("cool_threshold_c", 15) if "C" in temp_unit else rule.get("cool_threshold_f", 60)
         reduction = rule.get("reduction_percent", 25)
         if temp is not None and temp < threshold:
-            multiplier *= (1 - reduction / 100)
+            cool_factor = round(1 - reduction / 100, 3)
+            multiplier *= cool_factor
             reason = f"Cool temperature {temp}{temp_unit}, reducing watering {reduction}%"
             triggered.append({"rule": "temperature_cool", "action": "reduce", "reason": reason})
             new_adjustments.append({
                 "rule": "temperature_cool", "action": "reduce",
+                "factor": cool_factor,
                 "reason": reason,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -826,11 +832,13 @@ async def run_weather_evaluation() -> dict:
         threshold = rule.get("hot_threshold_c", 35) if "C" in temp_unit else rule.get("hot_threshold_f", 95)
         increase = rule.get("increase_percent", 25)
         if temp is not None and temp > threshold:
-            multiplier *= (1 + increase / 100)
+            hot_factor = round(1 + increase / 100, 3)
+            multiplier *= hot_factor
             reason = f"Hot temperature {temp}{temp_unit}, increasing watering {increase}%"
             triggered.append({"rule": "temperature_hot", "action": "increase", "reason": reason})
             new_adjustments.append({
                 "rule": "temperature_hot", "action": "increase",
+                "factor": hot_factor,
                 "reason": reason,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -848,6 +856,7 @@ async def run_weather_evaluation() -> dict:
             triggered.append({"rule": "wind_speed", "action": "skip", "reason": reason})
             new_adjustments.append({
                 "rule": "wind_speed", "action": "skip",
+                "factor": 0,
                 "reason": reason,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -859,11 +868,13 @@ async def run_weather_evaluation() -> dict:
         threshold = rule.get("high_humidity_threshold", 80)
         reduction = rule.get("reduction_percent", 20)
         if humidity is not None and humidity > threshold:
-            multiplier *= (1 - reduction / 100)
+            humidity_factor = round(1 - reduction / 100, 3)
+            multiplier *= humidity_factor
             reason = f"High humidity {humidity}%, reducing watering {reduction}%"
             triggered.append({"rule": "humidity", "action": "reduce", "reason": reason})
             new_adjustments.append({
                 "rule": "humidity", "action": "reduce",
+                "factor": humidity_factor,
                 "reason": reason,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -886,6 +897,7 @@ async def run_weather_evaluation() -> dict:
         if abs(season_mult - 1.0) >= 0.005:
             new_adjustments.append({
                 "rule": "seasonal_adjustment", "action": "multiply",
+                "factor": round(season_mult, 3),
                 "reason": reason,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             })

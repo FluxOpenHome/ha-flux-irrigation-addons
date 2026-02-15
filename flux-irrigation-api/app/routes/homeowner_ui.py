@@ -185,7 +185,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .day-toggle:hover { border-color: var(--border-hover); }
 .day-toggle.active { background: var(--bg-active-tile); border-color: var(--color-success); color: var(--color-success); }
 .start-times-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.zone-settings-table { border-collapse: collapse; font-size: 13px; }
+.zone-settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .zone-settings-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border-light); font-size: 12px; color: var(--text-muted); text-transform: uppercase; white-space: nowrap; }
 .zone-settings-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-row); white-space: nowrap; }
 .system-controls-row { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -1550,16 +1550,33 @@ function setNotUsedZones(map) {
 function isZoneNotUsed(zoneNum) {
     return !!getNotUsedZones()[String(zoneNum)];
 }
-function toggleNotUsed(zoneNum) {
+function toggleNotUsed(zoneNum, cbEl) {
     var map = getNotUsedZones();
     var zn = String(zoneNum);
-    if (map[zn]) { delete map[zn]; } else { map[zn] = true; }
+    var currentlyNotUsed = !!map[zn];
+    if (currentlyNotUsed) {
+        // Un-checking "not used" — warn if system has a pump
+        if (window._pumpZoneEntity) {
+            if (!confirm('WARNING: This system has a pump start relay.\\n\\nBefore enabling this zone, verify it is connected to a physical valve. Running the pump with no open valve can cause dead-heading and damage the pump.\\n\\nRemove Not Used designation?')) {
+                if (cbEl) cbEl.checked = true;
+                return;
+            }
+        }
+        delete map[zn];
+    } else {
+        map[zn] = true;
+    }
     setNotUsedZones(map);
     if (typeof loadScheduleCard === 'function') loadScheduleCard();
     if (typeof loadZones === 'function') loadZones();
 }
 function guardNotUsedEnable(zoneNum, enableEid) {
-    if (!confirm('Zone ' + zoneNum + ' is marked as Not Used.\\n\\nPlease verify this zone is tied to a physical valve before enabling.\\n\\nEnable anyway?')) return;
+    var msg = 'Zone ' + zoneNum + ' is marked as Not Used.\\n\\n';
+    if (window._pumpZoneEntity) {
+        msg += 'WARNING: This system has a pump start relay. Running the pump with no open valve can cause dead-heading and pump damage.\\n\\n';
+    }
+    msg += 'Please verify this zone is tied to a physical valve before enabling.\\n\\nEnable anyway?';
+    if (!confirm(msg)) return;
     var map = getNotUsedZones();
     delete map[String(zoneNum)];
     setNotUsedZones(map);
@@ -2840,8 +2857,8 @@ function renderScheduleCard(sched, durData, multData) {
         const hasMode = sortedZones.some(zn => zoneMap[zn].mode);
 
         html += '<table class="zone-settings-table"><thead><tr>' +
-            '<th>Zone</th>' + (hasMode ? '<th>Mode</th>' : '') +
-            '<th>Not Used</th><th>Schedule Enable</th><th>Run Duration</th></tr></thead><tbody>';
+            '<th style="width:1%">Zone</th>' + (hasMode ? '<th style="width:1%">Mode</th>' : '') +
+            '<th style="width:1%">Not Used</th><th style="width:1%">Schedule Enable</th><th>Run Duration</th></tr></thead><tbody>';
         for (const zn of sortedZones) {
             const { enable, duration, mode } = zoneMap[zn];
             const zoneLabel = getZoneLabel(zn);
@@ -2863,11 +2880,11 @@ function renderScheduleCard(sched, durData, multData) {
                     html += '<td style="color:var(--text-disabled);">-</td>';
                 }
             }
-            // Not Used toggle
+            // Not Used checkbox
             var zoneNotUsed = isZoneNotUsed(zn);
-            html += '<td><button class="btn ' + (zoneNotUsed ? 'btn-danger' : 'btn-secondary') + ' btn-sm" style="font-size:11px;padding:3px 8px;' + (zoneNotUsed ? '' : 'opacity:0.5;') + '" ' +
-                'onclick="toggleNotUsed(' + zn + ')">' +
-                (zoneNotUsed ? 'Not Used' : '—') + '</button></td>';
+            html += '<td style="text-align:center;"><input type="checkbox" ' + (zoneNotUsed ? 'checked' : '') +
+                ' onclick="var cb=this;toggleNotUsed(' + zn + ',cb)" ' +
+                'style="width:16px;height:16px;cursor:pointer;accent-color:var(--color-danger);"></td>';
             if (enable) {
                 if (zoneNotUsed) {
                     html += '<td><button class="btn btn-secondary btn-sm" style="opacity:0.35;cursor:not-allowed;" ' +
