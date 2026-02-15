@@ -50,7 +50,7 @@ async def _save_options(options: dict):
     #    unknown fields. Filter to only known schema fields to prevent one unknown
     #    field from torpedoing the entire save (which would lose API keys etc.).
     _KNOWN_SCHEMA_KEYS = {
-        "mode", "homeowner_url", "homeowner_label", "homeowner_address",
+        "mode", "system_mode", "homeowner_url", "homeowner_label", "homeowner_address",
         "homeowner_city", "homeowner_state", "homeowner_zip", "homeowner_phone",
         "homeowner_first_name", "homeowner_last_name", "homeowner_ha_token",
         "homeowner_connection_mode", "api_keys", "irrigation_device_id",
