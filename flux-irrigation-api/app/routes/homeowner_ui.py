@@ -2934,11 +2934,11 @@ function renderScheduleCard(sched, durData, multData) {
                 var _hasMoisture = zoneHasMoisture;
                 var _isSkip = (adj && adj.skip) || zoneSkip;
                 var _isApplied = !!adj;
-                var _baseVal = parseFloat(duration.state) || 0;
+                var _baseVal = (adj && adj.original != null) ? parseFloat(adj.original) : (parseFloat(duration.state) || 0);
 
                 // --- Card box style: bordered card with left content + right graphic ---
                 var _fCardBox = 'display:inline-flex;align-items:stretch;border-radius:6px;font-size:11px;margin-right:6px;vertical-align:top;overflow:hidden;';
-                var _fCardLeft = 'display:flex;flex-direction:column;justify-content:center;padding:4px 8px;';
+                var _fCardLeft = 'display:flex;flex-direction:column;justify-content:flex-start;padding:4px 8px;';
                 var _fCardRight = 'display:flex;align-items:center;justify-content:center;padding:4px 6px;border-left:1px solid rgba(128,128,128,0.15);';
                 var _fCardTitle = 'font-weight:700;font-size:11px;line-height:1.3;';
                 var _fCardDetail = 'font-size:9px;font-weight:400;opacity:0.85;line-height:1.35;margin-top:2px;';
@@ -3028,7 +3028,8 @@ function renderScheduleCard(sched, durData, multData) {
                     factorBadge = ' <span style="' + _fCardBox + 'background:var(--bg-danger-light);color:var(--color-danger);padding:4px 8px;">' +
                         '<span style="font-weight:700;">Skip Watering</span></span>';
                 } else if (_hasMoisture && _hasWeather) {
-                    factorBadge = ' ' + moistureCard + weatherCard + combinedCard;
+                    var _op = 'display:inline-flex;align-items:center;font-size:16px;font-weight:800;color:var(--text-muted);margin:0 4px;vertical-align:top;min-height:100%;align-self:center;';
+                    factorBadge = ' ' + moistureCard + '<span style="' + _op + '">+</span>' + weatherCard + '<span style="' + _op + '">=</span>' + combinedCard;
                 } else if (_hasMoisture) {
                     factorBadge = ' ' + moistureCard;
                 } else if (_hasWeather) {
