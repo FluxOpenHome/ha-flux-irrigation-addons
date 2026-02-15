@@ -556,7 +556,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
                     <option value="8760">Last year</option>
                 </select>
                 <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();exportHistoryCSV()">Export CSV</button>
-                <button class="btn btn-danger btn-sm managed-hide" onclick="event.stopPropagation();clearRunHistory()">Clear History</button>
+                <button class="btn btn-danger btn-sm managed-disabled" onclick="event.stopPropagation();clearRunHistory()">Clear History</button>
             </div>
         </div>
         <div class="card-body" id="cardBody_history">
@@ -724,6 +724,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 </div>
 <style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 body.managed-mode .managed-hide { display:none !important; }
+body.managed-mode .managed-disabled { opacity:0.45; cursor:not-allowed !important; }
 </style>
 
 <script>
@@ -741,8 +742,17 @@ let _systemMode = 'standalone';
     } catch(e) {}
 })();
 function isManaged() { return _systemMode === 'managed'; }
-var _managedMsg = 'This setting is controlled by your irrigation management company.';
-function managedGuard() { if (isManaged()) { showToast(_managedMsg, 'error'); return true; } return false; }
+function managedGuard() {
+    if (!isManaged()) return false;
+    showConfirm({
+        title: 'Professionally Managed',
+        message: 'Your irrigation system is in <strong>Professionally Managed</strong> mode.<br><br>This action is restricted because modifying or deleting data could cause <strong>misalignments with your management company\\'s server-side records</strong>.<br><br>Contact your management company if you need changes made.',
+        confirmText: 'OK',
+        confirmClass: 'btn-primary',
+        icon: '&#128274;'
+    });
+    return true;
+}
 let refreshTimer = null;
 let geocodeCache = {};
 let leafletMap = null;
@@ -2905,7 +2915,7 @@ async function setEntityValue(entityId, domain, bodyObj, force) {
             /zone[_]?\d+/.test(eid) && !/_enable/.test(eid) && !/enable_zone/.test(eid);
         var isPauseResume = /pause|resume/.test(eid);
         if (!isManualZone && !isPauseResume) {
-            showToast(_managedMsg, 'error');
+            managedGuard();
             return;
         }
     }
@@ -3255,8 +3265,8 @@ async function loadEstGallons() {
             var resetDate = new Date(resetAt);
             html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">since ' + resetDate.toLocaleDateString() + '</div>';
         }
-        if (totalSaved > 0 && !isManaged()) {
-            html += '<div style="margin-top:4px;"><a href="#" onclick="event.preventDefault();event.stopPropagation();resetWaterSavings()" style="font-size:11px;color:var(--text-muted);text-decoration:underline;">Reset</a></div>';
+        if (totalSaved > 0) {
+            html += '<div style="margin-top:4px;"><a href="#" onclick="event.preventDefault();event.stopPropagation();resetWaterSavings()" class="' + (isManaged() ? 'managed-disabled' : '') + '" style="font-size:11px;color:var(--text-muted);text-decoration:underline;">Reset</a></div>';
         }
         html += '</div>';
         html += '</div>';
@@ -3857,7 +3867,7 @@ function _buildWeatherCardShell() {
     html += '<div style="display:flex;gap:6px;">';
     html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();evaluateWeatherNow()">Test Rules Now</button>';
     html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();exportWeatherLogCSV()">Export Log</button>';
-    html += '<button class="btn btn-danger btn-sm managed-hide" onclick="event.stopPropagation();clearWeatherLog()">Clear Log</button>';
+    html += '<button class="btn btn-danger btn-sm managed-disabled" onclick="event.stopPropagation();clearWeatherLog()">Clear Log</button>';
     html += '</div>';
     html += '</div>';
     html += '<div id="weatherRulesContainer" style="display:none;margin-top:12px;"><div class="loading">Loading rules...</div></div>';
@@ -6512,7 +6522,7 @@ async function showDebugLog() {
         }
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
         html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
-        html += isManaged() ? '' : '<button class="btn btn-secondary btn-sm" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
+        html += '<button class="btn btn-secondary btn-sm' + (isManaged() ? ' managed-disabled' : '') + '" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
         html += '</div>';
         html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:70vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
         for (var i = 0; i < lines.length; i++) {
