@@ -4222,7 +4222,7 @@ async function resetWaterSavings() {
         const result = await api('/water_settings/reset_savings', { method: 'POST' });
         if (result.success) {
             showToast('Water savings counter reset');
-            loadWaterGallons();
+            loadEstGallons();
         } else {
             showToast(result.error || 'Failed to reset savings', 'error');
         }
