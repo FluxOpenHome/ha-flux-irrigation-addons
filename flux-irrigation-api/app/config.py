@@ -43,6 +43,8 @@ class Config:
     supervisor_token: Optional[str] = None
     system_mode: str = "standalone"  # "standalone" or "managed"
     detected_zone_count: int = 0
+    remote_device_id: str = ""
+    allowed_remote_entities: list[str] = field(default_factory=list)
 
     @classmethod
     def load(cls, prefer_file: bool = False) -> "Config":
@@ -140,11 +142,14 @@ class Config:
         config.weather_source = options.get(
             "weather_source", config.weather_source
         )
+        config.remote_device_id = options.get(
+            "remote_device_id", config.remote_device_id
+        )
 
         return config
 
     async def resolve_device_entities(self, retry_on_empty: bool = False):
-        """Resolve the allowed entity lists from the selected device.
+        """Resolve the allowed entity lists from selected devices.
 
         Args:
             retry_on_empty: If True and the initial resolution returns 0 total
@@ -156,74 +161,89 @@ class Config:
             self.allowed_zone_entities = []
             self.allowed_sensor_entities = []
             self.allowed_control_entities = []
+        if not self.remote_device_id:
+            self.allowed_remote_entities = []
+        if not self.irrigation_device_id and not self.remote_device_id:
             return
 
         import asyncio
         import ha_client
 
-        max_attempts = 4 if retry_on_empty else 1
+        # --- Resolve irrigation controller entities ---
+        if self.irrigation_device_id:
+            max_attempts = 4 if retry_on_empty else 1
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    result = await ha_client.get_device_entities(self.irrigation_device_id)
+                    self.allowed_zone_entities = [
+                        e["entity_id"] for e in result.get("zones", [])
+                    ]
+                    self.allowed_sensor_entities = [
+                        e["entity_id"] for e in result.get("sensors", [])
+                    ]
+                    self.allowed_control_entities = [
+                        e["entity_id"] for e in result.get("other", [])
+                    ]
 
-        for attempt in range(1, max_attempts + 1):
+                    total = (len(self.allowed_zone_entities)
+                             + len(self.allowed_sensor_entities)
+                             + len(self.allowed_control_entities))
+
+                    print(f"[CONFIG] resolve_device_entities (attempt {attempt}/{max_attempts}): "
+                          f"zones={len(self.allowed_zone_entities)}, "
+                          f"sensors={len(self.allowed_sensor_entities)}, "
+                          f"controls={len(self.allowed_control_entities)}")
+                    if self.allowed_control_entities:
+                        print(f"[CONFIG]   Control entities: {self.allowed_control_entities}")
+
+                    # If we got entities, resolve expansion zone count and break
+                    if total > 0:
+                        detected_zones_eid = result.get("detected_zones_entity")
+                        if detected_zones_eid:
+                            try:
+                                import re
+                                state = await ha_client.get_entity_state(detected_zones_eid)
+                                state_text = state.get("state", "") if state else ""
+                                m = re.search(r'(\d+)\s*zones?', state_text, re.IGNORECASE)
+                                if m:
+                                    self.detected_zone_count = int(m.group(1))
+                                    print(f"[CONFIG] Expansion board detected: {self.detected_zone_count} zones "
+                                          f"(from {detected_zones_eid}: {state_text!r})")
+                                else:
+                                    print(f"[CONFIG] Expansion sensor found but could not parse zone count: {state_text!r}")
+                            except Exception as e:
+                                print(f"[CONFIG] Failed to read expansion zone count: {e}")
+                        break
+
+                    if retry_on_empty and attempt < max_attempts:
+                        delay = attempt * 10
+                        print(f"[CONFIG]   No entities found — HA may still be loading. "
+                              f"Retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+
+                except Exception as e:
+                    print(f"[CONFIG] Failed to resolve device entities (attempt {attempt}): {e}")
+                    if retry_on_empty and attempt < max_attempts:
+                        delay = attempt * 10
+                        print(f"[CONFIG]   Retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+                    else:
+                        self.allowed_zone_entities = []
+                        self.allowed_sensor_entities = []
+                        self.allowed_control_entities = []
+
+        # --- Resolve remote device entities ---
+        if self.remote_device_id:
             try:
-                result = await ha_client.get_device_entities(self.irrigation_device_id)
-                self.allowed_zone_entities = [
-                    e["entity_id"] for e in result.get("zones", [])
-                ]
-                self.allowed_sensor_entities = [
-                    e["entity_id"] for e in result.get("sensors", [])
-                ]
-                self.allowed_control_entities = [
-                    e["entity_id"] for e in result.get("other", [])
-                ]
-
-                total = (len(self.allowed_zone_entities)
-                         + len(self.allowed_sensor_entities)
-                         + len(self.allowed_control_entities))
-
-                print(f"[CONFIG] resolve_device_entities (attempt {attempt}/{max_attempts}): "
-                      f"zones={len(self.allowed_zone_entities)}, "
-                      f"sensors={len(self.allowed_sensor_entities)}, "
-                      f"controls={len(self.allowed_control_entities)}")
-                if self.allowed_control_entities:
-                    print(f"[CONFIG]   Control entities: {self.allowed_control_entities}")
-
-                # If we got entities, resolve expansion zone count and we're done
-                if total > 0:
-                    # Check for expansion board detected_zones sensor
-                    detected_zones_eid = result.get("detected_zones_entity")
-                    if detected_zones_eid:
-                        try:
-                            import re
-                            state = await ha_client.get_entity_state(detected_zones_eid)
-                            state_text = state.get("state", "") if state else ""
-                            m = re.search(r'(\d+)\s*zones?', state_text, re.IGNORECASE)
-                            if m:
-                                self.detected_zone_count = int(m.group(1))
-                                print(f"[CONFIG] Expansion board detected: {self.detected_zone_count} zones "
-                                      f"(from {detected_zones_eid}: {state_text!r})")
-                            else:
-                                print(f"[CONFIG] Expansion sensor found but could not parse zone count: {state_text!r}")
-                        except Exception as e:
-                            print(f"[CONFIG] Failed to read expansion zone count: {e}")
-                    return
-
-                # If no entities found and retrying is enabled, wait and try again
-                if retry_on_empty and attempt < max_attempts:
-                    delay = attempt * 10  # 10s, 20s, 30s
-                    print(f"[CONFIG]   No entities found — HA may still be loading. "
-                          f"Retrying in {delay}s...")
-                    await asyncio.sleep(delay)
-
+                result = await ha_client.get_device_entities(self.remote_device_id)
+                all_entities = []
+                for category in ("zones", "sensors", "other"):
+                    all_entities.extend(e["entity_id"] for e in result.get(category, []))
+                self.allowed_remote_entities = all_entities
+                print(f"[CONFIG] Remote device entities: {len(self.allowed_remote_entities)}")
             except Exception as e:
-                print(f"[CONFIG] Failed to resolve device entities (attempt {attempt}): {e}")
-                if retry_on_empty and attempt < max_attempts:
-                    delay = attempt * 10
-                    print(f"[CONFIG]   Retrying in {delay}s...")
-                    await asyncio.sleep(delay)
-                else:
-                    self.allowed_zone_entities = []
-                    self.allowed_sensor_entities = []
-                    self.allowed_control_entities = []
+                print(f"[CONFIG] Failed to resolve remote device entities: {e}")
+                self.allowed_remote_entities = []
 
 
 # Global config instance
@@ -266,6 +286,8 @@ async def reload_config() -> Config:
     _config = Config.load(prefer_file=True)
     await _config.resolve_device_entities()
     print(f"[CONFIG] Reloaded: mode={_config.mode}, device={_config.irrigation_device_id or '(none)'}, "
+          f"remote={_config.remote_device_id or '(none)'}, "
           f"zones={len(_config.allowed_zone_entities)}, sensors={len(_config.allowed_sensor_entities)}, "
-          f"controls={len(_config.allowed_control_entities)}")
+          f"controls={len(_config.allowed_control_entities)}, "
+          f"remote_entities={len(_config.allowed_remote_entities)}")
     return _config

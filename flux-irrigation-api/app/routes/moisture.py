@@ -1978,8 +1978,13 @@ async def discover_moisture_probes() -> list[dict]:
     return candidates
 
 
-async def list_moisture_devices(show_all: bool = False) -> dict:
-    """List HA devices, filtered to FluxOpenHome Gophr devices by default.
+def _is_moisture_device(name: str, manufacturer: str, model: str) -> bool:
+    """Check if device is a FluxOpenHome Gophr moisture probe."""
+    return manufacturer == "FluxOpenHome" and "gophr" in model.lower()
+
+
+async def list_moisture_devices() -> dict:
+    """List FluxOpenHome Gophr devices.
 
     Returns devices in the same format as admin device listing.
     """
@@ -2002,19 +2007,12 @@ async def list_moisture_devices(show_all: bool = False) -> dict:
             "area_id": device.get("area_id", ""),
         })
 
-    if show_all:
-        result = all_devices
-    else:
-        # Filter to FluxOpenHome Gophr devices only
-        def _is_moisture_device(name: str, manufacturer: str, model: str) -> bool:
-            return manufacturer == "FluxOpenHome" and "gophr" in model.lower()
-
-        result = [d for d in all_devices if _is_moisture_device(
-            d["name"], d["manufacturer"], d["model"]
-        )]
+    result = [d for d in all_devices if _is_moisture_device(
+        d["name"], d["manufacturer"], d["model"]
+    )]
 
     result.sort(key=lambda d: d["name"].lower())
-    return {"devices": result, "total_count": len(all_devices), "filtered": not show_all}
+    return {"devices": result}
 
 
 async def get_device_sensors(device_id: str) -> tuple[list[dict], list[str]]:
@@ -3457,13 +3455,9 @@ async def api_discover_probes():
 
 
 @router.get("/devices", summary="List devices for moisture probe selection")
-async def api_list_devices(show_all: bool = False):
-    """List HA devices, filtered to Gophr devices by default.
-
-    By default filters to devices with 'gophr' in the name.
-    Pass ?show_all=true to return every device.
-    """
-    return await list_moisture_devices(show_all=show_all)
+async def api_list_devices():
+    """List FluxOpenHome Gophr devices for moisture probe selection."""
+    return await list_moisture_devices()
 
 
 @router.get("/devices/{device_id}/sensors", summary="Get sensor entities for a device")

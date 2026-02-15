@@ -56,7 +56,7 @@ async def _save_options(options: dict):
         "homeowner_connection_mode", "api_keys", "irrigation_device_id",
         "rate_limit_per_minute", "log_retention_days", "enable_audit_log",
         "connection_revoked", "weather_entity_id", "weather_enabled",
-        "weather_check_interval_minutes", "weather_source",
+        "weather_check_interval_minutes", "weather_source", "remote_device_id",
     }
     supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
     if supervisor_token:
@@ -134,6 +134,7 @@ async def get_settings():
         "mode": config.mode,
         "api_keys": api_keys,
         "irrigation_device_id": options.get("irrigation_device_id", ""),
+        "remote_device_id": options.get("remote_device_id", ""),
         "allowed_zone_entities": config.allowed_zone_entities,
         "allowed_sensor_entities": config.allowed_sensor_entities,
         "allowed_control_entities": config.allowed_control_entities,
@@ -226,16 +227,19 @@ async def delete_api_key(key_index: int):
     return {"success": True, "removed": removed["name"]}
 
 
-@router.get("/api/devices", summary="List available HA devices")
-async def list_devices(show_all: bool = False):
-    """List Home Assistant devices for selection.
+def _is_irrigation_device(name: str, manufacturer: str, model: str) -> bool:
+    """Check if device is a FluxOpenHome irrigation controller."""
+    return manufacturer == "FluxOpenHome" and "irrigation" in model.lower()
 
-    By default, filters to FluxOpenHome irrigation controller devices.
-    Pass ?show_all=true to return every device.
-    """
-    config = get_config()
+
+def _is_remote_device(name: str, manufacturer: str, model: str) -> bool:
+    """Check if device is a FluxOpenHome irrigation remote."""
+    return manufacturer == "FluxOpenHome" and "remote" in model.lower()
+
+
+async def _get_device_registry_list():
+    """Fetch the HA device registry and return a list of device dicts."""
     import ha_client
-
     try:
         devices = await ha_client.get_device_registry()
     except Exception as e:
@@ -244,49 +248,65 @@ async def list_devices(show_all: bool = False):
             status_code=502,
             detail=f"Failed to fetch device registry: {type(e).__name__}: {e}",
         )
-
-    def _is_irrigation_device(name: str, manufacturer: str, model: str) -> bool:
-        """Check if device is a FluxOpenHome irrigation controller."""
-        return manufacturer == "FluxOpenHome" and "irrigation" in model.lower()
-
-    # Build full device list
-    all_devices = []
+    result = []
     for device in devices:
         name = device.get("name_by_user") or device.get("name") or ""
         manufacturer = device.get("manufacturer") or ""
         model = device.get("model") or ""
-
         if not name:
             continue
-
-        all_devices.append({
+        result.append({
             "id": device.get("id", ""),
             "name": name,
             "manufacturer": manufacturer,
             "model": model,
             "area_id": device.get("area_id", ""),
         })
+    return result
 
-    if show_all:
-        result = all_devices
-    else:
-        # Filter to irrigation-related devices
-        result = [d for d in all_devices if _is_irrigation_device(
-            d["name"], d["manufacturer"], d["model"]
-        )]
-        # If the currently selected device isn't in the filtered list, include it
-        # so the dropdown doesn't lose its selection
-        if config.irrigation_device_id:
-            selected_ids = {d["id"] for d in result}
-            if config.irrigation_device_id not in selected_ids:
-                for d in all_devices:
-                    if d["id"] == config.irrigation_device_id:
-                        result.append(d)
-                        break
 
-    # Sort by name for display
+@router.get("/api/devices", summary="List available HA devices")
+async def list_devices():
+    """List FluxOpenHome irrigation controller devices."""
+    config = get_config()
+    all_devices = await _get_device_registry_list()
+
+    result = [d for d in all_devices if _is_irrigation_device(
+        d["name"], d["manufacturer"], d["model"]
+    )]
+    # If the currently selected device isn't in the filtered list, include it
+    if config.irrigation_device_id:
+        selected_ids = {d["id"] for d in result}
+        if config.irrigation_device_id not in selected_ids:
+            for d in all_devices:
+                if d["id"] == config.irrigation_device_id:
+                    result.append(d)
+                    break
+
     result.sort(key=lambda d: d["name"].lower())
-    return {"devices": result, "total_count": len(all_devices), "filtered": not show_all}
+    return {"devices": result}
+
+
+@router.get("/api/remote-devices", summary="List available remote devices")
+async def list_remote_devices():
+    """List FluxOpenHome irrigation remote devices."""
+    config = get_config()
+    all_devices = await _get_device_registry_list()
+
+    result = [d for d in all_devices if _is_remote_device(
+        d["name"], d["manufacturer"], d["model"]
+    )]
+    # If the currently selected remote isn't in the filtered list, include it
+    if config.remote_device_id:
+        selected_ids = {d["id"] for d in result}
+        if config.remote_device_id not in selected_ids:
+            for d in all_devices:
+                if d["id"] == config.remote_device_id:
+                    result.append(d)
+                    break
+
+    result.sort(key=lambda d: d["name"].lower())
+    return {"devices": result}
 
 
 @router.put("/api/device", summary="Select irrigation device")
@@ -322,6 +342,39 @@ async def select_device(body: DeviceSelect):
         "allowed_zone_entities": config.allowed_zone_entities,
         "allowed_sensor_entities": config.allowed_sensor_entities,
         "allowed_control_entities": config.allowed_control_entities,
+    }
+
+
+@router.put("/api/remote-device", summary="Select remote device")
+async def select_remote_device(body: DeviceSelect):
+    """Select the irrigation remote device and resolve its entities."""
+    import ha_client
+
+    try:
+        entities = await ha_client.get_device_entities(body.device_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch device entities: {e}",
+        )
+
+    options = _load_options()
+    options["remote_device_id"] = body.device_id
+    await _save_options(options)
+
+    config = get_config()
+
+    log_change("Homeowner", "Device Config", f"Selected remote: {body.device_id}")
+
+    all_entities = []
+    for category in ("zones", "sensors", "other"):
+        all_entities.extend(entities.get(category, []))
+
+    return {
+        "success": True,
+        "device_id": body.device_id,
+        "entities": all_entities,
+        "allowed_remote_entities": config.allowed_remote_entities,
     }
 
 
@@ -1306,13 +1359,34 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <select id="deviceSelect" onchange="onDeviceChange()">
                     <option value="">-- Select your irrigation controller --</option>
                 </select>
-                <p id="deviceFilterToggle" style="display:none;font-size:12px;color:var(--text-muted);margin-top:6px;"></p>
             </div>
 
             <div id="deviceEntities">
                 <div class="device-info empty" id="noDeviceMsg">
                     Select your irrigation controller device above to configure which entities are exposed through the API.
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Irrigation Remote -->
+    <div class="card">
+        <div class="card-header" style="cursor:pointer;" onclick="document.getElementById('remoteCardBody').style.display = document.getElementById('remoteCardBody').style.display === 'none' ? 'block' : 'none'; document.getElementById('remoteChevron').textContent = document.getElementById('remoteCardBody').style.display === 'none' ? '▶' : '▼';">
+            <h2>🎛️ Irrigation Remote</h2>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span id="remoteStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">—</span>
+                <span id="remoteChevron" style="font-size:12px;color:var(--text-muted);">▶</span>
+            </div>
+        </div>
+        <div class="card-body" id="remoteCardBody" style="display:none;">
+            <div class="form-group">
+                <label>Select Remote Device</label>
+                <select id="remoteDeviceSelect" onchange="onRemoteDeviceChange()" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
+                    <option value="">-- Select your irrigation remote --</option>
+                </select>
+            </div>
+            <div id="remoteDeviceEntities">
+                <div class="device-info empty">Select your irrigation remote device above to link it to this controller.</div>
             </div>
         </div>
     </div>
@@ -1795,6 +1869,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 
             // Load devices and set current selection
             await loadDevices(data.irrigation_device_id || '');
+            await loadRemoteDevices(data.remote_device_id || '');
 
             // Show resolved entities if device is selected
             if (data.irrigation_device_id) {
@@ -1829,19 +1904,13 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     // --- Device Selection ---
-    let showingAllDevices = false;
-
-    async function loadDevices(selectedId, showAll) {
+    async function loadDevices(selectedId) {
         try {
-            const all = showAll !== undefined ? showAll : showingAllDevices;
-            const res = await fetch(`${BASE}/devices${all ? '?show_all=true' : ''}`);
+            const res = await fetch(`${BASE}/devices`);
             const data = await res.json();
             const devices = data.devices || data;
-            const totalCount = data.total_count || devices.length;
-            const filtered = data.filtered !== false;
             const select = document.getElementById('deviceSelect');
 
-            // Preserve current selection if not passed
             if (selectedId === undefined) {
                 selectedId = select.value;
             }
@@ -1857,34 +1926,9 @@ ADMIN_HTML = """<!DOCTYPE html>
                 if (device.id === selectedId) opt.selected = true;
                 select.appendChild(opt);
             }
-
-            // Show/hide the "show all" link
-            const toggleEl = document.getElementById('deviceFilterToggle');
-            if (filtered && devices.length < totalCount) {
-                toggleEl.innerHTML = 'Showing ' + devices.length + ' FluxOpenHome device' + (devices.length !== 1 ? 's' : '') +
-                    ' of ' + totalCount + ' total. <a href="#" onclick="loadAllDevices(event)">Show all devices</a>';
-                toggleEl.style.display = '';
-            } else if (!filtered && totalCount > 0) {
-                toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="loadFilteredDevices(event)">Show only FluxOpenHome devices</a>';
-                toggleEl.style.display = '';
-            } else {
-                toggleEl.style.display = 'none';
-            }
         } catch (e) {
             showToast('Failed to load devices', 'error');
         }
-    }
-
-    function loadAllDevices(e) {
-        e.preventDefault();
-        showingAllDevices = true;
-        loadDevices(undefined, true);
-    }
-
-    function loadFilteredDevices(e) {
-        e.preventDefault();
-        showingAllDevices = false;
-        loadDevices(undefined, false);
     }
 
     async function onDeviceChange() {
@@ -2360,6 +2404,86 @@ ADMIN_HTML = """<!DOCTYPE html>
         if (e.target === this) closeRevokeModal();
     });
 
+    // --- Remote Device Selection ---
+    async function loadRemoteDevices(selectedId) {
+        try {
+            const res = await fetch(`${BASE}/remote-devices`);
+            const data = await res.json();
+            const devices = data.devices || [];
+            const select = document.getElementById('remoteDeviceSelect');
+            if (!select) return;
+
+            if (selectedId === undefined) {
+                selectedId = select.value;
+            }
+
+            select.innerHTML = '<option value="">-- Select your irrigation remote --</option>';
+            for (const device of devices) {
+                const label = device.manufacturer || device.model
+                    ? `${device.name} (${[device.manufacturer, device.model].filter(Boolean).join(' ')})`
+                    : device.name;
+                const opt = document.createElement('option');
+                opt.value = device.id;
+                opt.textContent = label;
+                if (device.id === selectedId) opt.selected = true;
+                select.appendChild(opt);
+            }
+
+            // Update status badge
+            const badge = document.getElementById('remoteStatusBadge');
+            if (badge) {
+                if (selectedId && select.value) {
+                    badge.textContent = 'Connected';
+                    badge.style.background = 'rgba(46,204,113,0.15)';
+                    badge.style.color = 'var(--color-success)';
+                } else if (devices.length > 0) {
+                    badge.textContent = devices.length + ' found';
+                    badge.style.background = 'rgba(52,152,219,0.15)';
+                    badge.style.color = 'var(--color-info)';
+                } else {
+                    badge.textContent = 'None found';
+                    badge.style.background = '';
+                    badge.style.color = 'var(--text-muted)';
+                }
+            }
+        } catch (e) {
+            showToast('Failed to load remote devices', 'error');
+        }
+    }
+
+    async function onRemoteDeviceChange() {
+        const deviceId = document.getElementById('remoteDeviceSelect').value;
+        const container = document.getElementById('remoteDeviceEntities');
+        if (!deviceId) {
+            container.innerHTML = '<div class="device-info empty">Select your irrigation remote device above to link it to this controller.</div>';
+            const badge = document.getElementById('remoteStatusBadge');
+            if (badge) { badge.textContent = '—'; badge.style.background = ''; badge.style.color = 'var(--text-muted)'; }
+            return;
+        }
+
+        try {
+            const res = await fetch(`${BASE}/remote-device`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ device_id: deviceId }),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                const entities = data.entities || [];
+                let html = '<div style="margin-top:8px;font-size:13px;color:var(--text-muted);">';
+                html += '<strong>' + entities.length + '</strong> entities linked';
+                html += '</div>';
+                container.innerHTML = html;
+                showToast('Remote device selected');
+                const badge = document.getElementById('remoteStatusBadge');
+                if (badge) { badge.textContent = 'Connected'; badge.style.background = 'rgba(46,204,113,0.15)'; badge.style.color = 'var(--color-success)'; }
+            }
+        } catch (e) {
+            showToast('Failed to select remote device', 'error');
+        }
+    }
+
     // --- Weather Settings ---
     var _weatherSource = 'ha_entity';
 
@@ -2694,7 +2818,6 @@ ADMIN_HTML = """<!DOCTYPE html>
             html += '<select id="cfgMoistureDeviceSelect" onchange="onMoistureDeviceChange()" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">';
             html += '<option value="">-- Select a Gophr device --</option>';
             html += '</select>';
-            html += '<p id="moistureDeviceFilterToggle" style="display:none;font-size:12px;color:var(--text-muted);margin-top:4px;"></p>';
             html += '</div>';
             html += '<button class="btn btn-secondary btn-sm" onclick="refreshMoistureDevices()" style="white-space:nowrap;">Refresh</button>';
             html += '</div>';
@@ -2730,17 +2853,12 @@ ADMIN_HTML = """<!DOCTYPE html>
         } catch (e) { showToast(e.message, 'error'); }
     }
 
-    let moistureShowingAllDevices = false;
-
-    async function loadMoistureDevices(showAll) {
+    async function loadMoistureDevices() {
         const select = document.getElementById('cfgMoistureDeviceSelect');
         if (!select) return;
         try {
-            const all = showAll !== undefined ? showAll : moistureShowingAllDevices;
-            const data = await mcfg('/devices' + (all ? '?show_all=true' : ''));
+            const data = await mcfg('/devices');
             let devices = data.devices || [];
-            const totalCount = data.total_count || devices.length;
-            const filtered = data.filtered !== false;
 
             // Exclude devices that already have a probe configured
             try {
@@ -2764,33 +2882,9 @@ ADMIN_HTML = """<!DOCTYPE html>
                 opt.textContent = label;
                 select.appendChild(opt);
             }
-
-            const toggleEl = document.getElementById('moistureDeviceFilterToggle');
-            if (filtered && devices.length < totalCount) {
-                toggleEl.innerHTML = 'Showing ' + devices.length + ' Gophr device' + (devices.length !== 1 ? 's' : '') +
-                    ' of ' + totalCount + ' total. <a href="#" onclick="showAllMoistureDevices(event)">Show all devices</a>';
-                toggleEl.style.display = '';
-            } else if (!filtered && totalCount > 0) {
-                toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="showFilteredMoistureDevices(event)">Show only Gophr devices</a>';
-                toggleEl.style.display = '';
-            } else {
-                toggleEl.style.display = 'none';
-            }
         } catch (e) {
             select.innerHTML = '<option value="">Failed to load devices</option>';
         }
-    }
-
-    function showAllMoistureDevices(e) {
-        e.preventDefault();
-        moistureShowingAllDevices = true;
-        loadMoistureDevices(true);
-    }
-
-    function showFilteredMoistureDevices(e) {
-        e.preventDefault();
-        moistureShowingAllDevices = false;
-        loadMoistureDevices(false);
     }
 
     function refreshMoistureDevices() {

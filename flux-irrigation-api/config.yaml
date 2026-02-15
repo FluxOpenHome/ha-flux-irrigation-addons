@@ -35,6 +35,7 @@ options:
   homeowner_connection_mode: "direct"
   api_keys: []
   irrigation_device_id: ""
+  remote_device_id: ""
   rate_limit_per_minute: 60
   log_retention_days: 365
   enable_audit_log: true
@@ -62,6 +63,7 @@ schema:
       permissions:
         - str
   irrigation_device_id: "str?"
+  remote_device_id: "str?"
   rate_limit_per_minute: "int(1,300)"
   log_retention_days: "int(1,730)"
   enable_audit_log: bool
