@@ -209,10 +209,13 @@ def lookup_weather_at(snapshots: dict, timestamp: str) -> dict:
 
 DEFAULT_RULES = {
     "rules_version": 1,
+    "rain_control_mode": "rain_holds",  # "rain_holds" or "intelligent_precip"
     "last_evaluation": None,
     "last_weather_data": {},
     "active_adjustments": [],
     "watering_multiplier": 1.0,
+    "precip_zone_factors": {},  # {entity_id: factor} when intelligent_precip active
+    "precip_qpf_inches": None,  # Last QPF reading in inches
     "rules": {
         "rain_detection": {
             "enabled": True,
@@ -254,6 +257,11 @@ DEFAULT_RULES = {
             "high_humidity_threshold": 80,
             "reduction_percent": 20,
         },
+        "intelligent_precip": {
+            "enabled": False,
+            "qpf_lookahead_hours": 24,
+            "min_run_minutes": 2.0,
+        },
         "seasonal_adjustment": {
             "enabled": False,
             "monthly_multipliers": {
@@ -278,6 +286,13 @@ def _load_weather_rules() -> dict:
                 for key, default in DEFAULT_RULES["rules"].items():
                     if key not in data.get("rules", {}):
                         data.setdefault("rules", {})[key] = default
+                # Forward-compat: ensure top-level keys exist
+                if "rain_control_mode" not in data:
+                    data["rain_control_mode"] = "rain_holds"
+                if "precip_zone_factors" not in data:
+                    data["precip_zone_factors"] = {}
+                if "precip_qpf_inches" not in data:
+                    data["precip_qpf_inches"] = None
                 return data
         except (json.JSONDecodeError, IOError):
             pass
@@ -588,6 +603,166 @@ async def _fetch_nws_forecast(forecast_url: str) -> list:
         return []
 
 
+# --- QPF (Quantitative Precipitation Forecast) for Intelligent Precip ---
+
+_qpf_cache: dict = {}  # {"value_mm": float, "fetched_at": str}
+_QPF_CACHE_TTL_SECONDS = 7200  # 2 hours
+
+
+async def _fetch_nws_qpf(lookahead_hours: int = 24) -> float | None:
+    """Fetch quantitative precipitation forecast from NWS gridpoints API.
+
+    Returns total expected precipitation in mm for the next `lookahead_hours`,
+    or None if data is unavailable.  Results are cached for 2 hours.
+    """
+    import httpx
+
+    # Check cache
+    if _qpf_cache.get("fetched_at"):
+        try:
+            age = (datetime.now(timezone.utc) -
+                   datetime.fromisoformat(_qpf_cache["fetched_at"])).total_seconds()
+            if age < _QPF_CACHE_TTL_SECONDS and _qpf_cache.get("value_mm") is not None:
+                return _qpf_cache["value_mm"]
+        except (ValueError, TypeError):
+            pass
+
+    # Load NWS grid data from location cache
+    location = _load_nws_cache()
+    grid_id = location.get("grid_id", "")
+    grid_x = location.get("grid_x")
+    grid_y = location.get("grid_y")
+    if not grid_id or grid_x is None or grid_y is None:
+        print("[WEATHER-QPF] No grid data cached — cannot fetch QPF")
+        return None
+
+    url = f"https://api.weather.gov/gridpoints/{grid_id}/{grid_x},{grid_y}"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                url,
+                headers={"User-Agent": NWS_USER_AGENT, "Accept": "application/geo+json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        qpf_data = (data.get("properties", {})
+                     .get("quantitativePrecipitation", {})
+                     .get("values", []))
+        if not qpf_data:
+            print("[WEATHER-QPF] No quantitativePrecipitation data in response")
+            _qpf_cache.update({"value_mm": None, "fetched_at": datetime.now(timezone.utc).isoformat()})
+            return None
+
+        now = datetime.now(timezone.utc)
+        cutoff = now + timedelta(hours=lookahead_hours)
+        total_mm = 0.0
+
+        for entry in qpf_data:
+            valid_time = entry.get("validTime", "")
+            value = entry.get("value")
+            if value is None or value <= 0:
+                continue
+            # Parse ISO 8601 interval: "2025-06-15T06:00:00+00:00/PT6H"
+            parts = valid_time.split("/")
+            if len(parts) < 1:
+                continue
+            try:
+                period_start = datetime.fromisoformat(parts[0])
+                if period_start.tzinfo is None:
+                    period_start = period_start.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+            # Include periods that overlap with our lookahead window
+            if period_start > cutoff:
+                continue
+            if period_start < now - timedelta(hours=12):
+                continue  # Skip old periods
+            total_mm += value
+
+        _qpf_cache.update({
+            "value_mm": round(total_mm, 2),
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        })
+        print(f"[WEATHER-QPF] Fetched QPF: {total_mm:.2f}mm ({total_mm / 25.4:.3f}\") "
+              f"over next {lookahead_hours}h")
+        return round(total_mm, 2)
+
+    except Exception as e:
+        print(f"[WEATHER-QPF] Fetch failed: {e}")
+        # On error, return cached value if available (even if stale)
+        if _qpf_cache.get("value_mm") is not None:
+            print("[WEATHER-QPF] Using stale cached QPF value")
+            return _qpf_cache["value_mm"]
+        return None
+
+
+def _calculate_precip_reductions(
+    qpf_mm: float,
+    zones: list,
+    min_run_minutes: float = 2.0,
+) -> dict:
+    """Calculate per-zone precipitation reduction factors.
+
+    Args:
+        qpf_mm: Expected precipitation in mm (from NWS QPF)
+        zones: List of zone dicts from _get_ordered_enabled_zones()
+        min_run_minutes: Skip zone if adjusted time would fall below this
+
+    Returns:
+        Dict of {entity_id: factor} where factor is 0.0-1.0.
+        factor=1.0 means no reduction, 0.0 means skip entirely.
+        Zones without nozzle data are omitted (caller should use fallback).
+    """
+    import zone_nozzle_data
+
+    rain_inches = qpf_mm / 25.4
+    if rain_inches <= 0:
+        return {}
+
+    factors = {}
+    for z in zones:
+        eid = z.get("zone_entity_id", "")
+        if not eid:
+            continue
+        if z.get("is_special"):
+            continue  # Skip pump/master/relay
+
+        heads = zone_nozzle_data.get_zone_heads(eid)
+        total_gpm = heads.get("total_gpm", 0)
+        area_sqft = heads.get("area_sqft", 0)
+
+        if total_gpm <= 0 or area_sqft <= 0:
+            # No nozzle data — omit from dict (caller uses fallback)
+            continue
+
+        duration_min = z.get("duration_minutes", 0)
+        if duration_min <= 0:
+            continue
+
+        # Zone precipitation rate in inches/hour
+        precip_rate = (total_gpm * 96.25) / area_sqft
+        # How many inches this zone puts down in its scheduled run
+        zone_irrigation_inches = precip_rate * (duration_min / 60.0)
+
+        if zone_irrigation_inches <= 0:
+            continue
+
+        # Credit from rain (can't credit more than zone needs)
+        rain_credit = min(rain_inches, zone_irrigation_inches)
+        reduction = rain_credit / zone_irrigation_inches
+        factor = round(max(0.0, 1.0 - reduction), 4)
+
+        # If adjusted run time would be below minimum, skip entirely
+        adjusted_min = duration_min * factor
+        if 0 < adjusted_min < min_run_minutes:
+            factor = 0.0
+
+        factors[eid] = factor
+
+    return factors
+
+
 async def get_weather_data_nws() -> dict:
     """Fetch current weather from NWS API using homeowner address.
 
@@ -668,6 +843,112 @@ async def get_weather_data() -> dict:
     }
 
 
+# --- Schedule Skip Detection (for already-paused systems) ---
+
+# Tracks which schedule start times we've already logged weather_skip for
+# so we don't double-log on every evaluation cycle.
+# Format: {"YYYY-MM-DD HH:MM": True}
+_logged_schedule_skips: dict = {}
+
+
+async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str):
+    """Log weather_skip events when scheduled start times pass while already paused.
+
+    Called every weather evaluation cycle when system is already weather-paused.
+    Reads the irrigation timeline to find schedule start times, checks if any
+    have passed since we last checked, and logs weather_skip for every zone
+    in that schedule.  Only logs once per schedule occurrence (tracked by date+time).
+    """
+    global _logged_schedule_skips
+    import run_log
+
+    try:
+        from routes.moisture import _load_schedule_timeline, _get_ordered_enabled_zones
+
+        timeline = _load_schedule_timeline()
+        schedules = timeline.get("schedules", [])
+        if not schedules:
+            return
+
+        now = datetime.now()  # local time (schedule times are local)
+        today_str = now.strftime("%Y-%m-%d")
+
+        # Clean out old entries (older than 2 days)
+        cutoff = (now - timedelta(days=2)).strftime("%Y-%m-%d")
+        _logged_schedule_skips = {
+            k: v for k, v in _logged_schedule_skips.items()
+            if k >= cutoff
+        }
+
+        for sched in schedules:
+            start_time_str = sched.get("start_time", "")
+            if not start_time_str:
+                continue
+
+            # Build a datetime for today's occurrence of this schedule
+            try:
+                # start_time is "HH:MM" format
+                parts = start_time_str.split(":")
+                sched_hour = int(parts[0])
+                sched_min = int(parts[1]) if len(parts) > 1 else 0
+                sched_dt = now.replace(hour=sched_hour, minute=sched_min,
+                                       second=0, microsecond=0)
+            except (ValueError, IndexError):
+                continue
+
+            # Only process schedules that have already passed today
+            if sched_dt > now:
+                continue
+
+            # Don't log if it passed more than the total schedule duration + 30min ago
+            # (avoids logging old schedules on restart)
+            total_dur = sched.get("total_duration_minutes", 60)
+            if (now - sched_dt).total_seconds() > (total_dur + 30) * 60:
+                continue
+
+            # Check if we already logged this schedule occurrence
+            skip_key = f"{today_str} {start_time_str}"
+            if skip_key in _logged_schedule_skips:
+                continue
+
+            # This schedule start time has passed while we're paused — log it!
+            print(f"[WEATHER] Schedule {start_time_str} passed while "
+                  f"weather-paused — logging weather_skip events")
+
+            zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+            enabled_zones = await _get_ordered_enabled_zones()
+            skip_count = 0
+
+            for ez in enabled_zones:
+                zone_eid = ez["zone_entity_id"]
+                if ez.get("is_special"):
+                    continue  # Skip pump/master/relay
+
+                zone_name = f"Zone {ez.get('zone_num', 0)}"
+                for z in zones:
+                    if z.get("entity_id") == zone_eid:
+                        zone_name = z.get("attributes", {}).get(
+                            "friendly_name", zone_name
+                        )
+                        break
+
+                run_log.log_zone_event(
+                    entity_id=zone_eid,
+                    state="weather_skip",
+                    source="weather_skip",
+                    zone_name=zone_name,
+                    duration_seconds=0,
+                )
+                skip_count += 1
+
+            _logged_schedule_skips[skip_key] = True
+            print(f"[WEATHER] Logged weather_skip for {skip_count} zones "
+                  f"(schedule {start_time_str}, reason: {pause_reason})")
+
+    except Exception as e:
+        print(f"[WEATHER] Error in _log_skipped_schedules: {e}")
+
+
 # --- Rules Engine ---
 
 async def run_weather_evaluation() -> dict:
@@ -727,65 +1008,135 @@ async def run_weather_evaluation() -> dict:
                 "expires_at": (datetime.now(timezone.utc) + timedelta(hours=delay_hours)).isoformat(),
             })
 
-    # Rule 2: Rain Forecast
-    rule = rules.get("rain_forecast", {})
-    if rule.get("enabled") and not should_pause:
-        forecast = weather.get("forecast", [])
-        prob_threshold = rule.get("probability_threshold", 60)
-        lookahead_hours = rule.get("lookahead_hours", 48)
-        cutoff = datetime.now(timezone.utc) + timedelta(hours=lookahead_hours)
-        for f in forecast:
-            # Filter by lookahead window — only check forecast periods within range
-            fc_dt_str = f.get("datetime") or f.get("start_time") or ""
-            if fc_dt_str:
-                try:
-                    fc_dt = datetime.fromisoformat(fc_dt_str)
-                    # Ensure timezone-aware for comparison
-                    if fc_dt.tzinfo is None:
-                        fc_dt = fc_dt.replace(tzinfo=timezone.utc)
-                    if fc_dt > cutoff:
-                        continue  # Outside lookahead window — skip this period
-                except (ValueError, TypeError):
-                    pass  # Can't parse datetime — include it to be safe
-            precip_prob = f.get("precipitation_probability", 0) or 0
-            if precip_prob >= prob_threshold:
-                # Include which day the rain is forecast for in the reason
-                day_label = ""
+    # --- Rain Forecast & Precipitation Rules ---
+    # Behavior depends on rain_control_mode:
+    #   "rain_holds" (default): forecast/threshold rules PAUSE the system
+    #   "intelligent_precip": fetch QPF data and reduce zone durations proportionally
+    rain_mode = rules_data.get("rain_control_mode", "rain_holds")
+
+    if rain_mode == "intelligent_precip" and not should_pause:
+        # Intelligent Precipitation Control: use QPF to reduce zone durations
+        # instead of pausing the entire system.
+        ip_rules = rules_data.get("rules", {}).get("intelligent_precip", {})
+        ip_lookahead = ip_rules.get("qpf_lookahead_hours", 24)
+        ip_min_run = ip_rules.get("min_run_minutes", 2.0)
+
+        qpf_mm = await _fetch_nws_qpf(lookahead_hours=ip_lookahead)
+        if qpf_mm is not None and qpf_mm > 0:
+            # We have QPF data — calculate per-zone reductions
+            from routes.moisture import _get_ordered_enabled_zones
+            enabled_zones = await _get_ordered_enabled_zones()
+            precip_factors = _calculate_precip_reductions(
+                qpf_mm, enabled_zones, min_run_minutes=ip_min_run
+            )
+            rain_inches = round(qpf_mm / 25.4, 3)
+            rules_data["precip_zone_factors"] = precip_factors
+            rules_data["precip_qpf_inches"] = rain_inches
+
+            if precip_factors:
+                avg_factor = round(sum(precip_factors.values()) / len(precip_factors), 3)
+                reason = (f"Intelligent Precip: {rain_inches:.2f}\" expected, "
+                          f"avg zone factor {avg_factor}")
+                triggered.append({
+                    "rule": "intelligent_precip", "action": "reduce",
+                    "reason": reason,
+                })
+                new_adjustments.append({
+                    "rule": "intelligent_precip", "action": "reduce",
+                    "factor": avg_factor,
+                    "reason": reason,
+                    "applied_at": datetime.now(timezone.utc).isoformat(),
+                    "qpf_mm": qpf_mm,
+                    "qpf_inches": rain_inches,
+                    "zone_factors": precip_factors,
+                })
+                print(f"[WEATHER] Intelligent Precip: {rain_inches:.2f}\" QPF, "
+                      f"{len(precip_factors)} zone(s) with factors, avg={avg_factor}")
+            else:
+                # No zones have nozzle data — fall back to rain_holds for this eval
+                print("[WEATHER] Intelligent Precip: no zones with nozzle data, "
+                      "falling back to rain_holds logic")
+                rules_data["precip_zone_factors"] = {}
+                rules_data["precip_qpf_inches"] = rain_inches
+                # Fall through to rain_holds rules below
+                rain_mode = "rain_holds"
+        elif qpf_mm is None:
+            # QPF unavailable — fall back to rain_holds
+            print("[WEATHER] Intelligent Precip: QPF unavailable, "
+                  "falling back to rain_holds")
+            rules_data["precip_zone_factors"] = {}
+            rules_data["precip_qpf_inches"] = None
+            rain_mode = "rain_holds"
+        else:
+            # QPF = 0 — no rain expected, clear factors
+            rules_data["precip_zone_factors"] = {}
+            rules_data["precip_qpf_inches"] = 0.0
+    else:
+        # Clear intelligent precip data when not in that mode
+        rules_data["precip_zone_factors"] = {}
+        rules_data["precip_qpf_inches"] = None
+
+    # Rain Holds rules (also used as fallback when intelligent_precip can't get data)
+    if rain_mode == "rain_holds" and not should_pause:
+        # Rule 2: Rain Forecast
+        rule = rules.get("rain_forecast", {})
+        if rule.get("enabled") and not should_pause:
+            forecast = weather.get("forecast", [])
+            prob_threshold = rule.get("probability_threshold", 60)
+            lookahead_hours = rule.get("lookahead_hours", 48)
+            cutoff = datetime.now(timezone.utc) + timedelta(hours=lookahead_hours)
+            for f in forecast:
+                # Filter by lookahead window — only check forecast periods within range
+                fc_dt_str = f.get("datetime") or f.get("start_time") or ""
                 if fc_dt_str:
                     try:
                         fc_dt = datetime.fromisoformat(fc_dt_str)
-                        day_label = f" on {fc_dt.strftime('%A')}"
+                        # Ensure timezone-aware for comparison
+                        if fc_dt.tzinfo is None:
+                            fc_dt = fc_dt.replace(tzinfo=timezone.utc)
+                        if fc_dt > cutoff:
+                            continue  # Outside lookahead window — skip this period
                     except (ValueError, TypeError):
-                        pass
-                reason = f"Rain forecasted ({precip_prob}% probability{day_label})"
+                        pass  # Can't parse datetime — include it to be safe
+                precip_prob = f.get("precipitation_probability", 0) or 0
+                if precip_prob >= prob_threshold:
+                    # Include which day the rain is forecast for in the reason
+                    day_label = ""
+                    if fc_dt_str:
+                        try:
+                            fc_dt = datetime.fromisoformat(fc_dt_str)
+                            day_label = f" on {fc_dt.strftime('%A')}"
+                        except (ValueError, TypeError):
+                            pass
+                    reason = f"Rain forecasted ({precip_prob}% probability{day_label})"
+                    should_pause = True
+                    pause_reason = pause_reason or reason
+                    triggered.append({"rule": "rain_forecast", "action": "skip", "reason": reason})
+                    new_adjustments.append({
+                        "rule": "rain_forecast", "action": "skip",
+                        "factor": 0,
+                        "reason": reason,
+                        "applied_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    break
+
+        # Rule 3: Precipitation Threshold
+        rule = rules.get("precipitation_threshold", {})
+        if rule.get("enabled") and not should_pause:
+            threshold_mm = rule.get("skip_if_rain_above_mm", 6.0)
+            forecast = weather.get("forecast", [])
+            total_precip = sum((f.get("precipitation", 0) or 0) for f in forecast[:2])
+            if total_precip >= threshold_mm:
+                reason = f"Expected rainfall {total_precip:.1f}mm exceeds {threshold_mm}mm threshold"
                 should_pause = True
                 pause_reason = pause_reason or reason
-                triggered.append({"rule": "rain_forecast", "action": "skip", "reason": reason})
+                triggered.append({"rule": "precipitation_threshold", "action": "skip", "reason": reason})
                 new_adjustments.append({
-                    "rule": "rain_forecast", "action": "skip",
+                    "rule": "precipitation_threshold", "action": "skip",
                     "factor": 0,
                     "reason": reason,
                     "applied_at": datetime.now(timezone.utc).isoformat(),
                 })
-                break
-
-    # Rule 3: Precipitation Threshold
-    rule = rules.get("precipitation_threshold", {})
-    if rule.get("enabled") and not should_pause:
-        threshold_mm = rule.get("skip_if_rain_above_mm", 6.0)
-        forecast = weather.get("forecast", [])
-        total_precip = sum((f.get("precipitation", 0) or 0) for f in forecast[:2])
-        if total_precip >= threshold_mm:
-            reason = f"Expected rainfall {total_precip:.1f}mm exceeds {threshold_mm}mm threshold"
-            should_pause = True
-            pause_reason = pause_reason or reason
-            triggered.append({"rule": "precipitation_threshold", "action": "skip", "reason": reason})
-            new_adjustments.append({
-                "rule": "precipitation_threshold", "action": "skip",
-                "factor": 0,
-                "reason": reason,
-                "applied_at": datetime.now(timezone.utc).isoformat(),
-            })
 
     # Rule 4: Temperature Freeze
     rule = rules.get("temperature_freeze", {})
@@ -908,6 +1259,12 @@ async def run_weather_evaluation() -> dict:
 
     if should_pause:
         schedule_data = _load_schedules()
+        if schedule_data.get("system_paused") and schedule_data.get("weather_paused"):
+            # System is ALREADY weather-paused.  Check if any schedule start
+            # times have passed since the last weather_skip log so we still
+            # report savings for every skipped schedule cycle.
+            await _log_skipped_schedules(config, schedule_data, pause_reason)
+
         if not schedule_data.get("system_paused"):
             # Disable ESPHome schedule programs so the controller can't start runs
             import schedule_control
@@ -971,6 +1328,18 @@ async def run_weather_evaluation() -> dict:
                     skip_count += 1
                 print(f"[WEATHER] Logged weather_skip for "
                       f"{skip_count} prevented zones")
+                # Mark current schedule times as logged so the
+                # already-paused detector doesn't double-log them
+                try:
+                    from routes.moisture import _load_schedule_timeline
+                    tl = _load_schedule_timeline()
+                    today_str = datetime.now().strftime("%Y-%m-%d")
+                    for s in tl.get("schedules", []):
+                        st = s.get("start_time", "")
+                        if st:
+                            _logged_schedule_skips[f"{today_str} {st}"] = True
+                except Exception:
+                    pass
             except Exception as e:
                 print(f"[WEATHER] Error logging weather_skip events: {e}")
 
@@ -1009,6 +1378,9 @@ async def run_weather_evaluation() -> dict:
             schedule_data.pop("weather_pause_reason", None)
             schedule_data.pop("saved_schedule_states", None)
             _save_schedules(schedule_data)
+
+            # Clear schedule skip tracking so next pause cycle starts fresh
+            _logged_schedule_skips.clear()
 
             await ha_client.fire_event("flux_irrigation_weather_resume", {
                 "reason": "Weather conditions cleared",
@@ -1111,7 +1483,11 @@ async def get_current_weather():
 @router.get("/weather/rules", summary="Get weather rules configuration")
 async def get_weather_rules():
     """Get the current weather rules configuration."""
-    return _load_weather_rules()
+    data = _load_weather_rules()
+    # Include weather source so UI can gate features that need NWS
+    config = get_config()
+    data["weather_source"] = config.weather_source
+    return data
 
 
 @router.put("/weather/rules", summary="Update weather rules")
@@ -1119,9 +1495,22 @@ async def update_weather_rules(body: dict, request: Request):
     """Update weather rules configuration and re-evaluate immediately."""
     data = _load_weather_rules()
     old_rules = data.get("rules", {})
+    old_mode = data.get("rain_control_mode", "rain_holds")
     if "rules" in body:
         data["rules"] = body["rules"]
+    # Accept rain_control_mode at top level
+    if "rain_control_mode" in body:
+        data["rain_control_mode"] = body["rain_control_mode"]
     _save_weather_rules(data)
+
+    # Log rain control mode change
+    new_mode = data.get("rain_control_mode", "rain_holds")
+    if old_mode != new_mode:
+        actor = get_actor(request)
+        mode_labels = {"rain_holds": "Rain Holds", "intelligent_precip": "Smart Precipitation"}
+        log_change(actor, "Weather Rules",
+                   f"Rain Control Mode: {mode_labels.get(old_mode, old_mode)} → "
+                   f"{mode_labels.get(new_mode, new_mode)}")
 
     # Build detailed changelog — log each changed property with old → new
     new_rules = body.get("rules", {})
@@ -1129,6 +1518,7 @@ async def update_weather_rules(body: dict, request: Request):
         "rain_detection": "Rain Detection",
         "rain_forecast": "Rain Forecast",
         "precipitation_threshold": "Precipitation Threshold",
+        "intelligent_precip": "Intelligent Precipitation",
         "temperature_freeze": "Freeze Protection",
         "temperature_cool": "Cool Temperature",
         "temperature_hot": "Hot Temperature",
@@ -1142,6 +1532,8 @@ async def update_weather_rules(body: dict, request: Request):
         "lookahead_hours": "Lookahead (hrs)",
         "probability_threshold": "Probability Threshold (%)",
         "skip_if_rain_above_mm": "Rain Threshold (mm)",
+        "qpf_lookahead_hours": "QPF Lookahead (hrs)",
+        "min_run_minutes": "Min Run Time (min)",
         "freeze_threshold_f": "Freeze Threshold (F)",
         "freeze_threshold_c": "Freeze Threshold (C)",
         "cool_threshold_f": "Cool Threshold (F)",

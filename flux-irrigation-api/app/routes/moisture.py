@@ -3210,6 +3210,16 @@ async def apply_adjusted_durations() -> dict:
     sensor_states = await _get_probe_sensor_states(data.get("probes", {}))
     weather_mult = get_weather_multiplier()
 
+    # Load precipitation zone factors (from intelligent precip mode)
+    try:
+        from routes.weather import _load_weather_rules
+        _wr = _load_weather_rules()
+        precip_zone_factors = _wr.get("precip_zone_factors", {})
+        precip_qpf_inches = _wr.get("precip_qpf_inches")
+    except Exception:
+        precip_zone_factors = {}
+        precip_qpf_inches = None
+
     # Filter base_durations by detected zone count (expansion board limit)
     max_zones = config.detected_zone_count if hasattr(config, "detected_zone_count") else 0
     if max_zones > 0:
@@ -3239,6 +3249,9 @@ async def apply_adjusted_durations() -> dict:
         moisture_mult = zone_result.get("multiplier", 1.0)
         skip = zone_result.get("skip", False)
 
+        # Get precipitation reduction factor for this zone (1.0 = no change, 0.0 = skip)
+        precip_factor = precip_zone_factors.get(zone_entity_id, 1.0) if zone_entity_id else 1.0
+
         if skip:
             # Record skip in active run tracker (if running).  Enable
             # switches are NEVER toggled — the preemptive advance timer
@@ -3250,7 +3263,7 @@ async def apply_adjusted_durations() -> dict:
                   f"{' (active run)' if _active_schedule_run else ''}")
             # Keep duration intact (zone is tracked for skip, but duration
             # stays so it runs normally if moisture clears before it starts)
-            combined = weather_mult * moisture_mult
+            combined = weather_mult * moisture_mult * precip_factor
             adjusted_value = float(max(1, round(base * combined))) if combined > 0 else base
         else:
             # If this zone was previously moisture-disabled in the active
@@ -3262,12 +3275,13 @@ async def apply_adjusted_durations() -> dict:
                         print(f"[MOISTURE] Cleared moisture-disabled for zone "
                               f"{zone_num} (moisture dropped)")
                         break
-            combined = weather_mult * moisture_mult
+            combined = weather_mult * moisture_mult * precip_factor
             adjusted_value = float(max(1, round(base * combined)))
 
         # Write adjusted duration to HA
+        precip_log = f", precip={precip_factor:.3f}" if precip_factor < 1.0 else ""
         print(f"[MOISTURE] Setting {dur_eid}: base={base} → adjusted={adjusted_value} "
-              f"(weather={weather_mult}, moisture={moisture_mult:.3f}, "
+              f"(weather={weather_mult}, moisture={moisture_mult:.3f}{precip_log}, "
               f"zone={zone_entity_id or 'unknown'}, skip={skip})")
         success = await ha_client.call_service("number", "set_value", {
             "entity_id": dur_eid,
@@ -3282,11 +3296,14 @@ async def apply_adjusted_durations() -> dict:
                 "adjusted": adjusted_value,
                 "weather_multiplier": weather_mult,
                 "moisture_multiplier": moisture_mult,
-                "combined_multiplier": round(weather_mult * moisture_mult, 3),
+                "precip_factor": precip_factor,
+                "combined_multiplier": round(weather_mult * moisture_mult * precip_factor, 3),
                 "skip": skip,
                 "zone_entity_id": zone_entity_id,
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             }
+            if precip_qpf_inches is not None and precip_factor < 1.0:
+                adj_entry["precip_qpf_inches"] = precip_qpf_inches
             # Capture per-zone probe context for run history
             if zone_result.get("avg_moisture") is not None:
                 adj_entry["profile"] = zone_result.get("profile", "unknown")

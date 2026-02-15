@@ -166,7 +166,7 @@ def log_zone_event(
     #   api, dashboard, timed_shutoff, stop_all, unknown
     SAVINGS_SOURCES = {
         "weather_pause", "pause_enforced", "moisture_skip", "weather_skip",
-        "moisture_cutoff", "schedule", "system_pause",
+        "moisture_cutoff", "schedule", "system_pause", "precip_adjustment",
     }
     actual_dur = entry.get("duration_seconds")
     # For moisture_skip / weather_skip events, the zone never ran — duration

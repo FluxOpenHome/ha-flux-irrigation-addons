@@ -2692,7 +2692,7 @@ function renderScheduleCard(sched, durData, multData) {
     var _weatherIcons = '';
     var _activeWeatherAdj = (multData && multData.active_weather_adjustments) || [];
     if (_activeWeatherAdj.length > 0 && Math.abs(liveWeatherMult - 1.0) >= 0.005) {
-        var _ruleIconMap = {rain_detection:fluxIcon('rain',14),rain_forecast:fluxIcon('rain',14),precipitation_threshold:fluxIcon('rain',14),temperature_freeze:fluxIcon('snowflake',14),temperature_cool:fluxIcon('thermometer_cool',14),temperature_hot:fluxIcon('flame',14),wind_speed:fluxIcon('wind',14),humidity:fluxIcon('droplet',14),seasonal_adjustment:fluxIcon('calendar',14)};
+        var _ruleIconMap = {rain_detection:fluxIcon('rain',14),rain_forecast:fluxIcon('rain',14),precipitation_threshold:fluxIcon('rain',14),intelligent_precip:fluxIcon('rain',14),temperature_freeze:fluxIcon('snowflake',14),temperature_cool:fluxIcon('thermometer_cool',14),temperature_hot:fluxIcon('flame',14),wind_speed:fluxIcon('wind',14),humidity:fluxIcon('droplet',14),seasonal_adjustment:fluxIcon('calendar',14)};
         var _seen = {};
         var _wIcons = [];
         for (var _wi = 0; _wi < _activeWeatherAdj.length; _wi++) {
@@ -2725,7 +2725,7 @@ function renderScheduleCard(sched, durData, multData) {
                 if (isOn) return '';
                 var reasons = [];
                 var _adj = (multData && multData.active_weather_adjustments) || [];
-                var _rMap = {rain_detection:fluxIcon('rain',13),rain_forecast:fluxIcon('rain',13),precipitation_threshold:fluxIcon('rain',13),temperature_freeze:fluxIcon('snowflake',13),temperature_cool:fluxIcon('thermometer_cool',13),temperature_hot:fluxIcon('flame',13),wind_speed:fluxIcon('wind',13),humidity:fluxIcon('droplet',13),seasonal_adjustment:fluxIcon('calendar',13)};
+                var _rMap = {rain_detection:fluxIcon('rain',13),rain_forecast:fluxIcon('rain',13),precipitation_threshold:fluxIcon('rain',13),intelligent_precip:fluxIcon('rain',13),temperature_freeze:fluxIcon('snowflake',13),temperature_cool:fluxIcon('thermometer_cool',13),temperature_hot:fluxIcon('flame',13),wind_speed:fluxIcon('wind',13),humidity:fluxIcon('droplet',13),seasonal_adjustment:fluxIcon('calendar',13)};
                 for (var _ri = 0; _ri < _adj.length; _ri++) {
                     var _a = _adj[_ri];
                     if (_a.skip_irrigation) reasons.push((_rMap[_a.rule]||'') + ' ' + (_a.reason || _a.rule.replace(/_/g,' ')));
@@ -2970,14 +2970,14 @@ function renderScheduleCard(sched, durData, multData) {
                 // --- Weather Factor Card ---
                 var weatherCard = '';
                 if (_hasWeather) {
-                    var _ruleIconMap2 = {rain_detection:'rain',rain_forecast:'rain',precipitation_threshold:'rain',temperature_freeze:'snowflake',temperature_cool:'thermometer_cool',temperature_hot:'flame',wind_speed:'wind',humidity:'droplet',seasonal_adjustment:'calendar'};
+                    var _ruleIconMap2 = {rain_detection:'rain',rain_forecast:'rain',precipitation_threshold:'rain',intelligent_precip:'rain',temperature_freeze:'snowflake',temperature_cool:'thermometer_cool',temperature_hot:'flame',wind_speed:'wind',humidity:'droplet',seasonal_adjustment:'calendar'};
                     var _primaryIcon = 'sun';
                     if (_activeWeatherAdj.length > 0) _primaryIcon = _ruleIconMap2[_activeWeatherAdj[0].rule] || 'sun';
                     var _wIconBig = fluxIcon(_primaryIcon, 28);
                     var _wLines = [];
                     for (var _wai = 0; _wai < _activeWeatherAdj.length; _wai++) {
                         var _wa = _activeWeatherAdj[_wai];
-                        var _wRuleLabel = {rain_detection:'Rain',rain_forecast:'Forecast',precipitation_threshold:'Precip',temperature_freeze:'Freeze',temperature_cool:'Cool',temperature_hot:'Heat',wind_speed:'Wind',humidity:'Humidity',seasonal_adjustment:'Season'}[_wa.rule] || _wa.rule;
+                        var _wRuleLabel = {rain_detection:'Rain',rain_forecast:'Forecast',precipitation_threshold:'Precip',intelligent_precip:'Smart Precip',temperature_freeze:'Freeze',temperature_cool:'Cool',temperature_hot:'Heat',wind_speed:'Wind',humidity:'Humidity',seasonal_adjustment:'Season'}[_wa.rule] || _wa.rule;
                         var _wFactor = _wa.factor != null ? _wa.factor.toFixed(2) + 'x' : _wa.action;
                         var _wRuleIcon = fluxIcon(_ruleIconMap2[_wa.rule] || 'sun', 10);
                         _wLines.push('<span style="display:inline-flex;align-items:center;gap:2px;">' + _wRuleIcon + ' ' + _wRuleLabel + ': ' + _wFactor + '</span>');
@@ -4302,26 +4302,61 @@ async function loadWeatherRules() {
         if (_weatherRulesCache === rulesKey) return;
         _weatherRulesCache = rulesKey;
         const rules = data.rules || {};
+        const rainMode = data.rain_control_mode || 'rain_holds';
+        _rainControlMode = rainMode;
+        _weatherSource = data.weather_source || 'ha_entity';
         let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
 
-        // Rule 1: Rain Detection
+        // Rain Control Mode selector
+        html += '<div style="margin-bottom:8px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border-card);border-radius:8px;">';
+        html += '<div style="font-weight:600;font-size:13px;margin-bottom:6px;color:var(--text-primary);">Rain Control Mode</div>';
+        html += '<div style="display:flex;gap:0;border:1px solid var(--border-input);border-radius:6px;overflow:hidden;width:fit-content;">';
+        html += '<button onclick="setRainMode(\\\'rain_holds\\\', this)" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;cursor:pointer;' + (rainMode === 'rain_holds' ? 'background:var(--color-primary);color:#fff;' : 'background:var(--bg-input);color:var(--text-secondary);') + '">Rain Holds</button>';
+        html += '<button onclick="setRainMode(\\\'intelligent_precip\\\', this)" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-left:1px solid var(--border-input);cursor:pointer;' + (rainMode === 'intelligent_precip' ? 'background:var(--color-primary);color:#fff;' : 'background:var(--bg-input);color:var(--text-secondary);') + '">Smart Precip</button>';
+        html += '</div>';
+        html += '<div style="font-size:11px;color:var(--text-placeholder);margin-top:4px;">' + (rainMode === 'intelligent_precip' ? 'Reduces zone run times based on expected rainfall. Always pauses during active rain. Requires zone nozzle data (GPM &amp; area).' : 'Pauses irrigation when rain is detected or forecasted. Simple and conservative.') + '</div>';
+        html += '</div>';
+
+        // Rain Detection — always shown (forced ON in intelligent mode)
         const r1 = rules.rain_detection || {};
-        html += buildRuleRow('rain_detection', 'Rain Detection', 'Pause when currently raining', r1.enabled, [
+        var r1Locked = rainMode === 'intelligent_precip';
+        html += buildRuleRow('rain_detection', 'Rain Detection' + (r1Locked ? ' (always on)' : ''), 'Pause when currently raining', r1Locked ? true : r1.enabled, [
             { id: 'rain_detection_resume_delay_hours', label: 'Resume delay (hours)', value: r1.resume_delay_hours || 2, type: 'number', min: 0, max: 24, step: 1 }
         ]);
+        if (r1Locked) {
+            setTimeout(function() {
+                var cb = document.getElementById('rule_rain_detection');
+                if (cb) { cb.checked = true; cb.disabled = true; cb.style.opacity = '0.5'; }
+            }, 0);
+        }
 
-        // Rule 2: Rain Forecast
+        // Rain Holds rules
+        html += '<div id="rainHoldsRules" style="display:' + (rainMode === 'rain_holds' ? 'block' : 'none') + ';">';
+
         const r2 = rules.rain_forecast || {};
         html += buildRuleRow('rain_forecast', 'Rain Forecast', 'Skip when rain probability exceeds threshold within lookahead window', r2.enabled, [
             { id: 'rain_forecast_probability_threshold', label: 'Probability %', value: r2.probability_threshold || 60, type: 'number', min: 10, max: 100, step: 5 },
             { id: 'rain_forecast_lookahead_hours', label: 'Lookahead (hours)', value: r2.lookahead_hours || 48, type: 'number', min: 6, max: 168, step: 6 }
         ]);
 
-        // Rule 3: Precipitation Threshold
         const r3 = rules.precipitation_threshold || {};
         html += buildRuleRow('precipitation_threshold', 'Precipitation Amount', 'Skip when expected rainfall exceeds threshold', r3.enabled, [
             { id: 'precipitation_threshold_mm', label: 'Threshold (mm)', value: r3.skip_if_rain_above_mm || 6, type: 'number', min: 1, max: 50, step: 1 }
         ]);
+
+        html += '</div>'; // end rainHoldsRules
+
+        // Intelligent Precip settings
+        const rIP = rules.intelligent_precip || {};
+        html += '<div id="smartPrecipRules" style="display:' + (rainMode === 'intelligent_precip' ? 'block' : 'none') + ';">';
+        html += buildRuleRow('intelligent_precip', 'Precipitation Adjustment', 'Reduce zone run times based on NWS quantitative precipitation forecast', true, [
+            { id: 'ip_qpf_lookahead', label: 'QPF Lookahead (hours)', value: rIP.qpf_lookahead_hours || 24, type: 'number', min: 6, max: 72, step: 6 },
+            { id: 'ip_min_run', label: 'Min run time (min)', value: rIP.min_run_minutes || 2, type: 'number', min: 1, max: 10, step: 0.5 }
+        ]);
+        if (data.precip_qpf_inches != null && data.precip_qpf_inches > 0) {
+            html += '<div style="padding:4px 12px;font-size:11px;color:var(--color-success);">Last QPF: ' + data.precip_qpf_inches.toFixed(2) + ' inches expected</div>';
+        }
+        html += '</div>'; // end smartPrecipRules
 
         // Rule 4: Freeze Protection
         const r4 = rules.temperature_freeze || {};
@@ -4393,6 +4428,38 @@ async function loadWeatherRules() {
         setupUnitConversions('');
     } catch (e) {
         container.innerHTML = '<div style="color:var(--color-danger);">Failed to load weather rules: ' + esc(e.message) + '</div>';
+    }
+}
+
+var _rainControlMode = 'rain_holds';
+var _weatherSource = 'ha_entity';
+
+function setRainMode(mode, btn) {
+    // Block intelligent_precip if weather source doesn't support QPF
+    if (mode === 'intelligent_precip' && _weatherSource !== 'nws') {
+        showToast('Smart Precipitation requires Built-in NWS weather source. Go to Configuration and select Built-in (NWS) Weather to enable this feature.', 'error');
+        return;
+    }
+    _rainControlMode = mode;
+    var parent = btn.parentElement;
+    var btns = parent.querySelectorAll('button');
+    btns.forEach(function(b) {
+        b.style.background = 'var(--bg-input)';
+        b.style.color = 'var(--text-secondary)';
+    });
+    btn.style.background = 'var(--color-primary)';
+    btn.style.color = '#fff';
+    var holdsDiv = document.getElementById('rainHoldsRules');
+    var smartDiv = document.getElementById('smartPrecipRules');
+    if (holdsDiv) holdsDiv.style.display = mode === 'rain_holds' ? 'block' : 'none';
+    if (smartDiv) smartDiv.style.display = mode === 'intelligent_precip' ? 'block' : 'none';
+    var cb = document.getElementById('rule_rain_detection');
+    if (cb) {
+        if (mode === 'intelligent_precip') {
+            cb.checked = true; cb.disabled = true; cb.style.opacity = '0.5';
+        } else {
+            cb.disabled = false; cb.style.opacity = '1';
+        }
     }
 }
 
@@ -4474,9 +4541,16 @@ async function saveWeatherRules() {
         for (let i = 1; i <= 12; i++) {
             rules.seasonal_adjustment.monthly_multipliers[String(i)] = parseFloat(document.getElementById('seasonal_month_' + i).value) || 0;
         }
+        // Intelligent Precip settings
+        rules.intelligent_precip = {
+            enabled: _rainControlMode === 'intelligent_precip',
+            qpf_lookahead_hours: parseInt(document.getElementById('ip_qpf_lookahead')?.value) || 24,
+            min_run_minutes: parseFloat(document.getElementById('ip_min_run')?.value) || 2,
+        };
+
         const result = await wapi('/weather/rules', {
             method: 'PUT',
-            body: JSON.stringify({ rules }),
+            body: JSON.stringify({ rules, rain_control_mode: _rainControlMode }),
         });
         const mult = result.watering_multiplier;
         showToast('Weather rules saved' + (mult != null ? ' — multiplier: ' + mult + 'x' : ''));
