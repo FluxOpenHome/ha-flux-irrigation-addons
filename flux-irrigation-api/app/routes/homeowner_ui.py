@@ -349,9 +349,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div class="nav-tabs">
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
-        <button class="dark-toggle" id="unitToggleBtn" onclick="toggleUnits()" title="Toggle Imperial/SI units" style="font-size:11px;font-weight:700;min-width:30px;"><script>document.write(localStorage.getItem('flux_units')==='si'?'SI':'IMP')</script></button>
-        <button class="dark-toggle" id="timeFormatBtn" onclick="toggleTimeFormat()" title="Toggle 12hr/24hr time" style="font-size:12px;font-weight:700;min-width:36px;"><script>document.write(localStorage.getItem('flux_time_format')==='24h'?'24h':'12h')</script></button>
-        <button class="dark-toggle" id="stickyHeaderBtn" onclick="toggleStickyHeader()" title="Pin header"><span data-fi="pin" data-fs="28"></span></button>
+        <button class="dark-toggle" onclick="showSettings()" title="Settings"><span data-fi="gear" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log"><span data-fi="clipboard" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="showHelp()" title="Help"><span data-fi="help" data-fs="28"></span></button>
@@ -629,6 +627,17 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
             <button onclick="closeHelpModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
         </div>
         <div id="helpContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:14px;color:var(--text-secondary);line-height:1.6;"></div>
+    </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;" onclick="if(event.target===this)closeSettings()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:440px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px 12px 24px;border-bottom:1px solid var(--border-light);">
+            <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);">Settings</h3>
+            <button onclick="closeSettings()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
+        </div>
+        <div id="settingsContent" style="padding:16px 24px 24px 24px;overflow-y:auto;font-size:14px;color:var(--text-secondary);line-height:1.6;"></div>
     </div>
 </div>
 
@@ -6536,30 +6545,89 @@ function fluxFormatDateTime(date, extraOpts) {
     var dateStr = (date.getMonth()+1) + '/' + date.getDate();
     return dateStr + ' - ' + fluxFormatTime(date, extraOpts);
 }
-function toggleTimeFormat() {
-    var cur = localStorage.getItem('flux_time_format') || '12h';
-    var next = cur === '24h' ? '12h' : '24h';
-    localStorage.setItem('flux_time_format', next);
-    showToast('Time format: ' + next);
-    var btn = document.getElementById('timeFormatBtn');
-    if (btn) btn.innerHTML = next === '24h' ? '24h' : '12h';
+// --- Settings Modal ---
+function _segToggle(btn) {
+    var sibs = btn.parentElement.querySelectorAll('button');
+    sibs.forEach(function(b) { b.style.background = 'var(--bg-card)'; b.style.color = 'var(--text-muted)'; b.removeAttribute('data-active'); });
+    btn.style.background = 'var(--color-primary)';
+    btn.style.color = '#fff';
+    btn.setAttribute('data-active', '1');
+}
+
+function showSettings() {
+    var cur24 = fluxTimeIs24h();
+    var curUnits = localStorage.getItem('flux_units') || 'imperial';
+    var isSticky = localStorage.getItem('flux_sticky_header') === '1';
+
+    var html = '<div style="max-height:60vh;overflow-y:auto;padding-right:4px;">';
+    // --- Layout ---
+    html += '<h4 style="margin:0 0 12px;font-size:14px;color:var(--text);">Layout</h4>';
+    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:13px;color:var(--text);">';
+    html += '<input type="checkbox" id="setSticky"' + (isSticky ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
+    html += '<div><strong>Sticky header</strong><br><span style="font-size:12px;color:var(--text-muted);">Keep the top header bar fixed when scrolling.</span></div>';
+    html += '</label>';
+    // --- Display ---
+    html += '<h4 style="margin:16px 0 12px;font-size:14px;color:var(--text);">Display</h4>';
+    html += '<div style="padding:8px 0;">';
+    html += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Time format</div>';
+    html += '<div id="setTimeFormat" style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid var(--border);">';
+    html += '<button type="button" data-val="12h"' + (!cur24 ? ' data-active="1"' : '') + ' onclick="_segToggle(this)" style="padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:' + (!cur24 ? 'var(--color-primary)' : 'var(--bg-card)') + ';color:' + (!cur24 ? '#fff' : 'var(--text-muted)') + ';">12hr</button>';
+    html += '<button type="button" data-val="24h"' + (cur24 ? ' data-active="1"' : '') + ' onclick="_segToggle(this)" style="padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;border-left:1px solid var(--border);background:' + (cur24 ? 'var(--color-primary)' : 'var(--bg-card)') + ';color:' + (cur24 ? '#fff' : 'var(--text-muted)') + ';">24hr</button>';
+    html += '</div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Applies to all times displayed in the app.</div>';
+    html += '</div>';
+    // --- Units ---
+    html += '<div style="padding:8px 0;">';
+    html += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Units</div>';
+    html += '<div id="setUnits" style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid var(--border);">';
+    html += '<button type="button" data-val="imperial"' + (curUnits === 'imperial' ? ' data-active="1"' : '') + ' onclick="_segToggle(this)" style="padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:' + (curUnits === 'imperial' ? 'var(--color-primary)' : 'var(--bg-card)') + ';color:' + (curUnits === 'imperial' ? '#fff' : 'var(--text-muted)') + ';">Imperial</button>';
+    html += '<button type="button" data-val="si"' + (curUnits === 'si' ? ' data-active="1"' : '') + ' onclick="_segToggle(this)" style="padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;border-left:1px solid var(--border);background:' + (curUnits === 'si' ? 'var(--color-primary)' : 'var(--bg-card)') + ';color:' + (curUnits === 'si' ? '#fff' : 'var(--text-muted)') + ';">SI / Metric</button>';
+    html += '</div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Imperial: °F, mph, inches. &nbsp; SI: °C, km/h, mm.</div>';
+    html += '</div>';
+    html += '</div>';
+    // --- Buttons ---
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">';
+    html += '<button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>';
+    html += '<button class="btn btn-primary" onclick="saveSettings()">Save</button>';
+    html += '</div>';
+
+    document.getElementById('settingsContent').innerHTML = html;
+    document.getElementById('settingsModal').style.display = 'flex';
+}
+
+function closeSettings() {
+    document.getElementById('settingsModal').style.display = 'none';
+}
+
+function saveSettings() {
+    // Sticky header
+    var wantSticky = !!document.getElementById('setSticky').checked;
+    var hdr = document.querySelector('.header');
+    if (wantSticky) { hdr.classList.add('sticky'); } else { hdr.classList.remove('sticky'); }
+    localStorage.setItem('flux_sticky_header', wantSticky ? '1' : '0');
+    // Time format
+    var tfGroup = document.getElementById('setTimeFormat');
+    if (tfGroup) {
+        var ab = tfGroup.querySelector('button[data-active]');
+        if (ab) localStorage.setItem('flux_time_format', ab.getAttribute('data-val'));
+    }
+    // Units
+    var uGroup = document.getElementById('setUnits');
+    if (uGroup) {
+        var au = uGroup.querySelector('button[data-active]');
+        if (au) localStorage.setItem('flux_units', au.getAttribute('data-val'));
+    }
+    closeSettings();
+    showToast('Settings saved');
+    // Refresh weather with new units
+    _lastWeatherKey = null;
+    loadWeather();
+    // Refresh clock with new time format
     if (typeof startHomeClock === 'function' && typeof _homeTimezone !== 'undefined') {
         var el = document.getElementById('dashTimezone');
         if (el) { var st = el.getAttribute('data-state'); if (st) startHomeClock(st); }
     }
-}
-
-// --- Unit Toggle ---
-function toggleUnits() {
-    var cur = localStorage.getItem('flux_units') || 'imperial';
-    var next = cur === 'si' ? 'imperial' : 'si';
-    localStorage.setItem('flux_units', next);
-    showToast('Units: ' + (next === 'si' ? 'SI / Metric' : 'Imperial'));
-    var btn = document.getElementById('unitToggleBtn');
-    if (btn) btn.innerHTML = next === 'si' ? 'SI' : 'IMP';
-    // Force weather card to refresh with new units
-    _lastWeatherKey = null;
-    loadWeather();
 }
 
 // --- Dark Mode ---
@@ -7640,6 +7708,7 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         if (document.getElementById('confirmModal').style.display === 'flex') { _confirmCancel(); return; }
         if (document.getElementById('dataNerdOverlay')) { dnClose(); return; }
+        if (document.getElementById('settingsModal').style.display === 'flex') { closeSettings(); return; }
         if (document.getElementById('notifPanelModal').style.display === 'flex') closeNotificationsPanel();
         else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
         else if (document.getElementById('dynamicModal').style.display === 'flex') closeDynamicModal();
