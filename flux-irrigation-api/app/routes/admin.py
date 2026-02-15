@@ -1729,8 +1729,48 @@ ADMIN_HTML = """<!DOCTYPE html>
 
 <div class="toast" id="toast"></div>
 
+<!-- Confirmation Modal -->
+<div id="confirmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10100;align-items:center;justify-content:center;" onclick="if(event.target===this)_confirmCancel()">
+    <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+            <span id="confirmIcon" style="font-size:28px;"></span>
+            <h3 id="confirmTitle" style="font-size:16px;font-weight:600;margin:0;"></h3>
+        </div>
+        <div id="confirmBody" style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="_confirmCancel()">Cancel</button>
+            <button id="confirmOkBtn" class="btn" onclick="_confirmOk()"></button>
+        </div>
+    </div>
+</div>
+
 <script>
     const BASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api';
+
+    // --- Confirm Modal ---
+    var _confirmResolveFn = null;
+    function showConfirm(opts) {
+        var titleColor = 'var(--color-danger)';
+        if (opts.confirmClass === 'btn-primary') titleColor = 'var(--color-primary)';
+        else if (opts.confirmClass === 'btn-warning') titleColor = 'var(--color-warning)';
+        document.getElementById('confirmIcon').innerHTML = opts.icon || '&#9888;';
+        document.getElementById('confirmTitle').textContent = opts.title || 'Are you sure?';
+        document.getElementById('confirmTitle').style.color = titleColor;
+        document.getElementById('confirmBody').innerHTML = opts.message || '';
+        var okBtn = document.getElementById('confirmOkBtn');
+        okBtn.textContent = opts.confirmText || 'Confirm';
+        okBtn.className = 'btn ' + (opts.confirmClass || 'btn-danger');
+        document.getElementById('confirmModal').style.display = 'flex';
+        return new Promise(function(resolve) { _confirmResolveFn = resolve; });
+    }
+    function _confirmOk() {
+        document.getElementById('confirmModal').style.display = 'none';
+        if (_confirmResolveFn) { _confirmResolveFn(true); _confirmResolveFn = null; }
+    }
+    function _confirmCancel() {
+        document.getElementById('confirmModal').style.display = 'none';
+        if (_confirmResolveFn) { _confirmResolveFn(false); _confirmResolveFn = null; }
+    }
 
     // --- Dark Mode ---
     function toggleDarkMode() {
@@ -2873,7 +2913,8 @@ ADMIN_HTML = """<!DOCTYPE html>
     }
 
     async function removeMoistureProbe(probeId) {
-        if (!confirm('Remove this moisture probe?')) return;
+        var ok = await showConfirm({ title: 'Remove Probe', message: 'Remove this moisture probe? Its zone mappings and cached readings will be deleted.', confirmText: 'Remove Probe', confirmClass: 'btn-danger', icon: '&#128268;' });
+        if (!ok) return;
         try {
             await mcfg('/probes/' + encodeURIComponent(probeId), 'DELETE');
             showToast('Probe removed');
@@ -3061,6 +3102,13 @@ ADMIN_HTML = """<!DOCTYPE html>
     });
     document.getElementById('standaloneModal').addEventListener('click', function(e) {
         if (e.target === this) closeStandaloneModal();
+    });
+
+    // Close confirm modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('confirmModal').style.display === 'flex') {
+            _confirmCancel();
+        }
     });
 
     async function loadSystemMode() {

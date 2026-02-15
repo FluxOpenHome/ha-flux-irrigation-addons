@@ -657,6 +657,21 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- Confirmation Modal -->
+<div id="confirmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10100;align-items:center;justify-content:center;" onclick="if(event.target===this)_confirmCancel()">
+    <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+            <span id="confirmIcon" style="font-size:28px;"></span>
+            <h3 id="confirmTitle" style="font-size:16px;font-weight:600;margin:0;"></h3>
+        </div>
+        <div id="confirmBody" style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="_confirmCancel()">Cancel</button>
+            <button id="confirmOkBtn" class="btn" onclick="_confirmOk()"></button>
+        </div>
+    </div>
+</div>
+
 <!-- Generic Dynamic Modal -->
 <div id="dynamicModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;align-items:center;justify-content:center;" onclick="if(event.target===this)closeDynamicModal()">
     <div style="background:var(--bg-card);border-radius:12px;padding:0;width:90%;max-width:400px;max-height:80vh;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:flex;flex-direction:column;">
@@ -731,6 +746,34 @@ function managedGuard() { if (isManaged()) { showToast(_managedMsg, 'error'); re
 let refreshTimer = null;
 let geocodeCache = {};
 let leafletMap = null;
+
+// --- Confirm Modal ---
+var _confirmResolveFn = null;
+function showConfirm(opts) {
+    // opts: { title, message, confirmText, confirmClass, icon }
+    // confirmClass: 'btn-danger' (red), 'btn-primary' (green), 'btn-warning' (orange)
+    // icon: emoji string e.g. '&#9888;' (warning), '&#128465;' (trash), '&#9889;' (bolt)
+    var titleColor = 'var(--color-danger)';
+    if (opts.confirmClass === 'btn-primary') titleColor = 'var(--color-primary)';
+    else if (opts.confirmClass === 'btn-warning') titleColor = 'var(--color-warning)';
+    document.getElementById('confirmIcon').innerHTML = opts.icon || '&#9888;';
+    document.getElementById('confirmTitle').textContent = opts.title || 'Are you sure?';
+    document.getElementById('confirmTitle').style.color = titleColor;
+    document.getElementById('confirmBody').innerHTML = opts.message || '';
+    var okBtn = document.getElementById('confirmOkBtn');
+    okBtn.textContent = opts.confirmText || 'Confirm';
+    okBtn.className = 'btn ' + (opts.confirmClass || 'btn-danger');
+    document.getElementById('confirmModal').style.display = 'flex';
+    return new Promise(function(resolve) { _confirmResolveFn = resolve; });
+}
+function _confirmOk() {
+    document.getElementById('confirmModal').style.display = 'none';
+    if (_confirmResolveFn) { _confirmResolveFn(true); _confirmResolveFn = null; }
+}
+function _confirmCancel() {
+    document.getElementById('confirmModal').style.display = 'none';
+    if (_confirmResolveFn) { _confirmResolveFn(false); _confirmResolveFn = null; }
+}
 
 // --- Toast ---
 function showToast(msg, type = 'success', duration = 4000) {
@@ -1630,7 +1673,8 @@ function generateReport() {
 }
 
 async function cloneToDashboard() {
-    if (!confirm('Create (or update) a native Home Assistant dashboard called "Flux Irrigation" from your current system configuration?')) return;
+    var ok = await showConfirm({ title: 'Create HA Dashboard', message: 'Create (or update) a native Home Assistant dashboard called <strong>"Flux Irrigation"</strong> from your current system configuration?', confirmText: 'Create Dashboard', confirmClass: 'btn-primary', icon: '&#128736;' });
+    if (!ok) return;
     try {
         const resp = await fetch(HBASE + '/dashboard/clone-to-ha', { method: 'POST' });
         const result = await resp.json();
@@ -1724,7 +1768,10 @@ async function loadStatus() {
 
 async function togglePauseResume() {
     const action = currentSystemPaused ? 'resume' : 'pause';
-    if (!currentSystemPaused && !confirm('Pause the irrigation system? All active zones will be stopped.')) return;
+    if (!currentSystemPaused) {
+        var ok = await showConfirm({ title: 'Pause System', message: 'Pause the irrigation system? <strong>All active zones will be stopped.</strong>', confirmText: 'Pause System', confirmClass: 'btn-warning', icon: '&#9208;' });
+        if (!ok) return;
+    }
     try {
         await api('/system/' + action, { method: 'POST' });
         showToast('System ' + (action === 'pause' ? 'paused' : 'resumed'));
@@ -1898,7 +1945,8 @@ async function stopZone(zoneId) {
 }
 
 async function stopAllZones() {
-    if (!confirm('Emergency stop ALL zones?')) return;
+    var ok = await showConfirm({ title: 'Emergency Stop', message: 'Stop <strong>ALL</strong> running zones immediately?', confirmText: 'Stop All Zones', confirmClass: 'btn-danger', icon: '&#128721;' });
+    if (!ok) return;
     try {
         await api('/zones/stop_all', { method: 'POST' });
         showToast('All zones stopped');
@@ -4236,7 +4284,8 @@ function exportWeatherLogCSV() {
 // --- Clear Logs ---
 async function clearRunHistory() {
     if (managedGuard()) return;
-    if (!confirm('Clear all run history? This cannot be undone.')) return;
+    var ok = await showConfirm({ title: 'Clear Run History', message: 'Clear all run history? <strong>This cannot be undone.</strong>', confirmText: 'Clear History', confirmClass: 'btn-danger', icon: '&#128465;' });
+    if (!ok) return;
     try {
         const result = await api('/history/runs', { method: 'DELETE' });
         if (result.success) {
@@ -4250,7 +4299,8 @@ async function clearRunHistory() {
 
 async function resetWaterSavings() {
     if (managedGuard()) return;
-    if (!confirm('Reset the water savings counter? Run history will be kept.')) return;
+    var ok = await showConfirm({ title: 'Reset Water Savings', message: 'Reset the water savings counter to zero? Run history will be kept.', confirmText: 'Reset Savings', confirmClass: 'btn-warning', icon: '&#128167;' });
+    if (!ok) return;
     try {
         const result = await api('/water_settings/reset_savings', { method: 'POST' });
         if (result.success) {
@@ -4264,7 +4314,8 @@ async function resetWaterSavings() {
 
 async function clearWeatherLog() {
     if (managedGuard()) return;
-    if (!confirm('Clear all weather log entries? This cannot be undone.')) return;
+    var ok = await showConfirm({ title: 'Clear Weather Log', message: 'Clear all weather log entries? <strong>This cannot be undone.</strong>', confirmText: 'Clear Log', confirmClass: 'btn-danger', icon: '&#127780;' });
+    if (!ok) return;
     try {
         const result = await api('/weather/log', { method: 'DELETE' });
         if (result.success) {
@@ -5289,7 +5340,8 @@ async function addHoProbeFromDevice() {
 }
 
 async function deleteMoistureProbe(probeId) {
-    if (!confirm('Remove probe "' + probeId + '"?')) return;
+    var ok = await showConfirm({ title: 'Remove Probe', message: 'Remove probe <strong>"' + probeId.replace(/</g,'&lt;') + '"</strong>? This will delete its configuration and zone mappings.', confirmText: 'Remove Probe', confirmClass: 'btn-danger', icon: '&#128268;' });
+    if (!ok) return;
     try {
         await mapi('/probes/' + encodeURIComponent(probeId), 'DELETE');
         showToast('Probe removed');
@@ -5770,7 +5822,8 @@ async function markAllNotificationsRead() {
 }
 
 async function clearAllNotifications() {
-    if (!confirm('Clear all notifications? This cannot be undone.')) return;
+    var ok = await showConfirm({ title: 'Clear Notifications', message: 'Clear all notifications? <strong>This cannot be undone.</strong>', confirmText: 'Clear All', confirmClass: 'btn-danger', icon: '&#128276;' });
+    if (!ok) return;
     try {
         await api('/notifications/clear', { method: 'DELETE' });
         _notifPanelEvents = [];
@@ -6488,7 +6541,8 @@ async function showDebugLog() {
 }
 async function clearDebugLog() {
     if (managedGuard()) return;
-    if (!confirm('Clear the debug log?')) return;
+    var ok = await showConfirm({ title: 'Clear Debug Log', message: 'Clear the moisture debug log?', confirmText: 'Clear Log', confirmClass: 'btn-danger', icon: '&#128027;' });
+    if (!ok) return;
     try {
         await fetch(HBASE + '/debug/moisture-log', { method: 'DELETE' });
         showToast('Debug log cleared');
@@ -6917,8 +6971,9 @@ function hoDuplicateHead(sourceRow) {
     showToast('Row duplicated');
 }
 
-function hoDeleteHead(rowIdx) {
-    if (!confirm('Delete head #' + (rowIdx + 1) + '?')) return;
+async function hoDeleteHead(rowIdx) {
+    var ok = await showConfirm({ title: 'Delete Head', message: 'Delete head <strong>#' + (rowIdx + 1) + '</strong> from this zone?', confirmText: 'Delete Head', confirmClass: 'btn-danger', icon: '&#128465;' });
+    if (!ok) return;
     var heads = hoCollectHeadData();
     if (rowIdx >= heads.length) return;
     heads.splice(rowIdx, 1);
@@ -6940,7 +6995,8 @@ async function hoCopyFromZone() {
     // Check if target zone has existing data — confirm overwrite
     var existingHeads = hoCollectHeadData();
     if (existingHeads.length > 0) {
-        if (!confirm('This will replace all ' + existingHeads.length + ' existing head(s) in this zone with data from ' + sourceName + '. Continue?')) {
+        var ok = await showConfirm({ title: 'Replace Zone Heads', message: 'This will replace all <strong>' + existingHeads.length + '</strong> existing head(s) in this zone with data from <strong>' + sourceName.replace(/</g,'&lt;') + '</strong>.', confirmText: 'Replace Heads', confirmClass: 'btn-warning', icon: '&#128260;' });
+        if (!ok) {
             return;
         }
     }
@@ -7110,6 +7166,7 @@ function closeDynamicModal() {
 }
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+        if (document.getElementById('confirmModal').style.display === 'flex') { _confirmCancel(); return; }
         if (document.getElementById('dataNerdOverlay')) { dnClose(); return; }
         if (document.getElementById('notifPanelModal').style.display === 'flex') closeNotificationsPanel();
         else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
