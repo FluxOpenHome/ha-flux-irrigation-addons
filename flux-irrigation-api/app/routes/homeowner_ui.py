@@ -724,7 +724,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 </div>
 <style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 body.managed-mode .managed-hide { display:none !important; }
-body.managed-mode .managed-disabled { opacity:0.45; cursor:not-allowed !important; pointer-events:none !important; filter:grayscale(100%) !important; }
+body.managed-mode .managed-disabled { opacity:0.45; cursor:not-allowed !important; filter:grayscale(100%) !important; }
 </style>
 
 <script>
@@ -2588,7 +2588,7 @@ function renderScheduleCard(sched, durData, multData) {
         '<div><div style="font-size:14px;font-weight:600;color:' + (afOn ? 'var(--color-success)' : 'var(--text-secondary)') + ';">' +
         'Apply Factors to Schedule</div>' +
         '<div style="font-size:12px;color:var(--text-muted);">' + factorSummary + '</div></div>' +
-        '<button class="btn ' + (afOn ? 'btn-danger' : 'btn-primary') + ' btn-sm" ' +
+        '<button class="btn ' + (afOn ? 'btn-danger' : 'btn-primary') + ' btn-sm managed-disabled" ' +
         'onclick="toggleApplyFactors(' + !afOn + ')">' +
         (afOn ? 'Disable' : 'Enable') + '</button></div>';
 
@@ -3271,7 +3271,7 @@ async function loadEstGallons() {
             html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">since ' + resetDate.toLocaleDateString() + '</div>';
         }
         if (totalSaved > 0) {
-            html += '<div style="margin-top:4px;"><a href="#" onclick="event.preventDefault();event.stopPropagation();resetWaterSavings()" class="' + (isManaged() ? 'managed-disabled' : '') + '" style="font-size:11px;color:var(--text-muted);text-decoration:underline;">Reset</a></div>';
+            html += '<div style="margin-top:4px;"><a href="#" onclick="event.preventDefault();event.stopPropagation();resetWaterSavings()" class="managed-disabled" style="font-size:11px;color:var(--text-muted);text-decoration:underline;">Reset</a></div>';
         }
         html += '</div>';
         html += '</div>';
@@ -3680,7 +3680,7 @@ async function showPumpSettingsModal() {
 
     body += '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
         '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
-        '<button class="btn btn-primary" onclick="savePumpSettings()">Save</button>' +
+        '<button class="btn btn-primary managed-disabled" onclick="savePumpSettings()">Save</button>' +
         '</div>';
 
     body += '</div>';
@@ -3779,7 +3779,7 @@ async function showWaterSettingsModal() {
 
     body += '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">' +
         '<button class="btn btn-secondary" onclick="closeDynamicModal()">Cancel</button>' +
-        '<button class="btn btn-primary" onclick="saveWaterSettings()">Save</button>' +
+        '<button class="btn btn-primary managed-disabled" onclick="saveWaterSettings()">Save</button>' +
         '</div>';
     body += '</div>';
 
@@ -4137,7 +4137,7 @@ async function loadWeatherRules() {
 
         // Save button
         html += '<div style="margin-top:12px;display:flex;gap:8px;">';
-        html += '<button class="btn btn-primary" onclick="saveWeatherRules()">Save Weather Rules</button>';
+        html += '<button class="btn btn-primary managed-disabled" onclick="saveWeatherRules()">Save Weather Rules</button>';
         html += '</div>';
 
         container.innerHTML = html;
@@ -4613,7 +4613,7 @@ async function loadMoisture() {
                 html += '<button class="btn btn-secondary btn-sm" onclick="hoProbeZonesSelectAll(\\'' + esc(pid) + '\\',false)">Select None</button>';
                 html += '</div>';
                 html += '<div id="hoProbeZoneCbs_' + esc(pid) + '" style="font-size:12px;">Loading zones...</div>';
-                html += '<button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="hoSaveProbeZones(\\'' + esc(pid) + '\\')">Save Zone Mapping</button>';
+                html += '<button class="btn btn-primary btn-sm managed-disabled" style="margin-top:6px;" onclick="hoSaveProbeZones(\\'' + esc(pid) + '\\')">Save Zone Mapping</button>';
                 html += '</div>';
                 html += '</div>';
             }
@@ -4804,7 +4804,7 @@ async function loadMoisture() {
         }
         html += '</div></div>';
 
-        html += '<button class="btn btn-primary btn-sm" style="margin-top:4px;" onclick="saveMoistureSettings()">Save Settings</button>';
+        html += '<button class="btn btn-primary btn-sm managed-disabled" style="margin-top:4px;" onclick="saveMoistureSettings()">Save Settings</button>';
         html += '</div></div>';
 
         // Probe Management
@@ -6527,7 +6527,7 @@ async function showDebugLog() {
         }
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
         html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
-        html += '<button class="btn btn-secondary btn-sm' + (isManaged() ? ' managed-disabled' : '') + '" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
+        html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
         html += '</div>';
         html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:70vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
         for (var i = 0; i < lines.length; i++) {
@@ -6649,7 +6649,7 @@ async function hoShowZoneDetailsModal(entityId, displayName) {
     body += '</div>';
 
     body += '<div style="margin-top:10px;display:flex;gap:8px;">';
-    body += '<button class="btn btn-primary" onclick="hoSaveZoneHeads()" style="font-size:13px;">&#128190; Save</button>';
+    body += '<button class="btn btn-primary managed-disabled" onclick="hoSaveZoneHeads()" style="font-size:13px;">&#128190; Save</button>';
     body += '<button class="btn btn-sm" onclick="closeDynamicModal()" style="font-size:13px;background:transparent;border:1px solid var(--border-light);color:var(--text-secondary);">Cancel</button>';
     body += '<span id="hoZoneSaveStatus" style="font-size:12px;color:var(--color-success);align-self:center;"></span>';
     body += '</div>';
