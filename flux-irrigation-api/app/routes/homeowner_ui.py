@@ -2745,9 +2745,9 @@ function renderScheduleCard(sched, durData, multData) {
             html += '<div class="tile">' +
                 '<div class="tile-name">' + esc(label) + '</div>' +
                 '<div class="tile-state">' + esc(st.state) + '</div>' +
-                '<div class="tile-actions" style="flex-wrap:wrap;gap:4px;">' +
-                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM" style="width:100px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
-                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
+                '<div class="tile-actions" style="display:flex;flex-direction:column;gap:4px;max-width:100px;">' +
+                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM" style="width:100%;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;box-sizing:border-box;height:25px;">' +
+                '<button class="btn btn-primary btn-sm" style="width:100%;height:25px;padding:0;font-size:11px;" onclick="setEntityValue(\\'' + eid +
                 '\\',\\'text\\',{value:document.getElementById(\\'' + inputId + '\\').value})">Set</button>' +
                 '</div></div>';
         }
