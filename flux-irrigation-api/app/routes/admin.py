@@ -230,8 +230,7 @@ async def delete_api_key(key_index: int):
 async def list_devices(show_all: bool = False):
     """List Home Assistant devices for selection.
 
-    By default, filters to likely irrigation controllers (matching keywords
-    like 'flux', 'open home', 'irrigation', 'sprinkler', or 'esphome').
+    By default, filters to FluxOpenHome irrigation controller devices.
     Pass ?show_all=true to return every device.
     """
     config = get_config()
@@ -246,16 +245,9 @@ async def list_devices(show_all: bool = False):
             detail=f"Failed to fetch device registry: {type(e).__name__}: {e}",
         )
 
-    # Keywords that indicate an irrigation controller
-    IRRIGATION_KEYWORDS = [
-        "flux", "open home", "irrigation", "sprinkler", "esphome",
-        "rain", "valve", "watering", "lawn", "garden",
-    ]
-
     def _is_irrigation_device(name: str, manufacturer: str, model: str) -> bool:
-        """Check if any device field contains an irrigation-related keyword."""
-        searchable = f"{name} {manufacturer} {model}".lower()
-        return any(kw in searchable for kw in IRRIGATION_KEYWORDS)
+        """Check if device is a FluxOpenHome irrigation controller."""
+        return manufacturer == "FluxOpenHome" and "irrigation" in model.lower()
 
     # Build full device list
     all_devices = []
@@ -1869,11 +1861,11 @@ ADMIN_HTML = """<!DOCTYPE html>
             // Show/hide the "show all" link
             const toggleEl = document.getElementById('deviceFilterToggle');
             if (filtered && devices.length < totalCount) {
-                toggleEl.innerHTML = 'Showing ' + devices.length + ' irrigation device' + (devices.length !== 1 ? 's' : '') +
+                toggleEl.innerHTML = 'Showing ' + devices.length + ' FluxOpenHome device' + (devices.length !== 1 ? 's' : '') +
                     ' of ' + totalCount + ' total. <a href="#" onclick="loadAllDevices(event)">Show all devices</a>';
                 toggleEl.style.display = '';
             } else if (!filtered && totalCount > 0) {
-                toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="loadFilteredDevices(event)">Show only irrigation devices</a>';
+                toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="loadFilteredDevices(event)">Show only FluxOpenHome devices</a>';
                 toggleEl.style.display = '';
             } else {
                 toggleEl.style.display = 'none';

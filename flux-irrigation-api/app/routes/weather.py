@@ -685,7 +685,21 @@ async def run_weather_evaluation() -> dict:
 
     weather = await get_weather_data()
     if "error" in weather:
+        _log_weather_event("weather_fetch_error", {
+            "error": weather["error"],
+            "source": config.weather_source,
+        })
         return {"skipped": True, "reason": weather["error"]}
+
+    # Always log weather snapshot so chart has data even if rules evaluation
+    # has issues — this is the primary data source for the Weather Impact chart
+    _log_weather_event("weather_snapshot", {
+        "condition": weather.get("condition"),
+        "temperature": weather.get("temperature"),
+        "humidity": weather.get("humidity"),
+        "wind_speed": weather.get("wind_speed"),
+        "source": config.weather_source,
+    })
 
     rules_data = _load_weather_rules()
     rules = rules_data.get("rules", {})

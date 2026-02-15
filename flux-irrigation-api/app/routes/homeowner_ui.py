@@ -56,7 +56,7 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
     --color-warning: #f39c12;
     --color-link: #3498db;
     --color-info: #2196F3;
-    --header-gradient: linear-gradient(135deg, #1a7a4c, #2ecc71);
+    --header-gradient: linear-gradient(to right, #2ecc71 0%, #1a7a4c 40%, #155e3a 100%);
     --shadow-card: 0 1px 4px rgba(0,0,0,0.08);
     --shadow-header: 0 2px 8px rgba(0,0,0,0.15);
     --shadow-toast: 0 4px 12px rgba(0,0,0,0.2);
@@ -137,8 +137,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-icon { padding: 6px 10px; }
 
 /* Zone/Sensor Tiles */
-.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.tile { background: var(--bg-tile); border-radius: 8px; padding: 14px; border: 1px solid var(--border-light); min-height: 130px; position: relative; display:flex; flex-direction:column; }
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.tile { background: var(--bg-tile); border-radius: 10px; padding: 16px; border: 1px solid var(--border-light); min-height: 140px; position: relative; display:flex; flex-direction:column; }
 #cardBody_status .tile { min-height: auto; flex-direction:row; align-items:center; gap:12px; }
 #cardBody_status .tile .status-tile-text { flex:1; min-width:0; }
 #cardBody_status .tile .status-tile-text .tile-name { padding-right:0; margin-bottom:2px; }
@@ -148,12 +148,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .status-tile-icon.icon-warn { color:var(--color-warning,#f39c12); opacity:0.75; }
 .status-tile-icon.icon-off { color:var(--color-danger); opacity:0.7; }
 .tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
-.tile-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; padding-right: 70px; }
-.tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+.tile-name { font-weight: 600; font-size: 14px; margin-bottom: 2px; padding-right: 70px; display:flex; align-items:center; gap:0; }
+.tile-name .tile-icon-btn { cursor:pointer; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; margin-left:5px; background:none; border:none; line-height:1; vertical-align:middle; position:relative; top:1px; }
+.tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
 .tile-state.on { color: var(--color-success); font-weight: 500; }
-.tile-actions { display: flex; gap: 6px; margin-top:auto; }
-.tile-sprinkler-icon { position:absolute; bottom:14px; right:6px; display:flex; align-items:flex-end; gap:3px; color:var(--text-muted); pointer-events:none; }
-.tile-sprinkler-icon svg { opacity:0.45; transition:opacity 0.3s ease; }
+.tile-actions { display: flex; align-items:center; gap: 8px; flex-wrap:wrap; }
+.tile-bottom-row { display:flex; align-items:flex-end; justify-content:space-between; margin-top:auto; gap:6px; }
+.tile-sprinkler-icon { display:flex; align-items:flex-end; gap:2px; color:var(--text-muted); pointer-events:none; flex-shrink:0; }
+.tile-sprinkler-icon svg { opacity:0.4; transition:opacity 0.3s ease; }
 .tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
 @keyframes sprinklerPulse { 0%,100%{ opacity:0.5; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
 .tile-sprinkler-icon.pump-valve svg { opacity:0.45; }
@@ -209,7 +211,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     background: var(--bg-input); color: var(--text-primary); border-color: var(--border-input);
 }
-body.dark-mode .dark-toggle svg { filter: brightness(10) saturate(0); opacity: 0.9; }
+body.dark-mode .dark-toggle { background: rgba(255,255,255,0.15); }
+body.dark-mode .dark-toggle:hover { background: rgba(255,255,255,0.25); }
+body.dark-mode .dark-toggle svg { filter: brightness(2.2) saturate(0.5); }
 
 /* Settings gear & notification bell */
 .notif-bell-btn { position: relative; }
@@ -937,7 +941,7 @@ function getLockSvg(locked, size) {
 // --- Flux Icon System ---
 var _fluxIcons = {
     sun: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" WIDTH HEIGHT><circle cx="12" cy="12" r="4.5" fill="rgba(251,191,36,0.6)"/><g stroke="rgba(251,191,36,0.55)" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="5.3" y1="5.3" x2="7" y2="7"/><line x1="17" y1="17" x2="18.7" y2="18.7"/><line x1="5.3" y1="18.7" x2="7" y2="17"/><line x1="17" y1="7" x2="18.7" y2="5.3"/></g></svg>',
-    moon: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M20.35 15.35A9 9 0 0 1 8.65 3.65 9 9 0 1 0 20.35 15.35Z" opacity="0.7"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(255,245,220,0.9)"><path d="M20.35 15.35A9 9 0 0 1 8.65 3.65 9 9 0 1 0 20.35 15.35Z" opacity="0.85"/></svg>',
     cloud: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M19 11a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 11Z" opacity="0.45"/></svg>',
     partlycloudy: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><circle cx="9" cy="8" r="3.5" fill="rgba(251,191,36,0.5)"/><g stroke="rgba(251,191,36,0.4)" stroke-width="1.5" stroke-linecap="round"><line x1="9" y1="2" x2="9" y2="3.5"/><line x1="3" y1="8" x2="4.5" y2="8"/><line x1="5" y1="4" x2="6" y2="5"/></g><path d="M20 14a3 3 0 0 1 0 6H8a4 4 0 0 1-.4-7.97A5.5 5.5 0 0 1 18 13c.7 0 1.37.12 2 .34Z" fill="currentColor" opacity="0.45"/></svg>',
     rain: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 10a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 10Z" fill="currentColor" opacity="0.4"/><g stroke="rgba(59,130,246,0.6)" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="19" x2="7" y2="22"/><line x1="12" y1="19" x2="11" y2="22"/><line x1="16" y1="19" x2="15" y2="22"/></g></svg>',
@@ -957,11 +961,11 @@ var _fluxIcons = {
     pump: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="10" cy="14" r="6" opacity="0.35"/><circle cx="10" cy="14" r="3.5" opacity="0.6"/><rect x="14" y="12" width="8" height="4" rx="1" opacity="0.5"/><rect x="1" y="12.5" width="4" height="3" rx="0.5" opacity="0.35"/><rect x="7" y="6" width="6" height="3" rx="1" opacity="0.3"/><rect x="9" y="3" width="2" height="3" rx="0.5" opacity="0.25"/></svg>',
     rain_sensor: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 10a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 10Z" fill="currentColor" opacity="0.4"/><g stroke="rgba(59,130,246,0.6)" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="19" x2="7" y2="22"/><line x1="12" y1="19" x2="11" y2="22"/><line x1="16" y1="19" x2="15" y2="22"/></g></svg>',
     expansion: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="3" y="5" width="18" height="14" rx="2" opacity="0.35"/><rect x="6" y="8" width="3" height="3" rx="0.5" opacity="0.6"/><rect x="10.5" y="8" width="3" height="3" rx="0.5" opacity="0.5"/><rect x="15" y="8" width="3" height="3" rx="0.5" opacity="0.4"/><line x1="6" y1="14" x2="18" y2="14" stroke="currentColor" stroke-width="1" opacity="0.3"/><circle cx="7.5" cy="16.5" r="1" opacity="0.5"/><circle cx="12" cy="16.5" r="1" opacity="0.5"/><circle cx="16.5" cy="16.5" r="1" opacity="0.5"/></svg>',
-    gear: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(140,140,140,0.85)"><path d="M9.5 1.5h5v3.07a7.5 7.5 0 0 1 3.03 1.75l2.66-1.53 2.5 4.33-2.66 1.54a7.6 7.6 0 0 1 0 3.48l2.66 1.54-2.5 4.33-2.66-1.53a7.5 7.5 0 0 1-3.03 1.75V23.5h-5v-3.27a7.5 7.5 0 0 1-3.03-1.75l-2.66 1.53-2.5-4.33 2.66-1.54a7.6 7.6 0 0 1 0-3.48L1.31 9.12l2.5-4.33 2.66 1.53A7.5 7.5 0 0 1 9.5 4.57V1.5Z" opacity="0.45"/><circle cx="12" cy="12.5" r="4" opacity="0.75"/></svg>',
-    help: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(100,160,230,0.8)"><circle cx="12" cy="12" r="10" opacity="0.4"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5" stroke="rgba(100,160,230,0.9)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.85"/><circle cx="12" cy="16.5" r="1.2" opacity="0.85"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(70,70,80,0.95)"><path d="M9.5 1.5h5v3.07a7.5 7.5 0 0 1 3.03 1.75l2.66-1.53 2.5 4.33-2.66 1.54a7.6 7.6 0 0 1 0 3.48l2.66 1.54-2.5 4.33-2.66-1.53a7.5 7.5 0 0 1-3.03 1.75V23.5h-5v-3.27a7.5 7.5 0 0 1-3.03-1.75l-2.66 1.53-2.5-4.33 2.66-1.54a7.6 7.6 0 0 1 0-3.48L1.31 9.12l2.5-4.33 2.66 1.53A7.5 7.5 0 0 1 9.5 4.57V1.5Z" opacity="0.8"/><circle cx="12" cy="12.5" r="4" opacity="0.95"/></svg>',
+    help: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(40,90,180,0.95)"><circle cx="12" cy="12" r="10" opacity="0.75"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5" stroke="rgba(20,20,30,0.95)" stroke-width="2.5" stroke-linecap="round" fill="none"/><circle cx="12" cy="16.5" r="1.3" fill="rgba(20,20,30,0.95)"/></svg>',
     bug: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><ellipse cx="12" cy="15" rx="5" ry="6" opacity="0.45"/><circle cx="12" cy="7" r="3" opacity="0.55"/><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"><line x1="3" y1="10" x2="7" y2="12"/><line x1="21" y1="10" x2="17" y2="12"/><line x1="3" y1="16" x2="7" y2="15"/><line x1="21" y1="16" x2="17" y2="15"/></g><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"><line x1="9" y1="4" x2="7" y2="1.5"/><line x1="15" y1="4" x2="17" y2="1.5"/></g></svg>',
-    warning: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(220,80,60,0.8)"><path d="M4 20.5h16a2 2 0 0 0 1.73-3L13.73 3.5a2 2 0 0 0-3.46 0L2.27 17.5a2 2 0 0 0 1.73 3Z" opacity="0.45"/><line x1="12" y1="9.5" x2="12" y2="14.5" stroke="rgba(220,80,60,0.95)" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/><circle cx="12" cy="17.5" r="1.3" fill="rgba(220,80,60,0.95)" opacity="0.85"/></svg>',
-    bell: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(220,180,50,0.8)"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9Z" opacity="0.5"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="rgba(220,180,50,0.9)" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.7"/></svg>',
+    warning: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(180,50,30,0.95)"><path d="M4 20.5h16a2 2 0 0 0 1.73-3L13.73 3.5a2 2 0 0 0-3.46 0L2.27 17.5a2 2 0 0 0 1.73 3Z" opacity="0.85"/><line x1="12" y1="9.5" x2="12" y2="14.5" stroke="rgba(30,20,10,0.95)" stroke-width="2.5" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.3" fill="rgba(30,20,10,0.95)"/></svg>',
+    bell: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(230,190,40,1)"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9Z" opacity="0.9"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="rgba(190,150,20,1)" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>',
     clipboard: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="5" y="3" width="14" height="19" rx="2" opacity="0.35"/><rect x="8" y="1" width="8" height="4" rx="1.5" opacity="0.6"/><line x1="8" y1="10" x2="16" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/><line x1="8" y1="13.5" x2="14" y2="13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.35"/><line x1="8" y1="17" x2="12" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/></svg>',
     wrench: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.77 3.77Z" opacity="0.5"/></svg>',
     pencil: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" opacity="0.5"/><path d="M15 5l4 4" stroke="currentColor" stroke-width="1.5" opacity="0.3" fill="none"/></svg>',
@@ -996,7 +1000,8 @@ function fluxIcon(name, size) {
 // Init data-fi placeholders in static HTML
 (function() {
     document.querySelectorAll('[data-fi]').forEach(function(el) {
-        el.innerHTML = fluxIcon(el.getAttribute('data-fi'), parseInt(el.getAttribute('data-fs')) || 16);
+        var n = el.getAttribute('data-fi'), s = parseInt(el.getAttribute('data-fs')) || 16;
+        el.outerHTML = fluxIcon(n, s);
     });
 })();
 
@@ -1932,51 +1937,53 @@ async function loadZones() {
                 })()}
                 <div class="tile-name">
                     ${esc(displayName)}
-                    <span style="cursor:pointer;font-size:20px;color:var(--color-primary);margin-left:6px;"
-                          onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">${fluxIcon('pencil',14)}</span>
+                    <span class="tile-icon-btn" style="color:var(--color-primary);"
+                          onclick="event.stopPropagation();renameZone(\\'${z.entity_id}\\')">${fluxIcon('pencil',20)}</span>
                     ${(function() {
                         var zn = extractZoneNumber(z.entity_id, 'zone');
                         var modes = window._zoneModes || {};
                         var mv = (zn && modes[zn]) ? (modes[zn].state || '').toLowerCase() : '';
                         if (/pump|relay/.test(mv)) {
-                            return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings">' + fluxIcon('info',20) + '</span>';
+                            return '<span class="tile-icon-btn" style="color:var(--color-info);" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings">' + fluxIcon('info',18) + '</span>';
                         }
                         if (/master|valve/.test(mv)) {
-                            return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings">' + fluxIcon('info',20) + '</span>';
+                            return '<span class="tile-icon-btn" style="color:var(--color-info);" onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings">' + fluxIcon('info',18) + '</span>';
                         }
-                        return '<span style="cursor:pointer;font-size:20px;color:var(--color-info);margin-left:4px;" onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'' + z.entity_id + '\\', decodeURIComponent(\\'' + encodeURIComponent(displayName) + '\\'))" title="Zone head details">' + fluxIcon('info',20) + '</span>';
+                        return '<span class="tile-icon-btn" style="color:var(--color-info);" onclick="event.stopPropagation();hoShowZoneDetailsModal(\\'' + z.entity_id + '\\', decodeURIComponent(\\'' + encodeURIComponent(displayName) + '\\'))" title="Zone head details">' + fluxIcon('info',18) + '</span>';
                     })()}
                 </div>
                 <div class="tile-state ${isOn ? 'on' : ''}">${isOn ? 'Running' : 'Off'}</div>
-                <div class="tile-actions" style="flex-wrap:wrap;">
-                    ${isOn
-                        ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + zId + '\\')">Stop</button>' +
-                          '<span data-elapsed-since="' + (z.last_changed || '') + '" style="font-weight:700;color:var(--text-primary);font-size:13px;margin-left:6px;">' + _formatElapsed(z.last_changed) + '</span>'
-                        : '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', null)">Start</button>' +
-                          '<span style="display:flex;align-items:center;gap:4px;margin-top:4px;"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="width:60px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
-                          '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', document.getElementById(\\'dur_' + zId + '\\').value)">Timed</button></span>'
-                    }
+                <div class="tile-bottom-row">
+                    <div class="tile-actions">
+                        ${isOn
+                            ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + zId + '\\')">Stop</button>' +
+                              '<span data-elapsed-since="' + (z.last_changed || '') + '" style="font-weight:700;color:var(--text-primary);font-size:13px;margin-left:6px;">' + _formatElapsed(z.last_changed) + '</span>'
+                            : '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', null)">Start</button>' +
+                              '<span style="display:flex;align-items:center;gap:4px;"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="width:56px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
+                              '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', document.getElementById(\\'dur_' + zId + '\\').value)">Timed</button></span>'
+                        }
+                    </div>
+                    ${(function() {
+                        var zoneNum = extractZoneNumber(z.entity_id, 'zone');
+                        var modes = window._zoneModes || {};
+                        if (zoneNum && modes[zoneNum]) {
+                            var modeVal = (modes[zoneNum].state || '').toLowerCase();
+                            if (/pump|relay/.test(modeVal)) {
+                                return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('pump', 40) + '</div>';
+                            }
+                            if (/master|valve/.test(modeVal)) {
+                                return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('valve', 40) + '</div>';
+                            }
+                        }
+                        var catData = window._hoZoneSprinklerCat && window._hoZoneSprinklerCat[z.entity_id];
+                        if (!catData) return '';
+                        if (catData.single) {
+                            return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 40) + '</div>';
+                        } else {
+                            return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 28) + getSprinklerSvg(catData.categories[1], 28) + '</div>';
+                        }
+                    })()}
                 </div>
-                ${(function() {
-                    var zoneNum = extractZoneNumber(z.entity_id, 'zone');
-                    var modes = window._zoneModes || {};
-                    if (zoneNum && modes[zoneNum]) {
-                        var modeVal = (modes[zoneNum].state || '').toLowerCase();
-                        if (/pump|relay/.test(modeVal)) {
-                            return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('pump', 44) + '</div>';
-                        }
-                        if (/master|valve/.test(modeVal)) {
-                            return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('valve', 44) + '</div>';
-                        }
-                    }
-                    var catData = window._hoZoneSprinklerCat && window._hoZoneSprinklerCat[z.entity_id];
-                    if (!catData) return '';
-                    if (catData.single) {
-                        return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 44) + '</div>';
-                    } else {
-                        return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 30) + getSprinklerSvg(catData.categories[1], 30) + '</div>';
-                    }
-                })()}
             </div>`;
         }).join('') + '</div>';
     } catch (e) {
@@ -4544,8 +4551,8 @@ async function loadMoisture() {
                     const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
                     html += '<div style="margin-bottom:6px;">';
                     html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:2px;">';
-                    html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + (isCached ? ' <span style="font-size:9px;opacity:0.7;" title="Last reading before device went to sleep">(retained)</span>' : '') + '</span>';
-                    html += '<span>' + (val != null ? val.toFixed(0) + '%' : '—') + (stale ? ' ⏳' : '') + '</span>';
+                    html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + '</span>';
+                    html += '<span>' + (val != null ? val.toFixed(0) + '%' : '—') + '</span>';
                     html += '</div>';
                     html += '<div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden;">';
                     html += '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.3s;"></div>';
@@ -6630,6 +6637,16 @@ async function showDebugLog() {
         html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
         html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
         html += '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
+        html += '<span style="color:#e74c3c;font-weight:600;">● Fast/Immediate Skip</span>';
+        html += '<span style="color:#f39c12;font-weight:600;">● Preemptive Timer</span>';
+        html += '<span style="color:#e67e22;">● Schedule Continue / Backup Advance</span>';
+        html += '<span style="color:#9b59b6;">● Refresh Flags</span>';
+        html += '<span style="color:#2ecc71;font-weight:600;">● Zone Advance</span>';
+        html += '<span style="color:#3498db;">● Zone State Change</span>';
+        html += '<span style="color:#27ae60;font-weight:600;">● Success</span>';
+        html += '<span style="color:#e74c3c;">● Error</span>';
+        html += '</div>';
         html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:70vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i].replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -6638,14 +6655,18 @@ async function showDebugLog() {
                 html += '<span style="color:#e74c3c;font-weight:600;">' + line + '</span>\\n';
             else if (line.indexOf('PREEMPTIVE TIMER') >= 0)
                 html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
-            else if (line.indexOf('BACKUP ADVANCE') >= 0)
+            else if (line.indexOf('SCHEDULE CONTINUE') >= 0 || line.indexOf('BACKUP ADVANCE') >= 0)
                 html += '<span style="color:#e67e22;">' + line + '</span>\\n';
+            else if (line.indexOf('REFRESH FLAGS') >= 0)
+                html += '<span style="color:#9b59b6;">' + line + '</span>\\n';
             else if (line.indexOf('_advance_to_next_zone') >= 0)
                 html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
             else if (line.indexOf('ERROR') >= 0)
                 html += '<span style="color:#e74c3c;">' + line + '</span>\\n';
             else if (line.indexOf('on_zone_state_change') >= 0)
                 html += '<span style="color:#3498db;">' + line + '</span>\\n';
+            else if (line.indexOf('SUCCESS') >= 0)
+                html += '<span style="color:#27ae60;font-weight:600;">' + line + '</span>\\n';
             else
                 html += line + '\\n';
         }
@@ -7827,7 +7848,21 @@ function dnBuildMoisture(canvasId, data) {
 
 function dnBuildWeather(canvasId, data) {
     var td = dnTransformWeather(data.weather);
-    if (td.labels.length === 0) return null;
+    if (td.labels.length === 0) {
+        var wrap = document.getElementById(canvasId);
+        if (wrap && wrap.parentElement) {
+            var rawCount = (data.weather || []).length;
+            var msg = '<div style="text-align:center;padding:30px 20px;color:var(--text-muted);">';
+            msg += '<div style="font-size:15px;font-weight:600;margin-bottom:6px;">No weather evaluation data yet.</div>';
+            msg += '<div style="font-size:12px;opacity:0.7;">Weather data will appear after the system runs weather evaluations.</div>';
+            if (rawCount > 0) {
+                msg += '<div style="font-size:11px;opacity:0.5;margin-top:8px;">' + rawCount + ' log entries found but none contain temperature/multiplier data.</div>';
+            }
+            msg += '</div>';
+            wrap.parentElement.innerHTML = msg;
+        }
+        return null;
+    }
     var cfg = dnChartDefaults();
     var ctx = document.getElementById(canvasId);
     if (!ctx) return null;

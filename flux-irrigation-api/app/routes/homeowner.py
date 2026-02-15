@@ -808,12 +808,67 @@ async def homeowner_history_csv(
 
 @router.get("/weather/log", summary="Get weather event log")
 async def homeowner_weather_log(
-    limit: int = Query(200, ge=1, le=1000),
+    limit: int = Query(200, ge=1, le=10000),
     hours: int = Query(0, ge=0, le=8760),
 ):
     """Get the weather event log for the homeowner dashboard."""
     from routes.weather import get_weather_log
     return {"events": get_weather_log(limit=limit, hours=hours)}
+
+
+@router.get("/weather/debug", summary="Weather data collection diagnostics")
+async def homeowner_weather_debug():
+    """Diagnostic endpoint to check weather data collection status."""
+    import os
+    from config import get_config
+    from routes.weather import WEATHER_LOG_FILE, get_weather_log, get_weather_data
+
+    config = get_config()
+    result = {
+        "weather_enabled": config.weather_enabled,
+        "weather_source": config.weather_source,
+        "weather_entity_id": config.weather_entity_id or None,
+        "has_address": bool(config.homeowner_address or config.homeowner_zip),
+        "log_file_exists": os.path.exists(WEATHER_LOG_FILE),
+        "log_file_size_bytes": 0,
+        "total_log_entries": 0,
+        "entries_last_24h": 0,
+        "event_types": {},
+        "latest_entry": None,
+        "live_weather_test": None,
+    }
+
+    if os.path.exists(WEATHER_LOG_FILE):
+        result["log_file_size_bytes"] = os.path.getsize(WEATHER_LOG_FILE)
+
+    all_entries = get_weather_log(limit=10000, hours=0)
+    result["total_log_entries"] = len(all_entries)
+
+    recent = get_weather_log(limit=10000, hours=24)
+    result["entries_last_24h"] = len(recent)
+
+    # Count event types
+    for e in all_entries:
+        evt = e.get("event", "unknown")
+        result["event_types"][evt] = result["event_types"].get(evt, 0) + 1
+
+    if all_entries:
+        result["latest_entry"] = all_entries[-1]
+
+    # Try live fetch
+    try:
+        weather = await get_weather_data()
+        result["live_weather_test"] = {
+            "success": "error" not in weather,
+            "condition": weather.get("condition"),
+            "temperature": weather.get("temperature"),
+            "humidity": weather.get("humidity"),
+            "error": weather.get("error"),
+        }
+    except Exception as e:
+        result["live_weather_test"] = {"success": False, "error": str(e)}
+
+    return result
 
 
 @router.get("/weather/log/csv", summary="Export weather log as CSV")
