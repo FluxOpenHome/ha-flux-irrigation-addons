@@ -724,7 +724,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
 </div>
 <style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 body.managed-mode .managed-hide { display:none !important; }
-body.managed-mode .managed-disabled { opacity:0.45; cursor:not-allowed !important; }
+body.managed-mode .managed-disabled { opacity:0.45; cursor:not-allowed !important; pointer-events:none !important; filter:grayscale(100%) !important; }
 </style>
 
 <script>
@@ -733,13 +733,18 @@ const HBASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api/homeowner'
 let _systemMode = 'standalone';
 (async function() {
     try {
-        var r = await fetch(HBASE.replace('/api/homeowner', '/api/system-mode'));
+        var smUrl = HBASE.replace('/api/homeowner', '/api/system-mode');
+        console.log('[FLUX] Fetching system mode from:', smUrl);
+        var r = await fetch(smUrl);
+        if (!r.ok) { console.warn('[FLUX] system-mode fetch failed:', r.status, r.statusText); return; }
         var d = await r.json();
         _systemMode = d.mode || 'standalone';
+        console.log('[FLUX] System mode:', _systemMode);
         if (_systemMode === 'managed') {
             document.body.classList.add('managed-mode');
+            console.log('[FLUX] Managed mode active — restrictions applied');
         }
-    } catch(e) {}
+    } catch(e) { console.warn('[FLUX] system-mode error:', e); }
 })();
 function isManaged() { return _systemMode === 'managed'; }
 function managedGuard() {
