@@ -1978,12 +1978,8 @@ async def discover_moisture_probes() -> list[dict]:
     return candidates
 
 
-# Keywords for filtering HA devices — show Gophr/moisture probe devices
-DEVICE_KEYWORDS = ["gophr", "moisture"]
-
-
 async def list_moisture_devices(show_all: bool = False) -> dict:
-    """List HA devices, filtered to Gophr devices by default.
+    """List HA devices, filtered to FluxOpenHome Gophr devices by default.
 
     Returns devices in the same format as admin device listing.
     """
@@ -2009,10 +2005,9 @@ async def list_moisture_devices(show_all: bool = False) -> dict:
     if show_all:
         result = all_devices
     else:
-        # Filter to Gophr devices only
+        # Filter to FluxOpenHome Gophr devices only
         def _is_moisture_device(name: str, manufacturer: str, model: str) -> bool:
-            searchable = f"{name} {manufacturer} {model}".lower()
-            return any(kw in searchable for kw in DEVICE_KEYWORDS)
+            return manufacturer == "FluxOpenHome" and "gophr" in model.lower()
 
         result = [d for d in all_devices if _is_moisture_device(
             d["name"], d["manufacturer"], d["model"]

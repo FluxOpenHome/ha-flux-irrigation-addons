@@ -3021,13 +3021,14 @@ function renderControlTile(e) {
 }
 
 async function setEntityValue(entityId, domain, bodyObj, force) {
-    // In managed mode, block configuration changes but allow manual zone on/off
+    // In managed mode, allow zone controls (on/off, enable/disable, durations, schedules)
+    // but block system-level configuration changes
     if (isManaged()) {
         var eid = entityId.toLowerCase();
-        var isManualZone = (domain === 'switch' || domain === 'valve') &&
-            /zone[_]?\d+/.test(eid) && !/_enable/.test(eid) && !/enable_zone/.test(eid);
-        var isPauseResume = /pause|resume/.test(eid);
-        if (!isManualZone && !isPauseResume) {
+        var isZoneControl = /zone[_]?\d+/.test(eid);
+        var isSchedule = /start_time|schedule/.test(eid);
+        var isPauseResume = /pause|resume|start_stop/.test(eid);
+        if (!isZoneControl && !isSchedule && !isPauseResume) {
             managedGuard();
             return;
         }
@@ -5304,11 +5305,11 @@ async function loadHoMoistureDevices(showAll) {
 
         const toggleEl = document.getElementById('hoMoistureFilterToggle');
         if (filtered && devices.length < totalCount) {
-            toggleEl.innerHTML = 'Showing ' + devices.length + ' Gophr device' + (devices.length !== 1 ? 's' : '') +
+            toggleEl.innerHTML = 'Showing ' + devices.length + ' FluxOpenHome Gophr device' + (devices.length !== 1 ? 's' : '') +
                 ' of ' + totalCount + ' total. <a href="#" onclick="_hoMoistureShowAll=true;loadHoMoistureDevices(true);return false;">Show all devices</a>';
             toggleEl.style.display = '';
         } else if (!filtered && totalCount > 0) {
-            toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="_hoMoistureShowAll=false;loadHoMoistureDevices(false);return false;">Show only Gophr devices</a>';
+            toggleEl.innerHTML = 'Showing all ' + totalCount + ' devices. <a href="#" onclick="_hoMoistureShowAll=false;loadHoMoistureDevices(false);return false;">Show only FluxOpenHome devices</a>';
             toggleEl.style.display = '';
         } else {
             toggleEl.style.display = 'none';
