@@ -4395,9 +4395,9 @@ async function loadWeatherRules() {
         // Intelligent Precip settings
         const rIP = rules.intelligent_precip || {};
         html += '<div id="smartPrecipRules" style="display:' + (rainMode === 'intelligent_precip' ? 'block' : 'none') + ';">';
-        html += buildRuleRow('intelligent_precip', 'Precipitation Adjustment', 'Reduce zone run times based on NWS quantitative precipitation forecast', true, [
+        html += buildRuleRow('intelligent_precip', 'Precipitation Credit', 'Uses NWS forecast precipitation (QPF) and each zone\\'s GPM &amp; area to calculate how much rain covers irrigation needs. Zones without GPM data are skipped.', true, [
             { id: 'ip_qpf_lookahead', label: 'QPF Lookahead (hours)', value: rIP.qpf_lookahead_hours || 24, type: 'number', min: 6, max: 72, step: 6 },
-            { id: 'ip_min_run', label: 'Min run time (min)', value: rIP.min_run_minutes || 2, type: 'number', min: 1, max: 10, step: 0.5 }
+            { id: 'ip_min_run', label: 'Skip if under (min)', value: rIP.min_run_minutes || 2, type: 'number', min: 1, max: 10, step: 0.5 }
         ]);
         if (data.precip_qpf_inches != null && data.precip_qpf_inches > 0) {
             html += '<div style="padding:4px 12px;font-size:11px;color:var(--color-success);">Last QPF: ' + _dispPrecip(data.precip_qpf_inches) + ' expected</div>';

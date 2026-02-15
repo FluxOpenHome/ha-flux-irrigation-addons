@@ -720,7 +720,8 @@ def _calculate_precip_reductions(
     Returns:
         Dict of {entity_id: factor} where factor is 0.0-1.0.
         factor=1.0 means no reduction, 0.0 means skip entirely.
-        Zones without nozzle data are omitted (caller should use fallback).
+        Zones without GPM/area data are set to 0.0 (skip) — we can't
+        calculate credit without nozzle data, so skip to be safe.
     """
     import zone_nozzle_data
 
@@ -741,7 +742,9 @@ def _calculate_precip_reductions(
         area_sqft = heads.get("area_sqft", 0)
 
         if total_gpm <= 0 or area_sqft <= 0:
-            # No nozzle data — omit from dict (caller uses fallback)
+            # No GPM/area data — skip zone (can't calculate credit)
+            factors[eid] = 0.0
+            print(f"[WEATHER] Precip: zone {eid} has no GPM data — skip")
             continue
 
         duration_min = z.get("duration_minutes", 0)
