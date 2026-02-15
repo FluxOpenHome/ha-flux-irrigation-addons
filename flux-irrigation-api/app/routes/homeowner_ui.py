@@ -109,6 +109,8 @@ body.dark-mode {
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-body); color: var(--text-primary); }
 .header { background: var(--header-gradient); color: white; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-header); transition: box-shadow 0.2s; }
+.header .dark-toggle { color: rgba(255,255,255,0.85); }
+.header .dark-toggle:hover { color: rgba(255,255,255,1); }
 .header.sticky { position: sticky; top: 0; z-index: 100; }
 .header-left { display: flex; align-items: center; gap: 14px; }
 .header-logo { height: 44px; filter: brightness(0) invert(1); }
@@ -144,17 +146,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 #cardBody_status .tile .status-tile-text { flex:1; min-width:0; }
 #cardBody_status .tile .status-tile-text .tile-name { padding-right:0; margin-bottom:2px; }
 #cardBody_status .tile .status-tile-text .tile-state { margin-bottom:0; }
-.status-tile-icon { flex-shrink:0; color:var(--text-muted); opacity:0.4; }
-.status-tile-icon.icon-on { color:var(--color-success); opacity:0.75; }
-.status-tile-icon.icon-warn { color:var(--color-warning,#f39c12); opacity:0.75; }
-.status-tile-icon.icon-off { color:var(--color-danger); opacity:0.7; }
+.status-tile-icon { flex-shrink:0; color:var(--text-muted); opacity:0.6; }
+.status-tile-icon.icon-on { color:var(--color-success); opacity:0.9; }
+.status-tile-icon.icon-warn { color:var(--color-warning,#f39c12); opacity:0.9; }
+.status-tile-icon.icon-off { color:var(--color-danger); opacity:0.85; }
 .tile.active { background: var(--bg-active-tile); border-color: var(--border-active); }
 .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 2px; padding-right: 70px; display:flex; align-items:center; gap:0; }
 .tile-name .tile-icon-btn { cursor:pointer; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; margin-left:5px; background:none; border:none; line-height:1; vertical-align:middle; position:relative; top:1px; }
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
 .tile-state.on { color: var(--color-success); font-weight: 500; }
 .tile-actions { display: flex; align-items:center; gap: 8px; flex-wrap:wrap; }
-.tile-bottom-row { display:flex; align-items:flex-end; justify-content:space-between; margin-top:auto; gap:6px; }
+.tile-bottom-row { display:flex; align-items:flex-end; justify-content:space-between; margin-top:auto; gap:16px; }
 .tile-sprinkler-icon { display:flex; align-items:flex-end; gap:2px; color:var(--text-muted); pointer-events:none; flex-shrink:0; }
 .tile-sprinkler-icon svg { opacity:0.4; transition:opacity 0.3s ease; }
 .tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
@@ -896,11 +898,11 @@ function getStatusTileSvg(key, size) {
             + '<path d="M2.5 8.5 Q12 2 21.5 8.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.35"/>'
             + '</svg>',
         'system': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
-            + '<circle cx="12" cy="12" r="10" opacity="0.15"/>'
-            + '<circle cx="12" cy="12" r="7" opacity="0.25"/>'
-            + '<path d="M12 5 L12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>'
-            + '<path d="M8 6.5 Q6 8 5.5 10.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"/>'
-            + '<path d="M16 6.5 Q18 8 18.5 10.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"/>'
+            + '<circle cx="12" cy="12" r="10" opacity="0.3"/>'
+            + '<circle cx="12" cy="12" r="7" opacity="0.45"/>'
+            + '<path d="M12 5 L12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>'
+            + '<path d="M8 6.5 Q6 8 5.5 10.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.75"/>'
+            + '<path d="M16 6.5 Q18 8 18.5 10.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.75"/>'
             + '</svg>',
         'zones': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
             + '<rect x="2" y="2" width="8.5" height="8.5" rx="2" opacity="0.6"/>'
@@ -967,7 +969,7 @@ var _fluxIcons = {
     pump: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="10" cy="14" r="6" opacity="0.35"/><circle cx="10" cy="14" r="3.5" opacity="0.6"/><rect x="14" y="12" width="8" height="4" rx="1" opacity="0.5"/><rect x="1" y="12.5" width="4" height="3" rx="0.5" opacity="0.35"/><rect x="7" y="6" width="6" height="3" rx="1" opacity="0.3"/><rect x="9" y="3" width="2" height="3" rx="0.5" opacity="0.25"/></svg>',
     rain_sensor: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 10a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 10Z" fill="currentColor" opacity="0.4"/><g stroke="rgba(59,130,246,0.6)" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="19" x2="7" y2="22"/><line x1="12" y1="19" x2="11" y2="22"/><line x1="16" y1="19" x2="15" y2="22"/></g></svg>',
     expansion: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="3" y="5" width="18" height="14" rx="2" opacity="0.35"/><rect x="6" y="8" width="3" height="3" rx="0.5" opacity="0.6"/><rect x="10.5" y="8" width="3" height="3" rx="0.5" opacity="0.5"/><rect x="15" y="8" width="3" height="3" rx="0.5" opacity="0.4"/><line x1="6" y1="14" x2="18" y2="14" stroke="currentColor" stroke-width="1" opacity="0.3"/><circle cx="7.5" cy="16.5" r="1" opacity="0.5"/><circle cx="12" cy="16.5" r="1" opacity="0.5"/><circle cx="16.5" cy="16.5" r="1" opacity="0.5"/></svg>',
-    gear: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(70,70,80,0.95)"><path d="M9.5 1.5h5v3.07a7.5 7.5 0 0 1 3.03 1.75l2.66-1.53 2.5 4.33-2.66 1.54a7.6 7.6 0 0 1 0 3.48l2.66 1.54-2.5 4.33-2.66-1.53a7.5 7.5 0 0 1-3.03 1.75V23.5h-5v-3.27a7.5 7.5 0 0 1-3.03-1.75l-2.66 1.53-2.5-4.33 2.66-1.54a7.6 7.6 0 0 1 0-3.48L1.31 9.12l2.5-4.33 2.66 1.53A7.5 7.5 0 0 1 9.5 4.57V1.5Z" opacity="0.8"/><circle cx="12" cy="12.5" r="4" opacity="0.95"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M9.5 1.5h5v3.07a7.5 7.5 0 0 1 3.03 1.75l2.66-1.53 2.5 4.33-2.66 1.54a7.6 7.6 0 0 1 0 3.48l2.66 1.54-2.5 4.33-2.66-1.53a7.5 7.5 0 0 1-3.03 1.75V23.5h-5v-3.27a7.5 7.5 0 0 1-3.03-1.75l-2.66 1.53-2.5-4.33 2.66-1.54a7.6 7.6 0 0 1 0-3.48L1.31 9.12l2.5-4.33 2.66 1.53A7.5 7.5 0 0 1 9.5 4.57V1.5Z" opacity="0.8"/><circle cx="12" cy="12.5" r="4" opacity="0.95"/></svg>',
     help: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(40,90,180,0.95)"><circle cx="12" cy="12" r="10" opacity="0.75"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5" stroke="rgba(20,20,30,0.95)" stroke-width="2.5" stroke-linecap="round" fill="none"/><circle cx="12" cy="16.5" r="1.3" fill="rgba(20,20,30,0.95)"/></svg>',
     bug: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><ellipse cx="12" cy="15" rx="5" ry="6" opacity="0.45"/><circle cx="12" cy="7" r="3" opacity="0.55"/><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"><line x1="3" y1="10" x2="7" y2="12"/><line x1="21" y1="10" x2="17" y2="12"/><line x1="3" y1="16" x2="7" y2="15"/><line x1="21" y1="16" x2="17" y2="15"/></g><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"><line x1="9" y1="4" x2="7" y2="1.5"/><line x1="15" y1="4" x2="17" y2="1.5"/></g></svg>',
     warning: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(180,50,30,0.95)"><path d="M4 20.5h16a2 2 0 0 0 1.73-3L13.73 3.5a2 2 0 0 0-3.46 0L2.27 17.5a2 2 0 0 0 1.73 3Z" opacity="0.85"/><line x1="12" y1="9.5" x2="12" y2="14.5" stroke="rgba(30,20,10,0.95)" stroke-width="2.5" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.3" fill="rgba(30,20,10,0.95)"/></svg>',
