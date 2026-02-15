@@ -567,6 +567,13 @@ async def _fetch_nws_observations(station_url: str, backup_stations: list = None
                 data = resp.json()
                 props = data.get("properties", {})
 
+                # Precipitation: NWS reports in mm; try last hour, then last 6 hours
+                precip_mm = _extract_nws_value(props.get("precipitationLastHour"))
+                if precip_mm is None:
+                    p6 = _extract_nws_value(props.get("precipitationLast6Hours"))
+                    if p6 is not None:
+                        precip_mm = p6
+
                 return {
                     "textDescription": props.get("textDescription", ""),
                     "temperature": _extract_nws_value(props.get("temperature")),
@@ -574,6 +581,7 @@ async def _fetch_nws_observations(station_url: str, backup_stations: list = None
                     "windSpeed": _extract_nws_value(props.get("windSpeed")),
                     "windDirection": _extract_nws_value(props.get("windDirection")),
                     "barometricPressure": _extract_nws_value(props.get("barometricPressure")),
+                    "precipitationMm": precip_mm,
                     "timestamp": props.get("timestamp"),
                 }
         except Exception as e:
@@ -787,6 +795,14 @@ async def get_weather_data_nws() -> dict:
     # Fetch forecast
     forecast = await _fetch_nws_forecast(location["forecast_url"])
 
+    # Precipitation: convert mm to inches; also include QPF from rules
+    precip_mm = obs.get("precipitationMm")
+    precip_inches = round(precip_mm / 25.4, 2) if precip_mm is not None else None
+
+    # Include QPF (expected precipitation) from weather rules if available
+    rules_data = _load_weather_rules()
+    qpf_inches = rules_data.get("precip_qpf_inches")
+
     return {
         "entity_id": "nws_builtin",
         "condition": _map_nws_condition(obs.get("textDescription", "")),
@@ -797,6 +813,9 @@ async def get_weather_data_nws() -> dict:
         "wind_speed_unit": "mph",
         "wind_bearing": obs.get("windDirection"),
         "pressure": _pa_to_hpa(obs.get("barometricPressure")),
+        "precipitation_inches": precip_inches,
+        "precipitation_mm": precip_mm,
+        "qpf_inches": qpf_inches,
         "forecast": forecast,
         "last_updated": obs.get("timestamp"),
     }
@@ -828,6 +847,20 @@ async def get_weather_data() -> dict:
     attrs = state.get("attributes", {})
     forecast = attrs.get("forecast", [])
 
+    # HA entities may not provide precipitation directly
+    precip = attrs.get("precipitation")
+    precip_inches = None
+    precip_mm = None
+    if precip is not None:
+        # Assume HA provides in native unit; try to detect
+        precip_unit = attrs.get("precipitation_unit", "mm")
+        if "in" in precip_unit.lower():
+            precip_inches = round(float(precip), 2)
+            precip_mm = round(float(precip) * 25.4, 1)
+        else:
+            precip_mm = round(float(precip), 1)
+            precip_inches = round(float(precip) / 25.4, 2)
+
     return {
         "entity_id": config.weather_entity_id,
         "condition": state.get("state", "unknown"),
@@ -838,6 +871,8 @@ async def get_weather_data() -> dict:
         "wind_speed_unit": attrs.get("wind_speed_unit", "mph"),
         "wind_bearing": attrs.get("wind_bearing"),
         "pressure": attrs.get("pressure"),
+        "precipitation_inches": precip_inches,
+        "precipitation_mm": precip_mm,
         "forecast": forecast[:7],
         "last_updated": state.get("last_updated"),
     }

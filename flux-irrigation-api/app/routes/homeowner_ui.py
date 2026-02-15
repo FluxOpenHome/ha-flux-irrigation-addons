@@ -349,6 +349,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div class="nav-tabs">
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
+        <button class="dark-toggle" id="unitToggleBtn" onclick="toggleUnits()" title="Toggle Imperial/SI units" style="font-size:11px;font-weight:700;min-width:30px;"><script>document.write(localStorage.getItem('flux_units')==='si'?'SI':'IMP')</script></button>
         <button class="dark-toggle" id="timeFormatBtn" onclick="toggleTimeFormat()" title="Toggle 12hr/24hr time" style="font-size:12px;font-weight:700;min-width:36px;"><script>document.write(localStorage.getItem('flux_time_format')==='24h'?'24h':'12h')</script></button>
         <button class="dark-toggle" id="stickyHeaderBtn" onclick="toggleStickyHeader()" title="Pin header"><span data-fi="pin" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="28"></span></button>
@@ -1478,6 +1479,35 @@ function fToC(f) { return Math.round((f - 32) * 5 / 9); }
 function cToF(c) { return Math.round(c * 9 / 5 + 32); }
 function mphToKmh(mph) { return Math.round(mph * 1.609); }
 function kmhToMph(kmh) { return Math.round(kmh / 1.609); }
+function inToMm(inches) { return +(inches * 25.4).toFixed(1); }
+function mmToIn(mm) { return +(mm / 25.4).toFixed(2); }
+
+// Display-unit helpers — read from localStorage ('imperial' or 'si')
+function _getUnits() { return localStorage.getItem('flux_units') || 'imperial'; }
+function _isSI() { return _getUnits() === 'si'; }
+function _dispTemp(val, srcUnit) {
+    if (val == null) return 'N/A';
+    var isF = (srcUnit || '°F').indexOf('F') >= 0 || (srcUnit || '°F').indexOf('f') >= 0;
+    if (_isSI()) return isF ? fToC(val) + '°C' : val + '°C';
+    return isF ? val + '°F' : cToF(val) + '°F';
+}
+function _dispWind(val, srcUnit) {
+    if (val == null) return 'N/A';
+    var isMph = (srcUnit || 'mph').toLowerCase().indexOf('mph') >= 0;
+    if (_isSI()) return isMph ? mphToKmh(val) + ' km/h' : val + ' km/h';
+    return isMph ? val + ' mph' : kmhToMph(val) + ' mph';
+}
+function _dispPrecip(inches) {
+    if (inches == null) return 'N/A';
+    if (_isSI()) return inToMm(inches) + ' mm';
+    return (+inches).toFixed(2) + ' in';
+}
+function _dispTempShort(val, srcUnit) {
+    if (val == null) return '';
+    var isF = (srcUnit || '°F').indexOf('F') >= 0 || (srcUnit || '°F').indexOf('f') >= 0;
+    if (_isSI()) return (isF ? fToC(val) : val) + '°';
+    return (isF ? val : cToF(val)) + '°';
+}
 
 function syncUnitConversion(sourceId, targetId, convertFn) {
     const el = document.getElementById(sourceId);
@@ -4108,6 +4138,10 @@ function _buildWeatherCardShell() {
     html += '<div style="color:var(--text-placeholder);font-size:11px;">Wind</div>';
     html += '<div data-id="wWind" style="font-weight:600;font-size:16px;"></div>';
     html += '</div>';
+    html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+    html += '<div style="color:var(--text-placeholder);font-size:11px;">Precipitation</div>';
+    html += '<div data-id="wPrecip" style="font-weight:600;font-size:16px;"></div>';
+    html += '</div>';
     html += '</div>';
     html += '<div data-id="wForecast"></div>';
     html += '<div data-id="wAdjustments"></div>';
@@ -4134,7 +4168,8 @@ function _getVisibleWeatherKey(data) {
     const w = data.weather || {};
     const parts = [
         w.condition, w.temperature, w.humidity, w.wind_speed,
-        data.watering_multiplier,
+        w.precipitation_inches, w.precipitation_mm,
+        data.watering_multiplier, _getUnits(),
         JSON.stringify((data.active_adjustments || []).map(a => a.reason || a.rule)),
     ];
     // Include forecast visible fields only
@@ -4210,9 +4245,11 @@ async function loadWeather() {
         const el = (id) => body.querySelector('[data-id=\"' + id + '\"]');
         el('wIcon').innerHTML = icon;
         el('wCondition').textContent = w.condition || 'unknown';
-        el('wTemp').textContent = w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A';
+        el('wTemp').textContent = _dispTemp(w.temperature, w.temperature_unit);
         el('wHumidity').textContent = w.humidity != null ? w.humidity + '%' : 'N/A';
-        el('wWind').textContent = w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || 'mph') : 'N/A';
+        el('wWind').textContent = _dispWind(w.wind_speed, w.wind_speed_unit);
+        var _pi = w.precipitation_inches != null ? w.precipitation_inches : (w.precipitation_mm != null ? w.precipitation_mm / 25.4 : null);
+        el('wPrecip').textContent = _pi != null ? _dispPrecip(_pi) : _dispPrecip(0);
 
         // Forecast — rebuild only the forecast strip (lightweight)
         const forecastEl = el('wForecast');
@@ -4258,9 +4295,9 @@ async function loadWeather() {
                 fh += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:8px 10px;text-align:center;min-width:64px;">';
                 fh += '<div style="font-size:10px;color:var(--text-placeholder);white-space:nowrap;">' + esc(dayLabel) + '</div>';
                 fh += '<div style="font-size:18px;">' + fIcon + '</div>';
-                fh += '<div style="font-size:12px;font-weight:600;">' + (f.temperature != null ? f.temperature + '°' : '') + '</div>';
+                fh += '<div style="font-size:12px;font-weight:600;">' + _dispTempShort(f.temperature, w.temperature_unit) + '</div>';
                 if (f.templow != null) {
-                    fh += '<div style="font-size:11px;color:var(--text-muted);">' + f.templow + '°</div>';
+                    fh += '<div style="font-size:11px;color:var(--text-muted);">' + _dispTempShort(f.templow, w.temperature_unit) + '</div>';
                 }
                 if (precip > 0) {
                     fh += '<div style="font-size:10px;color:var(--color-link);">' + fluxIcon('droplet',14) + ' ' + precip + '%</div>';
@@ -4354,7 +4391,7 @@ async function loadWeatherRules() {
             { id: 'ip_min_run', label: 'Min run time (min)', value: rIP.min_run_minutes || 2, type: 'number', min: 1, max: 10, step: 0.5 }
         ]);
         if (data.precip_qpf_inches != null && data.precip_qpf_inches > 0) {
-            html += '<div style="padding:4px 12px;font-size:11px;color:var(--color-success);">Last QPF: ' + data.precip_qpf_inches.toFixed(2) + ' inches expected</div>';
+            html += '<div style="padding:4px 12px;font-size:11px;color:var(--color-success);">Last QPF: ' + _dispPrecip(data.precip_qpf_inches) + ' expected</div>';
         }
         html += '</div>'; // end smartPrecipRules
 
@@ -6510,6 +6547,19 @@ function toggleTimeFormat() {
         var el = document.getElementById('dashTimezone');
         if (el) { var st = el.getAttribute('data-state'); if (st) startHomeClock(st); }
     }
+}
+
+// --- Unit Toggle ---
+function toggleUnits() {
+    var cur = localStorage.getItem('flux_units') || 'imperial';
+    var next = cur === 'si' ? 'imperial' : 'si';
+    localStorage.setItem('flux_units', next);
+    showToast('Units: ' + (next === 'si' ? 'SI / Metric' : 'Imperial'));
+    var btn = document.getElementById('unitToggleBtn');
+    if (btn) btn.innerHTML = next === 'si' ? 'SI' : 'IMP';
+    // Force weather card to refresh with new units
+    _lastWeatherKey = null;
+    loadWeather();
 }
 
 // --- Dark Mode ---
