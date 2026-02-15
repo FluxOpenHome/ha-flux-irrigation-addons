@@ -155,15 +155,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tile-name .tile-icon-btn { cursor:pointer; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; margin-left:5px; background:none; border:none; line-height:1; vertical-align:middle; position:relative; top:1px; }
 .tile-state { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
 .tile-state.on { color: var(--color-success); font-weight: 500; }
-.tile-actions { display: flex; align-items:center; gap: 8px; flex-wrap:wrap; }
-.tile-bottom-row { display:flex; align-items:flex-end; margin-top:auto; gap:16px; }
-.tile-sprinkler-icon { display:flex; align-items:flex-end; gap:2px; color:var(--text-muted); pointer-events:none; flex-shrink:0; margin-left:auto; }
-.tile-sprinkler-icon svg { opacity:0.4; transition:opacity 0.3s ease; }
-.tile.active .tile-sprinkler-icon svg { color:var(--color-success); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
-@keyframes sprinklerPulse { 0%,100%{ opacity:0.5; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
+.tile-actions { display:flex; flex-direction:column; gap:6px; }
+.tile-actions .zone-start-btn { width:100%; }
+.tile-actions .zone-timed-row { display:flex; align-items:center; gap:6px; }
+.tile-actions .zone-timed-row input { flex:1; min-width:0; }
+.tile-actions .zone-timed-row .btn { flex:1; min-width:0; }
+.tile-bottom-row { display:flex; align-items:flex-end; margin-top:auto; gap:0; }
+.tile-sprinkler-icon { display:flex; align-items:center; justify-content:center; flex:1; color:var(--text-muted); pointer-events:none; }
+.tile-sprinkler-icon svg { opacity:0.45; transition:all 0.3s ease; }
+.tile.active .tile-sprinkler-icon { position:absolute; top:60%; left:50%; transform:translate(-50%,-50%); flex:none; }
+.tile.active .tile-sprinkler-icon svg { color:var(--color-info); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
+@keyframes sprinklerPulse { 0%,100%{ opacity:0.6; transform:scale(1); } 50%{ opacity:1; transform:scale(1.15); } }
 .tile-sprinkler-icon.pump-valve svg { opacity:0.45; }
+.tile.active .tile-sprinkler-icon.pump-valve { position:absolute; top:60%; left:50%; transform:translate(-50%,-50%); flex:none; }
 .tile.active .tile-sprinkler-icon.pump-valve svg { color:var(--color-info); opacity:0.85; animation:pumpPulse 2s ease-in-out infinite; }
-@keyframes pumpPulse { 0%,100%{ opacity:0.5; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
+@keyframes pumpPulse { 0%,100%{ opacity:0.6; transform:scale(1); } 50%{ opacity:1; transform:scale(1.15); } }
 
 /* Card Row — side-by-side cards */
 .card-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; }
@@ -1923,7 +1929,7 @@ async function loadZones() {
             return parseInt(aNum) - parseInt(bNum);
         });
         el.innerHTML = '<div class="tile-grid">' + zones.map(z => {
-            const zId = z.name || z.entity_id;
+            const zId = z.entity_id;
             const isOn = z.state === 'on';
             const displayName = getZoneDisplayName(z);
             return `
@@ -1965,31 +1971,33 @@ async function loadZones() {
                 <div class="tile-bottom-row">
                     <div class="tile-actions">
                         ${isOn
-                            ? '<button class="btn btn-danger btn-sm" onclick="stopZone(\\'' + zId + '\\')">Stop</button>' +
-                              '<span data-elapsed-since="' + (z.last_changed || '') + '" style="font-weight:700;color:var(--text-primary);font-size:13px;margin-left:6px;">' + _formatElapsed(z.last_changed) + '</span>'
-                            : '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', null)">Start</button>' +
-                              '<span style="display:flex;align-items:center;gap:4px;"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="width:56px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;">' +
-                              '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', document.getElementById(\\'dur_' + zId + '\\').value)">Timed</button></span>'
+                            ? '<button class="btn btn-danger btn-sm zone-start-btn" onclick="stopZone(\\'' + zId + '\\')">Stop</button>' +
+                              '<span data-elapsed-since="' + (z.last_changed || '') + '" style="font-weight:700;color:var(--text-primary);font-size:13px;">' + _formatElapsed(z.last_changed) + '</span>'
+                            : '<button class="btn btn-primary btn-sm zone-start-btn" onclick="startZone(\\'' + zId + '\\', null)">Start</button>' +
+                              '<div class="zone-timed-row"><input type="number" id="dur_' + zId + '" min="1" max="480" placeholder="min" style="padding:5px 8px;border:1px solid var(--border-input);border-radius:6px;font-size:12px;">' +
+                              '<button class="btn btn-primary btn-sm" onclick="startZone(\\'' + zId + '\\', document.getElementById(\\'dur_' + zId + '\\').value)">Timed</button></div>'
                         }
                     </div>
                     ${(function() {
+                        var sz = isOn ? 80 : 56;
+                        var szDual = isOn ? 56 : 40;
                         var zoneNum = extractZoneNumber(z.entity_id, 'zone');
                         var modes = window._zoneModes || {};
                         if (zoneNum && modes[zoneNum]) {
                             var modeVal = (modes[zoneNum].state || '').toLowerCase();
                             if (/pump|relay/.test(modeVal)) {
-                                return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('pump', 40) + '</div>';
+                                return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('pump', sz) + '</div>';
                             }
                             if (/master|valve/.test(modeVal)) {
-                                return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('valve', 40) + '</div>';
+                                return '<div class="tile-sprinkler-icon pump-valve">' + getSprinklerSvg('valve', sz) + '</div>';
                             }
                         }
                         var catData = window._hoZoneSprinklerCat && window._hoZoneSprinklerCat[z.entity_id];
                         if (!catData) return '';
                         if (catData.single) {
-                            return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 40) + '</div>';
+                            return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], sz) + '</div>';
                         } else {
-                            return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], 28) + getSprinklerSvg(catData.categories[1], 28) + '</div>';
+                            return '<div class="tile-sprinkler-icon">' + getSprinklerSvg(catData.categories[0], szDual) + getSprinklerSvg(catData.categories[1], szDual) + '</div>';
                         }
                     })()}
                 </div>
