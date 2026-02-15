@@ -108,7 +108,8 @@ body.dark-mode {
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-body); color: var(--text-primary); }
-.header { background: var(--header-gradient); color: white; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-header); }
+.header { background: var(--header-gradient); color: white; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-header); transition: box-shadow 0.2s; }
+.header.sticky { position: sticky; top: 0; z-index: 100; }
 .header-left { display: flex; align-items: center; gap: 14px; }
 .header-logo { height: 44px; filter: brightness(0) invert(1); }
 .header h1 { font-size: 20px; font-weight: 600; }
@@ -214,6 +215,10 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
 body.dark-mode .dark-toggle { background: rgba(255,255,255,0.15); }
 body.dark-mode .dark-toggle:hover { background: rgba(255,255,255,0.25); }
 body.dark-mode .dark-toggle svg { filter: brightness(2.2) saturate(0.5); }
+
+/* Gophr logo — white text in dark mode (default SVG), inverted to black in light mode */
+.gophr-logo { filter: none; }
+body:not(.dark-mode) .gophr-logo { filter: invert(1); }
 
 /* Settings gear & notification bell */
 .notif-bell-btn { position: relative; }
@@ -336,6 +341,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div class="nav-tabs">
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
+        <button class="dark-toggle" id="stickyHeaderBtn" onclick="toggleStickyHeader()" title="Pin header"><span data-fi="pin" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log"><span data-fi="clipboard" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="showHelp()" title="Help"><span data-fi="help" data-fs="28"></span></button>
@@ -991,6 +997,7 @@ var _fluxIcons = {
     plug: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="8" y="2" width="2.5" height="7" rx="1" opacity="0.5"/><rect x="13.5" y="2" width="2.5" height="7" rx="1" opacity="0.5"/><rect x="6" y="7" width="12" height="5" rx="2" opacity="0.45"/><rect x="10" y="12" width="4" height="4" rx="0.5" opacity="0.55"/><rect x="9" y="16" width="6" height="3" rx="1.5" opacity="0.4"/><line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.35"/></svg>',
     game: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="2" y="6" width="20" height="12" rx="4" opacity="0.4"/><line x1="7" y1="10" x2="7" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.6"/><line x1="5" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.6"/><circle cx="16" cy="11" r="1.2" opacity="0.55"/><circle cx="18.5" cy="13" r="1.2" opacity="0.55"/></svg>',
     qr: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1" opacity="0.5"/><rect x="4" y="4" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="14" y="2" width="8" height="8" rx="1" opacity="0.5"/><rect x="16" y="4" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="2" y="14" width="8" height="8" rx="1" opacity="0.5"/><rect x="4" y="16" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="14" y="14" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="19" y="14" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="14" y="19" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="19" y="19" width="3" height="3" rx="0.5" opacity="0.4"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M15.5 2.5L9.5 8.5L7 7L2 12L6.5 16.5L2 22H3L8 17.5L12 22L17 17L15.5 14.5L21.5 8.5L15.5 2.5Z" opacity="0.5"/><line x1="9.5" y1="8.5" x2="15.5" y2="14.5" stroke="currentColor" stroke-width="1.5" opacity="0.35" fill="none"/></svg>',
 };
 function fluxIcon(name, size) {
     var s = size || 16;
@@ -2858,7 +2865,7 @@ function renderScheduleCard(sched, durData, multData) {
                     if (_sr.B != null) _lines.push('B: ' + _sr.B + '%');
                     if (_lines.length) _tmbStack = '<div style="font-size:9px;font-weight:400;opacity:0.85;line-height:1.4;margin-top:1px;">' + _lines.join('<br>') + '</div>';
                 }
-                var _gophr = zoneHasMoisture ? ' <img src="' + HBASE + '/assets/gophr-logo" style="height:14px;vertical-align:middle;margin-left:3px;" alt="Gophr">' : '';
+                var _gophr = zoneHasMoisture ? ' <img src="' + HBASE + '/assets/gophr-logo" class="gophr-logo" style="height:22px;vertical-align:middle;margin-left:4px;" alt="Gophr">' : '';
                 // Combine source icons: gophr (moisture) + weather component emojis
                 var _sourceIcons = _gophr + _weatherIcons;
                 if ((adj && adj.skip) || zoneSkip) {
@@ -6274,6 +6281,26 @@ function toggleDarkMode() {
 (function initDarkToggleIcon() {
     const btn = document.querySelector('.dark-toggle');
     if (btn && document.body.classList.contains('dark-mode')) btn.innerHTML = fluxIcon('sun',28);
+})();
+
+// --- Sticky Header ---
+function toggleStickyHeader() {
+    var hdr = document.querySelector('.header');
+    var isSticky = hdr.classList.toggle('sticky');
+    localStorage.setItem('flux_sticky_header', isSticky ? '1' : '0');
+    var btn = document.getElementById('stickyHeaderBtn');
+    if (btn) btn.style.opacity = isSticky ? '1' : '0.5';
+}
+(function initStickyHeader() {
+    if (localStorage.getItem('flux_sticky_header') === '1') {
+        var hdr = document.querySelector('.header');
+        if (hdr) hdr.classList.add('sticky');
+        var btn = document.getElementById('stickyHeaderBtn');
+        if (btn) btn.style.opacity = '1';
+    } else {
+        var btn = document.getElementById('stickyHeaderBtn');
+        if (btn) btn.style.opacity = '0.5';
+    }
 })();
 
 // --- Live Clock ---
