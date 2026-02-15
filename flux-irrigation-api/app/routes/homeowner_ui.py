@@ -4177,7 +4177,7 @@ function _getVisibleWeatherKey(data) {
     const w = data.weather || {};
     const parts = [
         w.condition, w.temperature, w.humidity, w.wind_speed,
-        w.precipitation_inches, w.precipitation_mm,
+        w.precipitation_inches, w.precipitation_mm, w.qpf_inches,
         data.watering_multiplier, _getUnits(),
         JSON.stringify((data.active_adjustments || []).map(a => a.reason || a.rule)),
     ];
@@ -4257,8 +4257,16 @@ async function loadWeather() {
         el('wTemp').textContent = _dispTemp(w.temperature, w.temperature_unit);
         el('wHumidity').textContent = w.humidity != null ? w.humidity + '%' : 'N/A';
         el('wWind').textContent = _dispWind(w.wind_speed, w.wind_speed_unit);
-        var _pi = w.precipitation_inches != null ? w.precipitation_inches : (w.precipitation_mm != null ? w.precipitation_mm / 25.4 : null);
-        el('wPrecip').textContent = _pi != null ? _dispPrecip(_pi) : _dispPrecip(0);
+        // Precipitation: prefer QPF forecast (useful) over station observation (often null/0)
+        var _qpf = w.qpf_inches;
+        var _obs = w.precipitation_inches != null ? w.precipitation_inches : (w.precipitation_mm != null ? w.precipitation_mm / 25.4 : null);
+        if (_qpf != null && _qpf > 0) {
+            el('wPrecip').innerHTML = _dispPrecip(_qpf) + '<div style="font-size:9px;color:var(--text-muted);font-weight:400;">forecast</div>';
+        } else if (_obs != null && _obs > 0) {
+            el('wPrecip').innerHTML = _dispPrecip(_obs) + '<div style="font-size:9px;color:var(--text-muted);font-weight:400;">observed</div>';
+        } else {
+            el('wPrecip').textContent = _dispPrecip(0);
+        }
 
         // Forecast — rebuild only the forecast strip (lightweight)
         const forecastEl = el('wForecast');

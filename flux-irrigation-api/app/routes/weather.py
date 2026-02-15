@@ -654,17 +654,25 @@ async def _fetch_nws_qpf(lookahead_hours: int = 24) -> float | None:
             resp.raise_for_status()
             data = resp.json()
 
-        qpf_data = (data.get("properties", {})
-                     .get("quantitativePrecipitation", {})
-                     .get("values", []))
+        props = data.get("properties", {})
+        qpf_obj = props.get("quantitativePrecipitation", {})
+        qpf_data = qpf_obj.get("values", [])
         if not qpf_data:
-            print("[WEATHER-QPF] No quantitativePrecipitation data in response")
+            # Log what keys ARE available so we can diagnose
+            avail_keys = [k for k in props.keys() if "precip" in k.lower() or "rain" in k.lower()]
+            print(f"[WEATHER-QPF] No quantitativePrecipitation values in response. "
+                  f"Available precip-related keys: {avail_keys}")
             _qpf_cache.update({"value_mm": None, "fetched_at": datetime.now(timezone.utc).isoformat()})
             return None
 
         now = datetime.now(timezone.utc)
         cutoff = now + timedelta(hours=lookahead_hours)
         total_mm = 0.0
+        matched_count = 0
+
+        print(f"[WEATHER-QPF] Processing {len(qpf_data)} QPF entries, "
+              f"window: {now.strftime('%H:%M UTC')} to {cutoff.strftime('%H:%M UTC')} "
+              f"({lookahead_hours}h)")
 
         for entry in qpf_data:
             valid_time = entry.get("validTime", "")
@@ -687,6 +695,8 @@ async def _fetch_nws_qpf(lookahead_hours: int = 24) -> float | None:
             if period_start < now - timedelta(hours=12):
                 continue  # Skip old periods
             total_mm += value
+            matched_count += 1
+            print(f"[WEATHER-QPF]   +{value:.2f}mm from {valid_time}")
 
         _qpf_cache.update({
             "value_mm": round(total_mm, 2),
@@ -802,9 +812,19 @@ async def get_weather_data_nws() -> dict:
     precip_mm = obs.get("precipitationMm")
     precip_inches = round(precip_mm / 25.4, 2) if precip_mm is not None else None
 
-    # Include QPF (expected precipitation) from weather rules if available
+    # Include QPF (expected precipitation) — read from rules cache, or fetch live
     rules_data = _load_weather_rules()
     qpf_inches = rules_data.get("precip_qpf_inches")
+    if qpf_inches is None:
+        try:
+            ip_rules = rules_data.get("rules", {}).get("intelligent_precip", {})
+            qpf_mm = await _fetch_nws_qpf(
+                lookahead_hours=ip_rules.get("qpf_lookahead_hours", 24)
+            )
+            if qpf_mm is not None:
+                qpf_inches = round(qpf_mm / 25.4, 3)
+        except Exception:
+            pass
 
     return {
         "entity_id": "nws_builtin",
@@ -1063,19 +1083,29 @@ async def run_weather_evaluation() -> dict:
             })
 
     # --- Rain Forecast & Precipitation Rules ---
-    # Behavior depends on rain_control_mode:
-    #   "rain_holds" (default): forecast/threshold rules PAUSE the system
-    #   "intelligent_precip": fetch QPF data and reduce zone durations proportionally
     rain_mode = rules_data.get("rain_control_mode", "rain_holds")
 
-    if rain_mode == "intelligent_precip" and not should_pause:
-        # Intelligent Precipitation Control: use QPF to reduce zone durations
-        # instead of pausing the entire system.
-        ip_rules = rules_data.get("rules", {}).get("intelligent_precip", {})
-        ip_lookahead = ip_rules.get("qpf_lookahead_hours", 24)
-        ip_min_run = ip_rules.get("min_run_minutes", 2.0)
+    # Always fetch QPF when using NWS — it's useful data regardless of mode.
+    # The observed precipitation from NWS stations is often null/unreliable;
+    # QPF (forecast precipitation) is the real useful number.
+    ip_rules = rules_data.get("rules", {}).get("intelligent_precip", {})
+    ip_lookahead = ip_rules.get("qpf_lookahead_hours", 24)
+    ip_min_run = ip_rules.get("min_run_minutes", 2.0)
 
+    config_src = get_config()
+    qpf_mm = None
+    if config_src.weather_source == "nws":
         qpf_mm = await _fetch_nws_qpf(lookahead_hours=ip_lookahead)
+        if qpf_mm is not None:
+            rules_data["precip_qpf_inches"] = round(qpf_mm / 25.4, 3)
+        else:
+            rules_data["precip_qpf_inches"] = None
+    else:
+        rules_data["precip_qpf_inches"] = None
+
+    # Apply intelligent precip zone factors only when in that mode and not paused
+    rules_data["precip_zone_factors"] = {}
+    if rain_mode == "intelligent_precip" and not should_pause:
         if qpf_mm is not None and qpf_mm > 0:
             # We have QPF data — calculate per-zone reductions
             from routes.moisture import _get_ordered_enabled_zones
@@ -1083,9 +1113,8 @@ async def run_weather_evaluation() -> dict:
             precip_factors = _calculate_precip_reductions(
                 qpf_mm, enabled_zones, min_run_minutes=ip_min_run
             )
-            rain_inches = round(qpf_mm / 25.4, 3)
+            rain_inches = rules_data["precip_qpf_inches"]
             rules_data["precip_zone_factors"] = precip_factors
-            rules_data["precip_qpf_inches"] = rain_inches
 
             if precip_factors:
                 avg_factor = round(sum(precip_factors.values()) / len(precip_factors), 3)
@@ -1107,28 +1136,15 @@ async def run_weather_evaluation() -> dict:
                 print(f"[WEATHER] Intelligent Precip: {rain_inches:.2f}\" QPF, "
                       f"{len(precip_factors)} zone(s) with factors, avg={avg_factor}")
             else:
-                # No zones have nozzle data — fall back to rain_holds for this eval
-                print("[WEATHER] Intelligent Precip: no zones with nozzle data, "
+                # No non-special zones — fall back to rain_holds for this eval
+                print("[WEATHER] Intelligent Precip: no zones returned factors, "
                       "falling back to rain_holds logic")
-                rules_data["precip_zone_factors"] = {}
-                rules_data["precip_qpf_inches"] = rain_inches
-                # Fall through to rain_holds rules below
                 rain_mode = "rain_holds"
         elif qpf_mm is None:
             # QPF unavailable — fall back to rain_holds
             print("[WEATHER] Intelligent Precip: QPF unavailable, "
                   "falling back to rain_holds")
-            rules_data["precip_zone_factors"] = {}
-            rules_data["precip_qpf_inches"] = None
             rain_mode = "rain_holds"
-        else:
-            # QPF = 0 — no rain expected, clear factors
-            rules_data["precip_zone_factors"] = {}
-            rules_data["precip_qpf_inches"] = 0.0
-    else:
-        # Clear intelligent precip data when not in that mode
-        rules_data["precip_zone_factors"] = {}
-        rules_data["precip_qpf_inches"] = None
 
     # Rain Holds rules (also used as fallback when intelligent_precip can't get data)
     if rain_mode == "rain_holds" and not should_pause:
