@@ -50,6 +50,27 @@ def _require_homeowner_mode():
     pass
 
 
+def _require_data_control(request: Request):
+    """Block destructive data operations in managed mode.
+
+    When system_mode is 'managed', only requests from the management
+    company (identified by X-Actor: Management header) are allowed to
+    clear logs, reset data, etc.  Homeowner requests get a 403.
+
+    In standalone mode, no restrictions — homeowner has full control.
+    """
+    config = get_config()
+    if config.system_mode != "managed":
+        return  # Standalone — no restrictions
+    actor = request.headers.get("X-Actor", "")
+    if actor == "Management":
+        return  # Management company — allowed
+    raise HTTPException(
+        status_code=403,
+        detail="Data management is controlled by your irrigation management company.",
+    )
+
+
 # --- Zone Aliases ---
 
 def _load_aliases() -> dict:
@@ -837,6 +858,7 @@ def _csv_escape(value: str) -> str:
 @router.delete("/weather/log", summary="Clear weather event log")
 async def homeowner_clear_weather_log(request: Request):
     """Clear the weather event log."""
+    _require_data_control(request)
     from routes.weather import WEATHER_LOG_FILE
     try:
         if os.path.exists(WEATHER_LOG_FILE):
@@ -850,7 +872,7 @@ async def homeowner_clear_weather_log(request: Request):
 @router.delete("/history/runs", summary="Clear run history")
 async def homeowner_clear_history(request: Request):
     """Clear the local run history log."""
-    _require_homeowner_mode()
+    _require_data_control(request)
     success = run_log.clear_run_history()
     if success:
         log_change(get_actor(request), "Run History", "Cleared all run history")
@@ -867,9 +889,9 @@ async def homeowner_moisture_debug_log(lines: int = Query(200, ge=1, le=500)):
 
 
 @router.delete("/debug/moisture-log", summary="Clear moisture debug log")
-async def homeowner_clear_moisture_debug_log():
+async def homeowner_clear_moisture_debug_log(request: Request):
     """Clear the moisture skip debug log."""
-    _require_homeowner_mode()
+    _require_data_control(request)
     from routes.moisture import clear_debug_log
     clear_debug_log()
     return {"success": True}
@@ -1117,7 +1139,7 @@ async def homeowner_reset_water_savings(request: Request):
 
     Run history is NOT deleted — only the savings display resets.
     """
-    _require_homeowner_mode()
+    _require_data_control(request)
     import water_data
     from datetime import datetime, timezone
     settings = water_data.get_water_settings()

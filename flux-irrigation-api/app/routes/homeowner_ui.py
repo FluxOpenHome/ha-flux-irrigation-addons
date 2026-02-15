@@ -556,7 +556,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
                     <option value="8760">Last year</option>
                 </select>
                 <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();exportHistoryCSV()">Export CSV</button>
-                <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();clearRunHistory()">Clear History</button>
+                <button class="btn btn-danger btn-sm managed-hide" onclick="event.stopPropagation();clearRunHistory()">Clear History</button>
             </div>
         </div>
         <div class="card-body" id="cardBody_history">
@@ -707,11 +707,27 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div style="padding:12px 20px 24px 20px;display:flex;flex-direction:column;gap:10px;" id="calendarPickerOptions"></div>
     </div>
 </div>
-<style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>
+<style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+body.managed-mode .managed-hide { display:none !important; }
+</style>
 
 <script>
 // Homeowner API base — all calls go through /admin/api/homeowner/*
 const HBASE = (window.location.pathname.replace(/\\/+$/, '')) + '/api/homeowner';
+let _systemMode = 'standalone';
+(async function() {
+    try {
+        var r = await fetch(HBASE.replace('/api/homeowner', '/admin/api/system-mode'));
+        var d = await r.json();
+        _systemMode = d.mode || 'standalone';
+        if (_systemMode === 'managed') {
+            document.body.classList.add('managed-mode');
+        }
+    } catch(e) {}
+})();
+function isManaged() { return _systemMode === 'managed'; }
+var _managedMsg = 'This setting is controlled by your irrigation management company.';
+function managedGuard() { if (isManaged()) { showToast(_managedMsg, 'error'); return true; } return false; }
 let refreshTimer = null;
 let geocodeCache = {};
 let leafletMap = null;
@@ -2834,6 +2850,17 @@ function renderControlTile(e) {
 }
 
 async function setEntityValue(entityId, domain, bodyObj, force) {
+    // In managed mode, block configuration changes but allow manual zone on/off
+    if (isManaged()) {
+        var eid = entityId.toLowerCase();
+        var isManualZone = (domain === 'switch' || domain === 'valve') &&
+            /zone[_]?\d+/.test(eid) && !/_enable/.test(eid) && !/enable_zone/.test(eid);
+        var isPauseResume = /pause|resume/.test(eid);
+        if (!isManualZone && !isPauseResume) {
+            showToast(_managedMsg, 'error');
+            return;
+        }
+    }
     try {
         var url = '/entities/' + entityId + '/set';
         if (force) url += '?force=true';
@@ -2856,6 +2883,7 @@ async function setEntityValue(entityId, domain, bodyObj, force) {
 }
 
 async function hoZoneModeChanged(modeEntityId, newMode) {
+    if (managedGuard()) return;
     // Clear alias for this zone so mode name shows through
     var zoneEid = modeEntityId.replace('select.', 'switch.').replace(/_mode$/, '');
     var aliases = window._currentZoneAliases || {};
@@ -3179,7 +3207,7 @@ async function loadEstGallons() {
             var resetDate = new Date(resetAt);
             html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">since ' + resetDate.toLocaleDateString() + '</div>';
         }
-        if (totalSaved > 0) {
+        if (totalSaved > 0 && !isManaged()) {
             html += '<div style="margin-top:4px;"><a href="#" onclick="event.preventDefault();event.stopPropagation();resetWaterSavings()" style="font-size:11px;color:var(--text-muted);text-decoration:underline;">Reset</a></div>';
         }
         html += '</div>';
@@ -3600,6 +3628,7 @@ async function showPumpSettingsModal() {
 }
 
 async function savePumpSettings() {
+    if (managedGuard()) return;
     // Determine brand/model from dropdown or custom input
     var brandSel = document.getElementById('hoPumpBrandSel');
     var modelSel = document.getElementById('hoPumpModelSel');
@@ -3701,6 +3730,7 @@ function toggleWaterCostField() {
 }
 
 async function saveWaterSettings() {
+    if (managedGuard()) return;
     var payload = {
         water_source: document.getElementById('waterSourceType').value,
         cost_per_1000_gal: parseFloat(document.getElementById('waterCostPer1000').value) || 0,
@@ -3779,7 +3809,7 @@ function _buildWeatherCardShell() {
     html += '<div style="display:flex;gap:6px;">';
     html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();evaluateWeatherNow()">Test Rules Now</button>';
     html += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();exportWeatherLogCSV()">Export Log</button>';
-    html += '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();clearWeatherLog()">Clear Log</button>';
+    html += '<button class="btn btn-danger btn-sm managed-hide" onclick="event.stopPropagation();clearWeatherLog()">Clear Log</button>';
     html += '</div>';
     html += '</div>';
     html += '<div id="weatherRulesContainer" style="display:none;margin-top:12px;"><div class="loading">Loading rules...</div></div>';
@@ -4081,6 +4111,7 @@ function buildRuleRow(ruleId, name, description, enabled, fields) {
 }
 
 async function saveWeatherRules() {
+    if (managedGuard()) return;
     try {
         const rules = {
             rain_detection: {
@@ -4204,6 +4235,7 @@ function exportWeatherLogCSV() {
 
 // --- Clear Logs ---
 async function clearRunHistory() {
+    if (managedGuard()) return;
     if (!confirm('Clear all run history? This cannot be undone.')) return;
     try {
         const result = await api('/history/runs', { method: 'DELETE' });
@@ -4217,6 +4249,7 @@ async function clearRunHistory() {
 }
 
 async function resetWaterSavings() {
+    if (managedGuard()) return;
     if (!confirm('Reset the water savings counter? Run history will be kept.')) return;
     try {
         const result = await api('/water_settings/reset_savings', { method: 'POST' });
@@ -4230,6 +4263,7 @@ async function resetWaterSavings() {
 }
 
 async function clearWeatherLog() {
+    if (managedGuard()) return;
     if (!confirm('Clear all weather log entries? This cannot be undone.')) return;
     try {
         const result = await api('/weather/log', { method: 'DELETE' });
@@ -4958,6 +4992,7 @@ function toggleMoistureSection(section) {
 }
 
 async function saveMoistureSettings() {
+    if (managedGuard()) return;
     try {
         const payload = {
             enabled: document.getElementById('moistureEnabled').checked,
@@ -5042,6 +5077,7 @@ function hoProbeZonesSelectAll(probeId, selectAll) {
 }
 
 async function hoSaveProbeZones(probeId) {
+    if (managedGuard()) return;
     const c = document.getElementById('hoProbeZoneCbs_' + probeId);
     if (!c) return;
     const selected = [];
@@ -5623,6 +5659,7 @@ async function hoToggleWakeSchedule(probeId) {
 }
 
 async function toggleApplyFactors(enable) {
+    if (managedGuard()) return;
     try {
         const result = await mapi('/settings', 'PUT', { apply_factors_to_schedule: enable });
         const isError = result.success === false;
@@ -6422,7 +6459,7 @@ async function showDebugLog() {
         }
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
         html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
-        html += '<button class="btn btn-secondary btn-sm" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
+        html += isManaged() ? '' : '<button class="btn btn-secondary btn-sm" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
         html += '</div>';
         html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:70vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
         for (var i = 0; i < lines.length; i++) {
@@ -6450,6 +6487,7 @@ async function showDebugLog() {
     }
 }
 async function clearDebugLog() {
+    if (managedGuard()) return;
     if (!confirm('Clear the debug log?')) return;
     try {
         await fetch(HBASE + '/debug/moisture-log', { method: 'DELETE' });
@@ -6980,6 +7018,7 @@ function hoCollectHeadData() {
 }
 
 async function hoSaveZoneHeads() {
+    if (managedGuard()) return;
     var entityId = window._hoZoneDetailsEntityId;
     if (!entityId) return;
     var heads;

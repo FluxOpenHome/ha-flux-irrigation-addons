@@ -558,24 +558,42 @@ async def get_system_mode():
 
 @router.put("/api/system-mode", summary="Set system mode")
 async def set_system_mode(body: dict):
-    """Set the system mode to standalone or managed."""
+    """Set the system mode to standalone or managed.
+
+    When switching from managed → standalone, automatically disconnects
+    the management company by clearing the connection URL and removing
+    the management API key.  The HA long-lived token is kept so the
+    homeowner doesn't have to recreate it.
+    """
     import json as json_mod
     mode = body.get("mode", "standalone")
     if mode not in ("standalone", "managed"):
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=400, content={"error": "Invalid mode. Must be 'standalone' or 'managed'."})
 
-    options_path = "/data/options.json"
-    options = {}
-    if os.path.exists(options_path):
-        with open(options_path, "r") as f:
-            options = json_mod.load(f)
+    options = _load_options()
+    old_mode = options.get("system_mode", "standalone")
     options["system_mode"] = mode
-    with open(options_path, "w") as f:
-        json_mod.dump(options, f, indent=2)
 
+    mgmt_disconnected = False
+    if old_mode == "managed" and mode == "standalone":
+        # Disconnect management company — clear URL and remove API key
+        mgmt_key_name = "Management Company (Connection Key)"
+        existing_keys = options.get("api_keys", [])
+        options["api_keys"] = [k for k in existing_keys if k.get("name") != mgmt_key_name]
+        options["homeowner_url"] = ""
+        options["connection_revoked"] = True
+        mgmt_disconnected = True
+        print("[ADMIN] Mode switched managed → standalone — management company disconnected")
+        log_change("Homeowner", "System Mode", "Switched to Stand Alone — management access revoked")
+
+    await _save_options(options)
     await reload_config()
-    return {"mode": mode, "status": "saved"}
+
+    result = {"mode": mode, "status": "saved"}
+    if mgmt_disconnected:
+        result["management_disconnected"] = True
+    return result
 
 
 @router.post("/api/connection-key", summary="Generate a connection key")
@@ -2951,6 +2969,8 @@ ADMIN_HTML = """<!DOCTYPE html>
     });
 
     // --- System Mode ---
+    let _currentSystemMode = 'standalone';
+
     function selectSystemMode(mode) {
         document.getElementById('modeStandaloneLabel').style.borderColor = mode === 'standalone' ? 'var(--color-primary)' : 'var(--border-input)';
         document.getElementById('modeManagedLabel').style.borderColor = mode === 'managed' ? 'var(--color-primary)' : 'var(--border-input)';
@@ -2959,6 +2979,24 @@ ADMIN_HTML = """<!DOCTYPE html>
     async function saveSystemMode() {
         const mode = document.querySelector('input[name="systemMode"]:checked').value;
         const statusEl = document.getElementById('systemModeStatus');
+
+        // Warn when switching from managed → standalone
+        if (_currentSystemMode === 'managed' && mode === 'standalone') {
+            var warned = confirm(
+                'ARE YOU SURE?\\n\\n' +
+                'Your management company will LOSE ACCESS to your irrigation system if you switch to Stand Alone mode.\\n\\n' +
+                'You will need to generate and send a new connection key to reconnect them.\\n\\n' +
+                'Press OK to disconnect and switch to Stand Alone, or Cancel to stay in Managed mode.'
+            );
+            if (!warned) {
+                // Reset radio back to managed
+                var radio = document.querySelector('input[name="systemMode"][value="managed"]');
+                if (radio) radio.checked = true;
+                selectSystemMode('managed');
+                return;
+            }
+        }
+
         try {
             statusEl.textContent = 'Saving...';
             statusEl.style.color = 'var(--text-secondary)';
@@ -2968,10 +3006,15 @@ ADMIN_HTML = """<!DOCTYPE html>
                 body: JSON.stringify({mode}),
             });
             if (!res.ok) throw new Error('Save failed');
+            _currentSystemMode = mode;
             statusEl.textContent = '\\u2713 Saved!';
             statusEl.style.color = 'var(--color-success)';
-            showToast('System mode updated to ' + mode);
+            showToast('System mode updated to ' + (mode === 'managed' ? 'Professionally Managed' : 'Stand Alone'));
             toggleManagementCardVisibility(mode);
+            if (mode === 'standalone') {
+                // Refresh the connection key section since it was wiped
+                loadConnectionKey();
+            }
             setTimeout(() => statusEl.textContent = '', 3000);
         } catch(e) {
             statusEl.textContent = 'Error saving';
@@ -2984,6 +3027,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             const res = await fetch(BASE + '/system-mode');
             const data = await res.json();
             const mode = data.mode || 'standalone';
+            _currentSystemMode = mode;
             const radio = document.querySelector('input[name="systemMode"][value="' + mode + '"]');
             if (radio) radio.checked = true;
             selectSystemMode(mode);
