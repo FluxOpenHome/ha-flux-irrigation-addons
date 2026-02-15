@@ -4467,7 +4467,7 @@ async function loadWeatherRules() {
 
         // Save button
         html += '<div style="margin-top:12px;display:flex;gap:8px;">';
-        html += '<button class="btn btn-primary managed-disabled" onclick="saveWeatherRules()">Save Weather Rules</button>';
+        html += '<button class="btn btn-primary" onclick="saveWeatherRules()">Save Weather Rules</button>';
         html += '</div>';
 
         container.innerHTML = html;
@@ -4541,7 +4541,6 @@ function buildRuleRow(ruleId, name, description, enabled, fields) {
 }
 
 async function saveWeatherRules() {
-    if (managedGuard()) return;
     try {
         const rules = {
             rain_detection: {
@@ -6560,16 +6559,10 @@ function showSettings() {
     var isSticky = localStorage.getItem('flux_sticky_header') === '1';
 
     var html = '<div style="max-height:60vh;overflow-y:auto;padding-right:4px;">';
-    // --- Layout ---
-    html += '<h4 style="margin:0 0 12px;font-size:14px;color:var(--text);">Layout</h4>';
-    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:13px;color:var(--text);">';
-    html += '<input type="checkbox" id="setSticky"' + (isSticky ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
-    html += '<div><strong>Sticky header</strong><br><span style="font-size:12px;color:var(--text-muted);">Keep the top header bar fixed when scrolling.</span></div>';
-    html += '</label>';
-    // --- Display ---
-    html += '<h4 style="margin:16px 0 12px;font-size:14px;color:var(--text);">Display</h4>';
-    html += '<div style="padding:8px 0;">';
-    html += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Time format</div>';
+    // --- Time Format ---
+    html += '<h4 style="margin:0 0 12px;font-size:14px;color:var(--text);">Time Format</h4>';
+    html += '<div style="padding:0 0 8px 0;">';
+    html += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Clock display</div>';
     html += '<div id="setTimeFormat" style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid var(--border);">';
     html += '<button type="button" data-val="12h"' + (!cur24 ? ' data-active="1"' : '') + ' onclick="_segToggle(this)" style="padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:' + (!cur24 ? 'var(--color-primary)' : 'var(--bg-card)') + ';color:' + (!cur24 ? '#fff' : 'var(--text-muted)') + ';">12hr</button>';
     html += '<button type="button" data-val="24h"' + (cur24 ? ' data-active="1"' : '') + ' onclick="_segToggle(this)" style="padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;border-left:1px solid var(--border);background:' + (cur24 ? 'var(--color-primary)' : 'var(--bg-card)') + ';color:' + (cur24 ? '#fff' : 'var(--text-muted)') + ';">24hr</button>';
@@ -6577,14 +6570,21 @@ function showSettings() {
     html += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Applies to all times displayed in the app.</div>';
     html += '</div>';
     // --- Units ---
-    html += '<div style="padding:8px 0;">';
-    html += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Units</div>';
+    html += '<h4 style="margin:16px 0 12px;font-size:14px;color:var(--text);">Units</h4>';
+    html += '<div style="padding:0 0 8px 0;">';
+    html += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Measurement system</div>';
     html += '<div id="setUnits" style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid var(--border);">';
     html += '<button type="button" data-val="imperial"' + (curUnits === 'imperial' ? ' data-active="1"' : '') + ' onclick="_segToggle(this)" style="padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:' + (curUnits === 'imperial' ? 'var(--color-primary)' : 'var(--bg-card)') + ';color:' + (curUnits === 'imperial' ? '#fff' : 'var(--text-muted)') + ';">Imperial</button>';
     html += '<button type="button" data-val="si"' + (curUnits === 'si' ? ' data-active="1"' : '') + ' onclick="_segToggle(this)" style="padding:6px 16px;font-size:12px;font-weight:600;border:none;cursor:pointer;border-left:1px solid var(--border);background:' + (curUnits === 'si' ? 'var(--color-primary)' : 'var(--bg-card)') + ';color:' + (curUnits === 'si' ? '#fff' : 'var(--text-muted)') + ';">SI / Metric</button>';
     html += '</div>';
     html += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Imperial: °F, mph, inches. &nbsp; SI: °C, km/h, mm.</div>';
     html += '</div>';
+    // --- Layout ---
+    html += '<h4 style="margin:16px 0 12px;font-size:14px;color:var(--text);">Layout</h4>';
+    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:13px;color:var(--text);">';
+    html += '<input type="checkbox" id="setSticky"' + (isSticky ? ' checked' : '') + ' style="accent-color:var(--color-primary);width:18px;height:18px;flex-shrink:0;">';
+    html += '<div><strong>Sticky header</strong><br><span style="font-size:12px;color:var(--text-muted);">Keep the top header bar fixed when scrolling.</span></div>';
+    html += '</label>';
     html += '</div>';
     // --- Buttons ---
     html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">';

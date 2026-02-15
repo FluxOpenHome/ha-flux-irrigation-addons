@@ -5514,6 +5514,7 @@ async def _preemptive_advance_timer(zone_entity_id: str, delay_seconds: float):
                     source="moisture_skip",
                     zone_name=f"Zone {sz['zone_num']}",
                     duration_seconds=0,
+                    scheduled_minutes=sz.get("duration_minutes", 0),
                 )
                 _debug_log(f"PREEMPTIVE TIMER: logged skip for zone {sz['zone_num']}")
             elif sz["original_enabled"]:
@@ -6307,6 +6308,7 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                         source="moisture_skip",
                         zone_name=f"Zone {zone_num}",
                         duration_seconds=0,
+                        scheduled_minutes=z.get("duration_minutes", 0),
                     )
                     _debug_log(f"FAST SKIP: zone {zone_num} — "
                                f"{'advanced' if advanced else 'last zone, stopped'}")
@@ -6393,10 +6395,12 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
 
                     # Also check active_schedule_run moisture_disabled flag
                     run_skip = False
+                    _imm_sched_mins = 0
                     if _active_schedule_run:
                         for z in _active_schedule_run["zone_sequence"]:
                             if z["zone_entity_id"] == zone_entity_id:
                                 run_skip = z.get("moisture_disabled", False)
+                                _imm_sched_mins = z.get("duration_minutes", 0)
                                 break
                     _debug_log(f"  active_run moisture_disabled={run_skip}")
 
@@ -6435,6 +6439,7 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                             source="moisture_skip",
                             zone_name=f"Zone {zone_num}",
                             duration_seconds=0,
+                            scheduled_minutes=_imm_sched_mins,
                         )
                         _debug_log(f"IMMEDIATE SKIP: zone {zone_num} — "
                                    f"{'advanced' if advanced else 'last zone, stopped'}")
@@ -6597,6 +6602,7 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
                                     source="moisture_skip",
                                     zone_name=f"Zone {sz['zone_num']}",
                                     duration_seconds=0,
+                                    scheduled_minutes=sz.get("duration_minutes", 0),
                                 )
                                 _debug_log(f"SCHEDULE CONTINUE: logged skip for zone {sz['zone_num']}")
                             elif sz["original_enabled"]:

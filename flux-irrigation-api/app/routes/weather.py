@@ -973,6 +973,7 @@ async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str)
                     source="weather_skip",
                     zone_name=zone_name,
                     duration_seconds=0,
+                    scheduled_minutes=ez.get("duration_minutes", 0),
                 )
                 skip_count += 1
 
@@ -1359,6 +1360,7 @@ async def run_weather_evaluation() -> dict:
                         source="weather_skip",
                         zone_name=zone_name,
                         duration_seconds=0,
+                        scheduled_minutes=ez.get("duration_minutes", 0),
                     )
                     skip_count += 1
                 print(f"[WEATHER] Logged weather_skip for "

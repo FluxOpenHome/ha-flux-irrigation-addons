@@ -39,6 +39,7 @@ def log_zone_event(
     source: str = "api",
     zone_name: str = "",
     duration_seconds: Optional[float] = None,
+    scheduled_minutes: Optional[float] = None,
 ):
     """Log a zone on/off event with current weather context.
 
@@ -49,6 +50,9 @@ def log_zone_event(
                 weather_pause, system_pause, stop_all, schedule, unknown)
         zone_name: Human-readable zone name
         duration_seconds: For "off" events, how long the zone ran
+        scheduled_minutes: The zone's scheduled run duration in minutes.
+                          Used as fallback for water savings when base_durations
+                          is not available (apply_factors_to_schedule disabled).
     """
     now = datetime.now(timezone.utc)
     entry = {
@@ -189,6 +193,13 @@ def log_zone_event(
                 if zone_suffix in dur_eid:
                     base_minutes = bd.get("base_value")
                     break
+
+            # Fallback: if base_durations is empty (apply_factors_to_schedule
+            # not enabled), use the scheduled_minutes passed by the caller.
+            # For weather_skip events this is the zone's configured run duration
+            # — the full amount that would have run but was prevented.
+            if base_minutes is None and scheduled_minutes is not None and scheduled_minutes > 0:
+                base_minutes = scheduled_minutes
 
             if base_minutes is not None and base_minutes > 0:
                 actual_minutes = (actual_dur or 0) / 60.0
