@@ -117,7 +117,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .nav-tab { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none; color: white; transition: background 0.15s ease; }
 .nav-tab:hover { background: rgba(255,255,255,0.15); }
 .nav-tab.active { background: rgba(255,255,255,0.25); }
-.dark-toggle { background: rgba(255,255,255,0.15); border: none; border-radius: 8px; cursor: pointer; font-size: 16px; padding: 4px 8px; transition: background 0.15s; line-height: 1; }
+.dark-toggle { background: rgba(255,255,255,0.15); border: none; border-radius: 8px; cursor: pointer; font-size: 16px; padding: 6px; transition: background 0.15s; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
 .dark-toggle:hover { background: rgba(255,255,255,0.25); }
 .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
 .card { background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-card); margin-bottom: 20px; overflow: hidden; }
@@ -254,7 +254,7 @@ body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
     .day-toggle { padding: 6px 10px; font-size: 12px; min-width: 44px; }
     .start-times-grid { grid-template-columns: 1fr; }
     .system-controls-row { flex-direction: column; }
-    .dark-toggle { font-size: 14px; padding: 3px 6px; }
+    .dark-toggle { font-size: 14px; padding: 4px; }
     .zone-settings-table { table-layout: fixed; }
     .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
@@ -331,12 +331,12 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div class="nav-tabs">
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
-        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="16"></span></button>
-        <button class="dark-toggle" onclick="showChangelog()" title="Change Log"><span data-fi="clipboard" data-fs="14"></span></button>
-        <button class="dark-toggle" onclick="showHelp()" title="Help"><span data-fi="help" data-fs="14"></span></button>
-        <button class="dark-toggle" onclick="showDebugLog()" title="Debug Log"><span data-fi="bug" data-fs="14"></span></button>
-        <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue"><span data-fi="warning" data-fs="14"></span></button>
-        <button class="dark-toggle notif-bell-btn" onclick="openNotificationsPanel()" title="Notifications"><span data-fi="bell" data-fs="14"></span><span class="notif-badge" id="notifBellBadge" style="display:none;">0</span></button>
+        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="28"></span></button>
+        <button class="dark-toggle" onclick="showChangelog()" title="Change Log"><span data-fi="clipboard" data-fs="28"></span></button>
+        <button class="dark-toggle" onclick="showHelp()" title="Help"><span data-fi="help" data-fs="28"></span></button>
+        <button class="dark-toggle" onclick="showDebugLog()" title="Debug Log"><span data-fi="bug" data-fs="28"></span></button>
+        <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue"><span data-fi="warning" data-fs="28"></span></button>
+        <button class="dark-toggle notif-bell-btn" onclick="openNotificationsPanel()" title="Notifications"><span data-fi="bell" data-fs="28"></span><span class="notif-badge" id="notifBellBadge" style="display:none;">0</span></button>
     </div>
 </div>
 
@@ -402,7 +402,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
                         <option value="2160">Last 90 days</option>
                         <option value="8760">Last year</option>
                     </select>
-                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings"><span data-fi="gear" data-fs="14"></span></button>
+                    <button onclick="event.stopPropagation();showWaterSettingsModal()" title="Water source settings" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;display:inline-flex;align-items:center;"><span data-fi="gear" data-fs="22"></span></button>
                 </div>
             </div>
             <div class="card-body" id="cardBody_gallons">
@@ -422,7 +422,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
                         <option value="2160">Last 90 days</option>
                         <option value="8760">Last year</option>
                     </select>
-                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings"><span data-fi="gear" data-fs="14"></span></button>
+                    <button onclick="event.stopPropagation();showPumpSettingsModal()" title="Pump settings" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;display:inline-flex;align-items:center;"><span data-fi="gear" data-fs="22"></span></button>
                 </div>
             </div>
             <div class="card-body" id="cardBody_pump">
@@ -701,7 +701,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px 12px 20px;border-bottom:1px solid var(--border-light);flex-shrink:0;">
             <h3 style="font-size:17px;font-weight:600;margin:0;color:var(--text-primary);"><span data-fi="bell" data-fs="16"></span> Notifications</h3>
             <div style="display:flex;align-items:center;gap:6px;">
-                <button onclick="showNotifSettingsView()" title="Notification Settings" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-muted);padding:0 4px;"><span data-fi="gear" data-fs="16"></span></button>
+                <button onclick="showNotifSettingsView()" title="Notification Settings" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;display:inline-flex;align-items:center;"><span data-fi="gear" data-fs="22"></span></button>
                 <button class="btn btn-secondary btn-sm" id="notifMarkAllBtn" onclick="markAllNotificationsRead()" style="font-size:11px;display:none;">Mark all read</button>
                 <button class="btn btn-secondary btn-sm" id="notifClearAllBtn" onclick="clearAllNotifications()" style="font-size:11px;display:none;">Clear</button>
                 <button onclick="closeNotificationsPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;">&times;</button>
@@ -4059,7 +4059,7 @@ async function loadWeather() {
 
         // Current conditions — update text only
         const el = (id) => body.querySelector('[data-id=\"' + id + '\"]');
-        el('wIcon').textContent = icon;
+        el('wIcon').innerHTML = icon;
         el('wCondition').textContent = w.condition || 'unknown';
         el('wTemp').textContent = w.temperature != null ? w.temperature + (w.temperature_unit || '°F') : 'N/A';
         el('wHumidity').textContent = w.humidity != null ? w.humidity + '%' : 'N/A';
@@ -6259,12 +6259,12 @@ async function toggleNotifPref(key, enabled) {
 function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
     localStorage.setItem('flux_dark_mode_homeowner', isDark);
-    document.querySelector('.dark-toggle').innerHTML = isDark ? fluxIcon('sun',16) : fluxIcon('moon',16);
+    document.querySelector('.dark-toggle').innerHTML = isDark ? fluxIcon('sun',28) : fluxIcon('moon',28);
     _applyDarkTiles();
 }
 (function initDarkToggleIcon() {
     const btn = document.querySelector('.dark-toggle');
-    if (btn && document.body.classList.contains('dark-mode')) btn.innerHTML = fluxIcon('sun',16);
+    if (btn && document.body.classList.contains('dark-mode')) btn.innerHTML = fluxIcon('sun',28);
 })();
 
 // --- Live Clock ---
