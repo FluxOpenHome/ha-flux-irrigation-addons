@@ -333,6 +333,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">🌙</button>
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log">📋</button>
         <button class="dark-toggle" onclick="showHelp()" title="Help">&#10067;</button>
+        <button class="dark-toggle" onclick="showDebugLog()" title="Debug Log">&#128027;</button>
         <button class="dark-toggle" onclick="showReportIssue()" title="Report Issue">&#9888;&#65039;</button>
         <button class="dark-toggle notif-bell-btn" onclick="openNotificationsPanel()" title="Notifications">&#128276;<span class="notif-badge" id="notifBellBadge" style="display:none;">0</span></button>
     </div>
@@ -6407,6 +6408,54 @@ function showHelp() {
 }
 function closeHelpModal() {
     document.getElementById('helpModal').style.display = 'none';
+}
+
+// --- Debug Log ---
+async function showDebugLog() {
+    try {
+        var resp = await fetch(HBASE + '/debug/moisture-log?lines=500');
+        var data = await resp.json();
+        var lines = data.lines || [];
+        if (!lines.length) {
+            showModal('Debug Log', '<p style="color:var(--text-muted);">No debug log entries yet.</p>', '800px');
+            return;
+        }
+        var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+        html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
+        html += '<button class="btn btn-secondary btn-sm" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
+        html += '</div>';
+        html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:70vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // Color-code key events
+            if (line.indexOf('FAST SKIP') >= 0 || line.indexOf('IMMEDIATE SKIP') >= 0)
+                html += '<span style="color:#e74c3c;font-weight:600;">' + line + '</span>\\n';
+            else if (line.indexOf('PREEMPTIVE TIMER') >= 0)
+                html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
+            else if (line.indexOf('BACKUP ADVANCE') >= 0)
+                html += '<span style="color:#e67e22;">' + line + '</span>\\n';
+            else if (line.indexOf('_advance_to_next_zone') >= 0)
+                html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
+            else if (line.indexOf('ERROR') >= 0)
+                html += '<span style="color:#e74c3c;">' + line + '</span>\\n';
+            else if (line.indexOf('on_zone_state_change') >= 0)
+                html += '<span style="color:#3498db;">' + line + '</span>\\n';
+            else
+                html += line + '\\n';
+        }
+        html += '</pre>';
+        showModal('Moisture Debug Log', html, '900px');
+    } catch(e) {
+        showModal('Debug Log', '<p style="color:var(--color-danger);">Failed to load debug log: ' + e.message + '</p>', '400px');
+    }
+}
+async function clearDebugLog() {
+    if (!confirm('Clear the debug log?')) return;
+    try {
+        await fetch(HBASE + '/debug/moisture-log', { method: 'DELETE' });
+        showToast('Debug log cleared');
+        closeDynamicModal();
+    } catch(e) { showToast(e.message, 'error'); }
 }
 
 // --- Zone Head Details ---

@@ -6217,6 +6217,49 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
             timer_task.cancel()
             print(f"[MOISTURE] Zone OFF → cancelled preemptive timer: {zone_entity_id}")
 
+    # --- FAST SKIP: probe-independent immediate skip ---
+    # This check runs BEFORE the probe loop.  If the active run tracker says
+    # this zone is moisture_disabled, skip it immediately by starting the next
+    # runnable zone.  This catches zones that ESPHome auto-advances to even
+    # though our preemptive timer tried to prevent it.
+    if is_on and not is_manual and _active_schedule_run is not None:
+        try:
+            for z in _active_schedule_run["zone_sequence"]:
+                if z["zone_entity_id"] == zone_entity_id and z.get("moisture_disabled"):
+                    import run_log as _rl_fast
+
+                    zone_num = _extract_zone_number(zone_entity_id)
+                    _debug_log(f"FAST SKIP: zone {zone_num} is moisture_disabled in "
+                               f"active run — immediately advancing")
+
+                    # Start the next runnable zone
+                    advanced = await _advance_to_next_zone(zone_entity_id)
+                    if not advanced:
+                        # Last enabled zone — stop it directly
+                        domain = (zone_entity_id.split(".")[0]
+                                  if "." in zone_entity_id else "switch")
+                        svc = "close" if domain == "valve" else "turn_off"
+                        await ha_client.call_service(
+                            domain, svc, {"entity_id": zone_entity_id}
+                        )
+
+                    _rl_fast.log_zone_event(
+                        entity_id=zone_entity_id,
+                        state="moisture_skip",
+                        source="moisture_skip",
+                        zone_name=f"Zone {zone_num}",
+                        duration_seconds=0,
+                    )
+                    _debug_log(f"FAST SKIP: zone {zone_num} — "
+                               f"{'advanced' if advanced else 'last zone, stopped'}")
+                    # Zone was skipped — skip the rest of on_zone_state_change
+                    return
+        except Exception as e:
+            _debug_log(f"FAST SKIP ERROR: {e}")
+            import traceback
+            _debug_log(traceback.format_exc())
+        # (if not moisture_disabled, continue normally below)
+
     # Load timeline for probe prep state
     timeline = _load_schedule_timeline()
     probe_prep = timeline.get("probe_prep", {}) if timeline else {}
