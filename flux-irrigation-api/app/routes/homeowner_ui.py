@@ -185,9 +185,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .day-toggle:hover { border-color: var(--border-hover); }
 .day-toggle.active { background: var(--bg-active-tile); border-color: var(--color-success); color: var(--color-success); }
 .start-times-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.zone-settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.zone-settings-table th { text-align: left; padding: 8px; border-bottom: 2px solid var(--border-light); font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
-.zone-settings-table td { padding: 8px; border-bottom: 1px solid var(--border-row); }
+.zone-settings-table { border-collapse: collapse; font-size: 13px; }
+.zone-settings-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border-light); font-size: 12px; color: var(--text-muted); text-transform: uppercase; white-space: nowrap; }
+.zone-settings-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-row); white-space: nowrap; }
 .system-controls-row { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Empty States */
