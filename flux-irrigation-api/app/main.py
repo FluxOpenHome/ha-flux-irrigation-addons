@@ -509,9 +509,10 @@ async def lifespan(app: FastAPI):
     # Full state sync to remote device on startup (ALL entities)
     if config.allowed_remote_entities:
         try:
-            from run_log import sync_all_remote_state
+            from run_log import sync_all_remote_state, _find_sync_needed_entity
             from routes.admin import sync_remote_settings
             import run_log
+            import ha_client
             # Push zone count + time format first (settings-only entities)
             settings_file = "/data/settings.json"
             use_12h = True
@@ -522,8 +523,17 @@ async def lifespan(app: FastAPI):
             await sync_remote_settings(use_12h=use_12h)
             # Then push ALL entity states (zones, schedules, durations, days, status, etc.)
             await sync_all_remote_state()
-            # Hold suppression for 15s — don't let remote send anything until settled
-            await asyncio.sleep(15)
+            # Turn OFF sync_needed switch on the remote (tells it we've synced)
+            sync_eid = _find_sync_needed_entity()
+            if sync_eid:
+                try:
+                    await ha_client.call_service("switch", "turn_off",
+                                                 {"entity_id": sync_eid})
+                    run_log._remote_log(f"Broker: startup — turned OFF {sync_eid}")
+                except Exception as e:
+                    run_log._remote_log(f"Broker: startup — failed to turn off sync_needed: {e}")
+            # Hold suppression for 10s — don't let remote send anything until settled
+            await asyncio.sleep(10)
             run_log._remote_reconnect_pending = False
             run_log._remote_log("Broker: startup sync complete — remote→controller mirroring enabled")
         except Exception as e:

@@ -106,6 +106,7 @@ def _convert_time_for_relay(value: str, source_eid: str) -> str:
 _ONE_WAY_SUFFIXES = {
     "zone_count",       # pushed via sync_remote_settings()
     "use_12_hour_format",  # pushed via sync_remote_settings()
+    "sync_needed",      # remote boot flag — add-on reads it, never mirrors it
 }
 
 # --- Remote Debug Log ---
@@ -882,21 +883,40 @@ async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state
 # Starts True to block remote→controller mirroring until first startup sync completes.
 _remote_reconnect_pending = True
 
-
 _reconnect_sync_running = False  # prevents duplicate concurrent syncs
+_sync_needed_entity: str | None = None  # auto-detected switch.xxx_sync_needed
+
+
+def _find_sync_needed_entity() -> str | None:
+    """Auto-detect the sync_needed switch from remote entity list."""
+    global _sync_needed_entity
+    if _sync_needed_entity is not None:
+        return _sync_needed_entity if _sync_needed_entity else None
+    try:
+        from config import get_config
+        config = get_config()
+        for eid in (config.allowed_remote_entities or []):
+            if eid.startswith("switch.") and eid.endswith("_sync_needed"):
+                _sync_needed_entity = eid
+                _remote_log(f"Broker: found sync_needed entity: {eid}")
+                return eid
+    except Exception:
+        pass
+    _sync_needed_entity = ""  # empty string = searched but not found
+    return None
+
 
 async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
-    """Remote device came back online — push ALL controller state to it.
+    """Remote device signaled sync needed — push ALL controller state to it.
 
-    When an ESPHome remote device reboots, its entities go from 'unavailable'
-    to their default/reset state.  Instead of mirroring those reset values
-    to the controller (which would overwrite real settings), we detect the
-    transition and push the controller's current state TO the remote.
+    Triggered when:
+    1. The sync_needed switch is detected ON (device just booted — ALWAYS_ON)
+    2. A remote entity transitions from unavailable (backup detection)
 
     _remote_reconnect_pending is already set True synchronously in the
     WebSocket loop BEFORE this task runs, so remote→controller mirroring
     is blocked instantly with no race window.  This function handles the
-    actual sync + settling, then clears the flag.
+    actual sync + settling, then clears the flag and turns sync_needed OFF.
     """
     global _remote_reconnect_pending, _reconnect_sync_running
     if _reconnect_sync_running:
@@ -904,16 +924,28 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
     _reconnect_sync_running = True
 
     import asyncio
-    _remote_log(f"Broker: remote reconnected — suppressing remote→controller, "
-               f"pushing controller state in 5s")
+    import ha_client
+    _remote_log(f"Broker: remote sync triggered — suppressing remote→controller, "
+               f"pushing controller state in 3s")
 
-    await asyncio.sleep(5)  # Wait for all entities to become available
+    await asyncio.sleep(3)  # Brief wait for entities to stabilize
     try:
         await sync_all_remote_state()
     except Exception as e:
         _remote_log(f"Broker: reconnect sync FAILED: {e}")
-    _remote_log("Broker: holding suppression 15s for remote to settle")
-    await asyncio.sleep(15)
+
+    # Turn OFF the sync_needed switch on the remote so it knows we synced
+    sync_eid = _find_sync_needed_entity()
+    if sync_eid:
+        try:
+            await ha_client.call_service("switch", "turn_off",
+                                         {"entity_id": sync_eid})
+            _remote_log(f"Broker: turned OFF {sync_eid}")
+        except Exception as e:
+            _remote_log(f"Broker: failed to turn off sync_needed: {e}")
+
+    _remote_log("Broker: holding suppression 10s for remote to settle")
+    await asyncio.sleep(10)
     _reconnect_sync_running = False
     _remote_reconnect_pending = False
     _remote_log("Broker: remote→controller mirroring re-enabled")
@@ -1230,18 +1262,33 @@ async def _watch_via_websocket(allowed_entities: set):
                 # and needs both remote mirroring AND timeline recalculation).
 
                 if entity_id in remote_entities:
-                    # If remote entity was unavailable and just came back,
-                    # push controller state TO remote (not the other way).
-                    if old_state == "unavailable" and new_state != "unavailable":
-                        # Set flag SYNCHRONOUSLY — blocks all subsequent remote→controller
-                        # events in this same event-loop tick.  The async task handles
-                        # the actual sync + settling, but the gate is already closed.
+                    _sync_eid = _find_sync_needed_entity()
+
+                    # --- Sync trigger 1: sync_needed switch turned ON (device booted) ---
+                    if _sync_eid and entity_id == _sync_eid and new_state == "on":
                         _remote_reconnect_pending = True
+                        _remote_log("Broker: sync_needed switch ON — remote just booted, blocking mirroring")
                         import asyncio
                         asyncio.create_task(
                             _handle_remote_reconnect(entity_id, remote_entities)
                         )
                         continue
+
+                    # --- Sync trigger 2 (backup): entity went unavailable → available ---
+                    if old_state == "unavailable" and new_state != "unavailable":
+                        if not _remote_reconnect_pending:
+                            _remote_reconnect_pending = True
+                            _remote_log("Broker: remote entity back from unavailable — blocking mirroring")
+                            import asyncio
+                            asyncio.create_task(
+                                _handle_remote_reconnect(entity_id, remote_entities)
+                            )
+                        continue
+
+                    # --- Skip the sync_needed entity itself (never mirror it) ---
+                    if _sync_eid and entity_id == _sync_eid:
+                        continue
+
                     # Remote entity changed → mirror to controller
                     import asyncio
                     asyncio.create_task(

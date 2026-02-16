@@ -111,7 +111,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .header { background: var(--header-gradient); color: white; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-header); transition: box-shadow 0.2s; }
 .header .dark-toggle { color: rgba(255,255,255,0.85); }
 .header .dark-toggle:hover { color: rgba(255,255,255,1); }
-.header.sticky { position: sticky; top: 0; z-index: 100; }
+.header.sticky { position: sticky; top: 0; z-index: 1000; }
 .header-left { display: flex; align-items: center; gap: 14px; }
 .header-logo { height: 44px; filter: brightness(0) invert(1); }
 .header h1 { font-size: 20px; font-weight: 600; }
