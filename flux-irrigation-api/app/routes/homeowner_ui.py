@@ -4240,32 +4240,32 @@ const _condIcons = {
 
 function _buildWeatherCardShell() {
     // Build the weather card DOM structure once with data-id attributes for targeted updates
-    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">';
-    html += '<div style="background:var(--bg-weather);border-radius:8px;padding:10px;text-align:center;">';
+    // Single flex row: condition + stats tiles + precipitation + forecast day cards
+    let html = '<div style="display:flex;gap:10px;overflow-x:auto;align-items:stretch;">';
+    html += '<div style="flex:0 0 auto;background:var(--bg-weather);border-radius:8px;padding:10px;text-align:center;min-width:90px;">';
     html += '<div data-id="wIcon" style="font-size:24px;"></div>';
     html += '<div data-id="wCondition" style="font-weight:600;text-transform:capitalize;font-size:13px;"></div>';
     html += '<div data-id="wSourceBadge" style="font-size:9px;color:var(--text-muted);margin-top:2px;"></div>';
     html += '</div>';
-    html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+    html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:10px;min-width:90px;">';
     html += '<div style="color:var(--text-placeholder);font-size:11px;">Temperature</div>';
     html += '<div data-id="wTemp" style="font-weight:600;font-size:16px;"></div>';
     html += '</div>';
-    html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+    html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:10px;min-width:90px;">';
     html += '<div style="color:var(--text-placeholder);font-size:11px;">Humidity</div>';
     html += '<div data-id="wHumidity" style="font-weight:600;font-size:16px;"></div>';
     html += '</div>';
-    html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+    html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:10px;min-width:90px;">';
     html += '<div style="color:var(--text-placeholder);font-size:11px;">Wind</div>';
     html += '<div data-id="wWind" style="font-weight:600;font-size:16px;"></div>';
     html += '</div>';
-    html += '</div>';
-    // Precipitation + Forecast row — side by side to save vertical space
-    html += '<div style="display:flex;align-items:stretch;gap:10px;margin-top:10px;">';
-    html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:10px;min-width:100px;">';
+    html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:10px;min-width:90px;">';
     html += '<div style="color:var(--text-placeholder);font-size:11px;">Precipitation</div>';
     html += '<div data-id="wPrecip" style="font-weight:600;font-size:16px;"></div>';
     html += '</div>';
-    html += '<div data-id="wForecast" style="flex:1;min-width:0;"></div>';
+    // Gap + separator before forecast — extra space for future tiles (UV, etc.)
+    html += '<div style="flex:0 0 1px;background:var(--border-light);margin:8px 16px;"></div>';
+    html += '<div data-id="wForecast" style="flex:1;min-width:0;display:flex;align-items:stretch;"></div>';
     html += '</div>';
     html += '<div data-id="wAdjustments"></div>';
     // Weather Rules Editor — collapsible section, collapsed by default
@@ -4425,6 +4425,7 @@ async function loadWeather() {
         }
         if (forecast.length > 0) {
             let fh = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;align-items:stretch;height:100%;">';
+            fh += '<div style="flex:0 0 auto;display:flex;align-items:center;padding:0 4px;"><span style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;writing-mode:vertical-lr;transform:rotate(180deg);">Forecast</span></div>';
             for (let i = 0; i < Math.min(forecast.length, 5); i++) {
                 const f = forecast[i];
                 const dt = f.datetime ? new Date(f.datetime) : null;
