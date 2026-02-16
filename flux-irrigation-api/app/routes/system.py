@@ -301,9 +301,16 @@ async def resume_system(request: Request):
     import schedule_control
     from routes.schedule import _load_schedules, _save_schedules
     data = _load_schedules()
+    was_paused = data.get("system_paused", False)
+    was_weather_disabled = data.get("weather_schedule_disabled", False)
     saved_states = data.get("saved_schedule_states", {})
+    print(f"[SYSTEM] Resume called: system_paused={was_paused}, "
+          f"weather_disabled={was_weather_disabled}, "
+          f"saved_states={list(saved_states.keys()) if saved_states else 'none'}")
+
     await schedule_control.restore_schedules(saved_states)
 
+    # Force-clear ALL pause flags unconditionally
     data["system_paused"] = False
     data["weather_schedule_disabled"] = False
     data.pop("weather_paused", None)
@@ -311,6 +318,7 @@ async def resume_system(request: Request):
     data.pop("weather_disable_reason", None)
     data.pop("saved_schedule_states", None)
     _save_schedules(data)
+    print(f"[SYSTEM] Resume complete: cleared all pause flags")
 
     await ha_client.fire_event(
         "flux_irrigation_system_resumed",

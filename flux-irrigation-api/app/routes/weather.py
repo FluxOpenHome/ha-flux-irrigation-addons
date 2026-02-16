@@ -1781,6 +1781,25 @@ async def run_weather_evaluation() -> dict:
     except Exception as e:
         print(f"[WEATHER] Moisture re-evaluation after weather eval failed: {e}")
 
+    # Periodic consistency: if system_paused is stuck but schedule switches are ON, clear it
+    if not should_pause:
+        try:
+            from routes.schedule import _load_schedules as _load_sched_check
+            from routes.schedule import _save_schedules as _save_sched_check
+            import schedule_control
+            sched_check = _load_sched_check()
+            if sched_check.get("system_paused"):
+                sched_entities = schedule_control.get_schedule_enable_entities()
+                if sched_entities:
+                    live = await ha_client.get_entities_by_ids(sched_entities)
+                    all_on = all(e.get("state") == "on" for e in live if e)
+                    if all_on:
+                        sched_check["system_paused"] = False
+                        _save_sched_check(sched_check)
+                        print("[WEATHER] Cleared stale system_paused (switches are ON, weather clear)")
+        except Exception as e:
+            print(f"[WEATHER] system_paused consistency check error: {e}")
+
     return {
         "evaluated": True,
         "triggered_rules": triggered,

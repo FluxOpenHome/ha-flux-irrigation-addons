@@ -2035,7 +2035,7 @@ async function loadStatus() {
             </div>
             <div class="tile">
                 <div class="status-tile-icon ${s.system_paused || s.weather_schedule_disabled ? 'icon-warn' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>
-                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused || s.weather_schedule_disabled ? '' : 'on'}">${s.system_paused ? 'Paused' : s.weather_schedule_disabled ? 'Weather Hold' : 'Active'}</div></div>
+                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused || s.weather_schedule_disabled ? '' : 'on'}">${s.system_paused ? 'Paused <span style="font-size:11px;cursor:pointer;color:var(--color-primary);text-decoration:underline;margin-left:4px;" onclick="event.stopPropagation();forceResume()">Resume</span>' : s.weather_schedule_disabled ? 'Weather Hold' : 'Active'}</div></div>
             </div>
             <div class="tile">
                 <div class="status-tile-icon ${s.active_zones > 0 ? 'icon-on' : ''}">${getStatusTileSvg('zones', 32)}</div>
@@ -2081,16 +2081,34 @@ async function loadStatus() {
 }
 
 async function togglePauseResume() {
+    console.log('[FLUX] togglePauseResume called, currentSystemPaused=' + currentSystemPaused);
     const action = currentSystemPaused ? 'resume' : 'pause';
     if (!currentSystemPaused) {
         var ok = await showConfirm({ title: 'Pause System', message: 'Pause the irrigation system? <strong>All active zones will be stopped.</strong>', confirmText: 'Pause System', confirmClass: 'btn-warning', icon: fluxIcon('stop',28) });
         if (!ok) return;
     }
     try {
+        console.log('[FLUX] Calling /system/' + action);
         await api('/system/' + action, { method: 'POST' });
+        console.log('[FLUX] /system/' + action + ' succeeded');
         showToast('System ' + (action === 'pause' ? 'paused' : 'resumed'));
         setTimeout(() => loadStatus(), 1000);
-    } catch (e) { showToast(e.message, 'error'); }
+    } catch (e) {
+        console.error('[FLUX] /system/' + action + ' failed:', e);
+        showToast(e.message, 'error');
+    }
+}
+
+async function forceResume() {
+    console.log('[FLUX] forceResume called');
+    try {
+        await api('/system/resume', { method: 'POST' });
+        showToast('System resumed');
+        setTimeout(() => loadStatus(), 500);
+    } catch (e) {
+        console.error('[FLUX] forceResume failed:', e);
+        showToast(e.message, 'error');
+    }
 }
 
 // --- Zones ---
