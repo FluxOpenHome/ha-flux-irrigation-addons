@@ -1577,9 +1577,9 @@ async def run_weather_evaluation() -> dict:
                 "applied_at": datetime.now(timezone.utc).isoformat(),
             })
 
-    # Rule 8: Humidity
+    # Rule 8: Humidity (reduce rule — always evaluate, even if a skip rule fired)
     rule = rules.get("humidity", {})
-    if rule.get("enabled") and not should_pause:
+    if rule.get("enabled"):
         humidity = _safe_float(weather.get("humidity"))
         threshold = rule.get("high_humidity_threshold", 80)
         reduction = rule.get("reduction_percent", 20)
