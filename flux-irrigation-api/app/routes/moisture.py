@@ -1655,8 +1655,10 @@ async def calculate_irrigation_timeline() -> dict:
 def _get_schedule_entity_ids() -> set:
     """Get the set of schedule-related entity IDs that trigger timeline recalculation.
 
-    Includes start times, run durations, zone enables, and schedule enable.
+    Includes start times, run durations, zone enables, schedule enable,
+    and schedule day switches (monday-sunday).
     """
+    _DAYS = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
     try:
         config = get_config()
         entities = set()
@@ -1674,6 +1676,12 @@ def _get_schedule_entity_ids() -> set:
             # Schedule enable switch
             if eid.startswith("switch.") and "schedule" in eid_lower and "enable" in eid_lower:
                 entities.add(eid)
+            # Schedule day switches (schedule_monday, schedule_tuesday, etc.)
+            if eid.startswith("switch.") and "schedule" in eid_lower:
+                for day in _DAYS:
+                    if day in eid_lower:
+                        entities.add(eid)
+                        break
         return entities
     except Exception:
         return set()

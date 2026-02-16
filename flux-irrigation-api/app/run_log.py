@@ -569,6 +569,16 @@ def _build_remote_entity_maps() -> dict:
     for eid in (config.allowed_sensor_entities or []):
         all_controller.add(eid)
 
+    # Debug: log schedule-related suffixes from both sides
+    if not _remote_maps_logged:
+        _sched_remote = {s: e for (d, s), e in remote_by_suffix.items()
+                         if d != "*" and "schedule" in s}
+        _sched_ctrl = {_extract_entity_suffix(e): e for e in all_controller
+                       if "schedule" in e.lower()}
+        if _sched_remote or _sched_ctrl:
+            print(f"[REMOTE] Schedule suffixes — remote: {_sched_remote}")
+            print(f"[REMOTE] Schedule suffixes — controller: {_sched_ctrl}")
+
     r2c = {}
     c2r = {}
     status_map = {}  # controller text_sensor → remote text entity
