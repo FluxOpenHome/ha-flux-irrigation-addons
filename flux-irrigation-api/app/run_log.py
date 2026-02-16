@@ -474,9 +474,12 @@ def _extract_entity_suffix(entity_id: str) -> str:
         slug = entity_id
 
     # Known suffix patterns — ordered longest-first so we match greedily
-    # Schedule times
-    for i in range(1, 5):
-        if slug.endswith(f"_schedule_start_time_{i}") or slug.endswith(f"_start_time_{i}"):
+    # Schedule times — handle multiple naming conventions:
+    #   _schedule_start_time_N, _start_time_N, _schedule_N_start_time
+    for i in range(1, 9):
+        if (slug.endswith(f"_schedule_start_time_{i}")
+                or slug.endswith(f"_start_time_{i}")
+                or slug.endswith(f"_schedule_{i}_start_time")):
             return f"schedule_start_time_{i}"
     # Zone durations
     m = re.search(r'zone_(\d+)_dur(?:ation)?$', slug)
@@ -578,6 +581,26 @@ def _build_remote_entity_maps() -> dict:
         if _sched_remote or _sched_ctrl:
             print(f"[REMOTE] Schedule suffixes — remote: {_sched_remote}")
             print(f"[REMOTE] Schedule suffixes — controller: {_sched_ctrl}")
+        # Log start_time entities specifically
+        _st_remote = {s: e for (d, s), e in remote_by_suffix.items()
+                      if d != "*" and "start_time" in s}
+        _st_ctrl = {_extract_entity_suffix(e): e for e in all_controller
+                    if "start_time" in e.lower()}
+        print(f"[REMOTE] Start-time suffixes — remote: {_st_remote}")
+        print(f"[REMOTE] Start-time suffixes — controller: {_st_ctrl}")
+        # Log ALL remote text entities
+        _txt_remote = [e for e in config.allowed_remote_entities
+                       if e.startswith("text.")]
+        _txt_ctrl = [e for e in all_controller if e.startswith("text.")]
+        print(f"[REMOTE] ALL text entities — remote: {_txt_remote}")
+        print(f"[REMOTE] ALL text entities — controller: {_txt_ctrl}")
+        # Log ALL remote switch entities with 'schedule' in name
+        _sw_remote = [e for e in config.allowed_remote_entities
+                      if e.startswith("switch.") and "schedule" in e.lower()]
+        _sw_ctrl = [e for e in all_controller
+                    if e.startswith("switch.") and "schedule" in e.lower()]
+        print(f"[REMOTE] Schedule switch entities — remote: {_sw_remote}")
+        print(f"[REMOTE] Schedule switch entities — controller: {_sw_ctrl}")
 
     r2c = {}
     c2r = {}
@@ -632,10 +655,16 @@ def _build_remote_entity_maps() -> dict:
         print(f"[REMOTE] Entity maps built: {len(r2c)} bidirectional, {len(status_map)} status (one-way)")
         for r_eid, c_eid in sorted(r2c.items()):
             suffix = _extract_entity_suffix(r_eid)
-            print(f"[REMOTE]   ↔ {suffix}: {c_eid.split('.')[0]}.* ↔ {r_eid.split('.')[0]}.*")
+            print(f"[REMOTE]   ↔ {suffix}: {c_eid} ↔ {r_eid}")
         for c_eid, r_eid in sorted(status_map.items()):
             suffix = _extract_entity_suffix(c_eid)
-            print(f"[REMOTE]   → {suffix}: {c_eid.split('.')[0]}.* → {r_eid.split('.')[0]}.*")
+            print(f"[REMOTE]   → {suffix}: {c_eid} → {r_eid}")
+        # Specifically check schedule start_time mapping
+        st_mapped = {k: v for k, v in c2r.items() if "start_time" in k.lower()}
+        if st_mapped:
+            print(f"[REMOTE]   ✓ Start time mappings: {st_mapped}")
+        else:
+            print("[REMOTE]   ✗ WARNING: No start_time entities mapped!")
         # Log unmapped remote entities
         mapped_remote = set(r2c.keys()) | set(status_map.values())
         unmapped = remote_all - mapped_remote
@@ -739,6 +768,39 @@ async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state
     await _mirror_entity_state(entity_id, controller_eid, new_state)
 
 
+# Guard to prevent multiple concurrent reconnect syncs
+_remote_reconnect_pending = False
+
+
+async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
+    """Remote device came back online — push ALL controller state to it.
+
+    When an ESPHome remote device reboots, its entities go from 'unavailable'
+    to their default/reset state.  Instead of mirroring those reset values
+    to the controller (which would overwrite real settings), we detect the
+    transition and push the controller's current state TO the remote.
+
+    We debounce this: when the first entity transitions from unavailable,
+    we wait briefly for all entities to stabilize, then do a full sync.
+    """
+    global _remote_reconnect_pending
+    if _remote_reconnect_pending:
+        return  # Another reconnect sync is already queued
+    _remote_reconnect_pending = True
+
+    import asyncio
+    print(f"[REMOTE] Device reconnect detected ({entity_id} came online) — "
+          f"scheduling full state sync in 5s")
+
+    await asyncio.sleep(5)  # Wait for all entities to become available
+    try:
+        await sync_all_remote_state()
+    except Exception as e:
+        print(f"[REMOTE] Reconnect sync failed: {e}")
+    finally:
+        _remote_reconnect_pending = False
+
+
 async def _handle_controller_to_remote(entity_id: str, new_state: str):
     """A controller entity changed — mirror to the corresponding remote entity."""
     maps = _build_remote_entity_maps()
@@ -774,6 +836,13 @@ async def sync_all_remote_state():
 
     # Fetch current states of all controller entities that have remote counterparts
     controller_eids = list(total_c2r.keys())
+    # Log schedule-related mappings for debugging
+    sched_mappings = {k: v for k, v in total_c2r.items()
+                      if "start_time" in k.lower() or "schedule" in k.lower()}
+    if sched_mappings:
+        print(f"[REMOTE] Schedule mappings to sync: {sched_mappings}")
+    else:
+        print("[REMOTE] WARNING: No schedule-related entities in c2r mapping!")
     states = await ha_client.get_entities_by_ids(controller_eids)
 
     import asyncio
@@ -1002,6 +1071,14 @@ async def _watch_via_websocket(allowed_entities: set):
                 # and needs both remote mirroring AND timeline recalculation).
 
                 if entity_id in remote_entities:
+                    # If remote entity was unavailable and just came back,
+                    # push controller state TO remote (not the other way).
+                    if old_state == "unavailable" and new_state != "unavailable":
+                        import asyncio
+                        asyncio.create_task(
+                            _handle_remote_reconnect(entity_id, remote_entities)
+                        )
+                        continue
                     # Remote entity changed → mirror to controller
                     import asyncio
                     asyncio.create_task(
