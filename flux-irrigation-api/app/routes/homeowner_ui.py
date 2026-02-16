@@ -190,7 +190,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .start-time-row .st-input-group { display:flex; align-items:center; gap:6px; }
 .start-time-row .st-input-group input { width:72px; padding:4px 8px; border:1px solid var(--border-input); border-radius:5px; font-size:12px; box-sizing:border-box; height:28px; text-align:center; }
 .start-time-row .st-input-group button { padding:4px 12px; font-size:11px; height:28px; line-height:1; white-space:nowrap; border-radius:5px; }
-.start-time-row .st-current { margin-left:auto; font-size:20px; font-weight:700; color:var(--text-primary); white-space:nowrap; }
+.start-time-row .st-current { margin-left:3px; font-size:20px; font-weight:700; color:var(--text-primary); white-space:nowrap; }
 .zone-settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .zone-settings-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border-light); font-size: 12px; color: var(--text-muted); text-transform: uppercase; white-space: nowrap; }
 .zone-settings-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-row); white-space: nowrap; }
@@ -2941,8 +2941,8 @@ function renderScheduleCard(sched, durData, multData) {
                 '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM">' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
                 '\\',\\'text\\',{value:document.getElementById(\\'' + inputId + '\\').value})">Set</button>' +
-                '</div>' +
                 '<div class="st-current">' + esc(st.state) + '</div>' +
+                '</div>' +
                 '</div>';
         }
         html += '</div></div>';

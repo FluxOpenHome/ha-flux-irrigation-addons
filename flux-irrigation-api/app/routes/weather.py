@@ -1006,6 +1006,10 @@ async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str)
     Reads the irrigation timeline to find schedule start times, checks if any
     have passed since we last checked, and logs weather_skip for every zone
     in that schedule.  Only logs once per schedule occurrence (tracked by date+time).
+
+    IMPORTANT: Only logs skips when:
+    1. A schedule start time has actually passed today
+    2. Today is an enabled schedule day (checks schedule_monday..sunday switches)
     """
     global _logged_schedule_skips
     import run_log
@@ -1023,6 +1027,30 @@ async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str)
         today_str = now.strftime("%Y-%m-%d")
         print(f"[WEATHER] _log_skipped_schedules: checking {len(schedules)} "
               f"schedule(s), time now = {now.strftime('%H:%M')}")
+
+        # Check if today is an enabled schedule day by reading schedule day switches.
+        # If the controller has schedule_monday..sunday switches and today's day is OFF,
+        # no schedule would have run — don't log any skips.
+        _DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        today_day = _DAY_NAMES[now.weekday()]  # 0=monday
+        day_switch_found = False
+        today_enabled = True  # default to True if no day switches exist
+        try:
+            for eid in config.allowed_control_entities:
+                eid_lower = eid.lower()
+                if (eid.startswith("switch.") and "schedule" in eid_lower
+                        and today_day in eid_lower):
+                    day_switch_found = True
+                    states = await ha_client.get_entities_by_ids([eid])
+                    if states:
+                        today_enabled = states[0].get("state") == "on"
+                    break
+        except Exception:
+            pass  # If we can't check, assume today is enabled
+        if day_switch_found and not today_enabled:
+            print(f"[WEATHER] _log_skipped_schedules: {today_day} is disabled — "
+                  f"no schedule runs today, skipping")
+            return
 
         # Clean out old entries (older than 2 days)
         cutoff = (now - timedelta(days=2)).strftime("%Y-%m-%d")
@@ -1495,77 +1523,39 @@ async def run_weather_evaluation() -> dict:
                 schedule_data["saved_schedule_states"] = saved_states
             _save_schedules(schedule_data)
 
-            # Log weather_skip events for zones that WOULD have run but
-            # can't start now (schedules are disabled).
-            import run_log
+            # Do NOT log weather_skip events here at disable time —
+            # skip events are ONLY logged at actual scheduled run times.
+            # _log_skipped_schedules() handles this on subsequent eval cycles
+            # by checking the irrigation timeline for schedule start times
+            # that have passed while weather-paused.
+            #
+            # Mark schedule times that have ALREADY PASSED today as logged
+            # so _log_skipped_schedules doesn't retroactively log them.
             try:
-                from routes.moisture import _get_ordered_enabled_zones
-                from routes.homeowner import is_zone_not_used
-                zones = await ha_client.get_entities_by_ids(
-                    config.allowed_zone_entities)
-                running_eids = {
-                    z["entity_id"] for z in zones
-                    if z.get("state") in ("on", "open")
-                }
-                enabled_zones = await _get_ordered_enabled_zones()
-                skip_count = 0
-                for ez in enabled_zones:
-                    zone_eid = ez["zone_entity_id"]
-                    if zone_eid in running_eids:
-                        continue  # Zone is running (manual start) — don't skip it
-                    if ez.get("is_special"):
-                        continue  # Skip pump/master/relay zones
-                    if is_zone_not_used(zone_eid):
-                        continue  # Skip zones marked as "not used"
-                    zone_name = f"Zone {ez.get('zone_num', 0)}"
-                    for z in zones:
-                        if z.get("entity_id") == zone_eid:
-                            zone_name = z.get("attributes", {}).get(
-                                "friendly_name", zone_name
-                            )
-                            break
-                    run_log.log_zone_event(
-                        entity_id=zone_eid,
-                        state="weather_skip",
-                        source="weather_skip",
-                        zone_name=zone_name,
-                        duration_seconds=0,
-                        scheduled_minutes=ez.get("duration_minutes", 0),
-                    )
-                    skip_count += 1
-                print(f"[WEATHER] Logged weather_skip for "
-                      f"{skip_count} prevented zones")
-                # Mark schedule times that have ALREADY PASSED today as logged
-                # so the already-disabled detector doesn't double-log them.
-                # IMPORTANT: Do NOT mark future schedule times — they need to
-                # be logged individually when they pass.  The initial disable
-                # only covers the current/most-recent schedule cycle.
-                try:
-                    from routes.moisture import (
-                        _load_schedule_timeline, _parse_time_to_minutes,
-                    )
-                    tl = _load_schedule_timeline()
-                    mark_now = datetime.now()
-                    today_str = mark_now.strftime("%Y-%m-%d")
-                    now_minutes = mark_now.hour * 60 + mark_now.minute
-                    for s in tl.get("schedules", []):
-                        st = s.get("start_time", "")
-                        if not st:
+                from routes.moisture import (
+                    _load_schedule_timeline, _parse_time_to_minutes,
+                )
+                tl = _load_schedule_timeline()
+                mark_now = datetime.now()
+                today_str = mark_now.strftime("%Y-%m-%d")
+                now_minutes = mark_now.hour * 60 + mark_now.minute
+                for s in tl.get("schedules", []):
+                    st = s.get("start_time", "")
+                    if not st:
+                        continue
+                    s_mins = s.get("start_minutes")
+                    if s_mins is None:
+                        try:
+                            s_mins = _parse_time_to_minutes(st)
+                        except (ValueError, IndexError):
                             continue
-                        # Only mark if this schedule has already passed
-                        s_mins = s.get("start_minutes")
-                        if s_mins is None:
-                            try:
-                                s_mins = _parse_time_to_minutes(st)
-                            except (ValueError, IndexError):
-                                continue
-                        if s_mins <= now_minutes:
-                            _logged_schedule_skips[f"{today_str} {st}"] = True
-                    _save_logged_skips()
-                except Exception:
-                    pass
+                    if s_mins <= now_minutes:
+                        _logged_schedule_skips[f"{today_str} {st}"] = True
+                _save_logged_skips()
+                print(f"[WEATHER] Schedules disabled — marked {len(_logged_schedule_skips)} "
+                      f"past schedule time(s) as already logged")
             except Exception as e:
-                print(f"[WEATHER] Error logging weather_skip events: {e}")
+                print(f"[WEATHER] Error marking past schedule skips: {e}")
 
             await ha_client.fire_event("flux_irrigation_weather_pause", {
                 "reason": pause_reason,
