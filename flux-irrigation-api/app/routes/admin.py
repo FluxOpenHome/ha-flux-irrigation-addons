@@ -479,6 +479,10 @@ async def select_remote_device(body: DeviceSelect):
 
     # Full sync to the newly connected remote — push ALL state
     try:
+        # Invalidate cached maps so they rebuild with new remote entities
+        from run_log import invalidate_remote_maps, sync_all_remote_state
+        invalidate_remote_maps()
+
         settings_file = "/data/settings.json"
         use_12h = True
         if os.path.exists(settings_file):
@@ -487,7 +491,6 @@ async def select_remote_device(body: DeviceSelect):
                 use_12h = settings.get("time_format", "12h") != "24h"
         await sync_remote_settings(use_12h=use_12h)
         # Push all entity states (zones, schedules, durations, days, status)
-        from run_log import sync_all_remote_state
         await sync_all_remote_state()
     except Exception as e:
         print(f"[REMOTE] Full sync after device select failed: {e}")

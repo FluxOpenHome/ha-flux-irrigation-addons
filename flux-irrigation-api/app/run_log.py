@@ -49,6 +49,12 @@ _SUFFIX_ALIASES = {
     "progress_percent": "progress",
 }
 
+# Suffixes that are one-way: add-on → remote only (remote changes are ignored)
+_ONE_WAY_SUFFIXES = {
+    "zone_count",       # pushed via sync_remote_settings()
+    "use_12_hour_format",  # pushed via sync_remote_settings()
+}
+
 
 def log_zone_event(
     entity_id: str,
@@ -537,6 +543,16 @@ def _extract_entity_suffix(entity_id: str) -> str:
     return slug
 
 
+def invalidate_remote_maps():
+    """Clear cached entity maps so they are rebuilt on next access.
+
+    Call this when the remote device config changes (e.g. select_remote_device).
+    """
+    global _remote_maps_cache, _remote_maps_logged
+    _remote_maps_cache = {}
+    _remote_maps_logged = False
+
+
 def _build_remote_entity_maps() -> dict:
     """Build bidirectional entity mapping between controller and remote.
 
@@ -551,6 +567,10 @@ def _build_remote_entity_maps() -> dict:
       status_map: controller_sensor → remote_text (one-way: controller→remote)
     """
     global _remote_maps_cache, _remote_maps_logged
+    # Return cached maps if already built (rebuild via invalidate_remote_maps())
+    if _remote_maps_cache:
+        return _remote_maps_cache
+
     from config import get_config
     config = get_config()
 
@@ -722,7 +742,15 @@ async def _mirror_entity_state(source_eid: str, target_eid: str, new_state: str)
 
 
 async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state: str):
-    """A remote entity changed — mirror to the corresponding controller entity."""
+    """A remote entity changed — mirror to the corresponding controller entity.
+
+    One-way entities (zone_count, use_12_hour_format) are skipped — the remote
+    cannot update those on the controller.
+    """
+    # Skip one-way entities (add-on → remote only)
+    suffix = _extract_entity_suffix(entity_id)
+    if suffix in _ONE_WAY_SUFFIXES:
+        return
     maps = _build_remote_entity_maps()
     controller_eid = maps["r2c"].get(entity_id)
     if not controller_eid:
@@ -767,6 +795,7 @@ async def sync_all_remote_state():
     controller_eids = list(total_c2r.keys())
     states = await ha_client.get_entities_by_ids(controller_eids)
 
+    import asyncio
     synced = 0
     for entity_state in states:
         ctrl_eid = entity_state.get("entity_id", "")
@@ -779,6 +808,9 @@ async def sync_all_remote_state():
         try:
             await _mirror_entity_state(ctrl_eid, remote_eid, state_val)
             synced += 1
+            # Small delay to avoid overwhelming the ESPHome device
+            if synced % 10 == 0:
+                await asyncio.sleep(0.1)
         except Exception as e:
             print(f"[REMOTE] Initial sync failed for {ctrl_eid}: {e}")
 
@@ -983,7 +1015,11 @@ async def _watch_via_websocket(allowed_entities: set):
                 if new_state == old_state:
                     continue
 
-                # Route to appropriate handler
+                # Route to appropriate handler(s).
+                # An entity may belong to multiple sets (e.g. a schedule day
+                # switch is in both controller_for_remote AND schedule_entities
+                # and needs both remote mirroring AND timeline recalculation).
+
                 if entity_id in remote_entities:
                     # Remote entity changed → mirror to controller
                     import asyncio
@@ -991,24 +1027,28 @@ async def _watch_via_websocket(allowed_entities: set):
                         _handle_remote_entity_change(entity_id, new_state, old_state)
                     )
                 elif entity_id in allowed_entities:
+                    # Zone entity on controller
                     attrs = new_state_obj.get("attributes", {}) if new_state_obj else {}
                     zone_name = attrs.get("friendly_name", entity_id)
                     await _handle_state_change(entity_id, new_state, old_state, zone_name)
-                    # Also mirror controller → remote
+                    # Also mirror controller zone → remote
                     if remote_entities:
                         import asyncio
                         asyncio.create_task(
                             _handle_controller_to_remote(entity_id, new_state)
                         )
-                elif entity_id in controller_for_remote:
-                    # Controller entity (non-zone) changed → mirror to remote
-                    import asyncio
-                    asyncio.create_task(
-                        _handle_controller_to_remote(entity_id, new_state)
-                    )
-                elif entity_id in probe_entities:
+                else:
+                    # Non-zone controller entity — check remote mirroring
+                    if entity_id in controller_for_remote:
+                        import asyncio
+                        asyncio.create_task(
+                            _handle_controller_to_remote(entity_id, new_state)
+                        )
+
+                # These handlers run IN ADDITION to the above (not exclusive)
+                if entity_id in probe_entities:
                     await _handle_probe_sensor_change(entity_id, new_state, old_state)
-                elif entity_id in schedule_entities:
+                if entity_id in schedule_entities:
                     await _handle_schedule_entity_change(entity_id, new_state, old_state)
 
             except json.JSONDecodeError:
