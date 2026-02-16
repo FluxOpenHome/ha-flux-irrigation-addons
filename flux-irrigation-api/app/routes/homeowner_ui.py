@@ -7189,8 +7189,10 @@ async function _buildMoistureDebugHtml() {
 
     var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;">';
     html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
+    html += '<div style="display:flex;gap:6px;">';
+    html += '<button class="btn btn-secondary btn-sm" onclick="copyDebugLog(\\'moisture\\')" style="font-size:11px;">Copy</button>';
     html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog(\\'moisture\\')" style="font-size:11px;">Clear Log</button>';
-    html += '</div>';
+    html += '</div></div>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
     html += '<span style="color:#e74c3c;font-weight:600;">● Fast/Immediate Skip</span>';
     html += '<span style="color:#f39c12;font-weight:600;">● Preemptive Timer</span>';
@@ -7305,8 +7307,10 @@ async function _buildBrokerDebugHtml() {
 
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
     html += '<span style="font-size:11px;color:var(--text-muted);">' + lines.length + ' entries</span>';
+    html += '<div style="display:flex;gap:6px;">';
+    html += '<button class="btn btn-secondary btn-sm" onclick="copyDebugLog(\\'broker\\')" style="font-size:11px;">Copy</button>';
     html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog(\\'broker\\')" style="font-size:11px;">Clear Log</button>';
-    html += '</div>';
+    html += '</div></div>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
     html += '<span style="color:#2ecc71;font-weight:600;">● Relayed</span>';
     html += '<span style="color:#3498db;">● Inventory / Mapping</span>';
@@ -7345,6 +7349,18 @@ async function clearDebugLog(logType) {
         showToast(label + ' log cleared');
         await _renderDebugLogModal();
     } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function copyDebugLog(logType) {
+    try {
+        var endpoint = logType === 'broker' ? 'remote-log' : 'moisture-log';
+        var resp = await fetch(HBASE + '/debug/' + endpoint + '?lines=500');
+        var data = await resp.json();
+        var lines = data.lines || [];
+        if (!lines.length) { showToast('No log entries to copy', 'error'); return; }
+        await navigator.clipboard.writeText(lines.join('\\n'));
+        showToast('Log copied to clipboard');
+    } catch(e) { showToast('Copy failed: ' + e.message, 'error'); }
 }
 
 // --- Zone Head Details ---
