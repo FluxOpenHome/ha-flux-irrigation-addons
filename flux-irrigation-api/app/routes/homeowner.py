@@ -791,16 +791,25 @@ async def homeowner_geocode(q: str = Query(..., min_length=3, description="Addre
 async def homeowner_weather():
     """Get current weather conditions and active adjustments for the dashboard."""
     config = get_config()
-    weather_configured = config.weather_entity_id or config.weather_source == "nws"
-    if not config.weather_enabled or not weather_configured:
+    from routes.weather import get_weather_data, _load_weather_rules, _load_external_weather
+
+    # Check if external weather is available (pushed by management server)
+    has_external = _load_external_weather(max_age_minutes=10.0) is not None
+
+    weather_configured = config.weather_entity_id or config.weather_source == "nws" or has_external
+    if not has_external and (not config.weather_enabled or not weather_configured):
         return {"weather_enabled": False, "weather": {"error": "Not configured"}}
 
-    from routes.weather import get_weather_data, _load_weather_rules
     weather = await get_weather_data()
     rules_data = _load_weather_rules()
+
+    # Determine weather source for badge display
+    weather_source = weather.get("weather_source", config.weather_source or "ha_entity")
+
     return {
         "weather_enabled": True,
         "weather": weather,
+        "weather_source": weather_source,
         "active_adjustments": rules_data.get("active_adjustments", []),
         "watering_multiplier": rules_data.get("watering_multiplier", 1.0),
         "last_evaluation": rules_data.get("last_evaluation"),

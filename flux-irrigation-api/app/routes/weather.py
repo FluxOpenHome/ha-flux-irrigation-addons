@@ -23,6 +23,42 @@ router = APIRouter(prefix="/admin/api", tags=["Weather Control"])
 WEATHER_RULES_FILE = "/data/weather_rules.json"
 WEATHER_LOG_FILE = "/data/weather_log.jsonl"
 NWS_CACHE_FILE = "/data/nws_location_cache.json"
+EXTERNAL_WEATHER_FILE = "/data/external_weather.json"
+
+
+def _save_external_weather(weather_data: dict):
+    """Persist externally-pushed weather data (from management server OWM) with a timestamp."""
+    payload = {
+        "weather": weather_data,
+        "received_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        with open(EXTERNAL_WEATHER_FILE, "w") as f:
+            json.dump(payload, f, indent=2)
+    except Exception as e:
+        print(f"[WEATHER] Error saving external weather: {e}")
+
+
+def _load_external_weather(max_age_minutes: float = 10.0) -> dict | None:
+    """Load external weather data if fresh (< max_age_minutes old).
+
+    Returns the weather dict if fresh, else None (caller falls back to local source).
+    """
+    if not os.path.exists(EXTERNAL_WEATHER_FILE):
+        return None
+    try:
+        with open(EXTERNAL_WEATHER_FILE, "r") as f:
+            data = json.load(f)
+        received_at = data.get("received_at", "")
+        if not received_at:
+            return None
+        received_dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
+        age_minutes = (datetime.now(timezone.utc) - received_dt).total_seconds() / 60.0
+        if age_minutes > max_age_minutes:
+            return None
+        return data.get("weather")
+    except Exception:
+        return None
 
 # User-Agent required by NWS API (requests without one may be blocked)
 NWS_USER_AGENT = "FluxIrrigationAPI/1.1.11 (github.com/FluxOpenHome)"
@@ -847,12 +883,18 @@ async def get_weather_data_nws() -> dict:
 # --- Weather Data Fetching ---
 
 async def get_weather_data() -> dict:
-    """Fetch current weather from the configured source.
+    """Fetch current weather from the best available source.
 
-    Supports two sources:
-      - 'ha_entity': Uses a Home Assistant weather entity (default)
-      - 'nws': Uses the NWS API with the homeowner's address
+    Priority:
+      1. External weather (pushed by management server OWM) if fresh (< 10 min)
+      2. 'nws': NWS API with homeowner address
+      3. 'ha_entity': Home Assistant weather entity
     """
+    # Check for fresh externally-pushed weather data first
+    ext_weather = _load_external_weather(max_age_minutes=10.0)
+    if ext_weather is not None:
+        return ext_weather
+
     config = get_config()
 
     # Branch based on weather source
@@ -1065,10 +1107,15 @@ async def run_weather_evaluation() -> dict:
     config = get_config()
     if not config.weather_enabled:
         return {"skipped": True, "reason": "Weather control disabled"}
-    if config.weather_source == "ha_entity" and not config.weather_entity_id:
-        return {"skipped": True, "reason": "No weather entity configured"}
-    if config.weather_source == "nws" and not (config.homeowner_address or config.homeowner_zip):
-        return {"skipped": True, "reason": "No address configured for built-in weather"}
+
+    # If external weather is available (pushed by management server), skip
+    # source-specific guards — managed add-ons may not have NWS/HA configured
+    has_external = _load_external_weather(max_age_minutes=10.0) is not None
+    if not has_external:
+        if config.weather_source == "ha_entity" and not config.weather_entity_id:
+            return {"skipped": True, "reason": "No weather entity configured"}
+        if config.weather_source == "nws" and not (config.homeowner_address or config.homeowner_zip):
+            return {"skipped": True, "reason": "No address configured for built-in weather"}
 
     weather = await get_weather_data()
     if "error" in weather:
@@ -1815,8 +1862,16 @@ async def receive_precip_factors(request: Request):
     rules_data["precip_factors_pushed_at"] = datetime.now(timezone.utc).isoformat()
     _save_weather_rules(rules_data)
 
-    print(f"[WEATHER] Received external precip factors from {source}: "
-          f"{len(factors)} zones, QPF={qpf_inches}")
+    # Store full weather data if provided (for add-on weather card + rules evaluation)
+    weather_data = body.get("weather_data")
+    if weather_data and isinstance(weather_data, dict):
+        _save_external_weather(weather_data)
+        print(f"[WEATHER] Stored external weather from {source}: "
+              f"{weather_data.get('condition')}, {weather_data.get('temperature')}°F, "
+              f"QPF={qpf_inches}")
+    else:
+        print(f"[WEATHER] Received external precip factors from {source}: "
+              f"{len(factors)} zones, QPF={qpf_inches}")
 
     # Trigger moisture re-evaluation to apply the new factors
     try:

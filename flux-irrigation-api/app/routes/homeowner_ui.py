@@ -4150,6 +4150,7 @@ function _buildWeatherCardShell() {
     html += '<div style="background:var(--bg-weather);border-radius:8px;padding:10px;text-align:center;">';
     html += '<div data-id="wIcon" style="font-size:24px;"></div>';
     html += '<div data-id="wCondition" style="font-weight:600;text-transform:capitalize;font-size:13px;"></div>';
+    html += '<div data-id="wSourceBadge" style="font-size:9px;color:var(--text-muted);margin-top:2px;"></div>';
     html += '</div>';
     html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
     html += '<div style="color:var(--text-placeholder);font-size:11px;">Temperature</div>';
@@ -4194,6 +4195,7 @@ function _getVisibleWeatherKey(data) {
     const parts = [
         w.condition, w.temperature, w.humidity, w.wind_speed,
         w.precipitation_inches, w.precipitation_mm, w.qpf_inches,
+        data.weather_source || w.weather_source,
         data.watering_multiplier, _getUnits(),
         JSON.stringify((data.active_adjustments || []).map(a => a.reason || a.rule)),
     ];
@@ -4270,6 +4272,14 @@ async function loadWeather() {
         const el = (id) => body.querySelector('[data-id=\"' + id + '\"]');
         el('wIcon').innerHTML = icon;
         el('wCondition').textContent = w.condition || 'unknown';
+        // Weather source badge
+        var _wsrc = data.weather_source || w.weather_source || '';
+        var _srcLabel = '';
+        if (_wsrc === 'owm') _srcLabel = 'OpenWeatherMap';
+        else if (_wsrc === 'nws') _srcLabel = 'National Weather Service';
+        else if (_wsrc === 'ha_entity') _srcLabel = 'Home Assistant';
+        else if (_wsrc) _srcLabel = _wsrc;
+        el('wSourceBadge').textContent = _srcLabel;
         el('wTemp').textContent = _dispTemp(w.temperature, w.temperature_unit);
         el('wHumidity').textContent = w.humidity != null ? w.humidity + '%' : 'N/A';
         el('wWind').textContent = _dispWind(w.wind_speed, w.wind_speed_unit);
