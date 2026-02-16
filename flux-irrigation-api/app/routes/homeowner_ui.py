@@ -7815,7 +7815,11 @@ function closeDynamicModal() {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         if (document.getElementById('confirmModal').style.display === 'flex') { _confirmCancel(); return; }
-        if (document.getElementById('dataNerdOverlay')) { dnClose(); return; }
+        if (document.getElementById('dataNerdOverlay')) {
+            var _exp = document.querySelector('.dn-panel.dn-expanded');
+            if (_exp) { var _cb = _exp.querySelector('.dn-expand-btn'); if (_cb) dnCollapsePanel(_cb); return; }
+            dnClose(); return;
+        }
         if (document.getElementById('settingsModal').style.display === 'flex') { closeSettings(); return; }
         if (document.getElementById('notifPanelModal').style.display === 'flex') closeNotificationsPanel();
         else if (document.getElementById('helpModal').style.display === 'flex') closeHelpModal();
@@ -8172,6 +8176,12 @@ function dnTransformWeather(weatherLog) {
                 humidity: w.humidity != null ? w.humidity : null,
                 multiplier: w.watering_multiplier != null ? w.watering_multiplier : null,
                 wind_speed: w.wind_speed != null ? w.wind_speed : null,
+                precip: w.precipitation_inches != null ? w.precipitation_inches : null,
+                qpf: w.qpf_inches != null ? w.qpf_inches : null,
+                dew_point: w.dew_point != null ? w.dew_point : null,
+                pressure: w.pressure != null ? w.pressure : null,
+                cloud_cover: w.cloud_cover != null ? w.cloud_cover : null,
+                uv_index: w.uv_index != null ? w.uv_index : null,
                 condition: w.condition || ''
             });
         }
@@ -8190,6 +8200,12 @@ function dnTransformWeather(weatherLog) {
         humidity: points.map(function(p) { return p.humidity; }),
         multiplier: points.map(function(p) { return p.multiplier; }),
         wind_speed: points.map(function(p) { return p.wind_speed; }),
+        precip: points.map(function(p) { return p.precip; }),
+        qpf: points.map(function(p) { return p.qpf; }),
+        dew_point: points.map(function(p) { return p.dew_point; }),
+        pressure: points.map(function(p) { return p.pressure; }),
+        cloud_cover: points.map(function(p) { return p.cloud_cover; }),
+        uv_index: points.map(function(p) { return p.uv_index; }),
         condition: points.map(function(p) { return p.condition; })
     };
 }
@@ -8406,6 +8422,7 @@ function dnBuildWeather(canvasId, data) {
     var cfg = dnChartDefaults();
     var ctx = document.getElementById(canvasId);
     if (!ctx) return null;
+    var _hasData = function(arr) { return arr && arr.some(function(v) { return v != null; }); };
     var datasets = [
         { label: 'Temperature', data: td.temperature, borderColor: 'rgba(231,76,60,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yTemp' },
         { label: 'Humidity %', data: td.humidity, borderColor: 'rgba(52,152,219,0.5)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yHumid' },
@@ -8417,9 +8434,34 @@ function dnBuildWeather(canvasId, data) {
         yHumid: { display: false },
         yMult: { position: 'right', min: 0, max: 2, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(46,204,113,0.8)', font: { size: 10 } }, title: { display: true, text: 'Multiplier', color: 'rgba(46,204,113,0.8)' } }
     };
-    if (td.wind_speed && td.wind_speed.some(function(v) { return v != null; })) {
+    if (_hasData(td.wind_speed)) {
         datasets.push({ label: 'Wind (mph)', data: td.wind_speed, borderColor: 'rgba(155,89,182,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yWind' });
-        scales.yWind = { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: 'rgba(155,89,182,0.7)', font: { size: 10 } }, title: { display: true, text: 'Wind (mph)', color: 'rgba(155,89,182,0.7)' } };
+        scales.yWind = { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: 'rgba(155,89,182,0.7)', font: { size: 10 } }, title: { display: true, text: 'Wind', color: 'rgba(155,89,182,0.7)' } };
+    }
+    // QPF forecast precipitation (inches)
+    if (_hasData(td.qpf)) {
+        datasets.push({ label: 'QPF (in)', data: td.qpf, borderColor: 'rgba(41,128,185,0.8)', backgroundColor: 'rgba(41,128,185,0.15)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yPrecip' });
+        scales.yPrecip = { position: 'right', min: 0, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(41,128,185,0.8)', font: { size: 10 } }, title: { display: true, text: 'Precip (in)', color: 'rgba(41,128,185,0.8)' } };
+    }
+    // Current precipitation (inches)
+    if (_hasData(td.precip)) {
+        datasets.push({ label: 'Rain (in)', data: td.precip, borderColor: 'rgba(41,128,185,0.5)', borderDash: [4,3], fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: scales.yPrecip ? 'yPrecip' : 'yPrecipObs' });
+        if (!scales.yPrecip) {
+            scales.yPrecipObs = { position: 'right', min: 0, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(41,128,185,0.7)', font: { size: 10 } }, title: { display: true, text: 'Rain (in)', color: 'rgba(41,128,185,0.7)' } };
+        }
+    }
+    // Dew point (same axis as temp)
+    if (_hasData(td.dew_point)) {
+        datasets.push({ label: 'Dew Point', data: td.dew_point, borderColor: 'rgba(22,160,133,0.6)', borderDash: [5,3], fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yTemp' });
+    }
+    // Cloud cover (hidden axis, shown in tooltip)
+    if (_hasData(td.cloud_cover)) {
+        datasets.push({ label: 'Clouds %', data: td.cloud_cover, borderColor: 'rgba(149,165,166,0.5)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yHumid', hidden: true });
+    }
+    // UV Index (hidden by default, visible in tooltip)
+    if (_hasData(td.uv_index)) {
+        datasets.push({ label: 'UV Index', data: td.uv_index, borderColor: 'rgba(243,156,18,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yUV', hidden: true });
+        scales.yUV = { display: false };
     }
     var weatherTooltip = { callbacks: { title: function(items) { if (!items.length) return ''; var label = items[0].label || ''; var d = new Date(label); if (isNaN(d)) return label; return fluxFormatDateTime(d); }, afterBody: function(items) { if (!items.length || !td.condition) return ''; var idx = items[0].dataIndex; var cond = td.condition[idx]; return cond ? 'Condition: ' + cond : ''; } } };
     _dnCharts[canvasId] = new Chart(ctx, {
@@ -8555,6 +8597,9 @@ function dnBuildProbeHealth(containerId, data) {
 }
 
 // --- Master render ---
+function _dnExpandBtn() {
+    return '<button class="dn-expand-btn" onclick="dnExpandPanel(this)" title="Expand">' + fluxIcon('expand', 14) + '</button>';
+}
 function dnRenderAllCharts(data) {
     var grid = document.getElementById('dnGrid');
     if (!grid) return;
@@ -8563,12 +8608,13 @@ function dnRenderAllCharts(data) {
     var probeKeys = Object.keys(data.probes || {});
     var hasProbes = probeKeys.length > 0;
     var html = '';
+    var _eb = _dnExpandBtn();
     // 1. Summary cards
     html += '<div class="dn-full">' + dnBuildSummaryCards(data, gpmMap) + '</div>';
     // 2. Water Usage
-    html += '<div class="dn-panel dn-wide"><div class="dn-panel-title">Water Usage Over Time</div><div class="dn-chart-wrap"><canvas id="dnChartUsage"></canvas></div></div>';
+    html += '<div class="dn-panel dn-wide"><div class="dn-panel-title">Water Usage Over Time' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartUsage"></canvas></div></div>';
     // 3. Water Savings
-    html += '<div class="dn-panel"><div class="dn-panel-title">Water Savings Analysis</div><div class="dn-chart-wrap"><canvas id="dnChartSavings"></canvas></div>';
+    html += '<div class="dn-panel"><div class="dn-panel-title">Water Savings Analysis' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartSavings"></canvas></div>';
     // Savings pills
     var sv = dnTransformSavings(data.runs, gpmMap);
     html += '<div style="margin-top:8px;text-align:center;">';
@@ -8578,18 +8624,18 @@ function dnRenderAllCharts(data) {
     html += '</div></div>';
     // 4. Moisture Trends (only if probes exist)
     if (hasProbes) {
-        html += '<div class="dn-panel"><div class="dn-panel-title">Moisture Trends</div><div class="dn-chart-wrap"><canvas id="dnChartMoisture"></canvas></div></div>';
+        html += '<div class="dn-panel"><div class="dn-panel-title">Moisture Trends' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartMoisture"></canvas></div></div>';
     }
     // 5. Weather Impact
-    html += '<div class="dn-panel"><div class="dn-panel-title">Weather Impact</div><div class="dn-chart-wrap"><canvas id="dnChartWeather"></canvas></div></div>';
+    html += '<div class="dn-panel"><div class="dn-panel-title">Weather Impact' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartWeather"></canvas></div></div>';
     // 6. Zone Performance — with bar/radar toggle
-    html += '<div class="dn-panel"><div class="dn-panel-title">Zone Performance <div class="dn-tab-group"><button class="dn-tab-btn active" onclick="dnZoneView(&quot;bar&quot;,this)">Bar</button><button class="dn-tab-btn" onclick="dnZoneView(&quot;radar&quot;,this)">Radar</button></div></div><div class="dn-chart-wrap" id="dnZoneWrap"><canvas id="dnChartZoneBar"></canvas></div></div>';
+    html += '<div class="dn-panel"><div class="dn-panel-title">Zone Performance <div class="dn-tab-group"><button class="dn-tab-btn active" onclick="dnZoneView(&quot;bar&quot;,this)">Bar</button><button class="dn-tab-btn" onclick="dnZoneView(&quot;radar&quot;,this)">Radar</button></div>' + _eb + '</div><div class="dn-chart-wrap" id="dnZoneWrap"><canvas id="dnChartZoneBar"></canvas></div></div>';
     // 7. Probe Health (only if probes exist)
     if (hasProbes) {
-        html += '<div class="dn-panel"><div class="dn-panel-title">Probe Health</div><div id="dnProbeHealth"></div></div>';
+        html += '<div class="dn-panel"><div class="dn-panel-title">Probe Health' + _eb + '</div><div id="dnProbeHealth"></div></div>';
     }
     // 8. Heatmap
-    html += '<div class="dn-panel dn-full"><div class="dn-panel-title">Watering Activity Heatmap</div><div id="dnHeatmap"></div></div>';
+    html += '<div class="dn-panel dn-full"><div class="dn-panel-title">Watering Activity Heatmap' + _eb + '</div><div id="dnHeatmap"></div></div>';
 
     grid.innerHTML = html;
 
