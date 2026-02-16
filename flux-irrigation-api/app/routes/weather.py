@@ -1126,7 +1126,9 @@ async def run_weather_evaluation() -> dict:
         return {"skipped": True, "reason": weather["error"]}
 
     # Always log weather snapshot so chart has data even if rules evaluation
-    # has issues — this is the primary data source for the Weather Impact chart
+    # has issues — this is the primary data source for the Weather Impact chart.
+    # Include the last-known multiplier so the chart line is continuous.
+    rules_data = _load_weather_rules()
     _log_weather_event("weather_snapshot", {
         "condition": weather.get("condition"),
         "temperature": weather.get("temperature"),
@@ -1138,10 +1140,9 @@ async def run_weather_evaluation() -> dict:
         "pressure": weather.get("pressure"),
         "cloud_cover": weather.get("cloud_cover"),
         "uv_index": weather.get("uv_index"),
+        "watering_multiplier": rules_data.get("watering_multiplier", 1.0),
         "source": config.weather_source,
     })
-
-    rules_data = _load_weather_rules()
     rules = rules_data.get("rules", {})
 
     triggered = []
@@ -1445,6 +1446,10 @@ async def run_weather_evaluation() -> dict:
             })
 
     # --- Apply Actions ---
+
+    # If any rule says skip/pause, multiplier is 0 — no watering
+    if should_pause:
+        multiplier = 0.0
 
     from routes.schedule import _load_schedules, _save_schedules
 
