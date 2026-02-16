@@ -502,7 +502,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
     <!-- Zones Card -->
     <div class="card">
         <div class="card-header" onclick="toggleCard('zones')" style="cursor:pointer;user-select:none;">
-            <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_zones" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Zones</h2>
+            <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_zones" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> <span id="zonesCardTitle">Zones</span></h2>
             <div style="display:flex;align-items:center;gap:8px;">
                 <a href="#" onclick="lockCard('zones',event)" id="cardLock_zones" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
                 <div id="autoAdvanceToggle" onclick="event.stopPropagation()" style="display:none;"></div>
@@ -2081,6 +2081,22 @@ async function loadZones() {
             return true;
         });
         if (zones.length === 0) { el.innerHTML = '<div class="empty-state"><p>No zones found</p></div>'; return; }
+        // Update card title: "Zones + Pump" or "Zones + Master Valve" or both
+        (function() {
+            var modes = window._zoneModes || {};
+            var hasPump = false, hasMaster = false;
+            for (var n in modes) {
+                var mv = (modes[n].state || '').toLowerCase();
+                if (/pump|relay/.test(mv)) hasPump = true;
+                if (/master.*valve|valve.*master/.test(mv)) hasMaster = true;
+            }
+            var title = 'Zones';
+            if (hasPump && hasMaster) title = 'Zones + Pump + Master Valve';
+            else if (hasPump) title = 'Zones + Pump';
+            else if (hasMaster) title = 'Zones + Master Valve';
+            var titleEl = document.getElementById('zonesCardTitle');
+            if (titleEl) titleEl.textContent = title;
+        })();
         // Sort: normal zones first (by zone number), then Pump Start Relay / Master Valve at the end
         zones.sort(function(a, b) {
             var modes = window._zoneModes || {};
