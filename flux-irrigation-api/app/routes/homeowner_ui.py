@@ -1580,12 +1580,17 @@ function resolveZoneName(entityId, fallbackName) {
 }
 
 // --- Not Used Zones ---
+// Backend is the authoritative source. localStorage is a fast cache only.
+var _notUsedZonesCache = {};  // in-memory cache, populated from backend on startup
+var _notUsedReady = false;    // true once backend fetch completes (or fails with fallback)
+
 function _notUsedKey() { return 'flux_not_used_zones'; }
 function getNotUsedZones() {
-    try { return JSON.parse(localStorage.getItem(_notUsedKey()) || '{}'); } catch(e) { return {}; }
+    return Object.assign({}, _notUsedZonesCache);
 }
 function setNotUsedZones(map) {
-    localStorage.setItem(_notUsedKey(), JSON.stringify(map));
+    _notUsedZonesCache = map;
+    try { localStorage.setItem(_notUsedKey(), JSON.stringify(map)); } catch(e) {}
     // Sync to backend so server-side filtering works
     fetch(HBASE + '/zones/not-used', {
         method: 'PUT',
@@ -1593,50 +1598,95 @@ function setNotUsedZones(map) {
         body: JSON.stringify({zones: map})
     }).catch(function(e) { console.warn('Failed to sync not-used zones to backend:', e); });
 }
-// Load not-used zones from backend on startup (authoritative source)
-(function _syncNotUsedFromBackend() {
-    fetch(HBASE + '/zones/not-used')
+// Load not-used zones from backend on startup (authoritative source).
+// Returns a promise so callers can await it before rendering.
+var _notUsedLoadPromise = (function _syncNotUsedFromBackend() {
+    return fetch(HBASE + '/zones/not-used')
       .then(function(r) { return r.json(); })
       .then(function(d) {
           if (d && d.zones && typeof d.zones === 'object') {
-              localStorage.setItem(_notUsedKey(), JSON.stringify(d.zones));
+              _notUsedZonesCache = d.zones;
+              try { localStorage.setItem(_notUsedKey(), JSON.stringify(d.zones)); } catch(e) {}
           }
-      }).catch(function() {});
+          _notUsedReady = true;
+      }).catch(function() {
+          // Fallback to localStorage if backend unreachable
+          try { _notUsedZonesCache = JSON.parse(localStorage.getItem(_notUsedKey()) || '{}'); } catch(e) {}
+          _notUsedReady = true;
+      });
 })();
 function isZoneNotUsed(zoneNum) {
     return !!getNotUsedZones()[String(zoneNum)];
 }
-function toggleNotUsed(zoneNum, cbEl) {
+// Build a map of zone number -> enable entity_id from the last renderScheduleCard data
+// This lets toggleNotUsed immediately flip the HA enable switch
+var _zoneEnableMap = {};  // e.g. { "3": "switch.irrigator_enable_zone_3" }
+
+async function toggleNotUsed(zoneNum, cbEl) {
     var map = getNotUsedZones();
     var zn = String(zoneNum);
     var currentlyNotUsed = !!map[zn];
+    var enableEid = _zoneEnableMap[zn] || null;
     if (currentlyNotUsed) {
-        // Un-checking "not used" — warn if system has a pump
+        // Un-checking "not used" — warn about re-enabling
+        var msg = '<div style="margin-bottom:10px;">You are about to re-enable <strong>Zone ' + zn + '</strong>.</div>';
         if (window._pumpZoneEntity) {
-            if (!confirm('WARNING: This system has a pump start relay.\\n\\nBefore enabling this zone, verify it is connected to a physical valve. Running the pump with no open valve can cause dead-heading and damage the pump.\\n\\nRemove Not Used designation?')) {
-                if (cbEl) cbEl.checked = true;
-                return;
-            }
+            msg += '<div style="padding:8px 10px;background:var(--bg-hover);border-left:3px solid var(--color-warning);border-radius:4px;margin-bottom:10px;">' +
+                '<strong style="color:var(--color-warning);">Pump System Warning</strong><br>' +
+                'This system has a pump start relay. Running the pump with no open valve can cause dead-heading and damage the pump.</div>';
+        }
+        msg += '<div>Please verify this zone is connected to a physical valve before enabling.</div>';
+        var ok = await showConfirm({
+            title: 'Enable Zone ' + zn + '?',
+            message: msg,
+            confirmText: 'Enable Zone',
+            confirmClass: window._pumpZoneEntity ? 'btn-warning' : 'btn-primary',
+            icon: window._pumpZoneEntity ? fluxIcon('warning', 28) : fluxIcon('power', 28)
+        });
+        if (!ok) {
+            if (cbEl) cbEl.checked = true;
+            return;
         }
         delete map[zn];
+        setNotUsedZones(map);
+        // Immediately enable the zone's HA switch
+        if (enableEid) {
+            await setEntityValue(enableEid, 'switch', {state: 'on'});
+        }
     } else {
+        // Checking "not used" — immediately disable
         map[zn] = true;
+        setNotUsedZones(map);
+        // Immediately disable the zone's HA enable switch
+        if (enableEid) {
+            await setEntityValue(enableEid, 'switch', {state: 'off'});
+        }
     }
-    setNotUsedZones(map);
     if (typeof loadScheduleCard === 'function') loadScheduleCard();
     if (typeof loadZones === 'function') loadZones();
 }
-function guardNotUsedEnable(zoneNum, enableEid) {
-    var msg = 'Zone ' + zoneNum + ' is marked as Not Used.\\n\\n';
+async function guardNotUsedEnable(zoneNum, enableEid) {
+    var msg = '<div style="margin-bottom:10px;"><strong>Zone ' + zoneNum + '</strong> is marked as Not Used.</div>';
     if (window._pumpZoneEntity) {
-        msg += 'WARNING: This system has a pump start relay. Running the pump with no open valve can cause dead-heading and pump damage.\\n\\n';
+        msg += '<div style="padding:8px 10px;background:var(--bg-hover);border-left:3px solid var(--color-warning);border-radius:4px;margin-bottom:10px;">' +
+            '<strong style="color:var(--color-warning);">Pump System Warning</strong><br>' +
+            'This system has a pump start relay. Running the pump with no open valve can cause dead-heading and pump damage.</div>';
     }
-    msg += 'Please verify this zone is tied to a physical valve before enabling.\\n\\nEnable anyway?';
-    if (!confirm(msg)) return;
+    msg += '<div>Please verify this zone is connected to a physical valve before enabling.</div>';
+    var ok = await showConfirm({
+        title: 'Enable Zone ' + zoneNum + '?',
+        message: msg,
+        confirmText: 'Enable Zone',
+        confirmClass: window._pumpZoneEntity ? 'btn-warning' : 'btn-primary',
+        icon: window._pumpZoneEntity ? fluxIcon('warning', 28) : fluxIcon('power', 28)
+    });
+    if (!ok) return;
     var map = getNotUsedZones();
     delete map[String(zoneNum)];
     setNotUsedZones(map);
-    setEntityValue(enableEid, 'switch', {state: 'on'});
+    await setEntityValue(enableEid, 'switch', {state: 'on'});
+    if (typeof loadScheduleCard === 'function') loadScheduleCard();
+    if (typeof loadZones === 'function') loadZones();
 }
 
 function getZoneLabel(zoneNum) {
@@ -2454,6 +2504,12 @@ async function loadControls() {
             aaEl.style.display = 'none';
         }
 
+        // Ensure not-used zones are loaded from backend before first render
+        // (prevents checkboxes rendering unchecked then flipping after async fetch)
+        if (!_notUsedReady && _notUsedLoadPromise) {
+            await _notUsedLoadPromise;
+        }
+
         // Render Schedule card (also populates window._pumpMasterZones)
         renderScheduleCard(scheduleByCategory, durData, multData);
 
@@ -2911,6 +2967,12 @@ function renderScheduleCard(sched, durData, multData) {
         // Store for Device Controls card rendering
         window._pumpMasterZones = pumpMasterZones.map(function(zn) { return zoneMap[zn]; });
         const hasMode = sortedZones.some(zn => zoneMap[zn].mode);
+
+        // Populate _zoneEnableMap so toggleNotUsed() can immediately flip HA enable switches
+        _zoneEnableMap = {};
+        for (const zn of sortedZones) {
+            if (zoneMap[zn].enable) _zoneEnableMap[String(zn)] = zoneMap[zn].enable.entity_id;
+        }
 
         html += '<table class="zone-settings-table"><thead><tr>' +
             '<th style="width:1%">Zone</th>' + (hasMode ? '<th style="width:1%">Mode</th>' : '') +
