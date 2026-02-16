@@ -7232,11 +7232,11 @@ function closeHelpModal() {
     document.getElementById('helpModal').style.display = 'none';
 }
 
-// --- Debug Log (Tabbed: Moisture / Broker) ---
-var _debugLogTab = 'moisture';
+// --- Debug Log (Tabbed: Weather / Schedule / Moisture / Broker) ---
+var _debugLogTab = 'weather';
 
 async function showDebugLog() {
-    _debugLogTab = 'moisture';
+    _debugLogTab = 'weather';
     await _renderDebugLogModal();
 }
 
@@ -7244,12 +7244,18 @@ async function _renderDebugLogModal() {
     try {
         var tabStyle = 'padding:6px 14px;font-size:12px;border:1px solid var(--border);border-radius:6px 6px 0 0;cursor:pointer;background:var(--bg-secondary);color:var(--text-muted);';
         var activeStyle = tabStyle + 'background:var(--bg-tile);color:var(--text-primary);font-weight:600;border-bottom:1px solid var(--bg-tile);';
-        var html = '<div style="display:flex;gap:4px;margin-bottom:-1px;position:relative;z-index:1;">';
+        var html = '<div style="display:flex;gap:4px;margin-bottom:-1px;position:relative;z-index:1;flex-wrap:wrap;">';
+        html += '<button style="' + (_debugLogTab === 'weather' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'weather\\';_renderDebugLogModal()">Weather</button>';
+        html += '<button style="' + (_debugLogTab === 'schedule' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'schedule\\';_renderDebugLogModal()">Schedule</button>';
         html += '<button style="' + (_debugLogTab === 'moisture' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'moisture\\';_renderDebugLogModal()">Moisture</button>';
         html += '<button style="' + (_debugLogTab === 'broker' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'broker\\';_renderDebugLogModal()">Broker</button>';
         html += '</div>';
 
-        if (_debugLogTab === 'moisture') {
+        if (_debugLogTab === 'weather') {
+            html += await _buildWeatherDebugHtml();
+        } else if (_debugLogTab === 'schedule') {
+            html += await _buildScheduleDebugHtml();
+        } else if (_debugLogTab === 'moisture') {
             html += await _buildMoistureDebugHtml();
         } else {
             html += await _buildBrokerDebugHtml();
@@ -7258,6 +7264,308 @@ async function _renderDebugLogModal() {
     } catch(e) {
         showModal('Debug Log', '<p style="color:var(--color-danger);">Failed to load debug log: ' + e.message + '</p>', '400px');
     }
+}
+
+// --- Weather Debug Tab ---
+async function _buildWeatherDebugHtml() {
+    var resp = await fetch(HBASE + '/debug/weather-state?t=' + Date.now());
+    var d = await resp.json();
+    var html = '<div style="padding:10px 0;">';
+
+    // --- STATUS BANNER ---
+    var isPaused = d.weather_schedule_disabled;
+    var bannerBg = isPaused ? 'rgba(231,76,60,0.12)' : 'rgba(46,204,113,0.12)';
+    var bannerBorder = isPaused ? '#e74c3c' : '#2ecc71';
+    var bannerIcon = isPaused ? '\\u26A0' : '\\u2705';
+    var bannerText = isPaused ? 'SCHEDULE PAUSED BY WEATHER' : 'Schedule Active — No Weather Hold';
+    html += '<div style="padding:12px 16px;background:' + bannerBg + ';border:1px solid ' + bannerBorder + ';border-radius:8px;margin-bottom:14px;">';
+    html += '<div style="font-size:14px;font-weight:700;color:' + bannerBorder + ';">' + bannerIcon + ' ' + bannerText + '</div>';
+    if (isPaused) {
+        html += '<div style="font-size:12px;color:var(--text-primary);margin-top:4px;">Reason: <strong>' + esc(d.weather_disable_reason || 'Unknown') + '</strong></div>';
+        if (d.pause_age) html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Paused for: ' + esc(d.pause_age) + '</div>';
+    }
+    if (d.system_paused) {
+        html += '<div style="font-size:12px;color:#e67e22;margin-top:4px;">\\u26A0 System also manually paused</div>';
+    }
+    if (d.rain_delay_until) {
+        html += '<div style="font-size:12px;color:#3498db;margin-top:4px;">Rain delay until: ' + esc(d.rain_delay_until) + '</div>';
+    }
+    html += '</div>';
+
+    // --- SCHEDULE ENABLE SWITCHES ---
+    var switches = d.schedule_enable_switches || {};
+    var swKeys = Object.keys(switches);
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Schedule Enable Switches (' + swKeys.length + ')</div>';
+    if (swKeys.length === 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);">No schedule enable switches detected</div>';
+    } else {
+        for (var si = 0; si < swKeys.length; si++) {
+            var swEid = swKeys[si];
+            var swState = switches[swEid];
+            var swColor = swState === 'on' ? '#2ecc71' : '#e74c3c';
+            html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
+            html += '<span style="color:' + swColor + ';font-weight:600;">\\u25CF ' + swState.toUpperCase() + '</span> ';
+            html += '<span style="color:var(--text-secondary);">' + esc(swEid) + '</span>';
+            html += '</div>';
+        }
+    }
+    // Saved states (before pause)
+    var saved = d.saved_schedule_states || {};
+    var savedKeys = Object.keys(saved);
+    if (savedKeys.length > 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Saved states (before pause):</div>';
+        for (var sj = 0; sj < savedKeys.length; sj++) {
+            html += '<div style="font-size:10px;font-family:monospace;color:var(--text-muted);padding:1px 0;">' + esc(savedKeys[sj]) + ' = ' + esc(saved[savedKeys[sj]]) + '</div>';
+        }
+    }
+    html += '</div>';
+
+    // --- WEATHER MULTIPLIER ---
+    var mult = d.watering_multiplier;
+    var multColor = mult === 1.0 ? 'var(--text-primary)' : (mult < 1 ? '#e67e22' : (mult > 1 ? '#3498db' : '#e74c3c'));
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">Weather Multiplier</div>';
+    html += '<div style="font-size:24px;font-weight:700;color:' + multColor + ';">' + (mult != null ? mult.toFixed(2) : '?') + 'x</div>';
+    if (d.last_evaluation) html += '<div style="font-size:10px;color:var(--text-muted);">Last eval: ' + esc(d.last_evaluation) + '</div>';
+    html += '</div>';
+
+    // --- ACTIVE ADJUSTMENTS ---
+    var adjs = d.active_adjustments || [];
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Active Adjustments (' + adjs.length + ')</div>';
+    if (adjs.length === 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);">No active adjustments — all clear</div>';
+    } else {
+        for (var ai = 0; ai < adjs.length; ai++) {
+            var adj = adjs[ai];
+            var actColor = (adj.action === 'pause' || adj.action === 'skip') ? '#e74c3c' : (adj.action === 'reduce' ? '#e67e22' : '#3498db');
+            html += '<div style="padding:6px 10px;margin-bottom:4px;background:var(--bg-secondary);border-left:3px solid ' + actColor + ';border-radius:4px;font-size:11px;">';
+            html += '<div><span style="font-weight:600;color:' + actColor + ';">' + esc(adj.rule || '?') + '</span>';
+            html += ' <span style="color:var(--text-muted);">action=' + esc(adj.action || '?') + ' factor=' + (adj.factor != null ? adj.factor : '?') + '</span></div>';
+            html += '<div style="color:var(--text-primary);margin-top:2px;">' + esc(adj.reason || '') + '</div>';
+            if (adj.applied_at) html += '<div style="color:var(--text-muted);font-size:10px;">Applied: ' + esc(adj.applied_at) + '</div>';
+            if (adj.expires_at) html += '<div style="color:var(--text-muted);font-size:10px;">Expires: ' + esc(adj.expires_at) + '</div>';
+            html += '</div>';
+        }
+    }
+    html += '</div>';
+
+    // --- CURRENT WEATHER ---
+    var w = d.current_weather || {};
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Current Weather</div>';
+    if (w.error) {
+        html += '<div style="color:#e74c3c;font-size:12px;font-weight:600;">FETCH ERROR: ' + esc(w.error) + '</div>';
+    } else {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:8px 20px;font-size:11px;font-family:monospace;">';
+        var wFields = [
+            ['Condition', w.condition], ['Temperature', (w.temperature != null ? w.temperature + (w.temperature_unit || '') : '?')],
+            ['Humidity', (w.humidity != null ? w.humidity + '%' : '?')], ['Wind', (w.wind_speed != null ? w.wind_speed + ' ' + (w.wind_speed_unit || '') : '?')],
+            ['Precip', (w.precipitation_inches != null ? w.precipitation_inches + ' in' : '?')], ['QPF', (w.qpf_inches != null ? w.qpf_inches + ' in' : '?')],
+            ['Dew Point', (w.dew_point != null ? w.dew_point : '?')], ['Pressure', (w.pressure != null ? w.pressure : '?')],
+            ['Cloud Cover', (w.cloud_cover != null ? w.cloud_cover + '%' : '?')], ['UV', (w.uv_index != null ? w.uv_index : '?')],
+        ];
+        for (var wi = 0; wi < wFields.length; wi++) {
+            html += '<div><span style="color:var(--text-muted);">' + wFields[wi][0] + ':</span> <span style="color:var(--text-primary);font-weight:600;">' + esc(String(wFields[wi][1])) + '</span></div>';
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+
+    // --- RULES CONFIG ---
+    var rules = d.rules_config || {};
+    var ruleKeys = Object.keys(rules);
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Rules Config (' + ruleKeys.length + ' rules)</div>';
+    html += '<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">Rain Mode: <strong>' + esc(d.rain_control_mode || '?') + '</strong> | Source: <strong>' + esc(d.weather_source || '?') + '</strong> | Enabled: <strong>' + (d.weather_enabled ? 'Yes' : 'No') + '</strong></div>';
+    for (var ri = 0; ri < ruleKeys.length; ri++) {
+        var rk = ruleKeys[ri];
+        var rv = rules[rk] || {};
+        var rEnabled = rv.enabled;
+        var rDot = rEnabled ? '#2ecc71' : '#95a5a6';
+        html += '<div style="font-size:11px;font-family:monospace;padding:2px 0;">';
+        html += '<span style="color:' + rDot + ';font-weight:600;">\\u25CF</span> ';
+        html += '<span style="color:var(--text-primary);">' + esc(rk) + '</span>';
+        html += ' <span style="color:var(--text-muted);">' + (rEnabled ? 'ON' : 'OFF') + '</span>';
+        // Show key thresholds
+        var rDetails = [];
+        for (var rvk in rv) { if (rvk !== 'enabled' && rvk !== 'monthly_multipliers') rDetails.push(rvk + '=' + rv[rvk]); }
+        if (rDetails.length) html += ' <span style="color:var(--text-muted);font-size:10px;">(' + esc(rDetails.join(', ')) + ')</span>';
+        html += '</div>';
+    }
+    html += '</div>';
+
+    // --- PRECIP ZONE FACTORS ---
+    var pzf = d.precip_zone_factors || {};
+    var pzfKeys = Object.keys(pzf);
+    if (pzfKeys.length > 0) {
+        html += '<div style="margin-bottom:14px;">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Precip Zone Factors (' + pzfKeys.length + ')</div>';
+        if (d.precip_qpf_inches != null) html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">QPF: ' + d.precip_qpf_inches + ' inches</div>';
+        for (var pi = 0; pi < pzfKeys.length; pi++) {
+            html += '<div style="font-size:10px;font-family:monospace;padding:1px 0;">' + esc(pzfKeys[pi]) + ' = ' + pzf[pzfKeys[pi]] + '</div>';
+        }
+        html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+// --- Schedule Debug Tab ---
+async function _buildScheduleDebugHtml() {
+    var resp = await fetch(HBASE + '/debug/schedule-state?t=' + Date.now());
+    var d = await resp.json();
+    var html = '<div style="padding:10px 0;">';
+
+    // --- SYSTEM STATUS BANNER ---
+    var anyPause = d.system_paused || d.weather_schedule_disabled;
+    var bannerBg = anyPause ? 'rgba(231,76,60,0.12)' : 'rgba(46,204,113,0.12)';
+    var bannerBorder = anyPause ? '#e74c3c' : '#2ecc71';
+    html += '<div style="padding:12px 16px;background:' + bannerBg + ';border:1px solid ' + bannerBorder + ';border-radius:8px;margin-bottom:14px;">';
+    html += '<div style="font-size:14px;font-weight:700;color:' + bannerBorder + ';">';
+    if (!anyPause) {
+        html += '\\u2705 Schedule Running Normally';
+    } else {
+        var reasons = [];
+        if (d.system_paused) reasons.push('Manual Pause');
+        if (d.weather_schedule_disabled) reasons.push('Weather: ' + (d.weather_disable_reason || 'Unknown'));
+        html += '\\u26A0 PAUSED: ' + esc(reasons.join(' + '));
+    }
+    html += '</div>';
+    if (d.rain_delay_until) html += '<div style="font-size:11px;color:#3498db;margin-top:4px;">Rain delay until: ' + esc(d.rain_delay_until) + '</div>';
+    html += '</div>';
+
+    // --- SCHEDULE ENABLE SWITCHES ---
+    var swData = d.schedule_enable_switches || {};
+    var switches = swData.entities || {};
+    var swKeys = Object.keys(switches);
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Schedule Enable Switches (' + swKeys.length + ')</div>';
+    for (var si = 0; si < swKeys.length; si++) {
+        var swEid = swKeys[si];
+        var swState = switches[swEid];
+        var swColor = swState === 'on' ? '#2ecc71' : '#e74c3c';
+        html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
+        html += '<span style="color:' + swColor + ';font-weight:600;">\\u25CF ' + swState.toUpperCase() + '</span> ';
+        html += '<span style="color:var(--text-secondary);">' + esc(swEid) + '</span>';
+        html += '</div>';
+    }
+    // Saved states
+    var saved = d.saved_schedule_states || {};
+    var savedKeys = Object.keys(saved);
+    if (savedKeys.length > 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;font-weight:600;">Saved states (will restore on unpause):</div>';
+        for (var sj = 0; sj < savedKeys.length; sj++) {
+            html += '<div style="font-size:10px;font-family:monospace;color:var(--text-muted);padding:1px 0;">' + esc(savedKeys[sj]) + ' = ' + esc(saved[savedKeys[sj]]) + '</div>';
+        }
+    }
+    html += '</div>';
+
+    // --- WEATHER FLAGS ---
+    var wf = d.weather_flags || {};
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Weather Flags</div>';
+    var wMult = wf.watering_multiplier;
+    var wmColor = wMult === 1.0 ? 'var(--text-primary)' : (wMult === 0 ? '#e74c3c' : '#e67e22');
+    html += '<div style="font-size:11px;font-family:monospace;padding:2px 0;"><span style="color:var(--text-muted);">Multiplier:</span> <span style="color:' + wmColor + ';font-weight:700;font-size:14px;">' + (wMult != null ? wMult.toFixed(2) : '?') + 'x</span></div>';
+    html += '<div style="font-size:11px;font-family:monospace;padding:2px 0;"><span style="color:var(--text-muted);">Rain Mode:</span> ' + esc(wf.rain_control_mode || '?') + '</div>';
+    var wAdj = wf.active_adjustments || [];
+    if (wAdj.length > 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Active adjustments:</div>';
+        for (var wai = 0; wai < wAdj.length; wai++) {
+            var wa = wAdj[wai];
+            html += '<div style="font-size:10px;font-family:monospace;color:#e67e22;padding:1px 0;">  ' + esc(wa.rule || '?') + ' [' + esc(wa.action || '?') + '] factor=' + (wa.factor != null ? wa.factor : '?') + ' — ' + esc(wa.reason || '') + '</div>';
+        }
+    } else {
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">No active weather adjustments</div>';
+    }
+    html += '</div>';
+
+    // --- FACTOR STATE ---
+    var f = d.factors || {};
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Duration Factors</div>';
+    if (f.error) {
+        html += '<div style="color:#e74c3c;font-size:11px;">Error: ' + esc(f.error) + '</div>';
+    } else {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px 20px;font-size:11px;font-family:monospace;margin-bottom:8px;">';
+        html += '<div><span style="color:var(--text-muted);">Apply Factors:</span> <span style="font-weight:600;color:' + (f.apply_factors_to_schedule ? '#2ecc71' : '#95a5a6') + ';">' + (f.apply_factors_to_schedule ? 'ON' : 'OFF') + '</span></div>';
+        html += '<div><span style="color:var(--text-muted);">Adjustment Active:</span> <span style="font-weight:600;">' + (f.duration_adjustment_active ? 'Yes' : 'No') + '</span></div>';
+        html += '<div><span style="color:var(--text-muted);">Weather Mult:</span> <span style="font-weight:600;">' + (f.weather_multiplier != null ? f.weather_multiplier.toFixed(2) : '?') + 'x</span></div>';
+        html += '<div><span style="color:var(--text-muted);">Moisture:</span> <span style="font-weight:600;">' + (f.moisture_enabled ? 'ON' : 'OFF') + '</span></div>';
+        html += '<div><span style="color:var(--text-muted);">Deferred Apply:</span> <span style="font-weight:600;color:' + (f.deferred_factor_apply ? '#e74c3c' : '#2ecc71') + ';">' + (f.deferred_factor_apply ? 'PENDING' : 'No') + '</span></div>';
+        html += '</div>';
+
+        // Base vs Live durations
+        var bd = f.base_durations || {};
+        var bdKeys = Object.keys(bd);
+        if (bdKeys.length > 0) {
+            html += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;">Durations — Base vs Live (Controller)</div>';
+            html += '<div style="max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:6px;">';
+            html += '<table style="width:100%;font-size:10px;font-family:monospace;border-collapse:collapse;">';
+            html += '<thead><tr style="background:var(--bg-secondary);position:sticky;top:0;">';
+            html += '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);">Entity</th>';
+            html += '<th style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border);">Base</th>';
+            html += '<th style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border);">Live</th>';
+            html += '<th style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border);">Factor</th>';
+            html += '</tr></thead><tbody>';
+            for (var bi = 0; bi < bdKeys.length; bi++) {
+                var bk = bdKeys[bi];
+                var bv = bd[bk];
+                var baseV = bv.base_value != null ? parseFloat(bv.base_value) : null;
+                var liveV = bv.live_value != null ? parseFloat(bv.live_value) : null;
+                var factorV = (baseV && liveV && baseV > 0) ? (liveV / baseV).toFixed(2) : '—';
+                var mismatch = baseV != null && liveV != null && Math.abs(baseV - liveV) > 0.1;
+                var rowBg = mismatch ? 'rgba(243,156,18,0.08)' : '';
+                html += '<tr style="border-bottom:1px solid var(--border);background:' + rowBg + ';">';
+                // Shorten entity name
+                var shortEid = bk.replace(/^number\\./, '').replace(/irrigation_[a-z0-9_]+?_/, '');
+                html += '<td style="padding:3px 8px;" title="' + esc(bk) + '">' + esc(shortEid) + '</td>';
+                html += '<td style="padding:3px 8px;text-align:right;">' + (baseV != null ? baseV : '?') + '</td>';
+                html += '<td style="padding:3px 8px;text-align:right;' + (mismatch ? 'color:#e67e22;font-weight:600;' : '') + '">' + (liveV != null ? liveV : '?') + '</td>';
+                html += '<td style="padding:3px 8px;text-align:right;color:var(--text-muted);">' + factorV + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+        }
+
+        // Per-zone multipliers
+        var pz = f.per_zone_multipliers || {};
+        var pzKeys = Object.keys(pz);
+        if (pzKeys.length > 0) {
+            html += '<div style="font-size:11px;font-weight:600;margin-top:12px;margin-bottom:4px;">Per-Zone Multipliers</div>';
+            html += '<div style="max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:6px;">';
+            html += '<table style="width:100%;font-size:10px;font-family:monospace;border-collapse:collapse;">';
+            html += '<thead><tr style="background:var(--bg-secondary);position:sticky;top:0;">';
+            html += '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);">Zone</th>';
+            html += '<th style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border);">Weather</th>';
+            html += '<th style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border);">Moisture</th>';
+            html += '<th style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border);">Combined</th>';
+            html += '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);">Note</th>';
+            html += '</tr></thead><tbody>';
+            for (var pzi = 0; pzi < pzKeys.length; pzi++) {
+                var pk = pzKeys[pzi];
+                var pv = pz[pk];
+                var skipBg = pv.moisture_skip ? 'rgba(231,76,60,0.08)' : '';
+                html += '<tr style="border-bottom:1px solid var(--border);background:' + skipBg + ';">';
+                var shortZone = pk.replace(/^switch\\./, '').replace(/irrigation_[a-z0-9_]+?_/, '');
+                html += '<td style="padding:3px 8px;" title="' + esc(pk) + '">' + esc(shortZone) + '</td>';
+                html += '<td style="padding:3px 8px;text-align:right;">' + (pv.weather_mult != null ? pv.weather_mult.toFixed(2) : '?') + '</td>';
+                html += '<td style="padding:3px 8px;text-align:right;">' + (pv.moisture_mult != null ? pv.moisture_mult.toFixed(2) : '?') + '</td>';
+                html += '<td style="padding:3px 8px;text-align:right;font-weight:600;">' + (pv.combined_mult != null ? pv.combined_mult.toFixed(2) : '?') + '</td>';
+                var note = pv.moisture_skip ? 'SKIP' : (pv.moisture_reason || '');
+                html += '<td style="padding:3px 8px;color:' + (pv.moisture_skip ? '#e74c3c' : 'var(--text-muted)') + ';font-size:9px;">' + esc(note) + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+        }
+    }
+    html += '</div>';
+
+    html += '</div>';
+    return html;
 }
 
 async function _buildMoistureDebugHtml() {

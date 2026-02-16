@@ -364,6 +364,9 @@ async def stop_zone(zone_id: str, request: Request):
         zone_name=_zone_name(entity_id),
     )
 
+    # Signal the remote that a manual stop occurred
+    await run_log.signal_manual_stop()
+
     log_change(get_actor(request), "Zone Control",
                f"Stopped {_zone_name(entity_id).replace('_', ' ').title()}",
                {"entity_id": entity_id})
@@ -418,6 +421,10 @@ async def stop_all_zones(request: Request):
                 zone_name=_zone_name(entity_id),
             )
             stopped.append(entity_id)
+
+    # Signal the remote that a manual stop occurred
+    if stopped:
+        await run_log.signal_manual_stop()
 
     log_change(get_actor(request), "Zone Control", "Emergency stop — all zones",
                {"stopped": len(stopped)})

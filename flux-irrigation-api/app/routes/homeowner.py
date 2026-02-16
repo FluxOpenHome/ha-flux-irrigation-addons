@@ -451,6 +451,9 @@ async def homeowner_stop_zone(zone_id: str, request: Request):
         zone_name=_zone_name(entity_id),
     )
 
+    # Signal the remote that a manual stop occurred
+    await run_log.signal_manual_stop()
+
     log_change(get_actor(request), "Zone Control",
                f"Stopped {_zone_name(entity_id).replace('_', ' ').title()}",
                {"entity_id": entity_id})
@@ -484,6 +487,10 @@ async def homeowner_stop_all(request: Request):
                 zone_name=_zone_name(entity_id),
             )
             stopped.append(entity_id)
+
+    # Signal the remote that a manual stop occurred
+    if stopped:
+        await run_log.signal_manual_stop()
 
     log_change(get_actor(request), "Zone Control", "Emergency stop — all zones",
                {"stopped": len(stopped)})
@@ -1086,8 +1093,8 @@ async def homeowner_broker_force_sync(request: Request):
     await sync_all_remote_state()
 
     # Hold suppression — let device settle
-    run_log._remote_log("Broker: force sync — holding 15s for remote to settle")
-    await asyncio.sleep(15)
+    run_log._remote_log("Broker: force sync — holding 5s for remote to settle")
+    await asyncio.sleep(5)
 
     # Turn off sync_needed switch if present
     sync_eid = _find_sync_needed_entity()
@@ -1107,6 +1114,173 @@ async def homeowner_broker_force_sync(request: Request):
     run_log._remote_log("Broker: force sync complete — mirroring re-enabled")
 
     return {"status": "ok", "synced": True}
+
+
+@router.get("/debug/weather-state", summary="Full weather debug state")
+async def homeowner_weather_debug_state():
+    """Dump all weather state for debugging — rules, conditions, adjustments, pause state."""
+    _require_homeowner_mode()
+    from routes.weather import _load_weather_rules, get_weather_data, _load_external_weather
+    from routes.schedule import _load_schedules
+    import schedule_control
+    import ha_client as hac
+
+    rules_data = _load_weather_rules()
+    schedule_data = _load_schedules()
+    config = get_config()
+
+    # Current weather
+    try:
+        weather = await get_weather_data()
+    except Exception as e:
+        weather = {"error": str(e)}
+
+    # External weather (from management server)
+    ext_weather = _load_external_weather(max_age_minutes=60) or {}
+
+    # Schedule enable switch live states
+    sched_entities = schedule_control.get_schedule_enable_entities()
+    sched_states = {}
+    if sched_entities:
+        live_states = await hac.get_entities_by_ids(sched_entities)
+        for ent in live_states:
+            sched_states[ent["entity_id"]] = ent.get("state", "unknown")
+
+    # Determine pause age
+    pause_age_str = None
+    active_adj = rules_data.get("active_adjustments", [])
+    if schedule_data.get("weather_schedule_disabled"):
+        for adj in active_adj:
+            applied = adj.get("applied_at")
+            if applied:
+                try:
+                    from datetime import datetime, timezone
+                    dt = datetime.fromisoformat(applied.replace("Z", "+00:00"))
+                    age = datetime.now(timezone.utc) - dt
+                    pause_age_str = f"{age.total_seconds() / 3600:.1f} hours"
+                except Exception:
+                    pass
+                break
+
+    return {
+        "weather_enabled": config.weather_enabled,
+        "weather_source": config.weather_source,
+        "weather_entity_id": getattr(config, "weather_entity_id", None),
+        "current_weather": weather,
+        "external_weather": ext_weather if ext_weather else None,
+        "rules_config": rules_data.get("rules", {}),
+        "rain_control_mode": rules_data.get("rain_control_mode", "rain_holds"),
+        "active_adjustments": active_adj,
+        "watering_multiplier": rules_data.get("watering_multiplier", 1.0),
+        "last_evaluation": rules_data.get("last_evaluation"),
+        "last_weather_data": rules_data.get("last_weather_data"),
+        "precip_qpf_inches": rules_data.get("precip_qpf_inches"),
+        "precip_zone_factors": rules_data.get("precip_zone_factors", {}),
+        "weather_schedule_disabled": schedule_data.get("weather_schedule_disabled", False),
+        "weather_disable_reason": schedule_data.get("weather_disable_reason"),
+        "saved_schedule_states": schedule_data.get("saved_schedule_states", {}),
+        "pause_age": pause_age_str,
+        "system_paused": schedule_data.get("system_paused", False),
+        "rain_delay_until": schedule_data.get("rain_delay_until"),
+        "schedule_enable_switches": sched_states,
+    }
+
+
+@router.get("/debug/schedule-state", summary="Full schedule debug state")
+async def homeowner_schedule_debug_state():
+    """Dump all schedule/factor state for debugging — enables, factors, durations, pause."""
+    _require_homeowner_mode()
+    from routes.schedule import _load_schedules
+    from routes.weather import _load_weather_rules
+    import schedule_control
+    import ha_client as hac
+
+    schedule_data = _load_schedules()
+    rules_data = _load_weather_rules()
+    config = get_config()
+
+    # Schedule enable switch live states
+    sched_entities = schedule_control.get_schedule_enable_entities()
+    sched_live = {}
+    if sched_entities:
+        live_states = await hac.get_entities_by_ids(sched_entities)
+        for ent in live_states:
+            sched_live[ent["entity_id"]] = ent.get("state", "unknown")
+
+    # Moisture / factor data
+    factor_data = {}
+    try:
+        from routes.moisture import (
+            _load_data as _load_moisture_data,
+            get_weather_multiplier,
+            _deferred_factor_apply,
+        )
+        mdata = _load_moisture_data()
+        base_durations = mdata.get("base_durations", {})
+
+        # Read live duration values from HA for comparison
+        dur_eids = list(base_durations.keys())
+        live_durations = {}
+        if dur_eids:
+            dur_states = await hac.get_entities_by_ids(dur_eids)
+            for ds in dur_states:
+                live_durations[ds["entity_id"]] = ds.get("state", "?")
+
+        # Per-zone moisture multipliers
+        per_zone = {}
+        try:
+            from routes.moisture import get_combined_multiplier
+            for zeid in config.allowed_zone_entities:
+                try:
+                    zm = await get_combined_multiplier(zeid)
+                    per_zone[zeid] = {
+                        "weather_mult": zm.get("weather_multiplier"),
+                        "moisture_mult": zm.get("moisture_multiplier"),
+                        "combined_mult": zm.get("combined_multiplier"),
+                        "moisture_skip": zm.get("moisture_skip", False),
+                        "moisture_reason": zm.get("moisture_reason"),
+                    }
+                except Exception:
+                    per_zone[zeid] = {"error": "failed"}
+        except Exception:
+            pass
+
+        factor_data = {
+            "apply_factors_to_schedule": mdata.get("apply_factors_to_schedule", False),
+            "duration_adjustment_active": mdata.get("duration_adjustment_active", False),
+            "weather_multiplier": get_weather_multiplier(),
+            "moisture_enabled": mdata.get("moisture_enabled", False),
+            "deferred_factor_apply": _deferred_factor_apply,
+            "base_durations": {
+                eid: {
+                    "base_value": d.get("base_value"),
+                    "live_value": live_durations.get(eid, "?"),
+                    "captured_at": d.get("captured_at"),
+                }
+                for eid, d in base_durations.items()
+            },
+            "per_zone_multipliers": per_zone,
+        }
+    except Exception as e:
+        factor_data = {"error": str(e)}
+
+    return {
+        "system_paused": schedule_data.get("system_paused", False),
+        "rain_delay_until": schedule_data.get("rain_delay_until"),
+        "weather_schedule_disabled": schedule_data.get("weather_schedule_disabled", False),
+        "weather_disable_reason": schedule_data.get("weather_disable_reason"),
+        "saved_schedule_states": schedule_data.get("saved_schedule_states", {}),
+        "schedule_enable_switches": {
+            "entities": sched_live,
+            "count": len(sched_entities),
+        },
+        "weather_flags": {
+            "watering_multiplier": rules_data.get("watering_multiplier", 1.0),
+            "active_adjustments": rules_data.get("active_adjustments", []),
+            "rain_control_mode": rules_data.get("rain_control_mode", "rain_holds"),
+        },
+        "factors": factor_data,
+    }
 
 
 @router.get("/zone_aliases", summary="Get zone aliases")

@@ -1905,6 +1905,42 @@ async def update_weather_rules(body: dict, request: Request):
         if changes:
             log_change(actor, "Weather Rules", f"{label} — " + ", ".join(changes))
 
+    # If no pause-capable rules remain enabled, immediately clear any weather pause.
+    # This handles the case where evaluation can't run (weather fetch error, no entity, etc.)
+    # but the user just disabled/cleared all the rules that caused the pause.
+    pause_rules = ("rain_detection", "rain_forecast", "precipitation_threshold",
+                   "temperature_freeze", "wind_speed")
+    saved_rules = data.get("rules", {})
+    any_pause_rule_on = any(saved_rules.get(r, {}).get("enabled") for r in pause_rules)
+    if not any_pause_rule_on:
+        from routes.schedule import _load_schedules, _save_schedules
+        schedule_data = _load_schedules()
+        if schedule_data.get("weather_schedule_disabled"):
+            import schedule_control
+            saved_states = schedule_data.get("saved_schedule_states", {})
+            print(f"[WEATHER] No pause rules enabled — force-clearing weather pause "
+                  f"(saved_states={saved_states})")
+            await schedule_control.restore_schedules(saved_states)
+            schedule_data["weather_schedule_disabled"] = False
+            schedule_data.pop("weather_disable_reason", None)
+            schedule_data.pop("saved_schedule_states", None)
+            _save_schedules(schedule_data)
+            # Clear active adjustments and reset multiplier
+            data["active_adjustments"] = []
+            data["watering_multiplier"] = 1.0
+            _save_weather_rules(data)
+            _log_weather_event("weather_resume", {
+                "reason": "All pause rules disabled by user",
+            })
+            import run_log
+            run_log.log_zone_event(
+                entity_id="system",
+                state="weather_resume",
+                source="weather",
+                zone_name="Weather Resume: all pause rules disabled",
+            )
+            print("[WEATHER] Force-cleared weather pause — no pause rules remain enabled")
+
     # Re-evaluate rules immediately so the multiplier updates right away
     try:
         result = await run_weather_evaluation()

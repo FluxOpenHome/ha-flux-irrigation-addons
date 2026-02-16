@@ -1067,6 +1067,42 @@ def _find_sync_needed_entity() -> str | None:
     return None
 
 
+# --- Manual Stop flag (tells remote a zone was manually stopped) ---
+_manual_stop_entity: str | None = None  # None=not searched, ""=not found
+
+
+def _find_manual_stop_entity() -> str | None:
+    """Auto-detect the manual_stop switch from remote entity list."""
+    global _manual_stop_entity
+    if _manual_stop_entity is not None:
+        return _manual_stop_entity if _manual_stop_entity else None
+    try:
+        from config import get_config
+        config = get_config()
+        for eid in (config.allowed_remote_entities or []):
+            if eid.startswith("switch.") and eid.endswith("_manual_stop"):
+                _manual_stop_entity = eid
+                _remote_log(f"Broker: found manual_stop entity: {eid}")
+                return eid
+    except Exception:
+        pass
+    _manual_stop_entity = ""  # empty string = searched but not found
+    return None
+
+
+async def signal_manual_stop():
+    """Turn ON the remote's manual_stop switch to signal a user-initiated zone stop."""
+    eid = _find_manual_stop_entity()
+    if not eid:
+        return
+    try:
+        import ha_client
+        await ha_client.call_service("switch", "turn_on", {"entity_id": eid})
+        _remote_log(f"Broker: signaled manual_stop ON → {eid}")
+    except Exception as e:
+        _remote_log(f"Broker: failed to signal manual_stop: {e}")
+
+
 async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
     """Remote device signaled sync needed — push ALL controller state to it.
 
@@ -1096,8 +1132,8 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
         _remote_log(f"Broker: reconnect sync FAILED: {e}")
 
     # Hold suppression FIRST — let the device finish booting before we tell it we synced
-    _remote_log("Broker: holding suppression 15s for remote to settle")
-    await asyncio.sleep(15)
+    _remote_log("Broker: holding suppression 5s for remote to settle")
+    await asyncio.sleep(5)
 
     # THEN turn OFF sync_needed — device has had time to finish booting
     sync_eid = _find_sync_needed_entity()

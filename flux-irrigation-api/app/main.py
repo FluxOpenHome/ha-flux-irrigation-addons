@@ -524,8 +524,8 @@ async def lifespan(app: FastAPI):
             # Then push ALL entity states (zones, schedules, durations, days, status, etc.)
             await sync_all_remote_state()
             # Hold suppression FIRST — let device finish booting before we tell it we synced
-            run_log._remote_log("Broker: startup — holding suppression 15s for remote to settle")
-            await asyncio.sleep(15)
+            run_log._remote_log("Broker: startup — holding suppression 5s for remote to settle")
+            await asyncio.sleep(5)
             # THEN turn OFF sync_needed — device has had time to finish booting
             sync_eid = _find_sync_needed_entity()
             if sync_eid:
