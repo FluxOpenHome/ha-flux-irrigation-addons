@@ -22,7 +22,8 @@ def _load_schedules() -> dict:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             pass
-    return {"system_paused": False, "rain_delay_until": None}
+    return {"system_paused": False, "rain_delay_until": None,
+            "weather_schedule_disabled": False}
 
 
 def _save_schedules(data: dict):

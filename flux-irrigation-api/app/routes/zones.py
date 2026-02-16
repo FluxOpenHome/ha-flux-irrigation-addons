@@ -234,23 +234,17 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     config = get_config()
     key_config: ApiKeyConfig = request.state.api_key_config
 
-    # Check if system is paused — block zone starts while paused
+    entity_id = _resolve_zone_entity(zone_id, config)
+
+    # Check schedule state for informational warning (never blocks manual starts)
+    schedule_warning = ""
     from routes.schedule import _load_schedules
     schedule_data = _load_schedules()
-    if schedule_data.get("system_paused"):
-        pause_reason = ""
-        if schedule_data.get("weather_paused"):
-            pause_reason = schedule_data.get("weather_pause_reason", "weather conditions")
-            raise HTTPException(
-                status_code=409,
-                detail=f"System is paused due to {pause_reason}. Resume the system before starting zones.",
-            )
-        raise HTTPException(
-            status_code=409,
-            detail="System is paused. Resume the system before starting zones.",
-        )
-
-    entity_id = _resolve_zone_entity(zone_id, config)
+    if schedule_data.get("weather_schedule_disabled"):
+        reason = schedule_data.get("weather_disable_reason", "weather conditions")
+        schedule_warning = f"Schedule disabled due to {reason}"
+    elif schedule_data.get("system_paused"):
+        schedule_warning = "System is paused"
 
     # Verify zone exists in HA
     entity = await ha_client.get_entity_state(entity_id)
@@ -335,12 +329,16 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
         client_ip=request.client.host if request.client else None,
     )
 
+    # Combine warnings
+    warnings = [w for w in (schedule_warning, moisture_warning) if w]
+    combined_warning = " | ".join(warnings) if warnings else ""
+
     return ZoneActionResponse(
         success=True,
         zone_id=zone_id,
         action="start",
         message=message,
-        warning=moisture_warning,
+        warning=combined_warning,
     )
 
 

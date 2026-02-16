@@ -258,6 +258,8 @@ async def homeowner_status():
         "online": True,
         "ha_connected": ha_connected,
         "system_paused": schedule_data.get("system_paused", False),
+        "weather_schedule_disabled": schedule_data.get("weather_schedule_disabled", False),
+        "weather_disable_reason": schedule_data.get("weather_disable_reason", ""),
         "total_zones": len(used_zones),
         "active_zones": len(active_zones),
         "active_zone_entity_id": active_zone_eid,
@@ -719,8 +721,10 @@ async def homeowner_resume(request: Request):
     await schedule_control.restore_schedules(saved_states)
 
     data["system_paused"] = False
+    data["weather_schedule_disabled"] = False
     data.pop("weather_paused", None)
     data.pop("weather_pause_reason", None)
+    data.pop("weather_disable_reason", None)
     data.pop("saved_schedule_states", None)
     _save_schedules(data)
 

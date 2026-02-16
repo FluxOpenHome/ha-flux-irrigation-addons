@@ -1450,47 +1450,32 @@ async def run_weather_evaluation() -> dict:
 
     if should_pause:
         schedule_data = _load_schedules()
-        if schedule_data.get("system_paused") and schedule_data.get("weather_paused"):
-            # System is ALREADY weather-paused.  Check if any schedule start
+        if schedule_data.get("weather_schedule_disabled"):
+            # Schedule is ALREADY weather-disabled.  Check if any schedule start
             # times have passed since the last weather_skip log so we still
             # report savings for every skipped schedule cycle.
             await _log_skipped_schedules(config, schedule_data, pause_reason)
 
-        if not schedule_data.get("system_paused"):
-            # Disable ESPHome schedule programs so the controller can't start runs
+        if not schedule_data.get("weather_schedule_disabled"):
+            # Disable ESPHome schedule programs so the controller can't start runs.
+            # This ONLY disables the schedule — manual zone control still works.
             import schedule_control
             saved_states = await schedule_control.disable_schedules()
 
-            schedule_data["system_paused"] = True
-            schedule_data["weather_paused"] = True
-            schedule_data["weather_pause_reason"] = pause_reason
+            schedule_data["weather_schedule_disabled"] = True
+            schedule_data["weather_disable_reason"] = pause_reason
             if saved_states:
                 schedule_data["saved_schedule_states"] = saved_states
             _save_schedules(schedule_data)
 
-            # Stop all active zones
-            import run_log
-            zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
-            for zone in zones:
-                if zone.get("state") in ("on", "open"):
-                    entity_id = zone["entity_id"]
-                    domain = entity_id.split(".")[0] if "." in entity_id else "switch"
-                    if domain == "valve":
-                        await ha_client.call_service("valve", "close", {"entity_id": entity_id})
-                    else:
-                        await ha_client.call_service("switch", "turn_off", {"entity_id": entity_id})
-                    attrs = zone.get("attributes", {})
-                    run_log.log_zone_event(
-                        entity_id=entity_id, state="off", source="weather_pause",
-                        zone_name=attrs.get("friendly_name", entity_id),
-                    )
-
             # Log weather_skip events for zones that WOULD have run but
-            # never started (schedules are now disabled).  Only log for
-            # zones NOT currently ON (already handled by the OFF loop above).
+            # can't start now (schedules are disabled).
+            import run_log
             try:
                 from routes.moisture import _get_ordered_enabled_zones
                 from routes.homeowner import is_zone_not_used
+                zones = await ha_client.get_entities_by_ids(
+                    config.allowed_zone_entities)
                 running_eids = {
                     z["entity_id"] for z in zones
                     if z.get("state") in ("on", "open")
@@ -1500,7 +1485,7 @@ async def run_weather_evaluation() -> dict:
                 for ez in enabled_zones:
                     zone_eid = ez["zone_entity_id"]
                     if zone_eid in running_eids:
-                        continue  # Already handled by OFF loop above
+                        continue  # Zone is running (manual start) — don't skip it
                     if ez.get("is_special"):
                         continue  # Skip pump/master/relay zones
                     if is_zone_not_used(zone_eid):
@@ -1524,9 +1509,9 @@ async def run_weather_evaluation() -> dict:
                 print(f"[WEATHER] Logged weather_skip for "
                       f"{skip_count} prevented zones")
                 # Mark schedule times that have ALREADY PASSED today as logged
-                # so the already-paused detector doesn't double-log them.
+                # so the already-disabled detector doesn't double-log them.
                 # IMPORTANT: Do NOT mark future schedule times — they need to
-                # be logged individually when they pass.  The initial pause
+                # be logged individually when they pass.  The initial disable
                 # only covers the current/most-recent schedule cycle.
                 try:
                     from routes.moisture import (
@@ -1568,30 +1553,28 @@ async def run_weather_evaluation() -> dict:
                 "wind_speed": weather.get("wind_speed"),
             })
             # Log to run history so it appears alongside zone events
-            import run_log
             run_log.log_zone_event(
                 entity_id="system",
                 state="weather_pause",
                 source="weather",
-                zone_name=f"Weather Pause: {pause_reason}",
+                zone_name=f"Weather Hold: {pause_reason}",
             )
-            print(f"[WEATHER] System paused: {pause_reason}")
+            print(f"[WEATHER] Schedule disabled due to weather: {pause_reason}")
     else:
-        # Auto-resume if previously weather-paused and conditions cleared
+        # Auto-resume if previously weather-disabled and conditions cleared
         schedule_data = _load_schedules()
-        if schedule_data.get("weather_paused") and schedule_data.get("system_paused"):
+        if schedule_data.get("weather_schedule_disabled"):
             # Restore ESPHome schedule programs to their prior state
             import schedule_control
             saved_states = schedule_data.get("saved_schedule_states", {})
             await schedule_control.restore_schedules(saved_states)
 
-            schedule_data["system_paused"] = False
-            schedule_data["weather_paused"] = False
-            schedule_data.pop("weather_pause_reason", None)
+            schedule_data["weather_schedule_disabled"] = False
+            schedule_data.pop("weather_disable_reason", None)
             schedule_data.pop("saved_schedule_states", None)
             _save_schedules(schedule_data)
 
-            # Clear schedule skip tracking so next pause cycle starts fresh
+            # Clear schedule skip tracking so next disable cycle starts fresh
             _logged_schedule_skips.clear()
 
             await ha_client.fire_event("flux_irrigation_weather_resume", {
@@ -1612,7 +1595,7 @@ async def run_weather_evaluation() -> dict:
                 source="weather",
                 zone_name="Weather Resume: conditions cleared",
             )
-            print("[WEATHER] System auto-resumed: weather conditions cleared")
+            print("[WEATHER] Schedule re-enabled: weather conditions cleared")
 
     # Log every weather evaluation so Data Nerd charts have data
     _log_weather_event("weather_evaluation", {

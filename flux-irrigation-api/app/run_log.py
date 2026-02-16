@@ -392,39 +392,10 @@ def cleanup_run_history(retention_days: int = 365):
 
 async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
                                zone_name: str, source: str = "schedule"):
-    """Process a zone state change: log the event and enforce pause if needed."""
+    """Process a zone state change: log the event."""
     import ha_client
 
     global _zone_states
-
-    # Check if system is currently paused
-    system_paused = False
-    try:
-        from routes.schedule import _load_schedules
-        schedule_data = _load_schedules()
-        system_paused = schedule_data.get("system_paused", False)
-    except Exception:
-        pass
-
-    # Enforce pause: if system is paused and a zone just turned on,
-    # immediately turn it off (safety net for ESPHome schedule bypass)
-    if system_paused and new_state in ("on", "open"):
-        if old_state not in ("on", "open"):
-            domain = entity_id.split(".")[0] if "." in entity_id else "switch"
-            if domain == "valve":
-                await ha_client.call_service("valve", "close", {"entity_id": entity_id})
-            else:
-                await ha_client.call_service("switch", "turn_off", {"entity_id": entity_id})
-            log_zone_event(
-                entity_id=entity_id,
-                state="off",
-                source="pause_enforced",
-                zone_name=zone_name,
-            )
-            print(f"[RUN_LOG] Pause enforced: turned off {entity_id} "
-                  f"(zone started while system paused)")
-            _zone_states[entity_id] = "off"
-            return
 
     is_on = new_state in ("on", "open")
     is_off = new_state in ("off", "closed")

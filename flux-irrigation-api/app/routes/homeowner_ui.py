@@ -1981,8 +1981,8 @@ async function loadStatus() {
                 <div class="status-tile-text"><div class="tile-name">Connection</div><div class="tile-state ${s.ha_connected ? 'on' : ''}">${s.ha_connected ? 'Connected' : 'Disconnected'}</div></div>
             </div>
             <div class="tile">
-                <div class="status-tile-icon ${s.system_paused ? 'icon-warn' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>
-                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused ? '' : 'on'}">${s.system_paused ? 'Paused' : 'Active'}</div></div>
+                <div class="status-tile-icon ${s.system_paused || s.weather_schedule_disabled ? 'icon-warn' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused || s.weather_schedule_disabled ? '' : 'on'}">${s.system_paused ? 'Paused' : s.weather_schedule_disabled ? 'Weather Hold' : 'Active'}</div></div>
             </div>
             <div class="tile">
                 <div class="status-tile-icon ${s.active_zones > 0 ? 'icon-on' : ''}">${getStatusTileSvg('zones', 32)}</div>
