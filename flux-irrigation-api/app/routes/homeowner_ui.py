@@ -3149,7 +3149,8 @@ function renderScheduleCard(sched, durData, multData) {
                 var combinedCard = '';
                 if (_hasMoisture && _hasWeather) {
                     var _cBg, _cColor, _cTitle;
-                    if (_isSkip) {
+                    // If EITHER moisture OR weather says skip, combined = skip
+                    if (_isSkip || _wSkip) {
                         _cBg = 'var(--bg-danger-light)'; _cColor = 'var(--color-danger)';
                         _cTitle = 'Skip Watering';
                     } else if (_isApplied) {
