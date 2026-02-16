@@ -1612,6 +1612,12 @@ async def run_weather_evaluation() -> dict:
         "temperature": weather.get("temperature"),
         "humidity": weather.get("humidity"),
         "wind_speed": weather.get("wind_speed"),
+        "precipitation_inches": weather.get("precipitation_inches"),
+        "qpf_inches": weather.get("qpf_inches"),
+        "dew_point": weather.get("dew_point"),
+        "pressure": weather.get("pressure"),
+        "cloud_cover": weather.get("cloud_cover"),
+        "uv_index": weather.get("uv_index"),
     })
 
     # Save evaluation results
