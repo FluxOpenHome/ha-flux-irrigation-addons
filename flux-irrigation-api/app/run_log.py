@@ -61,10 +61,10 @@ _REMOTE_DEBUG_LOG_MAX_LINES = 500
 
 
 def _remote_log(msg: str):
-    """Write a timestamped message to both console and the remote debug log file."""
+    """Write a timestamped message to both console and the broker debug log file."""
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {msg}"
-    print(f"[REMOTE] {msg}")
+    print(f"[BROKER] {msg}")
     try:
         with open(_REMOTE_DEBUG_LOG_FILE, "a") as f:
             f.write(line + "\n")
@@ -513,11 +513,11 @@ def _extract_entity_suffix(entity_id: str) -> str:
     # Known suffix patterns — ordered longest-first so we match greedily
     # Schedule times — handle multiple naming conventions:
     #   _schedule_start_time_N, _start_time_N, _schedule_N_start_time
-    for i in range(1, 9):
-        if (slug.endswith(f"_schedule_start_time_{i}")
-                or slug.endswith(f"_start_time_{i}")
-                or slug.endswith(f"_schedule_{i}_start_time")):
-            return f"schedule_start_time_{i}"
+    #   Also handles firmware names with extra description after the number
+    #   e.g. _start_time_1_24hr_06_00_or_12hr_6_00_am, _start_time_2_optional
+    m = re.search(r'(?:schedule_)?start_time_(\d+)', slug)
+    if m:
+        return f"schedule_start_time_{m.group(1)}"
     # Zone durations
     m = re.search(r'zone_(\d+)_dur(?:ation)?$', slug)
     if m:
@@ -554,6 +554,21 @@ def _extract_entity_suffix(entity_id: str) -> str:
     return slug
 
 
+def _classify_device_entities(entity_ids: list[str]) -> dict[tuple[str, str], str]:
+    """Classify a device's entities by (domain, function_key) -> entity_id.
+
+    Each entity is independently analyzed to determine what function it serves.
+    This is one half of the broker model — the other device is classified
+    separately, then the two inventories are matched by function.
+    """
+    inventory: dict[tuple[str, str], str] = {}
+    for eid in entity_ids:
+        domain = eid.split(".")[0] if "." in eid else ""
+        func_key = _extract_entity_suffix(eid)
+        inventory[(domain, func_key)] = eid
+    return inventory
+
+
 def invalidate_remote_maps():
     """Clear cached entity maps so they are rebuilt on next access.
 
@@ -567,15 +582,21 @@ def invalidate_remote_maps():
 def _build_remote_entity_maps() -> dict:
     """Build bidirectional entity mapping between controller and remote.
 
-    Maps entities by their functional suffix — both devices share the same
-    suffix patterns (zone_1, schedule_monday, zone_1_duration, etc.).
+    Uses a two-phase broker model:
+      Phase 1: Classify each device's entities independently by function.
+      Phase 2: Match the two inventories by (domain_class, function_key).
+
+    The add-on acts as the middleman — it understands what each entity does
+    on each device and brokers state changes between them.
 
     Returns dict with:
-      r2c: remote_entity → controller_entity (for user actions on remote)
-      c2r: controller_entity → remote_entity (for mirroring state to remote)
+      r2c: remote_entity -> controller_entity (for user actions on remote)
+      c2r: controller_entity -> remote_entity (for mirroring state to remote)
       remote_all: set of ALL remote entity IDs to watch
       controller_watched: set of controller entity IDs that have a remote counterpart
-      status_map: controller_sensor → remote_text (one-way: controller→remote)
+      status_map: controller_sensor -> remote_text (one-way: controller->remote)
+      controller_inv: classified controller inventory (for debug UI)
+      remote_inv: classified remote inventory (for debug UI)
     """
     global _remote_maps_cache, _remote_maps_logged
     # Return cached maps if already built (rebuild via invalidate_remote_maps())
@@ -587,82 +608,51 @@ def _build_remote_entity_maps() -> dict:
 
     if not config.allowed_remote_entities:
         _remote_maps_cache = {"r2c": {}, "c2r": {}, "remote_all": set(),
-                              "controller_watched": set(), "status_map": {}}
+                              "controller_watched": set(), "status_map": {},
+                              "controller_inv": {}, "remote_inv": {}}
         return _remote_maps_cache
 
-    # Index remote entities by (domain, suffix)
-    remote_by_suffix = {}  # suffix → entity_id
-    for eid in config.allowed_remote_entities:
-        domain = eid.split(".")[0] if "." in eid else ""
-        suffix = _extract_entity_suffix(eid)
-        remote_by_suffix[(domain, suffix)] = eid
-        # Also store without domain for cross-domain matching (text_sensor→text)
-        remote_by_suffix[("*", suffix)] = eid
+    # ── Phase 1: Classify each device's entities independently ──
+    all_controller = (set(config.allowed_zone_entities or [])
+                      | set(config.allowed_control_entities or [])
+                      | set(config.allowed_sensor_entities or []))
+    controller_inv = _classify_device_entities(list(all_controller))
+    remote_inv = _classify_device_entities(list(config.allowed_remote_entities))
 
-    # Index controller entities by suffix
-    # Combine all controller entity lists
-    all_controller = set()
-    for eid in (config.allowed_zone_entities or []):
-        all_controller.add(eid)
-    for eid in (config.allowed_control_entities or []):
-        all_controller.add(eid)
-    for eid in (config.allowed_sensor_entities or []):
-        all_controller.add(eid)
-
-    # Debug: log schedule-related suffixes from both sides
+    # Log inventories on first build
     if not _remote_maps_logged:
-        _sched_remote = {s: e for (d, s), e in remote_by_suffix.items()
-                         if d != "*" and "schedule" in s}
-        _sched_ctrl = {_extract_entity_suffix(e): e for e in all_controller
-                       if "schedule" in e.lower()}
-        if _sched_remote or _sched_ctrl:
-            _remote_log(f"Schedule suffixes — remote: {_sched_remote}")
-            _remote_log(f"Schedule suffixes — controller: {_sched_ctrl}")
-        # Log start_time entities specifically
-        _st_remote = {s: e for (d, s), e in remote_by_suffix.items()
-                      if d != "*" and "start_time" in s}
-        _st_ctrl = {_extract_entity_suffix(e): e for e in all_controller
-                    if "start_time" in e.lower()}
-        _remote_log(f"Start-time suffixes — remote: {_st_remote}")
-        _remote_log(f"Start-time suffixes — controller: {_st_ctrl}")
-        # Log ALL remote text entities
-        _txt_remote = [e for e in config.allowed_remote_entities
-                       if e.startswith("text.")]
-        _txt_ctrl = [e for e in all_controller if e.startswith("text.")]
-        _remote_log(f"ALL text entities — remote: {_txt_remote}")
-        _remote_log(f"ALL text entities — controller: {_txt_ctrl}")
-        # Log ALL remote switch entities with 'schedule' in name
-        _sw_remote = [e for e in config.allowed_remote_entities
-                      if e.startswith("switch.") and "schedule" in e.lower()]
-        _sw_ctrl = [e for e in all_controller
-                    if e.startswith("switch.") and "schedule" in e.lower()]
-        _remote_log(f"Schedule switch entities — remote: {_sw_remote}")
-        _remote_log(f"Schedule switch entities — controller: {_sw_ctrl}")
+        _remote_log(f"Controller inventory ({len(controller_inv)} entities):")
+        for (domain, func), eid in sorted(controller_inv.items(), key=lambda x: x[0][1]):
+            _remote_log(f"  {domain:<12} | {func:<30} -> {eid}")
+        _remote_log(f"Remote inventory ({len(remote_inv)} entities):")
+        for (domain, func), eid in sorted(remote_inv.items(), key=lambda x: x[0][1]):
+            _remote_log(f"  {domain:<12} | {func:<30} -> {eid}")
 
-    r2c = {}
-    c2r = {}
-    status_map = {}  # controller text_sensor → remote text entity
+    # ── Phase 2: Match by function key ──
+    # Build a remote lookup: also index by wildcard domain for cross-domain matching
+    remote_by_func: dict[tuple[str, str], str] = {}
+    for (domain, func), eid in remote_inv.items():
+        remote_by_func[(domain, func)] = eid
+        remote_by_func[("*", func)] = eid  # wildcard for cross-domain
 
-    for ctrl_eid in all_controller:
-        ctrl_domain = ctrl_eid.split(".")[0] if "." in ctrl_eid else ""
-        suffix = _extract_entity_suffix(ctrl_eid)
+    r2c: dict[str, str] = {}
+    c2r: dict[str, str] = {}
+    status_map: dict[str, str] = {}
 
-        # Try exact domain match first, then cross-domain
-        remote_eid = remote_by_suffix.get((ctrl_domain, suffix))
+    for (ctrl_domain, func), ctrl_eid in controller_inv.items():
+        # Exact domain match first
+        remote_eid = remote_by_func.get((ctrl_domain, func))
 
-        # Cross-domain: controller text_sensor.* → remote text.* (status entities)
+        # Cross-domain: controller text_sensor -> remote text (status entities)
         if not remote_eid and ctrl_domain == "text_sensor":
-            remote_eid = remote_by_suffix.get(("text", suffix))
+            remote_eid = remote_by_func.get(("text", func))
             if remote_eid:
-                # Status entities are one-way: controller → remote only
                 status_map[ctrl_eid] = remote_eid
                 continue
 
-        # Cross-domain: controller number.*_zone_N_duration → remote number.*_zone_N_duration
-        # (suffix already normalized to zone_N_duration)
+        # Wildcard domain match with compatibility check
         if not remote_eid:
-            remote_eid = remote_by_suffix.get(("*", suffix))
-            # Make sure domains are compatible for bidirectional sync
+            remote_eid = remote_by_func.get(("*", func))
             if remote_eid:
                 r_domain = remote_eid.split(".")[0] if "." in remote_eid else ""
                 if ctrl_domain != r_domain and not (
@@ -684,31 +674,39 @@ def _build_remote_entity_maps() -> dict:
         "remote_all": remote_all,
         "controller_watched": set(c2r.keys()) | set(status_map.keys()),
         "status_map": status_map,
+        "controller_inv": controller_inv,
+        "remote_inv": remote_inv,
     }
 
-    # Log mapping summary on first build only
-    if not _remote_maps_logged and (r2c or status_map):
+    # Log broker matching summary on first build only
+    if not _remote_maps_logged:
         _remote_maps_logged = True
-        _remote_log(f"Entity maps built: {len(r2c)} bidirectional, {len(status_map)} status (one-way)")
-        for r_eid, c_eid in sorted(r2c.items()):
-            suffix = _extract_entity_suffix(r_eid)
-            _remote_log(f"  ↔ {suffix}: {c_eid} ↔ {r_eid}")
-        for c_eid, r_eid in sorted(status_map.items()):
-            suffix = _extract_entity_suffix(c_eid)
-            _remote_log(f"  → {suffix}: {c_eid} → {r_eid}")
-        # Specifically check schedule start_time mapping
+        _remote_log(f"Broker matched {len(r2c)} bidirectional + {len(status_map)} status (one-way) pairs:")
+        for ctrl_eid, remote_eid in sorted(c2r.items(), key=lambda x: _extract_entity_suffix(x[0])):
+            func = _extract_entity_suffix(ctrl_eid)
+            _remote_log(f"  ↔ {func}: {ctrl_eid} ↔ {remote_eid}")
+        for ctrl_eid, remote_eid in sorted(status_map.items(), key=lambda x: _extract_entity_suffix(x[0])):
+            func = _extract_entity_suffix(ctrl_eid)
+            _remote_log(f"  → {func}: {ctrl_eid} → {remote_eid} (one-way)")
+        # Check schedule start_time mapping
         st_mapped = {k: v for k, v in c2r.items() if "start_time" in k.lower()}
         if st_mapped:
-            _remote_log(f"  ✓ Start time mappings: {st_mapped}")
+            _remote_log(f"  ✓ Start time mappings: {len(st_mapped)} found")
         else:
             _remote_log("  ✗ WARNING: No start_time entities mapped!")
-        # Log unmapped remote entities
+        # Log unmatched entities
+        mapped_ctrl = set(c2r.keys()) | set(status_map.keys())
         mapped_remote = set(r2c.keys()) | set(status_map.values())
-        unmapped = remote_all - mapped_remote
-        if unmapped:
-            _remote_log(f"  Unmapped remote entities ({len(unmapped)}):")
-            for eid in sorted(unmapped):
-                _remote_log(f"    - {eid} (suffix: {_extract_entity_suffix(eid)})")
+        unmapped_ctrl = all_controller - mapped_ctrl
+        unmapped_remote = remote_all - mapped_remote
+        if unmapped_ctrl:
+            _remote_log(f"  Unmatched controller ({len(unmapped_ctrl)}):")
+            for eid in sorted(unmapped_ctrl):
+                _remote_log(f"    - {_extract_entity_suffix(eid)}: {eid}")
+        if unmapped_remote:
+            _remote_log(f"  Unmatched remote ({len(unmapped_remote)}):")
+            for eid in sorted(unmapped_remote):
+                _remote_log(f"    - {_extract_entity_suffix(eid)}: {eid}")
 
     return _remote_maps_cache
 
@@ -777,9 +775,9 @@ async def _mirror_entity_state(source_eid: str, target_eid: str, new_state: str)
             return  # Unknown domain
 
         suffix = _extract_entity_suffix(source_eid)
-        _remote_log(f"Mirrored {suffix}: {new_state} ({source_eid} → {target_eid})")
+        _remote_log(f"Relayed {suffix}: {new_state} ({source_eid} → {target_eid})")
     except Exception as e:
-        _remote_log(f"Mirror FAILED {source_eid} → {target_eid}: {e}")
+        _remote_log(f"Relay FAILED {source_eid} → {target_eid}: {e}")
     finally:
         import asyncio
         async def _clear():
@@ -826,14 +824,14 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
     _remote_reconnect_pending = True
 
     import asyncio
-    _remote_log(f"Device reconnect detected ({entity_id} came online) — "
-               f"scheduling full state sync in 5s")
+    _remote_log(f"Broker: remote device reconnected ({entity_id} came online) — "
+               f"pushing controller state in 5s")
 
     await asyncio.sleep(5)  # Wait for all entities to become available
     try:
         await sync_all_remote_state()
     except Exception as e:
-        _remote_log(f"Reconnect sync FAILED: {e}")
+        _remote_log(f"Broker: reconnect sync FAILED: {e}")
     finally:
         _remote_reconnect_pending = False
 
@@ -868,18 +866,14 @@ async def sync_all_remote_state():
     maps = _build_remote_entity_maps()
     total_c2r = {**maps["c2r"], **maps["status_map"]}
     if not total_c2r:
-        _remote_log("No entity mappings found — cannot sync")
+        _remote_log("Broker: no entity mappings found — cannot sync")
         return
 
     # Fetch current states of all controller entities that have remote counterparts
     controller_eids = list(total_c2r.keys())
     # Log schedule-related mappings for debugging
-    sched_mappings = {k: v for k, v in total_c2r.items()
-                      if "start_time" in k.lower() or "schedule" in k.lower()}
-    if sched_mappings:
-        _remote_log(f"Schedule mappings to sync: {sched_mappings}")
-    else:
-        _remote_log("WARNING: No schedule-related entities in c2r mapping!")
+    sched_count = sum(1 for k in total_c2r if "start_time" in k.lower() or "schedule" in k.lower())
+    _remote_log(f"Broker: syncing {len(total_c2r)} entities ({sched_count} schedule-related) to remote")
     states = await ha_client.get_entities_by_ids(controller_eids)
 
     import asyncio
@@ -899,9 +893,51 @@ async def sync_all_remote_state():
             if synced % 10 == 0:
                 await asyncio.sleep(0.1)
         except Exception as e:
-            _remote_log(f"Initial sync FAILED for {ctrl_eid}: {e}")
+            _remote_log(f"Broker: sync FAILED for {ctrl_eid}: {e}")
 
-    _remote_log(f"Full state sync complete: {synced}/{len(total_c2r)} entities pushed to remote")
+    _remote_log(f"Broker: full sync complete — {synced}/{len(total_c2r)} controller values pushed to remote")
+
+
+def get_broker_status() -> dict:
+    """Return the broker's current entity mapping state for the debug UI.
+
+    Provides a structured view of what the add-on (broker) understands about
+    each device's entities and how they are paired.
+    """
+    maps = _build_remote_entity_maps()
+    controller_inv = maps.get("controller_inv", {})
+    remote_inv = maps.get("remote_inv", {})
+    c2r = maps.get("c2r", {})
+    status_map = maps.get("status_map", {})
+
+    # Build matched pairs list
+    matched = []
+    for ctrl_eid, remote_eid in c2r.items():
+        func = _extract_entity_suffix(ctrl_eid)
+        matched.append({"function": func, "controller": ctrl_eid,
+                         "remote": remote_eid, "direction": "bidirectional"})
+    for ctrl_eid, remote_eid in status_map.items():
+        func = _extract_entity_suffix(ctrl_eid)
+        matched.append({"function": func, "controller": ctrl_eid,
+                         "remote": remote_eid, "direction": "one-way"})
+
+    # Unmatched entities
+    mapped_ctrl = set(c2r.keys()) | set(status_map.keys())
+    mapped_remote = set(c2r.values()) | set(status_map.values())
+    unmatched_ctrl = [{"entity_id": eid, "function": _extract_entity_suffix(eid)}
+                      for (d, f), eid in controller_inv.items()
+                      if eid not in mapped_ctrl]
+    unmatched_remote = [{"entity_id": eid, "function": _extract_entity_suffix(eid)}
+                        for (d, f), eid in remote_inv.items()
+                        if eid not in mapped_remote]
+
+    return {
+        "matched": sorted(matched, key=lambda x: x["function"]),
+        "unmatched_controller": sorted(unmatched_ctrl, key=lambda x: x["function"]),
+        "unmatched_remote": sorted(unmatched_remote, key=lambda x: x["function"]),
+        "total_controller": len(controller_inv),
+        "total_remote": len(remote_inv),
+    }
 
 
 def _get_probe_sensor_entities() -> set:
@@ -1047,10 +1083,10 @@ async def _watch_via_websocket(allowed_entities: set):
         print(f"[RUN_LOG] Also watching {len(schedule_entities)} schedule entities "
               f"for timeline recalculation")
     if remote_entities:
-        print(f"[RUN_LOG] Also watching {len(remote_entities)} remote entities "
-              f"+ {len(controller_for_remote)} controller entities for remote mirroring")
-        _remote_log(f"WebSocket watcher: {len(remote_entities)} remote + "
-                    f"{len(controller_for_remote)} controller entities watched")
+        print(f"[RUN_LOG] Broker watching {len(remote_entities)} remote entities "
+              f"+ {len(controller_for_remote)} controller entities")
+        _remote_log(f"Broker: watching {len(remote_entities)} remote + "
+                    f"{len(controller_for_remote)} controller entities")
 
     extra_headers = {"Authorization": f"Bearer {token}"}
 

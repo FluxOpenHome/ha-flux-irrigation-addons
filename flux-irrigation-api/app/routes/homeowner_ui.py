@@ -7153,7 +7153,7 @@ function closeHelpModal() {
     document.getElementById('helpModal').style.display = 'none';
 }
 
-// --- Debug Log (Tabbed: Moisture / Remote) ---
+// --- Debug Log (Tabbed: Moisture / Broker) ---
 var _debugLogTab = 'moisture';
 
 async function showDebugLog() {
@@ -7167,13 +7167,13 @@ async function _renderDebugLogModal() {
         var activeStyle = tabStyle + 'background:var(--bg-tile);color:var(--text-primary);font-weight:600;border-bottom:1px solid var(--bg-tile);';
         var html = '<div style="display:flex;gap:4px;margin-bottom:-1px;position:relative;z-index:1;">';
         html += '<button style="' + (_debugLogTab === 'moisture' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'moisture\\';_renderDebugLogModal()">Moisture</button>';
-        html += '<button style="' + (_debugLogTab === 'remote' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'remote\\';_renderDebugLogModal()">Remote</button>';
+        html += '<button style="' + (_debugLogTab === 'broker' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'broker\\';_renderDebugLogModal()">Broker</button>';
         html += '</div>';
 
         if (_debugLogTab === 'moisture') {
             html += await _buildMoistureDebugHtml();
         } else {
-            html += await _buildRemoteDebugHtml();
+            html += await _buildBrokerDebugHtml();
         }
         showModal('Debug Log', html, '900px');
     } catch(e) {
@@ -7227,35 +7227,105 @@ async function _buildMoistureDebugHtml() {
     return html;
 }
 
-async function _buildRemoteDebugHtml() {
+async function _buildBrokerDebugHtml() {
+    var html = '';
+
+    // Section A: Broker Mapping Table
+    try {
+        var statusResp = await fetch(HBASE + '/debug/broker-status');
+        var status = await statusResp.json();
+        var matched = status.matched || [];
+        var unmatchedCtrl = status.unmatched_controller || [];
+        var unmatchedRemote = status.unmatched_remote || [];
+        var totalCtrl = status.total_controller || 0;
+        var totalRemote = status.total_remote || 0;
+
+        html += '<div style="margin:8px 0 12px 0;">';
+        html += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">Entity Mapping</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">' + matched.length + ' matched, ' + unmatchedCtrl.length + ' unmatched controller, ' + unmatchedRemote.length + ' unmatched remote (of ' + totalCtrl + ' ctrl / ' + totalRemote + ' remote)</div>';
+
+        if (matched.length > 0 || unmatchedCtrl.length > 0 || unmatchedRemote.length > 0) {
+            html += '<div style="max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;">';
+            html += '<table style="width:100%;font-size:10px;font-family:monospace;border-collapse:collapse;">';
+            html += '<thead><tr style="background:var(--bg-secondary);position:sticky;top:0;">';
+            html += '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);font-weight:600;">Function</th>';
+            html += '<th style="padding:4px 8px;text-align:center;border-bottom:1px solid var(--border);width:30px;"></th>';
+            html += '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);font-weight:600;">Controller</th>';
+            html += '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);font-weight:600;">Remote</th>';
+            html += '</tr></thead><tbody>';
+            for (var i = 0; i < matched.length; i++) {
+                var m = matched[i];
+                var arrow = m.direction === 'bidirectional' ? '↔' : '→';
+                var arrowColor = m.direction === 'bidirectional' ? '#2ecc71' : '#3498db';
+                html += '<tr style="border-bottom:1px solid var(--border);">';
+                html += '<td style="padding:3px 8px;color:var(--text-primary);">' + esc(m.function) + '</td>';
+                html += '<td style="padding:3px 4px;text-align:center;color:' + arrowColor + ';font-weight:600;">' + arrow + '</td>';
+                html += '<td style="padding:3px 8px;color:var(--text-muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(m.controller) + '">' + esc(m.controller) + '</td>';
+                html += '<td style="padding:3px 8px;color:var(--text-muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(m.remote) + '">' + esc(m.remote) + '</td>';
+                html += '</tr>';
+            }
+            for (var i = 0; i < unmatchedCtrl.length; i++) {
+                var u = unmatchedCtrl[i];
+                html += '<tr style="border-bottom:1px solid var(--border);background:rgba(243,156,18,0.08);">';
+                html += '<td style="padding:3px 8px;color:#f39c12;">' + esc(u.function) + '</td>';
+                html += '<td style="padding:3px 4px;text-align:center;color:#f39c12;">—</td>';
+                html += '<td style="padding:3px 8px;color:#f39c12;" title="' + esc(u.entity_id) + '">' + esc(u.entity_id) + '</td>';
+                html += '<td style="padding:3px 8px;color:var(--text-muted);font-style:italic;">no match</td>';
+                html += '</tr>';
+            }
+            for (var i = 0; i < unmatchedRemote.length; i++) {
+                var u = unmatchedRemote[i];
+                html += '<tr style="border-bottom:1px solid var(--border);background:rgba(243,156,18,0.08);">';
+                html += '<td style="padding:3px 8px;color:#f39c12;">' + esc(u.function) + '</td>';
+                html += '<td style="padding:3px 4px;text-align:center;color:#f39c12;">—</td>';
+                html += '<td style="padding:3px 8px;color:var(--text-muted);font-style:italic;">no match</td>';
+                html += '<td style="padding:3px 8px;color:#f39c12;" title="' + esc(u.entity_id) + '">' + esc(u.entity_id) + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+        } else {
+            html += '<p style="color:var(--text-muted);font-size:11px;margin-bottom:12px;">No remote device configured.</p>';
+        }
+        html += '</div>';
+    } catch(e) {
+        html += '<p style="color:var(--color-danger);font-size:11px;margin:8px 0 12px 0;">Failed to load broker status: ' + e.message + '</p>';
+    }
+
+    // Section B: Live Event Log
     var resp = await fetch(HBASE + '/debug/remote-log?lines=500');
     var data = await resp.json();
     var lines = data.lines || [];
-    if (!lines.length) return '<p style="color:var(--text-muted);margin-top:12px;">No remote debug log entries yet. Logs appear after add-on startup when a remote device is configured.</p>';
 
-    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;">';
-    html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
-    html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog(\\'remote\\')" style="font-size:11px;">Clear Log</button>';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">Event Log</div>';
+
+    if (!lines.length) {
+        html += '<p style="color:var(--text-muted);font-size:11px;">No broker log entries yet. Logs appear after add-on startup when a remote device is configured.</p>';
+        return html;
+    }
+
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+    html += '<span style="font-size:11px;color:var(--text-muted);">' + lines.length + ' entries</span>';
+    html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog(\\'broker\\')" style="font-size:11px;">Clear Log</button>';
     html += '</div>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
-    html += '<span style="color:#2ecc71;font-weight:600;">● Mirrored</span>';
-    html += '<span style="color:#3498db;">● Mapping</span>';
+    html += '<span style="color:#2ecc71;font-weight:600;">● Relayed</span>';
+    html += '<span style="color:#3498db;">● Inventory / Mapping</span>';
     html += '<span style="color:#f39c12;font-weight:600;">● Warning</span>';
     html += '<span style="color:#e74c3c;">● Error / Failed</span>';
     html += '<span style="color:#9b59b6;">● Reconnect / Sync</span>';
     html += '</div>';
-    html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
+    html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:40vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i].replace(/</g, '&lt;').replace(/>/g, '&gt;');
         if (line.indexOf('FAILED') >= 0 || line.indexOf('ERROR') >= 0)
             html += '<span style="color:#e74c3c;font-weight:600;">' + line + '</span>\\n';
-        else if (line.indexOf('WARNING') >= 0)
+        else if (line.indexOf('WARNING') >= 0 || line.indexOf('Unmatched') >= 0)
             html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
-        else if (line.indexOf('Mirrored') >= 0)
+        else if (line.indexOf('Relayed') >= 0)
             html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
         else if (line.indexOf('reconnect') >= 0 || line.indexOf('sync') >= 0 || line.indexOf('Sync') >= 0)
             html += '<span style="color:#9b59b6;">' + line + '</span>\\n';
-        else if (line.indexOf('maps built') >= 0 || line.indexOf('suffixes') >= 0 || line.indexOf('entities') >= 0)
+        else if (line.indexOf('inventory') >= 0 || line.indexOf('Broker matched') >= 0 || line.indexOf('Broker:') >= 0)
             html += '<span style="color:#3498db;">' + line + '</span>\\n';
         else
             html += line + '\\n';
@@ -7266,11 +7336,12 @@ async function _buildRemoteDebugHtml() {
 
 async function clearDebugLog(logType) {
     if (managedGuard()) return;
-    var label = logType === 'remote' ? 'remote' : 'moisture';
+    var label = logType === 'broker' ? 'broker' : 'moisture';
+    var endpoint = logType === 'broker' ? 'remote-log' : 'moisture-log';
     var ok = await showConfirm({ title: 'Clear ' + label + ' Log', message: 'Clear the ' + label + ' debug log?', confirmText: 'Clear Log', confirmClass: 'btn-danger', icon: fluxIcon('bug',28) });
     if (!ok) return;
     try {
-        await fetch(HBASE + '/debug/' + label + '-log', { method: 'DELETE' });
+        await fetch(HBASE + '/debug/' + endpoint, { method: 'DELETE' });
         showToast(label + ' log cleared');
         await _renderDebugLogModal();
     } catch(e) { showToast(e.message, 'error'); }

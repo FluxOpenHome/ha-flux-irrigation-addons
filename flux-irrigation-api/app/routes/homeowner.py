@@ -1062,6 +1062,14 @@ async def homeowner_clear_remote_debug_log(request: Request):
     return {"success": True}
 
 
+@router.get("/debug/broker-status", summary="Get broker entity mapping status")
+async def homeowner_broker_status():
+    """Get the current broker entity mapping state for the debug tool."""
+    _require_homeowner_mode()
+    from run_log import get_broker_status
+    return get_broker_status()
+
+
 @router.get("/zone_aliases", summary="Get zone aliases")
 async def homeowner_get_aliases():
     """Get the homeowner's zone display name aliases."""
