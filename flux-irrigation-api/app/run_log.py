@@ -40,6 +40,14 @@ _remote_mirror_guard: set = set()  # entity_ids currently being mirrored
 # Cached entity maps (rebuilt when config changes)
 _remote_maps_cache: dict = {}  # {"r2c": {}, "c2r": {}, "remote_all": set(), "controller_status": set()}
 
+# Suffix aliases — different firmware names that refer to the same function.
+# Both sides are normalized to the canonical (value) name.
+_SUFFIX_ALIASES = {
+    "start_stop_resume": "start_stop",
+    "main_start_stop": "start_stop",
+    "progress_percent": "progress",
+}
+
 
 def log_zone_event(
     entity_id: str,
@@ -478,6 +486,8 @@ def _extract_entity_suffix(entity_id: str) -> str:
 
     Strategy: find the longest known suffix pattern that matches the tail of the
     entity_id (after the domain prefix 'switch.', 'number.', etc.).
+    Aliases are normalized so controller and remote use the same key even when
+    firmware names differ (e.g. 'start_stop_resume' ↔ 'start_stop').
     """
     # Strip domain prefix
     if "." in entity_id:
@@ -507,16 +517,20 @@ def _extract_entity_suffix(entity_id: str) -> str:
         if slug.endswith(f"_schedule_{day}") or slug.endswith(f"_{day}"):
             if "schedule" in slug or day in slug:
                 return f"schedule_{day}"
-    # Named entities
+    # Named entities — check longest variants first, then shorter aliases.
+    # Both variants normalize to the SAME key so controller ↔ remote match.
     for suffix in (
-        "auto_advance", "schedule_enabled", "start_stop_resume",
-        "main_start_stop", "valve_status", "status",
+        "auto_advance", "schedule_enabled",
+        "start_stop_resume",  # controller firmware name → normalized to "start_stop"
+        "main_start_stop",    # alternate controller name → normalized to "start_stop"
+        "start_stop",         # remote firmware name → normalized to "start_stop"
+        "valve_status", "status",
         "time_remaining", "progress", "progress_percent",
         "active_zone", "zone_count", "detected_zones",
         "use_12_hour_format", "rain_sensor", "pause",
     ):
         if slug.endswith(f"_{suffix}") or slug == suffix:
-            return suffix
+            return _SUFFIX_ALIASES.get(suffix, suffix)
     # Fallback: return everything after the last hex-like mac segment
     # e.g. 'irrigation_remote_12b894_schedule_monday' → try splitting on known device patterns
     return slug
@@ -609,6 +623,23 @@ def _build_remote_entity_maps() -> dict:
         "controller_watched": set(c2r.keys()) | set(status_map.keys()),
         "status_map": status_map,
     }
+
+    # Log mapping summary on first build
+    if r2c or status_map:
+        print(f"[REMOTE] Entity maps built: {len(r2c)} bidirectional, {len(status_map)} status (one-way)")
+        for r_eid, c_eid in sorted(r2c.items()):
+            suffix = _extract_entity_suffix(r_eid)
+            print(f"[REMOTE]   ↔ {suffix}: {c_eid.split('.')[0]}.* ↔ {r_eid.split('.')[0]}.*")
+        for c_eid, r_eid in sorted(status_map.items()):
+            suffix = _extract_entity_suffix(c_eid)
+            print(f"[REMOTE]   → {suffix}: {c_eid.split('.')[0]}.* → {r_eid.split('.')[0]}.*")
+        # Log unmapped remote entities
+        mapped_remote = set(r2c.keys()) | set(status_map.values())
+        unmapped = remote_all - mapped_remote
+        if unmapped:
+            print(f"[REMOTE]   Unmapped remote entities ({len(unmapped)}):")
+            for eid in sorted(unmapped):
+                print(f"[REMOTE]     - {eid} (suffix: {_extract_entity_suffix(eid)})")
 
     return _remote_maps_cache
 
