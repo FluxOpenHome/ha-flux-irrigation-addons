@@ -1045,6 +1045,23 @@ async def homeowner_clear_moisture_debug_log(request: Request):
     return {"success": True}
 
 
+@router.get("/debug/remote-log", summary="Get remote device debug log")
+async def homeowner_remote_debug_log(lines: int = Query(200, ge=1, le=500)):
+    """Get the remote device sync debug log for troubleshooting entity mirroring."""
+    _require_homeowner_mode()
+    from run_log import get_remote_debug_log
+    return {"lines": get_remote_debug_log(lines)}
+
+
+@router.delete("/debug/remote-log", summary="Clear remote device debug log")
+async def homeowner_clear_remote_debug_log(request: Request):
+    """Clear the remote device debug log."""
+    _require_data_control(request)
+    from run_log import clear_remote_debug_log
+    clear_remote_debug_log()
+    return {"success": True}
+
+
 @router.get("/zone_aliases", summary="Get zone aliases")
 async def homeowner_get_aliases():
     """Get the homeowner's zone display name aliases."""

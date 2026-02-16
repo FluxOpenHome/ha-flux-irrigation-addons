@@ -55,6 +55,43 @@ _ONE_WAY_SUFFIXES = {
     "use_12_hour_format",  # pushed via sync_remote_settings()
 }
 
+# --- Remote Debug Log ---
+_REMOTE_DEBUG_LOG_FILE = "/data/remote_debug.log"
+_REMOTE_DEBUG_LOG_MAX_LINES = 500
+
+
+def _remote_log(msg: str):
+    """Write a timestamped message to both console and the remote debug log file."""
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(f"[REMOTE] {msg}")
+    try:
+        with open(_REMOTE_DEBUG_LOG_FILE, "a") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
+def get_remote_debug_log(max_lines: int = 200) -> list[str]:
+    """Read the last N lines of the remote debug log."""
+    if not os.path.exists(_REMOTE_DEBUG_LOG_FILE):
+        return []
+    try:
+        with open(_REMOTE_DEBUG_LOG_FILE) as f:
+            lines = f.readlines()
+        return [l.rstrip() for l in lines[-max_lines:]]
+    except Exception:
+        return []
+
+
+def clear_remote_debug_log():
+    """Clear the remote debug log file."""
+    try:
+        with open(_REMOTE_DEBUG_LOG_FILE, "w") as f:
+            f.write("")
+    except Exception:
+        pass
+
 
 def log_zone_event(
     entity_id: str,
@@ -579,28 +616,28 @@ def _build_remote_entity_maps() -> dict:
         _sched_ctrl = {_extract_entity_suffix(e): e for e in all_controller
                        if "schedule" in e.lower()}
         if _sched_remote or _sched_ctrl:
-            print(f"[REMOTE] Schedule suffixes — remote: {_sched_remote}")
-            print(f"[REMOTE] Schedule suffixes — controller: {_sched_ctrl}")
+            _remote_log(f"Schedule suffixes — remote: {_sched_remote}")
+            _remote_log(f"Schedule suffixes — controller: {_sched_ctrl}")
         # Log start_time entities specifically
         _st_remote = {s: e for (d, s), e in remote_by_suffix.items()
                       if d != "*" and "start_time" in s}
         _st_ctrl = {_extract_entity_suffix(e): e for e in all_controller
                     if "start_time" in e.lower()}
-        print(f"[REMOTE] Start-time suffixes — remote: {_st_remote}")
-        print(f"[REMOTE] Start-time suffixes — controller: {_st_ctrl}")
+        _remote_log(f"Start-time suffixes — remote: {_st_remote}")
+        _remote_log(f"Start-time suffixes — controller: {_st_ctrl}")
         # Log ALL remote text entities
         _txt_remote = [e for e in config.allowed_remote_entities
                        if e.startswith("text.")]
         _txt_ctrl = [e for e in all_controller if e.startswith("text.")]
-        print(f"[REMOTE] ALL text entities — remote: {_txt_remote}")
-        print(f"[REMOTE] ALL text entities — controller: {_txt_ctrl}")
+        _remote_log(f"ALL text entities — remote: {_txt_remote}")
+        _remote_log(f"ALL text entities — controller: {_txt_ctrl}")
         # Log ALL remote switch entities with 'schedule' in name
         _sw_remote = [e for e in config.allowed_remote_entities
                       if e.startswith("switch.") and "schedule" in e.lower()]
         _sw_ctrl = [e for e in all_controller
                     if e.startswith("switch.") and "schedule" in e.lower()]
-        print(f"[REMOTE] Schedule switch entities — remote: {_sw_remote}")
-        print(f"[REMOTE] Schedule switch entities — controller: {_sw_ctrl}")
+        _remote_log(f"Schedule switch entities — remote: {_sw_remote}")
+        _remote_log(f"Schedule switch entities — controller: {_sw_ctrl}")
 
     r2c = {}
     c2r = {}
@@ -652,26 +689,26 @@ def _build_remote_entity_maps() -> dict:
     # Log mapping summary on first build only
     if not _remote_maps_logged and (r2c or status_map):
         _remote_maps_logged = True
-        print(f"[REMOTE] Entity maps built: {len(r2c)} bidirectional, {len(status_map)} status (one-way)")
+        _remote_log(f"Entity maps built: {len(r2c)} bidirectional, {len(status_map)} status (one-way)")
         for r_eid, c_eid in sorted(r2c.items()):
             suffix = _extract_entity_suffix(r_eid)
-            print(f"[REMOTE]   ↔ {suffix}: {c_eid} ↔ {r_eid}")
+            _remote_log(f"  ↔ {suffix}: {c_eid} ↔ {r_eid}")
         for c_eid, r_eid in sorted(status_map.items()):
             suffix = _extract_entity_suffix(c_eid)
-            print(f"[REMOTE]   → {suffix}: {c_eid} → {r_eid}")
+            _remote_log(f"  → {suffix}: {c_eid} → {r_eid}")
         # Specifically check schedule start_time mapping
         st_mapped = {k: v for k, v in c2r.items() if "start_time" in k.lower()}
         if st_mapped:
-            print(f"[REMOTE]   ✓ Start time mappings: {st_mapped}")
+            _remote_log(f"  ✓ Start time mappings: {st_mapped}")
         else:
-            print("[REMOTE]   ✗ WARNING: No start_time entities mapped!")
+            _remote_log("  ✗ WARNING: No start_time entities mapped!")
         # Log unmapped remote entities
         mapped_remote = set(r2c.keys()) | set(status_map.values())
         unmapped = remote_all - mapped_remote
         if unmapped:
-            print(f"[REMOTE]   Unmapped remote entities ({len(unmapped)}):")
+            _remote_log(f"  Unmapped remote entities ({len(unmapped)}):")
             for eid in sorted(unmapped):
-                print(f"[REMOTE]     - {eid} (suffix: {_extract_entity_suffix(eid)})")
+                _remote_log(f"    - {eid} (suffix: {_extract_entity_suffix(eid)})")
 
     return _remote_maps_cache
 
@@ -740,9 +777,9 @@ async def _mirror_entity_state(source_eid: str, target_eid: str, new_state: str)
             return  # Unknown domain
 
         suffix = _extract_entity_suffix(source_eid)
-        print(f"[REMOTE] Mirrored {suffix}: {new_state} ({source_eid} → {target_eid})")
+        _remote_log(f"Mirrored {suffix}: {new_state} ({source_eid} → {target_eid})")
     except Exception as e:
-        print(f"[REMOTE] Mirror failed {source_eid} → {target_eid}: {e}")
+        _remote_log(f"Mirror FAILED {source_eid} → {target_eid}: {e}")
     finally:
         import asyncio
         async def _clear():
@@ -789,14 +826,14 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
     _remote_reconnect_pending = True
 
     import asyncio
-    print(f"[REMOTE] Device reconnect detected ({entity_id} came online) — "
-          f"scheduling full state sync in 5s")
+    _remote_log(f"Device reconnect detected ({entity_id} came online) — "
+               f"scheduling full state sync in 5s")
 
     await asyncio.sleep(5)  # Wait for all entities to become available
     try:
         await sync_all_remote_state()
     except Exception as e:
-        print(f"[REMOTE] Reconnect sync failed: {e}")
+        _remote_log(f"Reconnect sync FAILED: {e}")
     finally:
         _remote_reconnect_pending = False
 
@@ -831,7 +868,7 @@ async def sync_all_remote_state():
     maps = _build_remote_entity_maps()
     total_c2r = {**maps["c2r"], **maps["status_map"]}
     if not total_c2r:
-        print("[REMOTE] No entity mappings found — cannot sync")
+        _remote_log("No entity mappings found — cannot sync")
         return
 
     # Fetch current states of all controller entities that have remote counterparts
@@ -840,9 +877,9 @@ async def sync_all_remote_state():
     sched_mappings = {k: v for k, v in total_c2r.items()
                       if "start_time" in k.lower() or "schedule" in k.lower()}
     if sched_mappings:
-        print(f"[REMOTE] Schedule mappings to sync: {sched_mappings}")
+        _remote_log(f"Schedule mappings to sync: {sched_mappings}")
     else:
-        print("[REMOTE] WARNING: No schedule-related entities in c2r mapping!")
+        _remote_log("WARNING: No schedule-related entities in c2r mapping!")
     states = await ha_client.get_entities_by_ids(controller_eids)
 
     import asyncio
@@ -862,9 +899,9 @@ async def sync_all_remote_state():
             if synced % 10 == 0:
                 await asyncio.sleep(0.1)
         except Exception as e:
-            print(f"[REMOTE] Initial sync failed for {ctrl_eid}: {e}")
+            _remote_log(f"Initial sync FAILED for {ctrl_eid}: {e}")
 
-    print(f"[REMOTE] Full state sync complete: {synced}/{len(total_c2r)} entities pushed to remote")
+    _remote_log(f"Full state sync complete: {synced}/{len(total_c2r)} entities pushed to remote")
 
 
 def _get_probe_sensor_entities() -> set:
@@ -1012,6 +1049,8 @@ async def _watch_via_websocket(allowed_entities: set):
     if remote_entities:
         print(f"[RUN_LOG] Also watching {len(remote_entities)} remote entities "
               f"+ {len(controller_for_remote)} controller entities for remote mirroring")
+        _remote_log(f"WebSocket watcher: {len(remote_entities)} remote + "
+                    f"{len(controller_for_remote)} controller entities watched")
 
     extra_headers = {"Authorization": f"Bearer {token}"}
 
