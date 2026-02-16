@@ -511,6 +511,7 @@ async def lifespan(app: FastAPI):
         try:
             from run_log import sync_all_remote_state
             from routes.admin import sync_remote_settings
+            import run_log
             # Push zone count + time format first (settings-only entities)
             settings_file = "/data/settings.json"
             use_12h = True
@@ -521,8 +522,16 @@ async def lifespan(app: FastAPI):
             await sync_remote_settings(use_12h=use_12h)
             # Then push ALL entity states (zones, schedules, durations, days, status, etc.)
             await sync_all_remote_state()
+            # Hold suppression for 15s — don't let remote send anything until settled
+            await asyncio.sleep(15)
+            run_log._remote_reconnect_pending = False
+            run_log._remote_log("Broker: startup sync complete — remote→controller mirroring enabled")
         except Exception as e:
             print(f"[MAIN] Remote device sync failed: {e}")
+            # Always clear the flag so mirroring can work even if sync failed
+            import run_log
+            run_log._remote_reconnect_pending = False
+            run_log._remote_log("Broker: startup sync FAILED — remote→controller mirroring enabled (fallback)")
     weather_ready = config.weather_enabled and (
         config.weather_entity_id or config.weather_source == "nws"
     )

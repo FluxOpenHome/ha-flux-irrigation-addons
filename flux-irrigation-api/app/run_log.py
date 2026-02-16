@@ -49,6 +49,59 @@ _SUFFIX_ALIASES = {
     "progress_percent": "progress",
 }
 
+
+def _convert_time_for_relay(value: str, source_eid: str) -> str:
+    """Convert time format when relaying start_time values between devices.
+
+    If the system is in 12hr mode and the value looks like 24hr time (e.g. "17:00"),
+    convert to 12hr format (e.g. "5:00 PM").
+    If the system is in 24hr mode and the value looks like 12hr time (e.g. "5:00 PM"),
+    convert to 24hr format (e.g. "17:00").
+    Non-start-time entities pass through unchanged.
+    """
+    suffix = _extract_entity_suffix(source_eid)
+    if "start_time" not in suffix:
+        return value
+
+    # Read current time format setting
+    use_12h = True
+    try:
+        sf = "/data/settings.json"
+        if os.path.exists(sf):
+            with open(sf) as f:
+                use_12h = json.load(f).get("time_format", "12h") != "24h"
+    except Exception:
+        pass
+
+    value = value.strip()
+
+    if use_12h:
+        # Convert 24hr → 12hr if value looks like "HH:MM" (no AM/PM)
+        m = re.match(r'^(\d{1,2}):(\d{2})$', value)
+        if m:
+            h, mn = int(m.group(1)), m.group(2)
+            if h == 0:
+                return f"12:{mn} AM"
+            elif h < 12:
+                return f"{h}:{mn} AM"
+            elif h == 12:
+                return f"12:{mn} PM"
+            else:
+                return f"{h - 12}:{mn} PM"
+    else:
+        # Convert 12hr → 24hr if value contains AM/PM
+        m = re.match(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', value, re.IGNORECASE)
+        if m:
+            h, mn, ap = int(m.group(1)), m.group(2), m.group(3).upper()
+            if ap == "AM":
+                h = 0 if h == 12 else h
+            else:
+                h = h if h == 12 else h + 12
+            return f"{h}:{mn}"
+
+    return value  # Already in correct format or unrecognized
+
+
 # Suffixes that are one-way: add-on → remote only (remote changes are ignored)
 _ONE_WAY_SUFFIXES = {
     "zone_count",       # pushed via sync_remote_settings()
@@ -650,6 +703,13 @@ def _build_remote_entity_maps() -> dict:
                 status_map[ctrl_eid] = remote_eid
                 continue
 
+        # Cross-domain: controller sensor -> remote text (time_remaining, progress, status)
+        if not remote_eid and ctrl_domain == "sensor":
+            remote_eid = remote_by_func.get(("text", func))
+            if remote_eid:
+                status_map[ctrl_eid] = remote_eid
+                continue
+
         # Wildcard domain match with compatibility check
         if not remote_eid:
             remote_eid = remote_by_func.get(("*", func))
@@ -763,8 +823,9 @@ async def _mirror_entity_state(source_eid: str, target_eid: str, new_state: str)
             # text entities accept set_value; text_sensor is read-only but
             # remote uses text (not text_sensor) so this works
             if target_domain == "text":
+                write_val = _convert_time_for_relay(str(new_state), source_eid)
                 await ha_client.call_service("text", "set_value",
-                                             {"entity_id": target_eid, "value": str(new_state)})
+                                             {"entity_id": target_eid, "value": write_val})
             # text_sensor can't be written to — skip
         elif target_domain == "select":
             await ha_client.call_service("select", "select_option",
@@ -775,7 +836,13 @@ async def _mirror_entity_state(source_eid: str, target_eid: str, new_state: str)
             return  # Unknown domain
 
         suffix = _extract_entity_suffix(source_eid)
-        _remote_log(f"Relayed {suffix}: {new_state} ({source_eid} → {target_eid})")
+        # Show time conversion in log if it happened
+        converted_note = ""
+        if target_domain == "text" and "start_time" in suffix:
+            write_val = _convert_time_for_relay(str(new_state), source_eid)
+            if write_val != str(new_state):
+                converted_note = f" (converted {new_state} → {write_val})"
+        _remote_log(f"Relayed {suffix}: {new_state}{converted_note} ({source_eid} → {target_eid})")
     except Exception as e:
         _remote_log(f"Relay FAILED {source_eid} → {target_eid}: {e}")
     finally:
@@ -791,7 +858,15 @@ async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state
 
     One-way entities (zone_count, use_12_hour_format) are skipped — the remote
     cannot update those on the controller.
+
+    Suppressed while _remote_reconnect_pending is True (startup or reconnect)
+    to prevent remote defaults from overwriting real controller values.
     """
+    # Block remote→controller during startup/reconnect sync
+    if _remote_reconnect_pending:
+        _remote_log(f"Suppressed remote→controller: {_extract_entity_suffix(entity_id)} "
+                    f"= {new_state} (sync in progress)")
+        return
     # Skip one-way entities (add-on → remote only)
     suffix = _extract_entity_suffix(entity_id)
     if suffix in _ONE_WAY_SUFFIXES:
@@ -803,8 +878,9 @@ async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state
     await _mirror_entity_state(entity_id, controller_eid, new_state)
 
 
-# Guard to prevent multiple concurrent reconnect syncs
-_remote_reconnect_pending = False
+# Guard to prevent multiple concurrent reconnect syncs.
+# Starts True to block remote→controller mirroring until first startup sync completes.
+_remote_reconnect_pending = True
 
 
 async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
@@ -817,6 +893,7 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
 
     We debounce this: when the first entity transitions from unavailable,
     we wait briefly for all entities to stabilize, then do a full sync.
+    After sync, hold suppression for 15 seconds for remote firmware to settle.
     """
     global _remote_reconnect_pending
     if _remote_reconnect_pending:
@@ -824,7 +901,7 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
     _remote_reconnect_pending = True
 
     import asyncio
-    _remote_log(f"Broker: remote device reconnected ({entity_id} came online) — "
+    _remote_log(f"Broker: remote reconnected — suppressing remote→controller, "
                f"pushing controller state in 5s")
 
     await asyncio.sleep(5)  # Wait for all entities to become available
@@ -832,8 +909,10 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
         await sync_all_remote_state()
     except Exception as e:
         _remote_log(f"Broker: reconnect sync FAILED: {e}")
-    finally:
-        _remote_reconnect_pending = False
+    _remote_log("Broker: holding suppression 15s for remote to settle")
+    await asyncio.sleep(15)
+    _remote_reconnect_pending = False
+    _remote_log("Broker: remote→controller mirroring re-enabled")
 
 
 async def _handle_controller_to_remote(entity_id: str, new_state: str):
