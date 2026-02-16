@@ -184,7 +184,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .day-toggle { padding: 8px 14px; border-radius: 8px; border: 2px solid var(--border-input); cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; min-width: 52px; transition: all 0.15s ease; background: var(--bg-tile); color: var(--text-muted); user-select: none; }
 .day-toggle:hover { border-color: var(--border-hover); }
 .day-toggle.active { background: var(--bg-active-tile); border-color: var(--color-success); color: var(--color-success); }
-.start-times-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.start-times-grid { display: flex; flex-direction: column; gap: 8px; }
+.start-time-row { display:flex; align-items:center; gap:10px; background:var(--bg-tile); border:1px solid var(--border-light); border-radius:8px; padding:10px 14px; }
+.start-time-row .st-label { font-weight:600; font-size:14px; color:var(--text-primary); white-space:nowrap; min-width:90px; }
+.start-time-row .st-input-group { display:flex; align-items:center; gap:6px; }
+.start-time-row .st-input-group input { width:72px; padding:4px 8px; border:1px solid var(--border-input); border-radius:5px; font-size:12px; box-sizing:border-box; height:28px; text-align:center; }
+.start-time-row .st-input-group button { padding:4px 12px; font-size:11px; height:28px; line-height:1; white-space:nowrap; border-radius:5px; }
+.start-time-row .st-current { margin-left:auto; font-size:20px; font-weight:700; color:var(--text-primary); white-space:nowrap; }
 .zone-settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .zone-settings-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border-light); font-size: 12px; color: var(--text-muted); text-transform: uppercase; white-space: nowrap; }
 .zone-settings-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-row); white-space: nowrap; }
@@ -270,7 +276,7 @@ body:not(.dark-mode) .gophr-logo { filter: invert(1); }
     .btn-sm { padding: 5px 8px; font-size: 11px; }
     .days-row { gap: 4px; }
     .day-toggle { padding: 6px 10px; font-size: 12px; min-width: 44px; }
-    .start-times-grid { grid-template-columns: 1fr; }
+    .start-time-row .st-current { font-size:16px; }
     .system-controls-row { flex-direction: column; }
     .dark-toggle { font-size: 14px; padding: 4px; }
     .zone-settings-table { table-layout: fixed; }
@@ -2929,14 +2935,15 @@ function renderScheduleCard(sched, durData, multData) {
             const label = 'Start Time ' + (num < 99 ? num : '?');
             const eid = st.entity_id;
             const inputId = 'st_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
-            html += '<div class="tile">' +
-                '<div class="tile-name">' + esc(label) + '</div>' +
-                '<div class="tile-state">' + esc(st.state) + '</div>' +
-                '<div class="tile-actions" style="display:flex;flex-direction:column;gap:4px;max-width:100px;">' +
-                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM" style="width:100%;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;box-sizing:border-box;height:25px;">' +
-                '<button class="btn btn-primary btn-sm" style="width:100%;height:25px;padding:0;font-size:11px;" onclick="setEntityValue(\\'' + eid +
+            html += '<div class="start-time-row">' +
+                '<div class="st-label">' + esc(label) + '</div>' +
+                '<div class="st-input-group">' +
+                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM">' +
+                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
                 '\\',\\'text\\',{value:document.getElementById(\\'' + inputId + '\\').value})">Set</button>' +
-                '</div></div>';
+                '</div>' +
+                '<div class="st-current">' + esc(st.state) + '</div>' +
+                '</div>';
         }
         html += '</div></div>';
     }
