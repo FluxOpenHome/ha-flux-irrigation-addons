@@ -501,17 +501,18 @@ async def lifespan(app: FastAPI):
     moisture_task = None
     zone_watcher_task = None
     entity_refresh_task = None
-    if config.allowed_zone_entities:
-        from run_log import watch_zone_states
-        zone_watcher_task = asyncio.create_task(watch_zone_states())
-        print(f"[MAIN] Zone state watcher active: monitoring {len(config.allowed_zone_entities)} zone(s)")
 
     # Full state sync to remote device on startup (ALL entities)
+    # MUST run BEFORE starting the zone watcher to prevent dual-sync race —
+    # if the WebSocket connects while startup sync is running, Step 3.5 would
+    # see sync_needed=ON and launch a second concurrent sync via
+    # _handle_remote_reconnect(), causing garbled entity writes.
     if config.allowed_remote_entities:
+        import run_log
+        run_log._reconnect_sync_running = True  # Block any reconnect handler
         try:
             from run_log import sync_all_remote_state, _find_sync_needed_entity
             from routes.admin import sync_remote_settings
-            import run_log
             import ha_client
             # Push zone count + time format first (settings-only entities)
             settings_file = "/data/settings.json"
@@ -544,9 +545,16 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[MAIN] Remote device sync failed: {e}")
             # Always clear the flag so mirroring can work even if sync failed
-            import run_log
             run_log._remote_reconnect_pending = False
             run_log._remote_log("Broker: startup sync FAILED — remote→controller mirroring enabled (fallback)")
+        finally:
+            run_log._reconnect_sync_running = False  # Allow future reconnect handlers
+
+    # Start zone watcher AFTER startup sync — prevents dual-sync race condition
+    if config.allowed_zone_entities:
+        from run_log import watch_zone_states
+        zone_watcher_task = asyncio.create_task(watch_zone_states())
+        print(f"[MAIN] Zone state watcher active: monitoring {len(config.allowed_zone_entities)} zone(s)")
     weather_ready = config.weather_enabled and (
         config.weather_entity_id or config.weather_source == "nws"
     )
