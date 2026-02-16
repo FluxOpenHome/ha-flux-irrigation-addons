@@ -477,18 +477,20 @@ async def select_remote_device(body: DeviceSelect):
     for category in ("zones", "sensors", "other"):
         all_entities.extend(entities.get(category, []))
 
-    # Sync settings to the newly connected remote
+    # Full sync to the newly connected remote — push ALL state
     try:
-        # Read current time format preference from settings file
         settings_file = "/data/settings.json"
-        use_12h = True  # default
+        use_12h = True
         if os.path.exists(settings_file):
             with open(settings_file) as f:
                 settings = json.load(f)
                 use_12h = settings.get("time_format", "12h") != "24h"
         await sync_remote_settings(use_12h=use_12h)
+        # Push all entity states (zones, schedules, durations, days, status)
+        from run_log import sync_all_remote_state
+        await sync_all_remote_state()
     except Exception as e:
-        print(f"[REMOTE] Settings sync after device select failed: {e}")
+        print(f"[REMOTE] Full sync after device select failed: {e}")
 
     return {
         "success": True,

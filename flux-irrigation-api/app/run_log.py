@@ -32,10 +32,13 @@ _zone_states: dict[str, str] = {}
 # Cache of zone start times for duration calculation
 _zone_start_times: dict[str, str] = {}
 
-# --- Remote ↔ Controller zone mirroring ---
-# Guard to prevent infinite loops: when we mirror a state change from remote→controller
-# or controller→remote, the resulting state_changed event should be ignored.
+# --- Remote ↔ Controller entity mirroring ---
+# Guard to prevent infinite loops: when we mirror a state change, the resulting
+# state_changed event should be ignored.
 _remote_mirror_guard: set = set()  # entity_ids currently being mirrored
+
+# Cached entity maps (rebuilt when config changes)
+_remote_maps_cache: dict = {}  # {"r2c": {}, "c2r": {}, "remote_all": set(), "controller_status": set()}
 
 
 def log_zone_event(
@@ -465,124 +468,288 @@ async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
             print(f"[RUN_LOG] Moisture zone state hook error: {e}")
 
 
-def _get_remote_zone_entities() -> set:
-    """Get the set of remote device zone switch entity IDs to watch."""
+def _extract_entity_suffix(entity_id: str) -> str:
+    """Extract the functional suffix from an entity_id by stripping device name prefix.
+
+    Both controller and remote share suffixes like _zone_1, _schedule_monday,
+    _zone_1_duration, _schedule_start_time_1, etc.  The device name portion
+    (e.g. 'irrigation_controller_abc123' or 'irrigation_remote_12b894') differs,
+    but the functional tail is the same.
+
+    Strategy: find the longest known suffix pattern that matches the tail of the
+    entity_id (after the domain prefix 'switch.', 'number.', etc.).
+    """
+    # Strip domain prefix
+    if "." in entity_id:
+        slug = entity_id.split(".", 1)[1]
+    else:
+        slug = entity_id
+
+    # Known suffix patterns — ordered longest-first so we match greedily
+    # Schedule times
+    for i in range(1, 5):
+        if slug.endswith(f"_schedule_start_time_{i}") or slug.endswith(f"_start_time_{i}"):
+            return f"schedule_start_time_{i}"
+    # Zone durations
+    m = re.search(r'zone_(\d+)_dur(?:ation)?$', slug)
+    if m:
+        return f"zone_{m.group(1)}_duration"
+    # Zone switches (plain zone_N, NOT enable_zone_N)
+    m = re.search(r'(?<!enable_)zone_(\d+)$', slug)
+    if m:
+        return f"zone_{m.group(1)}"
+    # Enable zone switches
+    m = re.search(r'enable_zone_(\d+)$', slug)
+    if m:
+        return f"enable_zone_{m.group(1)}"
+    # Schedule day switches
+    for day in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"):
+        if slug.endswith(f"_schedule_{day}") or slug.endswith(f"_{day}"):
+            if "schedule" in slug or day in slug:
+                return f"schedule_{day}"
+    # Named entities
+    for suffix in (
+        "auto_advance", "schedule_enabled", "start_stop_resume",
+        "main_start_stop", "valve_status", "status",
+        "time_remaining", "progress", "progress_percent",
+        "active_zone", "zone_count", "detected_zones",
+        "use_12_hour_format", "rain_sensor", "pause",
+    ):
+        if slug.endswith(f"_{suffix}") or slug == suffix:
+            return suffix
+    # Fallback: return everything after the last hex-like mac segment
+    # e.g. 'irrigation_remote_12b894_schedule_monday' → try splitting on known device patterns
+    return slug
+
+
+def _build_remote_entity_maps() -> dict:
+    """Build bidirectional entity mapping between controller and remote.
+
+    Maps entities by their functional suffix — both devices share the same
+    suffix patterns (zone_1, schedule_monday, zone_1_duration, etc.).
+
+    Returns dict with:
+      r2c: remote_entity → controller_entity (for user actions on remote)
+      c2r: controller_entity → remote_entity (for mirroring state to remote)
+      remote_all: set of ALL remote entity IDs to watch
+      controller_watched: set of controller entity IDs that have a remote counterpart
+      status_map: controller_sensor → remote_text (one-way: controller→remote)
+    """
+    global _remote_maps_cache
+    from config import get_config
+    config = get_config()
+
+    if not config.allowed_remote_entities:
+        _remote_maps_cache = {"r2c": {}, "c2r": {}, "remote_all": set(),
+                              "controller_watched": set(), "status_map": {}}
+        return _remote_maps_cache
+
+    # Index remote entities by (domain, suffix)
+    remote_by_suffix = {}  # suffix → entity_id
+    for eid in config.allowed_remote_entities:
+        domain = eid.split(".")[0] if "." in eid else ""
+        suffix = _extract_entity_suffix(eid)
+        remote_by_suffix[(domain, suffix)] = eid
+        # Also store without domain for cross-domain matching (text_sensor→text)
+        remote_by_suffix[("*", suffix)] = eid
+
+    # Index controller entities by suffix
+    # Combine all controller entity lists
+    all_controller = set()
+    for eid in (config.allowed_zone_entities or []):
+        all_controller.add(eid)
+    for eid in (config.allowed_control_entities or []):
+        all_controller.add(eid)
+    for eid in (config.allowed_sensor_entities or []):
+        all_controller.add(eid)
+
+    r2c = {}
+    c2r = {}
+    status_map = {}  # controller text_sensor → remote text entity
+
+    for ctrl_eid in all_controller:
+        ctrl_domain = ctrl_eid.split(".")[0] if "." in ctrl_eid else ""
+        suffix = _extract_entity_suffix(ctrl_eid)
+
+        # Try exact domain match first, then cross-domain
+        remote_eid = remote_by_suffix.get((ctrl_domain, suffix))
+
+        # Cross-domain: controller text_sensor.* → remote text.* (status entities)
+        if not remote_eid and ctrl_domain == "text_sensor":
+            remote_eid = remote_by_suffix.get(("text", suffix))
+            if remote_eid:
+                # Status entities are one-way: controller → remote only
+                status_map[ctrl_eid] = remote_eid
+                continue
+
+        # Cross-domain: controller number.*_zone_N_duration → remote number.*_zone_N_duration
+        # (suffix already normalized to zone_N_duration)
+        if not remote_eid:
+            remote_eid = remote_by_suffix.get(("*", suffix))
+            # Make sure domains are compatible for bidirectional sync
+            if remote_eid:
+                r_domain = remote_eid.split(".")[0] if "." in remote_eid else ""
+                if ctrl_domain != r_domain and not (
+                    {ctrl_domain, r_domain} <= {"switch", "valve"} or
+                    {ctrl_domain, r_domain} <= {"text", "text_sensor"} or
+                    ctrl_domain == r_domain
+                ):
+                    remote_eid = None
+
+        if remote_eid and remote_eid != ctrl_eid:
+            r2c[remote_eid] = ctrl_eid
+            c2r[ctrl_eid] = remote_eid
+
+    remote_all = set(config.allowed_remote_entities)
+
+    _remote_maps_cache = {
+        "r2c": r2c,
+        "c2r": c2r,
+        "remote_all": remote_all,
+        "controller_watched": set(c2r.keys()) | set(status_map.keys()),
+        "status_map": status_map,
+    }
+
+    return _remote_maps_cache
+
+
+def _get_remote_entities() -> set:
+    """Get ALL remote entity IDs to watch via WebSocket."""
     try:
         from config import get_config
         config = get_config()
         if not config.allowed_remote_entities:
             return set()
-        # Remote zone switches follow the pattern: switch.*_zone_N
-        return {
-            eid for eid in config.allowed_remote_entities
-            if eid.startswith("switch.") and _extract_zone_number(eid) > 0
-        }
+        return set(config.allowed_remote_entities)
     except Exception:
         return set()
 
 
-def _build_remote_zone_map() -> tuple[dict, dict]:
-    """Build bidirectional zone number mapping between remote and controller.
+def _get_controller_entities_for_remote() -> set:
+    """Get controller entity IDs that should be mirrored to the remote."""
+    try:
+        maps = _build_remote_entity_maps()
+        return maps.get("controller_watched", set())
+    except Exception:
+        return set()
 
-    Returns (remote_to_controller, controller_to_remote) dicts mapping
-    entity_id → entity_id based on matching zone numbers.
+
+async def _mirror_entity_state(source_eid: str, target_eid: str, new_state: str):
+    """Mirror a state change from one entity to another.
+
+    Handles all entity domains: switch, number, text, select, button, valve.
     """
-    from config import get_config
-    config = get_config()
-
-    remote_zones = {}  # zone_num → remote entity_id
-    controller_zones = {}  # zone_num → controller entity_id
-
-    for eid in config.allowed_remote_entities or []:
-        if eid.startswith("switch."):
-            n = _extract_zone_number(eid)
-            if n > 0:
-                remote_zones[n] = eid
-
-    for eid in config.allowed_zone_entities or []:
-        n = _extract_zone_number(eid)
-        if n > 0:
-            controller_zones[n] = eid
-
-    r2c = {}  # remote_entity → controller_entity
-    c2r = {}  # controller_entity → remote_entity
-    for zone_num in remote_zones:
-        if zone_num in controller_zones:
-            r2c[remote_zones[zone_num]] = controller_zones[zone_num]
-            c2r[controller_zones[zone_num]] = remote_zones[zone_num]
-
-    return r2c, c2r
-
-
-async def _handle_remote_zone_change(entity_id: str, new_state: str, old_state: str):
-    """Mirror a remote zone switch change to the corresponding controller zone."""
     import ha_client
     global _remote_mirror_guard
 
-    r2c, _ = _build_remote_zone_map()
-    controller_eid = r2c.get(entity_id)
+    _remote_mirror_guard.add(target_eid)
+    try:
+        target_domain = target_eid.split(".")[0] if "." in target_eid else ""
+
+        if target_domain in ("switch", "light"):
+            is_on = new_state in ("on", "open")
+            svc = "turn_on" if is_on else "turn_off"
+            await ha_client.call_service(target_domain, svc, {"entity_id": target_eid})
+        elif target_domain == "valve":
+            is_on = new_state in ("on", "open")
+            svc = "open_valve" if is_on else "close_valve"
+            await ha_client.call_service("valve", svc, {"entity_id": target_eid})
+        elif target_domain == "number":
+            try:
+                val = float(new_state)
+                await ha_client.call_service("number", "set_value",
+                                             {"entity_id": target_eid, "value": val})
+            except (ValueError, TypeError):
+                return  # Can't mirror non-numeric state to number entity
+        elif target_domain in ("text", "text_sensor"):
+            # text entities accept set_value; text_sensor is read-only but
+            # remote uses text (not text_sensor) so this works
+            if target_domain == "text":
+                await ha_client.call_service("text", "set_value",
+                                             {"entity_id": target_eid, "value": str(new_state)})
+            # text_sensor can't be written to — skip
+        elif target_domain == "select":
+            await ha_client.call_service("select", "select_option",
+                                         {"entity_id": target_eid, "option": str(new_state)})
+        elif target_domain == "button":
+            await ha_client.call_service("button", "press", {"entity_id": target_eid})
+        else:
+            return  # Unknown domain
+
+        suffix = _extract_entity_suffix(source_eid)
+        print(f"[REMOTE] Mirrored {suffix}: {new_state} ({source_eid} → {target_eid})")
+    except Exception as e:
+        print(f"[REMOTE] Mirror failed {source_eid} → {target_eid}: {e}")
+    finally:
+        import asyncio
+        async def _clear():
+            await asyncio.sleep(2)
+            _remote_mirror_guard.discard(target_eid)
+        asyncio.create_task(_clear())
+
+
+async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state: str):
+    """A remote entity changed — mirror to the corresponding controller entity."""
+    maps = _build_remote_entity_maps()
+    controller_eid = maps["r2c"].get(entity_id)
     if not controller_eid:
         return
-
-    # Set guard before calling service so the resulting controller state_changed
-    # event is ignored (prevents infinite loop)
-    _remote_mirror_guard.add(controller_eid)
-    try:
-        zone_num = _extract_zone_number(entity_id)
-        is_on = new_state in ("on", "open")
-        domain = controller_eid.split(".")[0] if "." in controller_eid else "switch"
-
-        if is_on:
-            if domain == "valve":
-                await ha_client.call_service("valve", "open", {"entity_id": controller_eid})
-            else:
-                await ha_client.call_service("switch", "turn_on", {"entity_id": controller_eid})
-            print(f"[REMOTE] Zone {zone_num} ON via remote → turned on {controller_eid}")
-        else:
-            if domain == "valve":
-                await ha_client.call_service("valve", "close", {"entity_id": controller_eid})
-            else:
-                await ha_client.call_service("switch", "turn_off", {"entity_id": controller_eid})
-            print(f"[REMOTE] Zone {zone_num} OFF via remote → turned off {controller_eid}")
-    except Exception as e:
-        print(f"[REMOTE] Failed to mirror {entity_id} → {controller_eid}: {e}")
-    finally:
-        # Remove guard after a brief delay to allow the state_changed event to arrive
-        import asyncio
-        async def _clear_guard():
-            await asyncio.sleep(2)
-            _remote_mirror_guard.discard(controller_eid)
-        asyncio.create_task(_clear_guard())
+    await _mirror_entity_state(entity_id, controller_eid, new_state)
 
 
-async def _mirror_controller_to_remote(entity_id: str, new_state: str):
-    """Mirror a controller zone state change to the corresponding remote switch."""
+async def _handle_controller_to_remote(entity_id: str, new_state: str):
+    """A controller entity changed — mirror to the corresponding remote entity."""
+    maps = _build_remote_entity_maps()
+    # Check bidirectional map first
+    remote_eid = maps["c2r"].get(entity_id)
+    if remote_eid:
+        await _mirror_entity_state(entity_id, remote_eid, new_state)
+        return
+    # Check status (one-way) map
+    remote_eid = maps["status_map"].get(entity_id)
+    if remote_eid:
+        await _mirror_entity_state(entity_id, remote_eid, new_state)
+
+
+async def sync_all_remote_state():
+    """Push ALL current controller state to the remote device.
+
+    Called on startup and when remote device is first connected.
+    Reads current state of every mapped controller entity and pushes to remote.
+    """
     import ha_client
-    global _remote_mirror_guard
+    from config import get_config
 
-    _, c2r = _build_remote_zone_map()
-    remote_eid = c2r.get(entity_id)
-    if not remote_eid:
+    config = get_config()
+    if not config.allowed_remote_entities:
         return
 
-    # Set guard before calling service
-    _remote_mirror_guard.add(remote_eid)
-    try:
-        zone_num = _extract_zone_number(entity_id)
-        is_on = new_state in ("on", "open")
-        if is_on:
-            await ha_client.call_service("switch", "turn_on", {"entity_id": remote_eid})
-        else:
-            await ha_client.call_service("switch", "turn_off", {"entity_id": remote_eid})
-        print(f"[REMOTE] Controller zone {zone_num} → mirrored to remote {remote_eid} ({new_state})")
-    except Exception as e:
-        print(f"[REMOTE] Failed to mirror controller → remote {remote_eid}: {e}")
-    finally:
-        import asyncio
-        async def _clear_guard():
-            await asyncio.sleep(2)
-            _remote_mirror_guard.discard(remote_eid)
-        asyncio.create_task(_clear_guard())
+    maps = _build_remote_entity_maps()
+    total_c2r = {**maps["c2r"], **maps["status_map"]}
+    if not total_c2r:
+        print("[REMOTE] No entity mappings found — cannot sync")
+        return
+
+    # Fetch current states of all controller entities that have remote counterparts
+    controller_eids = list(total_c2r.keys())
+    states = await ha_client.get_entities_by_ids(controller_eids)
+
+    synced = 0
+    for entity_state in states:
+        ctrl_eid = entity_state.get("entity_id", "")
+        state_val = entity_state.get("state", "")
+        if not ctrl_eid or not state_val or state_val in ("unavailable", "unknown"):
+            continue
+        remote_eid = total_c2r.get(ctrl_eid)
+        if not remote_eid:
+            continue
+        try:
+            await _mirror_entity_state(ctrl_eid, remote_eid, state_val)
+            synced += 1
+        except Exception as e:
+            print(f"[REMOTE] Initial sync failed for {ctrl_eid}: {e}")
+
+    print(f"[REMOTE] Full state sync complete: {synced}/{len(total_c2r)} entities pushed to remote")
 
 
 def _get_probe_sensor_entities() -> set:
@@ -714,11 +881,13 @@ async def _watch_via_websocket(allowed_entities: set):
     token = config.supervisor_token
     ws_url = "ws://supervisor/core/websocket"
 
-    # Build combined watch set: zone entities + probe + schedule + remote entities
+    # Build combined watch set: zone entities + probe + schedule + remote + controller-for-remote
     probe_entities = _get_probe_sensor_entities()
     schedule_entities = _get_schedule_entities()
-    remote_entities = _get_remote_zone_entities()
-    all_watched = allowed_entities | probe_entities | schedule_entities | remote_entities
+    remote_entities = _get_remote_entities()
+    controller_for_remote = _get_controller_entities_for_remote()
+    all_watched = (allowed_entities | probe_entities | schedule_entities
+                   | remote_entities | controller_for_remote)
     if probe_entities:
         print(f"[RUN_LOG] Also watching {len(probe_entities)} probe sensor entities "
               f"for skip↔factor transitions")
@@ -726,8 +895,8 @@ async def _watch_via_websocket(allowed_entities: set):
         print(f"[RUN_LOG] Also watching {len(schedule_entities)} schedule entities "
               f"for timeline recalculation")
     if remote_entities:
-        print(f"[RUN_LOG] Also watching {len(remote_entities)} remote zone entities "
-              f"for zone mirroring")
+        print(f"[RUN_LOG] Also watching {len(remote_entities)} remote entities "
+              f"+ {len(controller_for_remote)} controller entities for remote mirroring")
 
     extra_headers = {"Authorization": f"Bearer {token}"}
 
@@ -783,8 +952,11 @@ async def _watch_via_websocket(allowed_entities: set):
 
                 # Route to appropriate handler
                 if entity_id in remote_entities:
-                    # Remote zone switch changed → mirror to controller
-                    await _handle_remote_zone_change(entity_id, new_state, old_state)
+                    # Remote entity changed → mirror to controller
+                    import asyncio
+                    asyncio.create_task(
+                        _handle_remote_entity_change(entity_id, new_state, old_state)
+                    )
                 elif entity_id in allowed_entities:
                     attrs = new_state_obj.get("attributes", {}) if new_state_obj else {}
                     zone_name = attrs.get("friendly_name", entity_id)
@@ -793,8 +965,14 @@ async def _watch_via_websocket(allowed_entities: set):
                     if remote_entities:
                         import asyncio
                         asyncio.create_task(
-                            _mirror_controller_to_remote(entity_id, new_state)
+                            _handle_controller_to_remote(entity_id, new_state)
                         )
+                elif entity_id in controller_for_remote:
+                    # Controller entity (non-zone) changed → mirror to remote
+                    import asyncio
+                    asyncio.create_task(
+                        _handle_controller_to_remote(entity_id, new_state)
+                    )
                 elif entity_id in probe_entities:
                     await _handle_probe_sensor_change(entity_id, new_state, old_state)
                 elif entity_id in schedule_entities:
