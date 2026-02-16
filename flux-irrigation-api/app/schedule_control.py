@@ -93,7 +93,23 @@ async def restore_schedules(saved_states: dict[str, str]):
                       Only entities that were "on" before will be turned back on.
     """
     if not saved_states:
-        print("[SCHED_CTRL] No saved schedule states to restore")
+        # Fallback: no saved states were persisted (e.g. entity discovery failed
+        # during pause, or states were lost).  Turn ON all schedule enable entities
+        # to ensure the schedule is never left permanently disabled.
+        all_entities = get_schedule_enable_entities()
+        if not all_entities:
+            print("[SCHED_CTRL] No saved states AND no schedule enable entities found")
+            return
+        print(f"[SCHED_CTRL] No saved states — fallback: turning ON "
+              f"{len(all_entities)} schedule enable(s)")
+        for eid in all_entities:
+            success = await ha_client.call_service(
+                "switch", "turn_on", {"entity_id": eid}
+            )
+            if success:
+                print(f"[SCHED_CTRL] Fallback restored: {eid}")
+            else:
+                print(f"[SCHED_CTRL] Fallback FAILED: {eid}")
         return
 
     restored = []

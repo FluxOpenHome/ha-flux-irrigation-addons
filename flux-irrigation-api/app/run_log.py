@@ -109,6 +109,14 @@ _ONE_WAY_SUFFIXES = {
     "sync_needed",      # remote boot flag — add-on reads it, never mirrors it
 }
 
+# Duration suffix pattern — zone_N_duration entities are NOT broker-mirrored.
+# They use the add-on's base_duration system instead:
+#   - Add-on → Remote: pushes BASE durations (not the factored controller values)
+#   - Remote → Add-on: updates base_durations in moisture.json (then re-applies factors)
+# This prevents the factored value on the controller from overwriting the remote's
+# input field, and prevents remote changes from bypassing the factor system.
+_DURATION_SUFFIX_RE = re.compile(r'^zone_\d+_duration$')
+
 # --- Remote Debug Log ---
 _REMOTE_DEBUG_LOG_FILE = "/data/remote_debug.log"
 _REMOTE_DEBUG_LOG_MAX_LINES = 500
@@ -909,11 +917,128 @@ async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state
     suffix = _extract_entity_suffix(entity_id)
     if suffix in _ONE_WAY_SUFFIXES:
         return
+    # Duration entities: update the add-on's base_durations instead of mirroring
+    # directly to controller. This preserves the factor system (base × multiplier).
+    if _DURATION_SUFFIX_RE.match(suffix):
+        await _handle_remote_duration_change(entity_id, new_state, suffix)
+        return
     maps = _build_remote_entity_maps()
     controller_eid = maps["r2c"].get(entity_id)
     if not controller_eid:
         return
     await _mirror_entity_state(entity_id, controller_eid, new_state)
+
+
+async def _handle_remote_duration_change(remote_eid: str, new_state: str, suffix: str):
+    """Handle a duration change from the remote by updating the add-on's base_durations.
+
+    Instead of mirroring directly to the controller (which would bypass the factor
+    system), we:
+    1. Find the corresponding controller duration entity
+    2. Update base_durations in moisture.json with the new value
+    3. Re-apply factors (so controller gets base × multiplier)
+
+    This keeps the remote's input field showing the BASE value while the controller
+    gets the properly factored value.
+    """
+    try:
+        new_val = float(new_state)
+    except (ValueError, TypeError):
+        _remote_log(f"Broker: ignoring non-numeric duration from remote: "
+                    f"{suffix} = {new_state!r}")
+        return
+
+    # Find the controller entity this maps to
+    maps = _build_remote_entity_maps()
+    controller_eid = maps["r2c"].get(remote_eid)
+    if not controller_eid:
+        _remote_log(f"Broker: no controller mapping for remote duration {suffix}")
+        return
+
+    try:
+        from routes.moisture import (
+            _load_data as _load_moisture_data,
+            _save_data as _save_moisture_data,
+            apply_adjusted_durations,
+        )
+        from datetime import datetime, timezone
+
+        mdata = _load_moisture_data()
+        base_durations = mdata.get("base_durations", {})
+
+        old_base = base_durations.get(controller_eid, {}).get("base_value")
+        if old_base is not None and abs(float(old_base) - new_val) < 0.01:
+            # Value unchanged — skip to avoid unnecessary writes
+            return
+
+        base_durations[controller_eid] = base_durations.get(controller_eid, {})
+        base_durations[controller_eid]["entity_id"] = controller_eid
+        base_durations[controller_eid]["base_value"] = new_val
+        base_durations[controller_eid]["captured_at"] = datetime.now(timezone.utc).isoformat()
+        mdata["base_durations"] = base_durations
+        _save_moisture_data(mdata)
+
+        _remote_log(f"Broker: remote duration {suffix} = {new_val} → "
+                    f"updated base_durations[{controller_eid}]")
+
+        # Re-apply factors so controller gets base × multiplier
+        if mdata.get("apply_factors_to_schedule"):
+            await apply_adjusted_durations()
+            _remote_log(f"Broker: re-applied factors after remote duration change")
+        else:
+            # No factors active — write the base value directly to controller
+            import ha_client
+            await ha_client.call_service(
+                "number", "set_value",
+                {"entity_id": controller_eid, "value": new_val},
+            )
+            _remote_log(f"Broker: wrote {new_val} directly to {controller_eid} (no factors)")
+
+    except Exception as e:
+        _remote_log(f"Broker: error handling remote duration change: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+async def sync_base_durations_to_remote():
+    """Push BASE durations (not factored) from the add-on to the remote device.
+
+    Called during full sync and after base durations are captured/changed.
+    Reads base_durations from moisture.json and writes them to the corresponding
+    remote duration entities.
+    """
+    import ha_client
+    from config import get_config
+
+    config = get_config()
+    if not config.allowed_remote_entities:
+        return
+
+    try:
+        from routes.moisture import _load_data as _load_moisture_data
+        mdata = _load_moisture_data()
+        base_durations = mdata.get("base_durations", {})
+        if not base_durations:
+            _remote_log("Broker: no base_durations to sync to remote")
+            return
+
+        maps = _build_remote_entity_maps()
+        synced = 0
+        for controller_eid, dur_info in base_durations.items():
+            base_val = dur_info.get("base_value")
+            if base_val is None:
+                continue
+            remote_eid = maps["c2r"].get(controller_eid)
+            if not remote_eid:
+                continue
+            # Use mirror with guard to prevent echo
+            await _mirror_entity_state(controller_eid, remote_eid, str(base_val))
+            synced += 1
+
+        if synced > 0:
+            _remote_log(f"Broker: synced {synced} base duration(s) to remote")
+    except Exception as e:
+        _remote_log(f"Broker: error syncing base durations to remote: {e}")
 
 
 # Guard to prevent multiple concurrent reconnect syncs.
@@ -1003,6 +1128,12 @@ async def _handle_controller_to_remote(entity_id: str, new_state: str):
     # Never push unavailable/unknown to remote
     if new_state in ("unavailable", "unknown"):
         return
+    # Skip duration entities — the add-on manages these through base_durations.
+    # The controller value is factored (base × weather/moisture multiplier), so
+    # mirroring it would overwrite the base value shown on the remote's input.
+    suffix = _extract_entity_suffix(entity_id)
+    if _DURATION_SUFFIX_RE.match(suffix):
+        return
     maps = _build_remote_entity_maps()
     # Check bidirectional map first
     remote_eid = maps["c2r"].get(entity_id)
@@ -1043,6 +1174,7 @@ async def sync_all_remote_state():
 
     import asyncio
     synced = 0
+    skipped_durations = 0
     for entity_state in states:
         ctrl_eid = entity_state.get("entity_id", "")
         state_val = entity_state.get("state", "")
@@ -1050,6 +1182,11 @@ async def sync_all_remote_state():
             continue
         remote_eid = total_c2r.get(ctrl_eid)
         if not remote_eid:
+            continue
+        # Skip duration entities — they get base values via sync_base_durations_to_remote()
+        suffix = _extract_entity_suffix(ctrl_eid)
+        if _DURATION_SUFFIX_RE.match(suffix):
+            skipped_durations += 1
             continue
         try:
             await _mirror_entity_state(ctrl_eid, remote_eid, state_val)
@@ -1060,7 +1197,11 @@ async def sync_all_remote_state():
         except Exception as e:
             _remote_log(f"Broker: sync FAILED for {ctrl_eid}: {e}")
 
-    _remote_log(f"Broker: full sync complete — {synced}/{len(total_c2r)} controller values pushed to remote")
+    _remote_log(f"Broker: full sync complete — {synced}/{len(total_c2r)} controller values pushed "
+                f"to remote ({skipped_durations} duration(s) skipped — handled by base sync)")
+
+    # Sync base durations separately (uses base values, not factored controller values)
+    await sync_base_durations_to_remote()
 
 
 async def get_broker_status() -> dict:

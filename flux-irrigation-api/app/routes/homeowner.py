@@ -651,15 +651,22 @@ async def homeowner_set_entity(
                 print(f"[HOMEOWNER] Updated base duration for {entity_id} to {body.value}")
                 if mdata.get("apply_factors_to_schedule"):
                     await apply_adjusted_durations()
+                # Push the BASE value to the remote (not the factored controller value)
+                try:
+                    from run_log import sync_base_durations_to_remote
+                    await sync_base_durations_to_remote()
+                except Exception as re_err:
+                    print(f"[HOMEOWNER] Remote duration sync failed: {re_err}")
         except Exception as e:
             print(f"[HOMEOWNER] Base duration update after set failed: {e}")
 
-    # Log configuration change with old → new
+    # Log configuration change with old → new (only if value actually changed)
     actor = get_actor(request)
     fname = friendly_entity_name(entity_id)
     new_val = body.value if body.value is not None else body.state if body.state is not None else body.option
-    log_change(actor, "Schedule", f"Set {fname}: {old_val} -> {new_val}",
-               {"entity_id": entity_id, "old_value": old_val, "new_value": new_val})
+    if str(old_val).lower() != str(new_val).lower():
+        log_change(actor, "Schedule", f"Set {fname}: {old_val} -> {new_val}",
+                   {"entity_id": entity_id, "old_value": old_val, "new_value": new_val})
 
     return {
         "success": True,

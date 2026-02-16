@@ -1705,7 +1705,7 @@ async function toggleNotUsed(zoneNum, cbEl) {
             await setEntityValue(enableEid, 'switch', {state: 'off'});
         }
     }
-    if (typeof loadScheduleCard === 'function') loadScheduleCard();
+    if (typeof loadControls === 'function') loadControls();
     if (typeof loadZones === 'function') loadZones();
 }
 async function guardNotUsedEnable(zoneNum, enableEid) {
@@ -1728,7 +1728,7 @@ async function guardNotUsedEnable(zoneNum, enableEid) {
     delete map[String(zoneNum)];
     setNotUsedZones(map);
     await setEntityValue(enableEid, 'switch', {state: 'on'});
-    if (typeof loadScheduleCard === 'function') loadScheduleCard();
+    if (typeof loadControls === 'function') loadControls();
     if (typeof loadZones === 'function') loadZones();
 }
 

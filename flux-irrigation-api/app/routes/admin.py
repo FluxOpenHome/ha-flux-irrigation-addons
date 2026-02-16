@@ -424,11 +424,14 @@ async def sync_remote_settings(use_12h: bool | None = None):
         elif eid.startswith("switch.") and "12_hour" in lower:
             use_12h_eid = eid
 
-    # Sync zone count
+    # Sync zone count — use filtered count (excludes pump/master valve + not-used)
     if zone_count_eid:
-        zc = config.detected_zone_count
-        if not zc and config.allowed_zone_entities:
-            zc = len(config.allowed_zone_entities)
+        zc = await _count_usable_zones(config)
+        if not zc:
+            # Fallback: raw count if usable-zone detection failed
+            zc = config.detected_zone_count
+            if not zc and config.allowed_zone_entities:
+                zc = len(config.allowed_zone_entities)
         if zc and zc > 0:
             ok = await ha_client.call_service(
                 "number", "set_value",
