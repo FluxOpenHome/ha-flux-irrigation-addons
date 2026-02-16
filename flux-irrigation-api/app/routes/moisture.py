@@ -6569,82 +6569,13 @@ async def on_zone_state_change(zone_entity_id: str, new_state: str,
         else:
             _debug_log(f"PREEMPTIVE TIMER: zone {zn_debug} already has a timer")
 
-    # --- Schedule continuation on zone OFF ---
-    # Once we start a zone via _advance_to_next_zone (moisture_advance),
-    # ESPHome no longer owns the schedule — it won't auto-advance to the
-    # next zone.  We must continue advancing ourselves.
-    #
-    # Additionally, if the next zone is moisture-disabled, we skip it and
-    # log the skip event (original backup advance behavior).
-    #
-    # This block fires for EVERY zone OFF during an active schedule run.
-    # If ESPHome would have advanced on its own, our call is harmless
-    # (starting an already-running zone is a no-op).
-    if is_off and not is_manual and _active_schedule_run is not None:
-        try:
-            zn_off = _extract_zone_number(zone_entity_id)
-            next_z = _get_next_zone_in_run(zone_entity_id)
-            _debug_log(f"SCHEDULE CONTINUE CHECK: zone {zn_off} OFF, "
-                       f"next={next_z['zone_num'] if next_z else 'None'}, "
-                       f"next_moisture_disabled={next_z.get('moisture_disabled') if next_z else 'N/A'}, "
-                       f"next_original_enabled={next_z.get('original_enabled') if next_z else 'N/A'}")
-
-            if next_z and next_z.get("original_enabled"):
-                import run_log as _rl
-
-                # Log skip events for moisture-disabled zones being skipped
-                if next_z.get("moisture_disabled"):
-                    seq = _active_schedule_run["zone_sequence"]
-                    current_idx = None
-                    for i, z in enumerate(seq):
-                        if z["zone_entity_id"] == zone_entity_id:
-                            current_idx = i
-                            break
-                    if current_idx is not None:
-                        for j in range(current_idx + 1, len(seq)):
-                            sz = seq[j]
-                            if sz["moisture_disabled"]:
-                                _rl.log_zone_event(
-                                    entity_id=sz["zone_entity_id"],
-                                    state="moisture_skip",
-                                    source="moisture_skip",
-                                    zone_name=f"Zone {sz['zone_num']}",
-                                    duration_seconds=0,
-                                    scheduled_minutes=sz.get("duration_minutes", 0),
-                                )
-                                _debug_log(f"SCHEDULE CONTINUE: logged skip for zone {sz['zone_num']}")
-                            elif sz["original_enabled"]:
-                                break
-
-                # Before advancing, re-check moisture for the next zone.
-                # Moisture may have risen since the schedule started.
-                await _refresh_moisture_disabled_flags()
-
-                _debug_log(f"SCHEDULE CONTINUE: advancing from zone {zn_off}")
-                advanced = await _advance_to_next_zone(zone_entity_id)
-                if advanced:
-                    _debug_log(f"SCHEDULE CONTINUE: SUCCESS — started next zone")
-                else:
-                    _debug_log(f"SCHEDULE CONTINUE: no more runnable zones — schedule complete")
-            elif next_z:
-                _debug_log(f"SCHEDULE CONTINUE: next zone {next_z['zone_num']} is user-disabled — skipping")
-                # Walk past user-disabled zones too
-                await _refresh_moisture_disabled_flags()
-                advanced = await _advance_to_next_zone(zone_entity_id)
-                if advanced:
-                    _debug_log(f"SCHEDULE CONTINUE: SUCCESS — advanced past disabled zone(s)")
-                else:
-                    _debug_log(f"SCHEDULE CONTINUE: no more runnable zones — schedule complete")
-            else:
-                _debug_log(f"SCHEDULE CONTINUE: zone {zn_off} is last zone — schedule complete")
-        except Exception as e:
-            _debug_log(f"SCHEDULE CONTINUE ERROR: {e}")
-            import traceback
-            _debug_log(traceback.format_exc())
+    # --- REMOVED: Schedule continuation on zone OFF ---
+    # The controller (ESPHome) handles its own auto-advance between zones.
+    # The add-on should NEVER advance zones except when skipping due to
+    # moisture readings (FAST SKIP, IMMEDIATE SKIP, PREEMPTIVE TIMER,
+    # INSTANT CUTOFF — all handled above).
 
     # --- All zones off: end the active run and restore zones ---
-    # Wait a moment for any zone we just started (SCHEDULE CONTINUE) to
-    # register in HA before checking whether all zones are off.
     if is_off:
         try:
             await asyncio.sleep(1.5)

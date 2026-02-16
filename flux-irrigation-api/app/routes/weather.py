@@ -1147,6 +1147,106 @@ async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str)
         print(f"[WEATHER] Error in _log_skipped_schedules: {e}")
 
 
+# --- Stuck Weather Pause Safety Net ---
+
+async def _auto_resume_stuck_weather_pause(caller: str = "unknown"):
+    """Auto-resume a stuck weather pause when the main evaluation can't run.
+
+    This handles two failure modes:
+    1. Weather fetch errors: The main evaluation returns early, never reaching
+       the unpause branch. Without this, a transient API error can leave
+       schedules disabled indefinitely.
+    2. Expired pauses: If rain_detection set an expires_at and that time has
+       passed, the system should unpause even if we can't check current weather.
+
+    This function is conservative — it only resumes if:
+    - weather_schedule_disabled is True, AND
+    - The pause has an expires_at that has passed, OR
+    - The pause is older than 24 hours (absolute safety cap)
+    """
+    from routes.schedule import _load_schedules, _save_schedules
+
+    schedule_data = _load_schedules()
+    if not schedule_data.get("weather_schedule_disabled"):
+        return  # Not paused — nothing to do
+
+    # Check expires_at from the weather rules active_adjustments
+    rules_data = _load_weather_rules()
+    now = datetime.now(timezone.utc)
+    expired = False
+
+    # Check if any pause/skip adjustment has an expires_at that has passed
+    for adj in rules_data.get("active_adjustments", []):
+        expires_str = adj.get("expires_at")
+        if expires_str and adj.get("action") in ("pause", "skip"):
+            try:
+                expires_dt = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
+                if now >= expires_dt:
+                    expired = True
+                    print(f"[WEATHER] Stuck pause safety net: expires_at {expires_str} "
+                          f"has passed (caller={caller})")
+                    break
+            except (ValueError, TypeError):
+                pass
+
+    # Absolute safety cap: if paused for more than 24 hours, force resume.
+    # This catches edge cases where expires_at is missing or corrupted.
+    if not expired:
+        applied_at = None
+        for adj in rules_data.get("active_adjustments", []):
+            if adj.get("action") in ("pause", "skip"):
+                applied_at = adj.get("applied_at")
+                break
+        if applied_at:
+            try:
+                applied_dt = datetime.fromisoformat(applied_at.replace("Z", "+00:00"))
+                age_hours = (now - applied_dt).total_seconds() / 3600.0
+                if age_hours > 24:
+                    expired = True
+                    print(f"[WEATHER] Stuck pause safety net: pause is {age_hours:.1f}h old, "
+                          f"exceeds 24h cap (caller={caller})")
+            except (ValueError, TypeError):
+                pass
+
+    if not expired:
+        print(f"[WEATHER] Stuck pause safety net: pause still valid, not resuming "
+              f"(caller={caller})")
+        return
+
+    # Resume the schedules
+    print(f"[WEATHER] Stuck pause safety net: AUTO-RESUMING schedules (caller={caller})")
+    import schedule_control
+    saved_states = schedule_data.get("saved_schedule_states", {})
+    await schedule_control.restore_schedules(saved_states)
+
+    schedule_data["weather_schedule_disabled"] = False
+    schedule_data.pop("weather_disable_reason", None)
+    schedule_data.pop("saved_schedule_states", None)
+    _save_schedules(schedule_data)
+
+    # Clear stale adjustments since we can't re-evaluate
+    rules_data["active_adjustments"] = []
+    rules_data["watering_multiplier"] = 1.0
+    _save_weather_rules(rules_data)
+
+    _logged_schedule_skips.clear()
+
+    await ha_client.fire_event("flux_irrigation_weather_resume", {
+        "reason": f"Auto-resumed: stuck pause safety net ({caller})",
+    })
+    _log_weather_event("weather_resume", {
+        "reason": f"Auto-resumed: stuck pause safety net ({caller})",
+    })
+    import run_log
+    run_log.log_zone_event(
+        entity_id="system",
+        state="weather_resume",
+        source="weather",
+        zone_name=f"Weather Resume: stuck pause safety net ({caller})",
+    )
+    print(f"[WEATHER] Stuck pause safety net: schedules restored successfully")
+
+
 # --- Rules Engine ---
 
 async def run_weather_evaluation() -> dict:
@@ -1156,6 +1256,8 @@ async def run_weather_evaluation() -> dict:
     """
     config = get_config()
     if not config.weather_enabled:
+        # Even when weather is disabled, check for stuck pauses
+        await _auto_resume_stuck_weather_pause("weather_disabled")
         return {"skipped": True, "reason": "Weather control disabled"}
 
     # If external weather is available (pushed by management server), skip
@@ -1163,8 +1265,10 @@ async def run_weather_evaluation() -> dict:
     has_external = _load_external_weather(max_age_minutes=10.0) is not None
     if not has_external:
         if config.weather_source == "ha_entity" and not config.weather_entity_id:
+            await _auto_resume_stuck_weather_pause("no_weather_entity")
             return {"skipped": True, "reason": "No weather entity configured"}
         if config.weather_source == "nws" and not (config.homeowner_address or config.homeowner_zip):
+            await _auto_resume_stuck_weather_pause("no_address")
             return {"skipped": True, "reason": "No address configured for built-in weather"}
 
     weather = await get_weather_data()
@@ -1173,6 +1277,10 @@ async def run_weather_evaluation() -> dict:
             "error": weather["error"],
             "source": config.weather_source,
         })
+        # SAFETY NET: Even when weather fetch fails, check if we have a stuck
+        # weather pause that should be auto-resumed. Without this, a transient
+        # weather API error can leave schedules disabled indefinitely.
+        await _auto_resume_stuck_weather_pause("weather_fetch_error")
         return {"skipped": True, "reason": weather["error"]}
 
     # Always log weather snapshot so chart has data even if rules evaluation
@@ -1580,16 +1688,22 @@ async def run_weather_evaluation() -> dict:
     else:
         # Auto-resume if previously weather-disabled and conditions cleared
         schedule_data = _load_schedules()
-        if schedule_data.get("weather_schedule_disabled"):
+        is_disabled = schedule_data.get("weather_schedule_disabled", False)
+        print(f"[WEATHER] Unpause check: should_pause=False, "
+              f"weather_schedule_disabled={is_disabled}, "
+              f"disable_reason={schedule_data.get('weather_disable_reason', 'none')}")
+        if is_disabled:
             # Restore ESPHome schedule programs to their prior state
             import schedule_control
             saved_states = schedule_data.get("saved_schedule_states", {})
+            print(f"[WEATHER] Restoring schedules: {len(saved_states)} saved state(s): {saved_states}")
             await schedule_control.restore_schedules(saved_states)
 
             schedule_data["weather_schedule_disabled"] = False
             schedule_data.pop("weather_disable_reason", None)
             schedule_data.pop("saved_schedule_states", None)
             _save_schedules(schedule_data)
+            print("[WEATHER] schedule_data saved: weather_schedule_disabled=False")
 
             # Clear schedule skip tracking so next disable cycle starts fresh
             _logged_schedule_skips.clear()

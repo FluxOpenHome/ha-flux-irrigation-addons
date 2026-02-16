@@ -620,6 +620,20 @@ def _classify_device_entities(entity_ids: list[str]) -> dict[tuple[str, str], st
         domain = eid.split(".")[0] if "." in eid else ""
         func_key = _extract_entity_suffix(eid)
         inventory[(domain, func_key)] = eid
+
+    # Post-process: number entities with plain zone_N suffix are durations, not switches.
+    # ESPHome SprinklerController names durations as "zone_N" (no _duration suffix),
+    # but the remote uses "zone_N_duration". Reclassify so they match.
+    import re
+    remap = {}
+    for (domain, func), eid in list(inventory.items()):
+        if domain == "number" and re.fullmatch(r'zone_\d+', func):
+            new_func = func + "_duration"
+            remap[(domain, func)] = (domain, new_func)
+    for old_key, (new_domain, new_func) in remap.items():
+        eid = inventory.pop(old_key)
+        inventory[(new_domain, new_func)] = eid
+
     return inventory
 
 
