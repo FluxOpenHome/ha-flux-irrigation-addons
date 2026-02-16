@@ -194,6 +194,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .zone-settings-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .zone-settings-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border-light); font-size: 12px; color: var(--text-muted); text-transform: uppercase; white-space: nowrap; }
 .zone-settings-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-row); white-space: nowrap; }
+/* Zone settings list (responsive replacement for table) */
+.zone-settings-list { font-size:13px; }
+.zs-header { display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:2px solid var(--border-light); font-size:12px; color:var(--text-muted); text-transform:uppercase; white-space:nowrap; }
+.zs-h-zone { min-width:52px; }
+.zs-h-mode { min-width:70px; }
+.zs-h-notused { min-width:60px; text-align:center; }
+.zs-h-enable { min-width:72px; }
+.zs-h-duration { flex:1; }
+.zs-row { border-bottom:1px solid var(--border-row); }
+.zs-top { display:flex; align-items:center; gap:8px; padding:6px 8px; flex-wrap:nowrap; }
+.zs-zone { min-width:52px; font-size:13px; white-space:nowrap; }
+.zs-mode { min-width:70px; }
+.zs-notused { min-width:60px; text-align:center; }
+.zs-nu-text { display:none; }
+.zs-nu-label { display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
+.zs-enable { min-width:72px; }
+.zs-duration { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; flex-shrink:0; }
+.zs-factors { display:flex; align-items:center; padding:2px 8px 6px 8px; gap:4px; flex-wrap:wrap; overflow-x:auto; }
 .system-controls-row { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Empty States */
@@ -283,6 +301,17 @@ body:not(.dark-mode) .gophr-logo { filter: invert(1); }
     .zone-settings-table th, .zone-settings-table td { padding: 6px 4px; font-size: 12px; }
     .zone-settings-table td[style*="white-space"] { white-space: normal !important; }
     .zone-settings-table input[type="number"] { width: 50px !important; padding: 3px 2px !important; font-size: 11px !important; }
+    /* Mobile zone settings: stacked card layout */
+    .zs-header { display:none !important; }
+    .zs-top { flex-wrap:wrap; gap:6px; padding:10px 8px 4px 8px; }
+    .zs-zone { min-width:auto; font-size:14px; }
+    .zs-mode { min-width:auto; }
+    .zs-notused { min-width:auto; text-align:left; }
+    .zs-nu-text { display:inline; font-size:11px; color:var(--text-muted); }
+    .zs-enable { min-width:auto; }
+    .zs-duration { width:100%; margin-top:2px; }
+    .zs-duration input[type="number"] { width:54px !important; font-size:12px !important; }
+    .zs-factors { padding:4px 8px 10px 8px; overflow-x:auto; }
 }
 .leaflet-tile-pane.dark-tiles { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
 .map-lock-btn { position:absolute; top:10px; right:10px; z-index:1000; background:#fff; border:none; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.3); cursor:pointer; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-size:14px; }
@@ -3005,13 +3034,24 @@ function renderScheduleCard(sched, durData, multData) {
             if (zoneMap[zn].enable) _zoneEnableMap[String(zn)] = zoneMap[zn].enable.entity_id;
         }
 
-        html += '<table class="zone-settings-table"><thead><tr>' +
-            '<th style="width:1%">Zone</th>' + (hasMode ? '<th style="width:1%">Mode</th>' : '') +
-            '<th style="width:1%">Not Used</th><th style="width:1%">Schedule Enable</th><th>Run Duration</th></tr></thead><tbody>';
+        // --- Zone settings: div-based layout (responsive) ---
+        // Desktop: horizontal row per zone. Mobile: stacked card per zone.
+        html += '<div class="zone-settings-list">';
+        // Header row (hidden on mobile via CSS)
+        html += '<div class="zs-header">' +
+            '<span class="zs-h-zone">Zone</span>' + (hasMode ? '<span class="zs-h-mode">Mode</span>' : '') +
+            '<span class="zs-h-notused">Not Used</span><span class="zs-h-enable">Enable</span><span class="zs-h-duration">Run Duration</span></div>';
         for (const zn of sortedZones) {
             const { enable, duration, mode } = zoneMap[zn];
             const zoneLabel = getZoneLabel(zn);
-            html += '<tr><td><strong>' + esc(zoneLabel) + '</strong></td>';
+            var zoneNotUsed = isZoneNotUsed(zn);
+
+            html += '<div class="zs-row">';
+            // --- Top line: zone label + controls ---
+            html += '<div class="zs-top">';
+            // Zone label
+            html += '<span class="zs-zone"><strong>' + esc(zoneLabel) + '</strong></span>';
+            // Mode selector (if applicable)
             if (hasMode) {
                 if (mode) {
                     const modeAttrs = mode.attributes || {};
@@ -3021,34 +3061,35 @@ function renderScheduleCard(sched, durData, multData) {
                     const optionsHtml = modeOptions.map(o =>
                         '<option value="' + esc(o) + '"' + (o === mode.state ? ' selected' : '') + '>' + esc(o) + '</option>'
                     ).join('');
-                    html += '<td><select id="' + selId + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;" ' +
+                    html += '<span class="zs-mode"><select id="' + selId + '" style="padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;" ' +
                         'onchange="hoZoneModeChanged(\\'' + modeEid +
                         '\\',document.getElementById(\\'' + selId + '\\').value)">' +
-                        optionsHtml + '</select></td>';
+                        optionsHtml + '</select></span>';
                 } else {
-                    html += '<td style="color:var(--text-disabled);">-</td>';
+                    html += '<span class="zs-mode" style="color:var(--text-disabled);">-</span>';
                 }
             }
             // Not Used checkbox
-            var zoneNotUsed = isZoneNotUsed(zn);
-            html += '<td style="text-align:center;"><input type="checkbox" ' + (zoneNotUsed ? 'checked' : '') +
+            html += '<span class="zs-notused"><label class="zs-nu-label"><input type="checkbox" ' + (zoneNotUsed ? 'checked' : '') +
                 ' onclick="var cb=this;toggleNotUsed(' + zn + ',cb)" ' +
-                'style="width:16px;height:16px;cursor:pointer;accent-color:var(--color-danger);"></td>';
+                'style="width:16px;height:16px;cursor:pointer;accent-color:var(--color-danger);"><span class="zs-nu-text">Not Used</span></label></span>';
+            // Schedule Enable button
             if (enable) {
                 if (zoneNotUsed) {
-                    html += '<td><button class="btn btn-secondary btn-sm" style="opacity:0.35;cursor:not-allowed;" ' +
+                    html += '<span class="zs-enable"><button class="btn btn-secondary btn-sm" style="opacity:0.35;cursor:not-allowed;" ' +
                         'onclick="guardNotUsedEnable(' + zn + ',\\'' + enable.entity_id + '\\')">' +
-                        'Disabled</button></td>';
+                        'Disabled</button></span>';
                 } else {
                     const isOn = enable.state === 'on';
-                    html += '<td><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
+                    html += '<span class="zs-enable"><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
                         'onclick="setEntityValue(\\'' + enable.entity_id + '\\',\\'switch\\',' +
                         '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
-                        (isOn ? 'Enabled' : 'Disabled') + '</button></td>';
+                        (isOn ? 'Enabled' : 'Disabled') + '</button></span>';
                 }
             } else {
-                html += '<td style="color:var(--text-disabled);">-</td>';
+                html += '<span class="zs-enable" style="color:var(--text-disabled);">-</span>';
             }
+            // Duration input + Set button
             if (duration) {
                 const attrs = duration.attributes || {};
                 const unit = attrs.unit_of_measurement || 'min';
@@ -3056,6 +3097,13 @@ function renderScheduleCard(sched, durData, multData) {
                 const inputId = 'dur_sched_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
                 const adj = factorsActive ? adjDurations[eid] : null;
                 const baseVal = adj ? String(adj.original) : duration.state;
+                html += '<span class="zs-duration"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
+                    'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
+                    'style="width:60px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;"> ' +
+                    esc(unit) + ' ' +
+                    '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
+                    '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button></span>';
+                // --- Factor badges row (below controls on mobile) ---
                 // Look up per-zone moisture multiplier for this zone number
                 var zoneMoistMult = 1.0;
                 var zoneSkip = false;
@@ -3149,7 +3197,6 @@ function renderScheduleCard(sched, durData, multData) {
                 var combinedCard = '';
                 if (_hasMoisture && _hasWeather) {
                     var _cBg, _cColor, _cTitle;
-                    // If EITHER moisture OR weather says skip, combined = skip
                     if (_isSkip || _wSkip) {
                         _cBg = 'var(--bg-danger-light)'; _cColor = 'var(--color-danger)';
                         _cTitle = 'Skip Watering';
@@ -3175,29 +3222,26 @@ function renderScheduleCard(sched, durData, multData) {
 
                 // Assemble factor cards
                 if (_isSkip && !_hasMoisture && !_hasWeather) {
-                    factorBadge = ' <span style="' + _fCardBox + 'background:var(--bg-danger-light);color:var(--color-danger);padding:4px 8px;">' +
+                    factorBadge = '<span style="' + _fCardBox + 'background:var(--bg-danger-light);color:var(--color-danger);padding:4px 8px;">' +
                         '<span style="font-weight:700;">Skip Watering</span></span>';
                 } else if (_hasMoisture && _hasWeather) {
                     var _op = 'display:inline-flex;align-items:center;font-size:16px;font-weight:800;color:var(--text-muted);margin:0 4px;vertical-align:top;min-height:100%;align-self:center;';
-                    factorBadge = ' ' + moistureCard + '<span style="' + _op + '">+</span>' + weatherCard + '<span style="' + _op + '">=</span>' + combinedCard;
+                    factorBadge = moistureCard + '<span style="' + _op + '">+</span>' + weatherCard + '<span style="' + _op + '">=</span>' + combinedCard;
                 } else if (_hasMoisture) {
-                    factorBadge = ' ' + moistureCard;
+                    factorBadge = moistureCard;
                 } else if (_hasWeather) {
-                    factorBadge = ' ' + weatherCard;
+                    factorBadge = weatherCard;
                 }
-                html += '<td style="white-space:nowrap;"><input type="number" id="' + inputId + '" value="' + esc(baseVal) + '" ' +
-                    'min="' + (attrs.min || 0) + '" max="' + (attrs.max || 999) + '" step="' + (attrs.step || 1) + '" ' +
-                    'style="width:70px;padding:3px 6px;border:1px solid var(--border-input);border-radius:4px;font-size:12px;"> ' +
-                    esc(unit) + ' ' +
-                    '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
-                    '\\',\\'number\\',{value:parseFloat(document.getElementById(\\'' + inputId + '\\').value)})">Set</button>' +
-                    factorBadge + '</td>';
+                if (factorBadge) {
+                    html += '</div><div class="zs-factors">' + factorBadge;
+                }
             } else {
-                html += '<td style="color:var(--text-disabled);">-</td>';
+                html += '<span class="zs-duration" style="color:var(--text-disabled);">-</span>';
             }
-            html += '</tr>';
+            html += '</div>'; // close zs-top or zs-factors
+            html += '</div>'; // close zs-row
         }
-        html += '</tbody></table></div>';
+        html += '</div></div>'; // close zone-settings-list + schedule-section
     }
 
     // --- System Controls ---
