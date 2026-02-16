@@ -624,8 +624,9 @@ def _build_remote_entity_maps() -> dict:
         "status_map": status_map,
     }
 
-    # Log mapping summary on first build
-    if r2c or status_map:
+    # Log mapping summary on first build only
+    if not _remote_maps_logged and (r2c or status_map):
+        _remote_maps_logged = True
         print(f"[REMOTE] Entity maps built: {len(r2c)} bidirectional, {len(status_map)} status (one-way)")
         for r_eid, c_eid in sorted(r2c.items()):
             suffix = _extract_entity_suffix(r_eid)
