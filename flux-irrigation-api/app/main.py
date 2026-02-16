@@ -505,6 +505,21 @@ async def lifespan(app: FastAPI):
         from run_log import watch_zone_states
         zone_watcher_task = asyncio.create_task(watch_zone_states())
         print(f"[MAIN] Zone state watcher active: monitoring {len(config.allowed_zone_entities)} zone(s)")
+
+    # Sync settings to remote device on startup (zone count, time format)
+    if config.allowed_remote_entities:
+        try:
+            from routes.admin import sync_remote_settings
+            settings_file = "/data/settings.json"
+            use_12h = True
+            if os.path.exists(settings_file):
+                with open(settings_file) as f:
+                    s = json.load(f)
+                    use_12h = s.get("time_format", "12h") != "24h"
+            await sync_remote_settings(use_12h=use_12h)
+            print(f"[MAIN] Remote device sync complete ({len(config.allowed_remote_entities)} entities)")
+        except Exception as e:
+            print(f"[MAIN] Remote device sync failed: {e}")
     weather_ready = config.weather_enabled and (
         config.weather_entity_id or config.weather_source == "nws"
     )

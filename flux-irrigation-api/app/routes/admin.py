@@ -382,6 +382,12 @@ async def select_device(body: DeviceSelect):
 
     log_change("Homeowner", "Device Config", f"Selected device: {body.device_id}")
 
+    # Sync zone count to remote if connected
+    try:
+        await sync_remote_settings()
+    except Exception as e:
+        print(f"[REMOTE] Zone count sync after device select failed: {e}")
+
     return {
         "success": True,
         "device_id": body.device_id,
@@ -392,6 +398,58 @@ async def select_device(body: DeviceSelect):
         "allowed_sensor_entities": config.allowed_sensor_entities,
         "allowed_control_entities": config.allowed_control_entities,
     }
+
+
+async def sync_remote_settings(use_12h: bool | None = None):
+    """Push current settings to the remote device.
+
+    Syncs:
+      - zone_count (number entity) — from detected_zone_count or len(allowed_zone_entities)
+      - use_12_hour_format (switch entity) — from the provided value or /data/settings.json
+
+    These are one-way: add-on → remote.  The remote just displays them.
+    """
+    import ha_client
+    config = get_config()
+    if not config.allowed_remote_entities:
+        return
+
+    # Find the remote entities by suffix pattern
+    zone_count_eid = None
+    use_12h_eid = None
+    for eid in config.allowed_remote_entities:
+        lower = eid.lower()
+        if eid.startswith("number.") and "zone_count" in lower:
+            zone_count_eid = eid
+        elif eid.startswith("switch.") and "12_hour" in lower:
+            use_12h_eid = eid
+
+    # Sync zone count
+    if zone_count_eid:
+        zc = config.detected_zone_count
+        if not zc and config.allowed_zone_entities:
+            zc = len(config.allowed_zone_entities)
+        if zc and zc > 0:
+            ok = await ha_client.call_service(
+                "number", "set_value",
+                {"entity_id": zone_count_eid, "value": zc},
+            )
+            if ok:
+                print(f"[REMOTE] Synced zone_count={zc} → {zone_count_eid}")
+            else:
+                print(f"[REMOTE] Failed to sync zone_count to {zone_count_eid}")
+
+    # Sync 12-hour format
+    if use_12h_eid and use_12h is not None:
+        svc = "turn_on" if use_12h else "turn_off"
+        ok = await ha_client.call_service(
+            "switch", svc,
+            {"entity_id": use_12h_eid},
+        )
+        if ok:
+            print(f"[REMOTE] Synced use_12h={use_12h} → {use_12h_eid}")
+        else:
+            print(f"[REMOTE] Failed to sync use_12h to {use_12h_eid}")
 
 
 @router.put("/api/remote-device", summary="Select remote device")
@@ -419,12 +477,55 @@ async def select_remote_device(body: DeviceSelect):
     for category in ("zones", "sensors", "other"):
         all_entities.extend(entities.get(category, []))
 
+    # Sync settings to the newly connected remote
+    try:
+        # Read current time format preference from settings file
+        settings_file = "/data/settings.json"
+        use_12h = True  # default
+        if os.path.exists(settings_file):
+            with open(settings_file) as f:
+                settings = json.load(f)
+                use_12h = settings.get("time_format", "12h") != "24h"
+        await sync_remote_settings(use_12h=use_12h)
+    except Exception as e:
+        print(f"[REMOTE] Settings sync after device select failed: {e}")
+
     return {
         "success": True,
         "device_id": body.device_id,
         "entities": all_entities,
         "allowed_remote_entities": config.allowed_remote_entities,
     }
+
+
+@router.put("/api/settings/time-format", summary="Update time format and sync to remote")
+async def update_time_format(body: dict):
+    """Save time format preference and sync to remote device.
+
+    Body: {"format": "12h"} or {"format": "24h"}
+    """
+    fmt = body.get("format", "12h")
+    if fmt not in ("12h", "24h"):
+        raise HTTPException(status_code=400, detail="format must be '12h' or '24h'")
+
+    # Persist to settings file so it survives restarts
+    settings_file = "/data/settings.json"
+    settings = {}
+    if os.path.exists(settings_file):
+        try:
+            with open(settings_file) as f:
+                settings = json.load(f)
+        except Exception:
+            pass
+    settings["time_format"] = fmt
+    with open(settings_file, "w") as f:
+        json.dump(settings, f)
+
+    # Sync to remote if connected
+    use_12h = fmt != "24h"
+    await sync_remote_settings(use_12h=use_12h)
+
+    return {"success": True, "format": fmt}
 
 
 @router.get("/api/device/entities", summary="Get selected device entities")

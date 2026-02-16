@@ -32,6 +32,11 @@ _zone_states: dict[str, str] = {}
 # Cache of zone start times for duration calculation
 _zone_start_times: dict[str, str] = {}
 
+# --- Remote ↔ Controller zone mirroring ---
+# Guard to prevent infinite loops: when we mirror a state change from remote→controller
+# or controller→remote, the resulting state_changed event should be ignored.
+_remote_mirror_guard: set = set()  # entity_ids currently being mirrored
+
 
 def log_zone_event(
     entity_id: str,
@@ -460,6 +465,126 @@ async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
             print(f"[RUN_LOG] Moisture zone state hook error: {e}")
 
 
+def _get_remote_zone_entities() -> set:
+    """Get the set of remote device zone switch entity IDs to watch."""
+    try:
+        from config import get_config
+        config = get_config()
+        if not config.allowed_remote_entities:
+            return set()
+        # Remote zone switches follow the pattern: switch.*_zone_N
+        return {
+            eid for eid in config.allowed_remote_entities
+            if eid.startswith("switch.") and _extract_zone_number(eid) > 0
+        }
+    except Exception:
+        return set()
+
+
+def _build_remote_zone_map() -> tuple[dict, dict]:
+    """Build bidirectional zone number mapping between remote and controller.
+
+    Returns (remote_to_controller, controller_to_remote) dicts mapping
+    entity_id → entity_id based on matching zone numbers.
+    """
+    from config import get_config
+    config = get_config()
+
+    remote_zones = {}  # zone_num → remote entity_id
+    controller_zones = {}  # zone_num → controller entity_id
+
+    for eid in config.allowed_remote_entities or []:
+        if eid.startswith("switch."):
+            n = _extract_zone_number(eid)
+            if n > 0:
+                remote_zones[n] = eid
+
+    for eid in config.allowed_zone_entities or []:
+        n = _extract_zone_number(eid)
+        if n > 0:
+            controller_zones[n] = eid
+
+    r2c = {}  # remote_entity → controller_entity
+    c2r = {}  # controller_entity → remote_entity
+    for zone_num in remote_zones:
+        if zone_num in controller_zones:
+            r2c[remote_zones[zone_num]] = controller_zones[zone_num]
+            c2r[controller_zones[zone_num]] = remote_zones[zone_num]
+
+    return r2c, c2r
+
+
+async def _handle_remote_zone_change(entity_id: str, new_state: str, old_state: str):
+    """Mirror a remote zone switch change to the corresponding controller zone."""
+    import ha_client
+    global _remote_mirror_guard
+
+    r2c, _ = _build_remote_zone_map()
+    controller_eid = r2c.get(entity_id)
+    if not controller_eid:
+        return
+
+    # Set guard before calling service so the resulting controller state_changed
+    # event is ignored (prevents infinite loop)
+    _remote_mirror_guard.add(controller_eid)
+    try:
+        zone_num = _extract_zone_number(entity_id)
+        is_on = new_state in ("on", "open")
+        domain = controller_eid.split(".")[0] if "." in controller_eid else "switch"
+
+        if is_on:
+            if domain == "valve":
+                await ha_client.call_service("valve", "open", {"entity_id": controller_eid})
+            else:
+                await ha_client.call_service("switch", "turn_on", {"entity_id": controller_eid})
+            print(f"[REMOTE] Zone {zone_num} ON via remote → turned on {controller_eid}")
+        else:
+            if domain == "valve":
+                await ha_client.call_service("valve", "close", {"entity_id": controller_eid})
+            else:
+                await ha_client.call_service("switch", "turn_off", {"entity_id": controller_eid})
+            print(f"[REMOTE] Zone {zone_num} OFF via remote → turned off {controller_eid}")
+    except Exception as e:
+        print(f"[REMOTE] Failed to mirror {entity_id} → {controller_eid}: {e}")
+    finally:
+        # Remove guard after a brief delay to allow the state_changed event to arrive
+        import asyncio
+        async def _clear_guard():
+            await asyncio.sleep(2)
+            _remote_mirror_guard.discard(controller_eid)
+        asyncio.create_task(_clear_guard())
+
+
+async def _mirror_controller_to_remote(entity_id: str, new_state: str):
+    """Mirror a controller zone state change to the corresponding remote switch."""
+    import ha_client
+    global _remote_mirror_guard
+
+    _, c2r = _build_remote_zone_map()
+    remote_eid = c2r.get(entity_id)
+    if not remote_eid:
+        return
+
+    # Set guard before calling service
+    _remote_mirror_guard.add(remote_eid)
+    try:
+        zone_num = _extract_zone_number(entity_id)
+        is_on = new_state in ("on", "open")
+        if is_on:
+            await ha_client.call_service("switch", "turn_on", {"entity_id": remote_eid})
+        else:
+            await ha_client.call_service("switch", "turn_off", {"entity_id": remote_eid})
+        print(f"[REMOTE] Controller zone {zone_num} → mirrored to remote {remote_eid} ({new_state})")
+    except Exception as e:
+        print(f"[REMOTE] Failed to mirror controller → remote {remote_eid}: {e}")
+    finally:
+        import asyncio
+        async def _clear_guard():
+            await asyncio.sleep(2)
+            _remote_mirror_guard.discard(remote_eid)
+        asyncio.create_task(_clear_guard())
+
+
 def _get_probe_sensor_entities() -> set:
     """Get the set of moisture probe sensor entity IDs to watch.
 
@@ -589,16 +714,20 @@ async def _watch_via_websocket(allowed_entities: set):
     token = config.supervisor_token
     ws_url = "ws://supervisor/core/websocket"
 
-    # Build combined watch set: zone entities + probe sensor entities + schedule entities
+    # Build combined watch set: zone entities + probe + schedule + remote entities
     probe_entities = _get_probe_sensor_entities()
     schedule_entities = _get_schedule_entities()
-    all_watched = allowed_entities | probe_entities | schedule_entities
+    remote_entities = _get_remote_zone_entities()
+    all_watched = allowed_entities | probe_entities | schedule_entities | remote_entities
     if probe_entities:
         print(f"[RUN_LOG] Also watching {len(probe_entities)} probe sensor entities "
               f"for skip↔factor transitions")
     if schedule_entities:
         print(f"[RUN_LOG] Also watching {len(schedule_entities)} schedule entities "
               f"for timeline recalculation")
+    if remote_entities:
+        print(f"[RUN_LOG] Also watching {len(remote_entities)} remote zone entities "
+              f"for zone mirroring")
 
     extra_headers = {"Authorization": f"Bearer {token}"}
 
@@ -626,7 +755,7 @@ async def _watch_via_websocket(allowed_entities: set):
 
         print(f"[RUN_LOG] WebSocket connected — real-time monitoring active "
               f"({len(allowed_entities)} zone + {len(probe_entities)} probe + "
-              f"{len(schedule_entities)} schedule entities)")
+              f"{len(schedule_entities)} schedule + {len(remote_entities)} remote entities)")
 
         # Step 4: Listen for events
         async for raw_msg in ws:
@@ -640,6 +769,10 @@ async def _watch_via_websocket(allowed_entities: set):
                 if entity_id not in all_watched:
                     continue
 
+                # Skip mirrored events (prevents remote ↔ controller infinite loop)
+                if entity_id in _remote_mirror_guard:
+                    continue
+
                 new_state_obj = event_data.get("new_state", {})
                 old_state_obj = event_data.get("old_state", {})
                 new_state = new_state_obj.get("state", "unknown") if new_state_obj else "unknown"
@@ -649,10 +782,19 @@ async def _watch_via_websocket(allowed_entities: set):
                     continue
 
                 # Route to appropriate handler
-                if entity_id in allowed_entities:
+                if entity_id in remote_entities:
+                    # Remote zone switch changed → mirror to controller
+                    await _handle_remote_zone_change(entity_id, new_state, old_state)
+                elif entity_id in allowed_entities:
                     attrs = new_state_obj.get("attributes", {}) if new_state_obj else {}
                     zone_name = attrs.get("friendly_name", entity_id)
                     await _handle_state_change(entity_id, new_state, old_state, zone_name)
+                    # Also mirror controller → remote
+                    if remote_entities:
+                        import asyncio
+                        asyncio.create_task(
+                            _mirror_controller_to_remote(entity_id, new_state)
+                        )
                 elif entity_id in probe_entities:
                     await _handle_probe_sensor_change(entity_id, new_state, old_state)
                 elif entity_id in schedule_entities:

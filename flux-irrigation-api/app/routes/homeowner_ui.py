@@ -6714,10 +6714,14 @@ function saveSettings() {
     if (wantSticky) { hdr.classList.add('sticky'); } else { hdr.classList.remove('sticky'); }
     localStorage.setItem('flux_sticky_header', wantSticky ? '1' : '0');
     // Time format
+    var newFmt = null;
     var tfGroup = document.getElementById('setTimeFormat');
     if (tfGroup) {
         var ab = tfGroup.querySelector('button[data-active]');
-        if (ab) localStorage.setItem('flux_time_format', ab.getAttribute('data-val'));
+        if (ab) {
+            newFmt = ab.getAttribute('data-val');
+            localStorage.setItem('flux_time_format', newFmt);
+        }
     }
     // Units
     var uGroup = document.getElementById('setUnits');
@@ -6727,6 +6731,15 @@ function saveSettings() {
     }
     closeSettings();
     showToast('Settings saved');
+    // Sync time format to backend (persists + syncs to remote device)
+    if (newFmt) {
+        var _adminBase = HBASE.replace('/api/homeowner', '/api');
+        fetch(_adminBase + '/settings/time-format', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({format: newFmt}),
+        }).catch(function() {});
+    }
     // Refresh weather with new units
     _lastWeatherKey = null;
     loadWeather();

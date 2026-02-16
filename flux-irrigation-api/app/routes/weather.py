@@ -1696,9 +1696,14 @@ async def get_current_weather():
 async def get_weather_rules():
     """Get the current weather rules configuration."""
     data = _load_weather_rules()
-    # Include weather source so UI can gate features that need NWS
+    # Include weather source so UI can gate features
+    # If external weather is being pushed by management server, source is "management"
     config = get_config()
-    data["weather_source"] = config.weather_source
+    has_external = _load_external_weather(max_age_minutes=10.0) is not None
+    if has_external:
+        data["weather_source"] = "management"
+    else:
+        data["weather_source"] = config.weather_source
     return data
 
 
