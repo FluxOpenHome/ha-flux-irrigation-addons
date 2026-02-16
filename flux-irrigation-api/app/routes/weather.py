@@ -992,10 +992,15 @@ async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str)
             enabled_zones = await _get_ordered_enabled_zones()
             skip_count = 0
 
+            # Load not-used zones to exclude from skip reporting
+            from routes.homeowner import is_zone_not_used
+
             for ez in enabled_zones:
                 zone_eid = ez["zone_entity_id"]
                 if ez.get("is_special"):
                     continue  # Skip pump/master/relay
+                if is_zone_not_used(zone_eid):
+                    continue  # Skip zones marked as "not used"
 
                 zone_name = f"Zone {ez.get('zone_num', 0)}"
                 for z in zones:
@@ -1104,8 +1109,44 @@ async def run_weather_evaluation() -> dict:
         rules_data["precip_qpf_inches"] = None
 
     # Apply intelligent precip zone factors only when in that mode and not paused
-    rules_data["precip_zone_factors"] = {}
-    if rain_mode == "intelligent_precip" and not should_pause:
+    # Guard: if management server pushed external factors (OWM) within the last
+    # 60 minutes, preserve them — don't overwrite with local calculation.
+    _ext_source = rules_data.get("precip_factors_source", "local")
+    _ext_pushed = rules_data.get("precip_factors_pushed_at")
+    _use_external_factors = False
+    if _ext_source not in ("local", "", None) and _ext_pushed:
+        try:
+            _pushed_dt = datetime.fromisoformat(_ext_pushed.replace("Z", "+00:00"))
+            _age_min = (datetime.now(timezone.utc) - _pushed_dt).total_seconds() / 60.0
+            if _age_min < 60:
+                _use_external_factors = True
+                print(f"[WEATHER] Using externally-pushed precip factors ({_ext_source}), "
+                      f"{_age_min:.0f}min old — skipping local calculation")
+        except (ValueError, TypeError):
+            pass
+
+    if _use_external_factors:
+        # Keep existing factors from external push — don't clear them
+        ext_factors = rules_data.get("precip_zone_factors", {})
+        ext_qpf = rules_data.get("precip_qpf_inches")
+        if ext_factors:
+            avg_factor = round(sum(ext_factors.values()) / len(ext_factors), 3)
+            reason = (f"Precipitation Credit ({_ext_source.upper()}): "
+                      f"{ext_qpf:.2f}\" forecast, avg zone factor {avg_factor}")
+            new_adjustments.append({
+                "rule": "intelligent_precip", "action": "reduce",
+                "factor": avg_factor,
+                "reason": reason,
+                "applied_at": _ext_pushed,
+                "source": _ext_source,
+            })
+    else:
+        rules_data["precip_zone_factors"] = {}
+        # Clear external source marker when doing local calculation
+        rules_data["precip_factors_source"] = "local"
+        rules_data.pop("precip_factors_pushed_at", None)
+
+    if not _use_external_factors and rain_mode == "intelligent_precip" and not should_pause:
         if qpf_mm is not None and qpf_mm > 0:
             # We have QPF data — calculate per-zone reductions
             from routes.moisture import _get_ordered_enabled_zones
@@ -1715,6 +1756,45 @@ async def evaluate_weather_now():
     """Manually trigger a weather rules evaluation cycle."""
     result = await run_weather_evaluation()
     return result
+
+
+@router.put("/weather/precip-factors", summary="Receive externally-pushed precipitation factors")
+async def receive_precip_factors(request: Request):
+    """Accept precip zone factors pushed from management server (OWM).
+
+    Body: {precip_zone_factors: {entity_id: factor}, precip_qpf_inches: float, source: str}
+
+    Writes factors to weather_rules.json with a timestamp so the local
+    weather evaluation knows not to overwrite them for 60 minutes.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {"success": False, "error": "Invalid JSON body"}
+
+    factors = body.get("precip_zone_factors", {})
+    qpf_inches = body.get("precip_qpf_inches")
+    source = body.get("source", "external")
+
+    rules_data = _load_weather_rules()
+    rules_data["precip_zone_factors"] = factors
+    if qpf_inches is not None:
+        rules_data["precip_qpf_inches"] = qpf_inches
+    rules_data["precip_factors_source"] = source
+    rules_data["precip_factors_pushed_at"] = datetime.now(timezone.utc).isoformat()
+    _save_weather_rules(rules_data)
+
+    print(f"[WEATHER] Received external precip factors from {source}: "
+          f"{len(factors)} zones, QPF={qpf_inches}")
+
+    # Trigger moisture re-evaluation to apply the new factors
+    try:
+        from routes.moisture import apply_adjusted_durations
+        await apply_adjusted_durations()
+    except Exception as e:
+        print(f"[WEATHER] Error triggering moisture re-eval after precip factor push: {e}")
+
+    return {"success": True, "factors_applied": len(factors), "source": source}
 
 
 @router.delete("/weather/log", summary="Clear weather event log")

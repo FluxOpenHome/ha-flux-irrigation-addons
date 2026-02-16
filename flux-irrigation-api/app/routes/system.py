@@ -13,6 +13,7 @@ from config import get_config
 import ha_client
 import audit_log
 from config_changelog import log_change, get_actor
+from routes.homeowner import is_zone_not_used
 
 _ZONE_NUMBER_RE = re.compile(r'zone[_]?(\d+)', re.IGNORECASE)
 
@@ -133,7 +134,9 @@ async def get_system_status(request: Request):
                 zone_num = _extract_zone_number(me.get("entity_id", ""))
                 zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) != zone_num]
 
-    active_zones = [z for z in zones if z.get("state") == "on"]
+    # Exclude "not used" zones from the count
+    used_zones = [z for z in zones if not is_zone_not_used(z.get("entity_id", ""))]
+    active_zones = [z for z in used_zones if z.get("state") == "on"]
 
     # Count sensors
     sensors = await ha_client.get_entities_by_ids(config.allowed_sensor_entities)
@@ -190,7 +193,7 @@ async def get_system_status(request: Request):
         online=True,
         ha_connected=ha_connected,
         system_paused=schedule_data.get("system_paused", False),
-        total_zones=len(zones),
+        total_zones=len(used_zones),
         active_zones=len(active_zones),
         active_zone_entity_id=active_zone_eid,
         active_zone_name=active_zone_name,

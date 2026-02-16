@@ -286,6 +286,57 @@ async def homeowner_zones():
     return zones
 
 
+# --- Not Used Zones (backend storage) ---
+NOT_USED_ZONES_FILE = "/data/not_used_zones.json"
+
+
+def load_not_used_zones() -> dict:
+    """Load the not-used zones map from disk. Returns {zone_number_str: True}."""
+    if os.path.exists(NOT_USED_ZONES_FILE):
+        try:
+            with open(NOT_USED_ZONES_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def _save_not_used_zones(data: dict):
+    """Save not-used zones map to disk."""
+    os.makedirs(os.path.dirname(NOT_USED_ZONES_FILE), exist_ok=True)
+    with open(NOT_USED_ZONES_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def is_zone_not_used(zone_entity_id: str) -> bool:
+    """Check if a zone is marked as 'not used' by its entity_id."""
+    zn = _extract_zone_number(zone_entity_id)
+    if zn <= 0:
+        return False
+    return str(zn) in load_not_used_zones()
+
+
+@router.get("/zones/not-used", summary="Get not-used zones")
+async def get_not_used_zones():
+    """Get the map of zones marked as 'not used'."""
+    return {"zones": load_not_used_zones()}
+
+
+@router.put("/zones/not-used", summary="Update not-used zones")
+async def set_not_used_zones(request: Request):
+    """Set the map of zones marked as 'not used'. Body: {zones: {zone_number: true/false}}."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"success": False, "error": "Invalid JSON body"}
+    # Support both {zones: {...}} wrapper and flat {zone_number: true} format
+    zones_map = body.get("zones", body) if isinstance(body, dict) else body
+    # Only keep truthy values
+    clean = {str(k): True for k, v in zones_map.items() if v}
+    _save_not_used_zones(clean)
+    return {"success": True, "zones": clean}
+
+
 @router.post("/zones/{zone_id}/start", summary="Start a zone")
 async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     """Start an irrigation zone, optionally with a timed duration."""

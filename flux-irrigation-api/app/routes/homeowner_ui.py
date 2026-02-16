@@ -986,7 +986,7 @@ var _fluxIcons = {
     pump: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><circle cx="10" cy="14" r="6" opacity="0.35"/><circle cx="10" cy="14" r="3.5" opacity="0.6"/><rect x="14" y="12" width="8" height="4" rx="1" opacity="0.5"/><rect x="1" y="12.5" width="4" height="3" rx="0.5" opacity="0.35"/><rect x="7" y="6" width="6" height="3" rx="1" opacity="0.3"/><rect x="9" y="3" width="2" height="3" rx="0.5" opacity="0.25"/></svg>',
     rain_sensor: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none"><path d="M19 10a4 4 0 0 1 0 8H6a5 5 0 0 1-.5-9.97A7 7 0 0 1 19 10Z" fill="currentColor" opacity="0.4"/><g stroke="rgba(59,130,246,0.6)" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="19" x2="7" y2="22"/><line x1="12" y1="19" x2="11" y2="22"/><line x1="16" y1="19" x2="15" y2="22"/></g></svg>',
     expansion: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="3" y="5" width="18" height="14" rx="2" opacity="0.35"/><rect x="6" y="8" width="3" height="3" rx="0.5" opacity="0.6"/><rect x="10.5" y="8" width="3" height="3" rx="0.5" opacity="0.5"/><rect x="15" y="8" width="3" height="3" rx="0.5" opacity="0.4"/><line x1="6" y1="14" x2="18" y2="14" stroke="currentColor" stroke-width="1" opacity="0.3"/><circle cx="7.5" cy="16.5" r="1" opacity="0.5"/><circle cx="12" cy="16.5" r="1" opacity="0.5"/><circle cx="16.5" cy="16.5" r="1" opacity="0.5"/></svg>',
-    gear: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M9.5 1.5h5v3.07a7.5 7.5 0 0 1 3.03 1.75l2.66-1.53 2.5 4.33-2.66 1.54a7.6 7.6 0 0 1 0 3.48l2.66 1.54-2.5 4.33-2.66-1.53a7.5 7.5 0 0 1-3.03 1.75V23.5h-5v-3.27a7.5 7.5 0 0 1-3.03-1.75l-2.66 1.53-2.5-4.33 2.66-1.54a7.6 7.6 0 0 1 0-3.48L1.31 9.12l2.5-4.33 2.66 1.53A7.5 7.5 0 0 1 9.5 4.57V1.5Z" opacity="0.8"/><circle cx="12" cy="12.5" r="4" opacity="0.95"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94c0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.04 7.04 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.48.48 0 0 0 .12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.26.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.03-1.58ZM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2Z"/></svg>',
     help: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(40,90,180,0.95)"><circle cx="12" cy="12" r="10" opacity="0.75"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5" stroke="rgba(20,20,30,0.95)" stroke-width="2.5" stroke-linecap="round" fill="none"/><circle cx="12" cy="16.5" r="1.3" fill="rgba(20,20,30,0.95)"/></svg>',
     bug: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><ellipse cx="12" cy="15" rx="5" ry="6" opacity="0.45"/><circle cx="12" cy="7" r="3" opacity="0.55"/><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"><line x1="3" y1="10" x2="7" y2="12"/><line x1="21" y1="10" x2="17" y2="12"/><line x1="3" y1="16" x2="7" y2="15"/><line x1="21" y1="16" x2="17" y2="15"/></g><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"><line x1="9" y1="4" x2="7" y2="1.5"/><line x1="15" y1="4" x2="17" y2="1.5"/></g></svg>',
     warning: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="rgba(180,50,30,0.95)"><path d="M4 20.5h16a2 2 0 0 0 1.73-3L13.73 3.5a2 2 0 0 0-3.46 0L2.27 17.5a2 2 0 0 0 1.73 3Z" opacity="0.85"/><line x1="12" y1="9.5" x2="12" y2="14.5" stroke="rgba(30,20,10,0.95)" stroke-width="2.5" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.3" fill="rgba(30,20,10,0.95)"/></svg>',
@@ -1586,7 +1586,24 @@ function getNotUsedZones() {
 }
 function setNotUsedZones(map) {
     localStorage.setItem(_notUsedKey(), JSON.stringify(map));
+    // Sync to backend so server-side filtering works
+    fetch('/admin/api/zones/not-used', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiKey},
+        body: JSON.stringify({zones: map})
+    }).catch(function(e) { console.warn('Failed to sync not-used zones to backend:', e); });
 }
+// Load not-used zones from backend on startup (authoritative source)
+(function _syncNotUsedFromBackend() {
+    fetch('/admin/api/zones/not-used', {
+        headers: {'Authorization': 'Bearer ' + _apiKey}
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+          if (d && d.zones && typeof d.zones === 'object') {
+              localStorage.setItem(_notUsedKey(), JSON.stringify(d.zones));
+          }
+      }).catch(function() {});
+})();
 function isZoneNotUsed(zoneNum) {
     return !!getNotUsedZones()[String(zoneNum)];
 }
@@ -4366,9 +4383,12 @@ async function loadWeatherRules() {
         html += '<div style="font-weight:600;font-size:13px;margin-bottom:6px;color:var(--text-primary);">Rain Control Mode</div>';
         html += '<div style="display:flex;gap:0;border:1px solid var(--border-input);border-radius:6px;overflow:hidden;width:fit-content;">';
         html += '<button onclick="setRainMode(\\\'rain_holds\\\', this)" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;cursor:pointer;' + (rainMode === 'rain_holds' ? 'background:var(--color-primary);color:#fff;' : 'background:var(--bg-input);color:var(--text-secondary);') + '">Rain Holds</button>';
-        html += '<button onclick="setRainMode(\\\'intelligent_precip\\\', this)" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-left:1px solid var(--border-input);cursor:pointer;' + (rainMode === 'intelligent_precip' ? 'background:var(--color-primary);color:#fff;' : 'background:var(--bg-input);color:var(--text-secondary);') + '">Smart Precip</button>';
+        // Smart Precip only available in managed mode (requires OWM via management server)
+        if (isManaged()) {
+            html += '<button onclick="setRainMode(\\\'intelligent_precip\\\', this)" style="padding:6px 14px;font-size:12px;font-weight:600;border:none;border-left:1px solid var(--border-input);cursor:pointer;' + (rainMode === 'intelligent_precip' ? 'background:var(--color-primary);color:#fff;' : 'background:var(--bg-input);color:var(--text-secondary);') + '">Smart Precip</button>';
+        }
         html += '</div>';
-        html += '<div id="rainModeDesc" style="font-size:11px;color:var(--text-placeholder);margin-top:4px;">' + (rainMode === 'intelligent_precip' ? 'Adjusts zone run times proportionally based on forecasted rainfall amounts. Always pauses during active rain. Zones without nozzle data fall back to Rain Holds.' : 'Pauses irrigation when rain is detected or forecasted. Simple and conservative.') + '</div>';
+        html += '<div id="rainModeDesc" style="font-size:11px;color:var(--text-placeholder);margin-top:4px;">' + (rainMode === 'intelligent_precip' ? 'Managed by your irrigation company. Uses real-time weather data to adjust zone run times based on forecasted rainfall. Always pauses during active rain.' : 'Pauses irrigation when rain is detected or forecasted. Simple and conservative.') + '</div>';
         html += '</div>';
 
         // Rain Detection — always shown (forced ON in intelligent mode)
@@ -4489,9 +4509,9 @@ var _rainControlMode = 'rain_holds';
 var _weatherSource = 'ha_entity';
 
 function setRainMode(mode, btn) {
-    // Block intelligent_precip if weather source doesn't support QPF
-    if (mode === 'intelligent_precip' && _weatherSource !== 'nws') {
-        showToast('Smart Precipitation requires Built-in NWS weather source. Go to Configuration and select Built-in (NWS) Weather to enable this feature.', 'error');
+    // Smart Precip requires management server (OWM) — block in standalone mode
+    if (mode === 'intelligent_precip' && !isManaged()) {
+        showToast('Smart Precipitation is available when your system is managed by an irrigation company. Contact your provider to enable this feature.', 'error');
         return;
     }
     _rainControlMode = mode;
