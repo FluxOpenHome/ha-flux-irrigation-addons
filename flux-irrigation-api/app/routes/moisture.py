@@ -2891,6 +2891,14 @@ async def capture_base_durations() -> dict:
     _save_data(data)
 
     print(f"[MOISTURE] Captured base durations for {len(base_durations)} entities")
+
+    # Push base durations to the remote device (not the factored controller values)
+    try:
+        from run_log import sync_base_durations_to_remote
+        await sync_base_durations_to_remote()
+    except Exception as e:
+        print(f"[MOISTURE] Remote base duration sync failed: {e}")
+
     return {"captured": len(base_durations), "base_durations": base_durations}
 
 
