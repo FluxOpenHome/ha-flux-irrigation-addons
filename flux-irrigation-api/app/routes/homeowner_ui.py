@@ -1587,17 +1587,16 @@ function getNotUsedZones() {
 function setNotUsedZones(map) {
     localStorage.setItem(_notUsedKey(), JSON.stringify(map));
     // Sync to backend so server-side filtering works
-    fetch('/admin/api/zones/not-used', {
+    fetch(HBASE + '/zones/not-used', {
         method: 'PUT',
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiKey},
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({zones: map})
     }).catch(function(e) { console.warn('Failed to sync not-used zones to backend:', e); });
 }
 // Load not-used zones from backend on startup (authoritative source)
 (function _syncNotUsedFromBackend() {
-    fetch('/admin/api/zones/not-used', {
-        headers: {'Authorization': 'Bearer ' + _apiKey}
-    }).then(function(r) { return r.json(); })
+    fetch(HBASE + '/zones/not-used')
+      .then(function(r) { return r.json(); })
       .then(function(d) {
           if (d && d.zones && typeof d.zones === 'object') {
               localStorage.setItem(_notUsedKey(), JSON.stringify(d.zones));
