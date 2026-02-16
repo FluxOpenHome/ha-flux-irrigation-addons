@@ -883,6 +883,8 @@ async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state
 _remote_reconnect_pending = True
 
 
+_reconnect_sync_running = False  # prevents duplicate concurrent syncs
+
 async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
     """Remote device came back online — push ALL controller state to it.
 
@@ -891,14 +893,15 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
     to the controller (which would overwrite real settings), we detect the
     transition and push the controller's current state TO the remote.
 
-    We debounce this: when the first entity transitions from unavailable,
-    we wait briefly for all entities to stabilize, then do a full sync.
-    After sync, hold suppression for 15 seconds for remote firmware to settle.
+    _remote_reconnect_pending is already set True synchronously in the
+    WebSocket loop BEFORE this task runs, so remote→controller mirroring
+    is blocked instantly with no race window.  This function handles the
+    actual sync + settling, then clears the flag.
     """
-    global _remote_reconnect_pending
-    if _remote_reconnect_pending:
-        return  # Another reconnect sync is already queued
-    _remote_reconnect_pending = True
+    global _remote_reconnect_pending, _reconnect_sync_running
+    if _reconnect_sync_running:
+        return  # Another sync task is already handling this reconnect
+    _reconnect_sync_running = True
 
     import asyncio
     _remote_log(f"Broker: remote reconnected — suppressing remote→controller, "
@@ -911,6 +914,7 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
         _remote_log(f"Broker: reconnect sync FAILED: {e}")
     _remote_log("Broker: holding suppression 15s for remote to settle")
     await asyncio.sleep(15)
+    _reconnect_sync_running = False
     _remote_reconnect_pending = False
     _remote_log("Broker: remote→controller mirroring re-enabled")
 
@@ -1141,6 +1145,7 @@ async def _watch_via_websocket(allowed_entities: set):
     Also monitors moisture probe sensors for skip↔factor transitions to
     automatically re-apply schedule adjustments.
     """
+    global _remote_reconnect_pending
     import websockets
     from config import get_config
 
@@ -1228,6 +1233,10 @@ async def _watch_via_websocket(allowed_entities: set):
                     # If remote entity was unavailable and just came back,
                     # push controller state TO remote (not the other way).
                     if old_state == "unavailable" and new_state != "unavailable":
+                        # Set flag SYNCHRONOUSLY — blocks all subsequent remote→controller
+                        # events in this same event-loop tick.  The async task handles
+                        # the actual sync + settling, but the gate is already closed.
+                        _remote_reconnect_pending = True
                         import asyncio
                         asyncio.create_task(
                             _handle_remote_reconnect(entity_id, remote_entities)
