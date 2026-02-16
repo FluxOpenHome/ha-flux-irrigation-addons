@@ -299,6 +299,13 @@ body.dark-mode .dn-panel:hover { box-shadow:0 0 24px rgba(46,204,113,0.15); }
 .dn-panel-title { font-size:13px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center; }
 .dn-chart-wrap { position:relative;width:100%;height:280px; }
 .dn-chart-wrap canvas { width:100%!important;height:100%!important; }
+.dn-panel.dn-expanded { position:fixed;inset:0;z-index:10001;margin:0;border-radius:0;display:flex;flex-direction:column;max-height:100vh;overflow:hidden; }
+.dn-panel.dn-expanded .dn-panel-title { flex-shrink:0; }
+.dn-panel.dn-expanded .dn-chart-wrap { flex:1;height:auto;min-height:0; }
+.dn-panel.dn-expanded #dnHeatmap,
+.dn-panel.dn-expanded #dnProbeHealth { flex:1;overflow-y:auto; }
+.dn-expand-btn { background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px 4px;border-radius:4px;transition:all 0.15s;font-size:14px;line-height:1;display:flex;align-items:center; }
+.dn-expand-btn:hover { color:var(--color-primary);background:rgba(46,204,113,0.1); }
 .dn-range-group { display:flex;border-radius:6px;overflow:hidden;border:1px solid rgba(0,0,0,0.12); }
 body.dark-mode .dn-range-group { border-color:rgba(255,255,255,0.15); }
 .dn-range-btn { padding:5px 14px;background:rgba(0,0,0,0.04);border:none;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s; }
@@ -1017,6 +1024,7 @@ var _fluxIcons = {
     game: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="2" y="6" width="20" height="12" rx="4" opacity="0.4"/><line x1="7" y1="10" x2="7" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.6"/><line x1="5" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.6"/><circle cx="16" cy="11" r="1.2" opacity="0.55"/><circle cx="18.5" cy="13" r="1.2" opacity="0.55"/></svg>',
     qr: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1" opacity="0.5"/><rect x="4" y="4" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="14" y="2" width="8" height="8" rx="1" opacity="0.5"/><rect x="16" y="4" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="2" y="14" width="8" height="8" rx="1" opacity="0.5"/><rect x="4" y="16" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="14" y="14" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="19" y="14" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="14" y="19" width="3" height="3" rx="0.5" opacity="0.4"/><rect x="19" y="19" width="3" height="3" rx="0.5" opacity="0.4"/></svg>',
     pin: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="currentColor"><path d="M15.5 2.5L9.5 8.5L7 7L2 12L6.5 16.5L2 22H3L8 17.5L12 22L17 17L15.5 14.5L21.5 8.5L15.5 2.5Z" opacity="0.5"/><line x1="9.5" y1="8.5" x2="15.5" y2="14.5" stroke="currentColor" stroke-width="1.5" opacity="0.35" fill="none"/></svg>',
+    expand: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" WIDTH HEIGHT fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 3 21 3 21 9" opacity="0.7"/><polyline points="9 21 3 21 3 15" opacity="0.7"/><line x1="21" y1="3" x2="14" y2="10" opacity="0.5"/><line x1="3" y1="21" x2="10" y2="14" opacity="0.5"/></svg>',
 };
 function fluxIcon(name, size) {
     var s = size || 16;
@@ -7928,6 +7936,49 @@ function dnToggleUnit() {
     var btn = document.getElementById('dnUnitToggle');
     if (btn) btn.textContent = _dnCurrentUnit === 'gallons' ? 'Show Minutes' : 'Show Gallons';
     if (_dnRawData) { dnDestroyCharts(); dnRenderAllCharts(_dnRawData); }
+}
+
+// --- Panel expand / collapse ---
+function dnExpandPanel(btn) {
+    var panel = btn.closest('.dn-panel');
+    if (!panel) return;
+    panel.classList.add('dn-expanded');
+    // Swap icon to X close button
+    btn.innerHTML = '&#x2715;';
+    btn.setAttribute('onclick', 'dnCollapsePanel(this)');
+    btn.title = 'Close';
+    btn.style.fontSize = '18px';
+    btn.style.fontWeight = '700';
+    // Resize chart if present
+    var canv = panel.querySelector('canvas');
+    if (canv) {
+        var cid = canv.id;
+        if (_dnCharts[cid]) {
+            setTimeout(function() { _dnCharts[cid].resize(); }, 50);
+        }
+    }
+    // Prevent scrolling behind
+    document.getElementById('dnContent').style.overflow = 'hidden';
+}
+function dnCollapsePanel(btn) {
+    var panel = btn.closest('.dn-panel');
+    if (!panel) return;
+    panel.classList.remove('dn-expanded');
+    // Swap icon back to expand
+    btn.innerHTML = fluxIcon('expand', 14);
+    btn.setAttribute('onclick', 'dnExpandPanel(this)');
+    btn.title = 'Expand';
+    btn.style.fontSize = '14px';
+    btn.style.fontWeight = '';
+    // Resize chart back
+    var canv = panel.querySelector('canvas');
+    if (canv) {
+        var cid = canv.id;
+        if (_dnCharts[cid]) {
+            setTimeout(function() { _dnCharts[cid].resize(); }, 50);
+        }
+    }
+    document.getElementById('dnContent').style.overflow = '';
 }
 
 // --- Chart defaults ---
