@@ -5250,10 +5250,25 @@ async def api_overall_multiplier():
     except Exception:
         pass
 
+    # Include weather schedule disabled state so the banner can show the
+    # reason even when the active_adjustments no longer contain the original
+    # pause trigger (e.g. weather cleared but schedule switch still OFF).
+    weather_sched_disabled = False
+    weather_disable_reason = ""
+    try:
+        from routes.schedule import _load_schedules
+        sched_data = _load_schedules()
+        weather_sched_disabled = sched_data.get("weather_schedule_disabled", False)
+        weather_disable_reason = sched_data.get("weather_disable_reason", "")
+    except Exception:
+        pass
+
     if not data.get("enabled"):
         return {
             "weather_multiplier": weather_mult,
             "active_weather_adjustments": active_weather_adj,
+            "weather_schedule_disabled": weather_sched_disabled,
+            "weather_disable_reason": weather_disable_reason,
             "moisture_enabled": False,
             "per_zone": {},
         }
@@ -5299,6 +5314,8 @@ async def api_overall_multiplier():
     return {
         "weather_multiplier": weather_mult,
         "active_weather_adjustments": active_weather_adj,
+        "weather_schedule_disabled": weather_sched_disabled,
+        "weather_disable_reason": weather_disable_reason,
         "moisture_enabled": True,
         "per_zone": per_zone,
     }

@@ -380,7 +380,8 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest, request: Re
         zone_name=_zone_name(entity_id),
     )
 
-    # If duration specified, apply combined multiplier and schedule automatic shutoff
+    # Manual runs use the exact user-specified duration — factors only apply to scheduled runs.
+    # We still check moisture to show a warning, but never adjust the duration.
     adjusted_duration = body.duration_minutes
     moisture_skip = False
     if body.duration_minutes:
@@ -389,14 +390,8 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest, request: Re
             mult_result = await get_combined_multiplier(entity_id)
             if mult_result.get("moisture_skip"):
                 moisture_skip = True
-            elif mult_result["combined_multiplier"] != 1.0:
-                adjusted_duration = max(1, round(body.duration_minutes * mult_result["combined_multiplier"]))
-                if adjusted_duration != body.duration_minutes:
-                    print(f"[HOMEOWNER] Duration adjusted: {body.duration_minutes} → {adjusted_duration} min "
-                          f"(weather={mult_result['weather_multiplier']}, "
-                          f"moisture={mult_result['moisture_multiplier']})")
         except Exception as e:
-            print(f"[HOMEOWNER] Multiplier lookup failed, using original duration: {e}")
+            print(f"[HOMEOWNER] Multiplier lookup failed: {e}")
 
     # Build warning for moisture skip (zone keeps running — user chose manual start)
     moisture_warning = ""
@@ -418,10 +413,7 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest, request: Re
     message = f"Zone '{zone_id}' started"
     desc = f"Started {_zone_name(entity_id).replace('_', ' ').title()}"
     if body.duration_minutes:
-        if adjusted_duration != body.duration_minutes:
-            message += f" for {adjusted_duration} minutes (adjusted from {body.duration_minutes})"
-        else:
-            message += f" for {adjusted_duration} minutes"
+        message += f" for {body.duration_minutes} minutes"
         desc += f" for {body.duration_minutes} min"
 
     log_change(get_actor(request), "Zone Control", desc, {"entity_id": entity_id})

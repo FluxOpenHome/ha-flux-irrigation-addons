@@ -981,18 +981,17 @@ async def _handle_remote_duration_change(remote_eid: str, new_state: str, suffix
         _remote_log(f"Broker: remote duration {suffix} = {new_val} → "
                     f"updated base_durations[{controller_eid}]")
 
-        # Re-apply factors so controller gets base × multiplier
-        if mdata.get("apply_factors_to_schedule"):
-            await apply_adjusted_durations()
-            _remote_log(f"Broker: re-applied factors after remote duration change")
-        else:
-            # No factors active — write the base value directly to controller
-            import ha_client
-            await ha_client.call_service(
-                "number", "set_value",
-                {"entity_id": controller_eid, "value": new_val},
-            )
-            _remote_log(f"Broker: wrote {new_val} directly to {controller_eid} (no factors)")
+        # Always write the BASE value to the controller immediately.
+        # Factors only apply to scheduled runs — if the user sets a duration
+        # on the remote and hits "run", the zone must run for exactly that
+        # duration (manual run).  The periodic factor re-application will
+        # overwrite with the factored value before the next scheduled run.
+        import ha_client
+        await ha_client.call_service(
+            "number", "set_value",
+            {"entity_id": controller_eid, "value": new_val},
+        )
+        _remote_log(f"Broker: wrote base {new_val} to {controller_eid}")
 
     except Exception as e:
         _remote_log(f"Broker: error handling remote duration change: {e}")

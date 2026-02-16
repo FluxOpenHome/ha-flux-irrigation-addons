@@ -1705,9 +1705,27 @@ async function toggleNotUsed(zoneNum, cbEl) {
             await setEntityValue(enableEid, 'switch', {state: 'off'});
         }
     }
-    if (typeof loadControls === 'function') loadControls();
+    // Directly update just the enable button for this zone — no full re-render needed
+    _updateEnableButton(zn, enableEid, !currentlyNotUsed);
     if (typeof loadZones === 'function') loadZones();
 }
+
+// Swap the enable button in-place for a single zone (no full card re-render)
+function _updateEnableButton(zoneNum, enableEid, notUsed) {
+    var span = document.getElementById('zs_enable_' + zoneNum);
+    if (!span) return;
+    if (notUsed) {
+        span.innerHTML = '<button class="btn btn-secondary btn-sm" style="opacity:0.35;cursor:not-allowed;" ' +
+            'onclick="guardNotUsedEnable(' + zoneNum + ',\\'' + enableEid + '\\')">' +
+            'Disabled</button>';
+    } else {
+        // Just turned back on — show as Enabled (switch was just turned on)
+        span.innerHTML = '<button class="btn btn-primary btn-sm" ' +
+            'onclick="setEntityValue(\\'' + enableEid + '\\',\\'switch\\',{state:\\'off\\'})">' +
+            'Enabled</button>';
+    }
+}
+
 async function guardNotUsedEnable(zoneNum, enableEid) {
     var msg = '<div style="margin-bottom:10px;"><strong>Zone ' + zoneNum + '</strong> is marked as Not Used.</div>';
     if (window._pumpZoneEntity) {
@@ -1728,7 +1746,7 @@ async function guardNotUsedEnable(zoneNum, enableEid) {
     delete map[String(zoneNum)];
     setNotUsedZones(map);
     await setEntityValue(enableEid, 'switch', {state: 'on'});
-    if (typeof loadControls === 'function') loadControls();
+    _updateEnableButton(String(zoneNum), enableEid, false);
     if (typeof loadZones === 'function') loadZones();
 }
 
@@ -2898,11 +2916,25 @@ function renderScheduleCard(sched, durData, multData) {
                 var _rMap = {rain_detection:fluxIcon('rain',13),rain_forecast:fluxIcon('rain',13),precipitation_threshold:fluxIcon('rain',13),intelligent_precip:fluxIcon('rain',13),temperature_freeze:fluxIcon('snowflake',13),temperature_cool:fluxIcon('thermometer_cool',13),temperature_hot:fluxIcon('flame',13),wind_speed:fluxIcon('wind',13),humidity:fluxIcon('droplet',13),seasonal_adjustment:fluxIcon('calendar',13)};
                 for (var _ri = 0; _ri < _adj.length; _ri++) {
                     var _a = _adj[_ri];
-                    if (_a.skip_irrigation) reasons.push((_rMap[_a.rule]||'') + ' ' + (_a.reason || _a.rule.replace(/_/g,' ')));
+                    if (_a.action === 'pause' || _a.action === 'skip') reasons.push((_rMap[_a.rule]||'') + ' ' + (_a.reason || _a.rule.replace(/_/g,' ')));
                 }
                 var _rSensors = window._rainSensors || [];
                 for (var _si = 0; _si < _rSensors.length; _si++) {
                     if (_rSensors[_si].state === 'on') { reasons.push(fluxIcon('rain_sensor',13) + ' Rain sensor active'); break; }
+                }
+                // Fallback: if schedule was disabled by weather but current adjustments
+                // don't explain why (weather cleared but switch still OFF), show the
+                // stored disable reason with an appropriate icon.
+                if (!reasons.length && multData && multData.weather_schedule_disabled && multData.weather_disable_reason) {
+                    var _wr = multData.weather_disable_reason.toLowerCase();
+                    var _wIcon = fluxIcon('warning',13);
+                    if (/rain|precip|pour/.test(_wr)) _wIcon = fluxIcon('rain',13);
+                    else if (/freeze|below/.test(_wr)) _wIcon = fluxIcon('snowflake',13);
+                    else if (/wind/.test(_wr)) _wIcon = fluxIcon('wind',13);
+                    else if (/humid/.test(_wr)) _wIcon = fluxIcon('droplet',13);
+                    else if (/hot|heat/.test(_wr)) _wIcon = fluxIcon('flame',13);
+                    else if (/cool|cold/.test(_wr)) _wIcon = fluxIcon('thermometer_cool',13);
+                    reasons.push(_wIcon + ' ' + multData.weather_disable_reason);
                 }
                 if (!reasons.length) return '';
                 return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' +
@@ -3073,21 +3105,21 @@ function renderScheduleCard(sched, durData, multData) {
             html += '<span class="zs-notused"><label class="zs-nu-label"><input type="checkbox" ' + (zoneNotUsed ? 'checked' : '') +
                 ' onclick="var cb=this;toggleNotUsed(' + zn + ',cb)" ' +
                 'style="width:16px;height:16px;cursor:pointer;accent-color:var(--color-danger);"><span class="zs-nu-text">Not Used</span></label></span>';
-            // Schedule Enable button
+            // Schedule Enable button (id used by _updateEnableButton for instant Not-Used toggle)
             if (enable) {
                 if (zoneNotUsed) {
-                    html += '<span class="zs-enable"><button class="btn btn-secondary btn-sm" style="opacity:0.35;cursor:not-allowed;" ' +
+                    html += '<span id="zs_enable_' + zn + '" class="zs-enable"><button class="btn btn-secondary btn-sm" style="opacity:0.35;cursor:not-allowed;" ' +
                         'onclick="guardNotUsedEnable(' + zn + ',\\'' + enable.entity_id + '\\')">' +
                         'Disabled</button></span>';
                 } else {
                     const isOn = enable.state === 'on';
-                    html += '<span class="zs-enable"><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
+                    html += '<span id="zs_enable_' + zn + '" class="zs-enable"><button class="btn ' + (isOn ? 'btn-primary' : 'btn-secondary') + ' btn-sm" ' +
                         'onclick="setEntityValue(\\'' + enable.entity_id + '\\',\\'switch\\',' +
                         '{state:\\'' + (isOn ? 'off' : 'on') + '\\'})">' +
                         (isOn ? 'Enabled' : 'Disabled') + '</button></span>';
                 }
             } else {
-                html += '<span class="zs-enable" style="color:var(--text-disabled);">-</span>';
+                html += '<span id="zs_enable_' + zn + '" class="zs-enable" style="color:var(--text-disabled);">-</span>';
             }
             // Duration input + Set button
             if (duration) {
