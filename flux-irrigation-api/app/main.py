@@ -523,7 +523,10 @@ async def lifespan(app: FastAPI):
             await sync_remote_settings(use_12h=use_12h)
             # Then push ALL entity states (zones, schedules, durations, days, status, etc.)
             await sync_all_remote_state()
-            # Turn OFF sync_needed switch on the remote (tells it we've synced)
+            # Hold suppression FIRST — let device finish booting before we tell it we synced
+            run_log._remote_log("Broker: startup — holding suppression 15s for remote to settle")
+            await asyncio.sleep(15)
+            # THEN turn OFF sync_needed — device has had time to finish booting
             sync_eid = _find_sync_needed_entity()
             if sync_eid:
                 try:
@@ -532,8 +535,10 @@ async def lifespan(app: FastAPI):
                     run_log._remote_log(f"Broker: startup — turned OFF {sync_eid}")
                 except Exception as e:
                     run_log._remote_log(f"Broker: startup — failed to turn off sync_needed: {e}")
-            # Hold suppression for 10s — don't let remote send anything until settled
-            await asyncio.sleep(10)
+            # Re-sync to overwrite any boot defaults that arrived during hold
+            await sync_all_remote_state()
+            run_log._remote_log("Broker: startup — second sync complete (post-settle)")
+            await asyncio.sleep(3)
             run_log._remote_reconnect_pending = False
             run_log._remote_log("Broker: startup sync complete — remote→controller mirroring enabled")
         except Exception as e:

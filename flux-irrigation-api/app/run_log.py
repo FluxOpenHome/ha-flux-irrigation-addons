@@ -798,6 +798,10 @@ async def _mirror_entity_state(source_eid: str, target_eid: str, new_state: str)
 
     Handles all entity domains: switch, number, text, select, button, valve.
     """
+    # NEVER relay unavailable/unknown — these are not real values
+    if new_state in ("unavailable", "unknown"):
+        return
+
     import ha_client
     global _remote_mirror_guard
 
@@ -953,7 +957,11 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
     except Exception as e:
         _remote_log(f"Broker: reconnect sync FAILED: {e}")
 
-    # Turn OFF the sync_needed switch on the remote so it knows we synced
+    # Hold suppression FIRST — let the device finish booting before we tell it we synced
+    _remote_log("Broker: holding suppression 15s for remote to settle")
+    await asyncio.sleep(15)
+
+    # THEN turn OFF sync_needed — device has had time to finish booting
     sync_eid = _find_sync_needed_entity()
     if sync_eid:
         try:
@@ -963,8 +971,14 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
         except Exception as e:
             _remote_log(f"Broker: failed to turn off sync_needed: {e}")
 
-    _remote_log("Broker: holding suppression 10s for remote to settle")
-    await asyncio.sleep(10)
+    # Re-sync AGAIN to overwrite any boot defaults that snuck in during hold
+    try:
+        await sync_all_remote_state()
+        _remote_log("Broker: second sync complete (post-settle)")
+    except Exception as e:
+        _remote_log(f"Broker: second sync FAILED: {e}")
+
+    await asyncio.sleep(3)  # Final grace period
     _reconnect_sync_running = False
     _remote_reconnect_pending = False
     _remote_log("Broker: remote→controller mirroring re-enabled")
@@ -972,6 +986,9 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
 
 async def _handle_controller_to_remote(entity_id: str, new_state: str):
     """A controller entity changed — mirror to the corresponding remote entity."""
+    # Never push unavailable/unknown to remote
+    if new_state in ("unavailable", "unknown"):
+        return
     maps = _build_remote_entity_maps()
     # Check bidirectional map first
     remote_eid = maps["c2r"].get(entity_id)
@@ -1339,6 +1356,10 @@ async def _watch_via_websocket(allowed_entities: set):
 
                     # --- Skip the sync_needed entity itself (never mirror it) ---
                     if _sync_eid and entity_id == _sync_eid:
+                        continue
+
+                    # --- Never mirror unavailable/unknown to controller ---
+                    if new_state in ("unavailable", "unknown"):
                         continue
 
                     # Remote entity changed → mirror to controller

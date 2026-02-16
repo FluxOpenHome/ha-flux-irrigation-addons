@@ -1086,6 +1086,10 @@ async def homeowner_broker_force_sync(request: Request):
     # Run full sync
     await sync_all_remote_state()
 
+    # Hold suppression — let device settle
+    run_log._remote_log("Broker: force sync — holding 15s for remote to settle")
+    await asyncio.sleep(15)
+
     # Turn off sync_needed switch if present
     sync_eid = _find_sync_needed_entity()
     if sync_eid:
@@ -1095,7 +1099,10 @@ async def homeowner_broker_force_sync(request: Request):
         except Exception as e:
             run_log._remote_log(f"Broker: failed to turn off sync_needed: {e}")
 
-    # Wait for settle then re-enable mirroring
+    # Re-sync to overwrite any boot defaults
+    await sync_all_remote_state()
+    run_log._remote_log("Broker: force sync — second sync complete (post-settle)")
+
     await asyncio.sleep(3)
     run_log._remote_reconnect_pending = False
     run_log._remote_log("Broker: force sync complete — mirroring re-enabled")
