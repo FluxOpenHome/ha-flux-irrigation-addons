@@ -14,6 +14,7 @@ import ha_client
 import audit_log
 import run_log
 from config_changelog import log_change, get_actor
+from routes.homeowner import is_zone_not_used
 
 
 _ZONE_NUMBER_RE = re.compile(r'zone[_]?(\d+)', re.IGNORECASE)
@@ -133,18 +134,33 @@ async def list_zones(request: Request):
 
     entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
 
-    # Filter out pump start relay and master valve — they are not actual zones
-    _NON_ZONE_RE = re.compile(r"pump|master.?valve", re.IGNORECASE)
-    entities = [e for e in entities if not _NON_ZONE_RE.search(e.get("entity_id", ""))]
+    # Filter by expansion board zone count
+    max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
+    if max_zones > 0:
+        entities = [e for e in entities if _extract_zone_number(e.get("entity_id", "")) <= max_zones]
+
+    # Filter out pump/master valve zones via zone mode entities (authoritative)
+    _ZONE_MODE_RE = re.compile(r"zone_\d+_mode", re.IGNORECASE)
+    mode_eids = [e for e in config.allowed_control_entities if _ZONE_MODE_RE.search(e)]
+    special_zone_nums = set()
+    if mode_eids:
+        mode_entities = await ha_client.get_entities_by_ids(mode_eids)
+        for me in mode_entities:
+            mode_val = (me.get("state") or "").lower()
+            zone_num = _extract_zone_number(me.get("entity_id", ""))
+            if re.search(r'pump|relay', mode_val, re.IGNORECASE):
+                if zone_num:
+                    special_zone_nums.add(zone_num)
+            elif re.search(r'master.*valve|valve.*master', mode_val, re.IGNORECASE):
+                if zone_num:
+                    special_zone_nums.add(zone_num)
+    entities = [e for e in entities if _extract_zone_number(e.get("entity_id", "")) not in special_zone_nums]
+
+    # Exclude "not used" zones
+    entities = [e for e in entities if not is_zone_not_used(e.get("entity_id", ""))]
 
     zones = []
-    max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
     for entity in entities:
-        # Filter zones beyond the detected expansion board zone count
-        if max_zones > 0:
-            zn = _extract_zone_number(entity["entity_id"])
-            if zn > max_zones:
-                continue
         attrs = entity.get("attributes", {})
         zones.append(
             ZoneStatus(

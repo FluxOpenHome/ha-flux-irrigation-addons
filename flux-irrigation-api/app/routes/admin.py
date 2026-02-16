@@ -6,6 +6,7 @@ and permissions through the add-on's ingress panel.
 
 import json
 import os
+import re
 import secrets
 import httpx
 from fastapi import APIRouter, Request, HTTPException, Query
@@ -14,11 +15,59 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from config import get_config, reload_config
 from config_changelog import log_change
+from routes.homeowner import is_zone_not_used
 
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 OPTIONS_FILE = "/data/options.json"
+
+_ZONE_NUMBER_RE = re.compile(r'zone[_]?(\d+)', re.IGNORECASE)
+
+
+def _extract_zone_number(entity_id: str) -> int:
+    m = _ZONE_NUMBER_RE.search(entity_id)
+    return int(m.group(1)) if m else 0
+
+
+async def _count_usable_zones(config) -> int | None:
+    """Count zones excluding pump/master valve and not-used zones.
+
+    Uses zone mode entities (select.*_zone_N_mode) as the authoritative source
+    for identifying pumps/master valves, same approach as moisture.py.
+    """
+    import ha_client
+
+    if not config.allowed_zone_entities:
+        return None
+
+    zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+    max_zones = config.detected_zone_count  # 0 = no limit
+    if max_zones > 0:
+        zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) <= max_zones]
+
+    # Find special zones (pump/master valve) via zone mode entities
+    mode_eids = [
+        e for e in config.allowed_control_entities
+        if e.startswith("select.") and re.search(r'zone_\d+_mode', e.lower())
+    ]
+    special_zone_nums = set()
+    if mode_eids:
+        mode_entities = await ha_client.get_entities_by_ids(mode_eids)
+        for me in mode_entities:
+            mode_val = (me.get("state") or "").lower()
+            zone_num = _extract_zone_number(me.get("entity_id", ""))
+            if re.search(r'pump|relay', mode_val, re.IGNORECASE):
+                if zone_num:
+                    special_zone_nums.add(zone_num)
+            elif re.search(r'master.*valve|valve.*master', mode_val, re.IGNORECASE):
+                if zone_num:
+                    special_zone_nums.add(zone_num)
+
+    # Filter out special zones and not-used zones
+    zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) not in special_zone_nums]
+    zones = [z for z in zones if not is_zone_not_used(z.get("entity_id", ""))]
+    return len(zones)
 
 
 def _load_options() -> dict:
@@ -722,8 +771,8 @@ async def generate_connection_key(body: ConnectionKeyRequest):
                        f"Long-Lived Access Tokens → Create Token, then paste it in the HA Token field.",
             )
 
-    # Auto-detect zone count from selected device
-    zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
+    # Auto-detect zone count (excludes pump/master valve and not-used zones)
+    zone_count = await _count_usable_zones(config)
 
     # Find or create a dedicated management company key.
     # Always generate a fresh random key — this ensures that after a revoke
@@ -930,7 +979,7 @@ async def get_connection_key_info():
     connection_mode = options.get("homeowner_connection_mode", "direct")
 
     config = get_config()
-    zone_count = len(config.allowed_zone_entities) if config.allowed_zone_entities else None
+    zone_count = await _count_usable_zones(config)
 
     mgmt_key_name = "Management Company (Connection Key)"
     mgmt_key = None

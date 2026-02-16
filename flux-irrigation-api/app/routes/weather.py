@@ -905,8 +905,34 @@ async def get_weather_data() -> dict:
 
 # Tracks which schedule start times we've already logged weather_skip for
 # so we don't double-log on every evaluation cycle.
+# Persisted to disk so service restarts don't cause duplicate entries.
 # Format: {"YYYY-MM-DD HH:MM": True}
+_LOGGED_SKIPS_FILE = "/data/logged_schedule_skips.json"
 _logged_schedule_skips: dict = {}
+
+
+def _load_logged_skips():
+    """Load persisted skip tracker from disk."""
+    global _logged_schedule_skips
+    try:
+        if os.path.exists(_LOGGED_SKIPS_FILE):
+            with open(_LOGGED_SKIPS_FILE, "r") as f:
+                _logged_schedule_skips = json.load(f)
+    except Exception:
+        _logged_schedule_skips = {}
+
+
+def _save_logged_skips():
+    """Persist skip tracker to disk."""
+    try:
+        with open(_LOGGED_SKIPS_FILE, "w") as f:
+            json.dump(_logged_schedule_skips, f)
+    except Exception:
+        pass
+
+
+# Load on module init
+_load_logged_skips()
 
 
 async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str):
@@ -1021,6 +1047,7 @@ async def _log_skipped_schedules(config, schedule_data: dict, pause_reason: str)
                 skip_count += 1
 
             _logged_schedule_skips[skip_key] = True
+            _save_logged_skips()
             print(f"[WEATHER] Logged weather_skip for {skip_count} zones "
                   f"(schedule {start_time_str}, reason: {pause_reason})")
 
@@ -1410,6 +1437,7 @@ async def run_weather_evaluation() -> dict:
             # zones NOT currently ON (already handled by the OFF loop above).
             try:
                 from routes.moisture import _get_ordered_enabled_zones
+                from routes.homeowner import is_zone_not_used
                 running_eids = {
                     z["entity_id"] for z in zones
                     if z.get("state") in ("on", "open")
@@ -1422,6 +1450,8 @@ async def run_weather_evaluation() -> dict:
                         continue  # Already handled by OFF loop above
                     if ez.get("is_special"):
                         continue  # Skip pump/master/relay zones
+                    if is_zone_not_used(zone_eid):
+                        continue  # Skip zones marked as "not used"
                     zone_name = f"Zone {ez.get('zone_num', 0)}"
                     for z in zones:
                         if z.get("entity_id") == zone_eid:
@@ -1466,6 +1496,7 @@ async def run_weather_evaluation() -> dict:
                                 continue
                         if s_mins <= now_minutes:
                             _logged_schedule_skips[f"{today_str} {st}"] = True
+                    _save_logged_skips()
                 except Exception:
                     pass
             except Exception as e:

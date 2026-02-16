@@ -192,7 +192,27 @@ async def homeowner_status():
     max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
     if max_zones > 0:
         zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) <= max_zones]
-    active_zones = [z for z in zones if z.get("state") == "on"]
+
+    # Exclude pump/master valve zones via zone mode entities (authoritative source)
+    _ZONE_MODE_RE = re.compile(r"zone_\d+_mode", re.IGNORECASE)
+    mode_eids = [e for e in config.allowed_control_entities if _ZONE_MODE_RE.search(e)]
+    special_zone_nums = set()
+    if mode_eids:
+        mode_entities = await ha_client.get_entities_by_ids(mode_eids)
+        for me in mode_entities:
+            mode_val = (me.get("state") or "").lower()
+            zone_num = _extract_zone_number(me.get("entity_id", ""))
+            if re.search(r'pump|relay', mode_val, re.IGNORECASE):
+                if zone_num:
+                    special_zone_nums.add(zone_num)
+            elif re.search(r'master.*valve|valve.*master', mode_val, re.IGNORECASE):
+                if zone_num:
+                    special_zone_nums.add(zone_num)
+    zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) not in special_zone_nums]
+
+    # Exclude "not used" zones from count
+    used_zones = [z for z in zones if not is_zone_not_used(z.get("entity_id", ""))]
+    active_zones = [z for z in used_zones if z.get("state") == "on"]
     sensors = await ha_client.get_entities_by_ids(config.allowed_sensor_entities)
 
     # Check schedule state for pause/rain delay
@@ -238,7 +258,7 @@ async def homeowner_status():
         "online": True,
         "ha_connected": ha_connected,
         "system_paused": schedule_data.get("system_paused", False),
-        "total_zones": len(zones),
+        "total_zones": len(used_zones),
         "active_zones": len(active_zones),
         "active_zone_entity_id": active_zone_eid,
         "active_zone_name": active_zone_name,

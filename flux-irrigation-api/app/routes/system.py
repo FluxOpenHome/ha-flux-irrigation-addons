@@ -106,33 +106,37 @@ async def get_system_status(request: Request):
 
     ha_connected = await ha_client.check_connection()
 
-    # Count zones and active zones (filter by detected_zone_count for expansion boards)
+    # Count zones and active zones using the same approach as moisture.py
+    # _get_ordered_enabled_zones() — detects pumps/master valves via zone mode entities
     zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
     max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
     if max_zones > 0:
         zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) <= max_zones]
-    # Filter out pump start relay and master valve — they are not actual zones
-    _NON_ZONE_RE = re.compile(r"pump|master.?valve", re.IGNORECASE)
-    zones = [z for z in zones if not _NON_ZONE_RE.search(z.get("entity_id", ""))]
 
-    # Detect pump relay / master valve via zone mode entities
+    # Detect pump relay / master valve via zone mode select entities
+    # This is the AUTHORITATIVE source — entity_id alone doesn't contain "pump"
+    # e.g. switch.irrigation_zone_6 IS a pump but its name doesn't say so
     has_pump_relay = False
     has_master_valve = False
+    special_zone_nums = set()  # Zone numbers to exclude from count
     _ZONE_MODE_RE = re.compile(r"zone_\d+_mode", re.IGNORECASE)
     mode_eids = [e for e in config.allowed_control_entities if _ZONE_MODE_RE.search(e)]
     if mode_eids:
         mode_entities = await ha_client.get_entities_by_ids(mode_eids)
         for me in mode_entities:
             mode_val = (me.get("state") or "").lower()
-            if "pump" in mode_val or "relay" in mode_val:
+            zone_num = _extract_zone_number(me.get("entity_id", ""))
+            if re.search(r'pump|relay', mode_val, re.IGNORECASE):
                 has_pump_relay = True
-                # Also filter this zone out of the count
-                zone_num = _extract_zone_number(me.get("entity_id", ""))
-                zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) != zone_num]
-            elif "master" in mode_val and "valve" in mode_val:
+                if zone_num:
+                    special_zone_nums.add(zone_num)
+            elif re.search(r'master.*valve|valve.*master', mode_val, re.IGNORECASE):
                 has_master_valve = True
-                zone_num = _extract_zone_number(me.get("entity_id", ""))
-                zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) != zone_num]
+                if zone_num:
+                    special_zone_nums.add(zone_num)
+
+    # Filter out special zones (pump/master valve) by zone number
+    zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) not in special_zone_nums]
 
     # Exclude "not used" zones from the count
     used_zones = [z for z in zones if not is_zone_not_used(z.get("entity_id", ""))]

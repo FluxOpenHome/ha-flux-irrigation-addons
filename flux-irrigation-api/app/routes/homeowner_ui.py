@@ -350,7 +350,7 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
             <a class="nav-tab" href="?view=config">Configuration</a>
         </div>
         <button class="dark-toggle" onclick="showSettings()" title="Settings"><span data-fi="gear" data-fs="28"></span></button>
-        <button class="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="28"></span></button>
+        <button class="dark-toggle" id="darkModeBtn" onclick="toggleDarkMode()" title="Toggle dark mode"><span data-fi="moon" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="showChangelog()" title="Change Log"><span data-fi="clipboard" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="showHelp()" title="Help"><span data-fi="help" data-fs="28"></span></button>
         <button class="dark-toggle" onclick="showDebugLog()" title="Debug Log"><span data-fi="bug" data-fs="28"></span></button>
@@ -6661,12 +6661,13 @@ function saveSettings() {
 function toggleDarkMode() {
     const isDark = document.body.classList.toggle('dark-mode');
     localStorage.setItem('flux_dark_mode_homeowner', isDark);
-    document.querySelector('.dark-toggle').innerHTML = isDark ? fluxIcon('sun',28) : fluxIcon('moon',28);
+    var dmBtn = document.getElementById('darkModeBtn');
+    if (dmBtn) dmBtn.innerHTML = isDark ? fluxIcon('sun',28) : fluxIcon('moon',28);
     _applyDarkTiles();
 }
 (function initDarkToggleIcon() {
-    const btn = document.querySelector('.dark-toggle');
-    if (btn && document.body.classList.contains('dark-mode')) btn.innerHTML = fluxIcon('sun',28);
+    var dmBtn = document.getElementById('darkModeBtn');
+    if (dmBtn && document.body.classList.contains('dark-mode')) dmBtn.innerHTML = fluxIcon('sun',28);
 })();
 
 // --- Sticky Header ---
