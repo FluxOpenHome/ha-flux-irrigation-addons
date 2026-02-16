@@ -4258,12 +4258,15 @@ function _buildWeatherCardShell() {
     html += '<div style="color:var(--text-placeholder);font-size:11px;">Wind</div>';
     html += '<div data-id="wWind" style="font-weight:600;font-size:16px;"></div>';
     html += '</div>';
-    html += '<div style="background:var(--bg-tile);border-radius:8px;padding:10px;">';
+    html += '</div>';
+    // Precipitation + Forecast row — side by side to save vertical space
+    html += '<div style="display:flex;align-items:stretch;gap:10px;margin-top:10px;">';
+    html += '<div style="flex:0 0 auto;background:var(--bg-tile);border-radius:8px;padding:10px;min-width:100px;">';
     html += '<div style="color:var(--text-placeholder);font-size:11px;">Precipitation</div>';
     html += '<div data-id="wPrecip" style="font-weight:600;font-size:16px;"></div>';
     html += '</div>';
+    html += '<div data-id="wForecast" style="flex:1;min-width:0;"></div>';
     html += '</div>';
-    html += '<div data-id="wForecast"></div>';
     html += '<div data-id="wAdjustments"></div>';
     // Weather Rules Editor — collapsible section, collapsed by default
     html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:16px;">';
@@ -4421,8 +4424,7 @@ async function loadWeather() {
             forecast.push(entry);
         }
         if (forecast.length > 0) {
-            let fh = '<div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Forecast</div>';
-            fh += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;">';
+            let fh = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;align-items:stretch;height:100%;">';
             for (let i = 0; i < Math.min(forecast.length, 5); i++) {
                 const f = forecast[i];
                 const dt = f.datetime ? new Date(f.datetime) : null;
@@ -4441,7 +4443,7 @@ async function loadWeather() {
                 }
                 fh += '</div>';
             }
-            fh += '</div></div>';
+            fh += '</div>';
             forecastEl.innerHTML = fh;
         } else {
             forecastEl.innerHTML = '';
