@@ -495,6 +495,25 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[MAIN] Active run recovery error: {e}")
 
+    # Consistency check: clear stale system_paused if schedule switches are ON in HA.
+    # This can happen if weather auto-resume or a device reboot restored schedules
+    # without clearing the JSON flag.
+    try:
+        from routes.schedule import _load_schedules, _save_schedules
+        import schedule_control
+        sched_data = _load_schedules()
+        if sched_data.get("system_paused"):
+            sched_entities = schedule_control.get_schedule_enable_entities()
+            if sched_entities:
+                live = await ha_client.get_entities_by_ids(sched_entities)
+                all_on = all(e.get("state") == "on" for e in live if e)
+                if all_on:
+                    sched_data["system_paused"] = False
+                    _save_schedules(sched_data)
+                    print("[MAIN] Cleared stale system_paused flag (schedule switches are ON)")
+    except Exception as e:
+        print(f"[MAIN] system_paused consistency check error: {e}")
+
     # Start background tasks
     cleanup_task = asyncio.create_task(_periodic_log_cleanup())
     weather_task = None
