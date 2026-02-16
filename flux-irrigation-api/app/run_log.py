@@ -39,6 +39,7 @@ _remote_mirror_guard: set = set()  # entity_ids currently being mirrored
 
 # Cached entity maps (rebuilt when config changes)
 _remote_maps_cache: dict = {}  # {"r2c": {}, "c2r": {}, "remote_all": set(), "controller_status": set()}
+_remote_maps_logged: bool = False
 
 # Suffix aliases — different firmware names that refer to the same function.
 # Both sides are normalized to the canonical (value) name.
@@ -549,7 +550,7 @@ def _build_remote_entity_maps() -> dict:
       controller_watched: set of controller entity IDs that have a remote counterpart
       status_map: controller_sensor → remote_text (one-way: controller→remote)
     """
-    global _remote_maps_cache
+    global _remote_maps_cache, _remote_maps_logged
     from config import get_config
     config = get_config()
 
