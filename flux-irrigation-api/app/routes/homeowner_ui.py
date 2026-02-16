@@ -7943,16 +7943,20 @@ function dnToggleUnit() {
 }
 
 // --- Panel expand / collapse ---
+function dnToggleExpand(btn) {
+    var panel = btn.closest('.dn-panel');
+    if (!panel) return;
+    if (panel.classList.contains('dn-expanded')) {
+        dnCollapsePanel(btn);
+    } else {
+        dnExpandPanel(btn);
+    }
+}
 function dnExpandPanel(btn) {
     var panel = btn.closest('.dn-panel');
     if (!panel) return;
     panel.classList.add('dn-expanded');
-    // Swap icon to X close button
-    btn.innerHTML = '&#x2715;';
-    btn.setAttribute('onclick', 'dnCollapsePanel(this)');
-    btn.title = 'Close';
-    btn.style.fontSize = '18px';
-    btn.style.fontWeight = '700';
+    _dnSyncExpandBtn(panel);
     // Resize chart if present
     var canv = panel.querySelector('canvas');
     if (canv) {
@@ -7968,12 +7972,7 @@ function dnCollapsePanel(btn) {
     var panel = btn.closest('.dn-panel');
     if (!panel) return;
     panel.classList.remove('dn-expanded');
-    // Swap icon back to expand
-    btn.innerHTML = fluxIcon('expand', 14);
-    btn.setAttribute('onclick', 'dnExpandPanel(this)');
-    btn.title = 'Expand';
-    btn.style.fontSize = '14px';
-    btn.style.fontWeight = '';
+    _dnSyncExpandBtn(panel);
     // Resize chart back
     var canv = panel.querySelector('canvas');
     if (canv) {
@@ -7983,6 +7982,21 @@ function dnCollapsePanel(btn) {
         }
     }
     document.getElementById('dnContent').style.overflow = '';
+}
+function _dnSyncExpandBtn(panel) {
+    var btn = panel.querySelector('.dn-expand-btn');
+    if (!btn) return;
+    if (panel.classList.contains('dn-expanded')) {
+        btn.innerHTML = '&#x2715;';
+        btn.title = 'Close';
+        btn.style.fontSize = '18px';
+        btn.style.fontWeight = '700';
+    } else {
+        btn.innerHTML = fluxIcon('expand', 14);
+        btn.title = 'Expand';
+        btn.style.fontSize = '14px';
+        btn.style.fontWeight = '';
+    }
 }
 
 // --- Chart defaults ---
@@ -8598,7 +8612,7 @@ function dnBuildProbeHealth(containerId, data) {
 
 // --- Master render ---
 function _dnExpandBtn() {
-    return '<button class="dn-expand-btn" onclick="dnExpandPanel(this)" title="Expand">' + fluxIcon('expand', 14) + '</button>';
+    return '<button class="dn-expand-btn" onclick="dnToggleExpand(this)" title="Expand">' + fluxIcon('expand', 14) + '</button>';
 }
 function dnRenderAllCharts(data) {
     var grid = document.getElementById('dnGrid');
