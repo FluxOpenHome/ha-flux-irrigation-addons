@@ -7153,67 +7153,126 @@ function closeHelpModal() {
     document.getElementById('helpModal').style.display = 'none';
 }
 
-// --- Debug Log ---
+// --- Debug Log (Tabbed: Moisture / Remote) ---
+var _debugLogTab = 'moisture';
+
 async function showDebugLog() {
+    _debugLogTab = 'moisture';
+    await _renderDebugLogModal();
+}
+
+async function _renderDebugLogModal() {
     try {
-        var resp = await fetch(HBASE + '/debug/moisture-log?lines=500');
-        var data = await resp.json();
-        var lines = data.lines || [];
-        if (!lines.length) {
-            showModal('Debug Log', '<p style="color:var(--text-muted);">No debug log entries yet.</p>', '800px');
-            return;
-        }
-        var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
-        html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
-        html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog()" style="font-size:11px;">Clear Log</button>';
+        var tabStyle = 'padding:6px 14px;font-size:12px;border:1px solid var(--border);border-radius:6px 6px 0 0;cursor:pointer;background:var(--bg-secondary);color:var(--text-muted);';
+        var activeStyle = tabStyle + 'background:var(--bg-tile);color:var(--text-primary);font-weight:600;border-bottom:1px solid var(--bg-tile);';
+        var html = '<div style="display:flex;gap:4px;margin-bottom:-1px;position:relative;z-index:1;">';
+        html += '<button style="' + (_debugLogTab === 'moisture' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'moisture\\';_renderDebugLogModal()">Moisture</button>';
+        html += '<button style="' + (_debugLogTab === 'remote' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'remote\\';_renderDebugLogModal()">Remote</button>';
         html += '</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
-        html += '<span style="color:#e74c3c;font-weight:600;">● Fast/Immediate Skip</span>';
-        html += '<span style="color:#f39c12;font-weight:600;">● Preemptive Timer</span>';
-        html += '<span style="color:#e67e22;">● Schedule Continue / Backup Advance</span>';
-        html += '<span style="color:#9b59b6;">● Refresh Flags</span>';
-        html += '<span style="color:#2ecc71;font-weight:600;">● Zone Advance</span>';
-        html += '<span style="color:#3498db;">● Zone State Change</span>';
-        html += '<span style="color:#27ae60;font-weight:600;">● Success</span>';
-        html += '<span style="color:#e74c3c;">● Error</span>';
-        html += '</div>';
-        html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:70vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i].replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            // Color-code key events
-            if (line.indexOf('FAST SKIP') >= 0 || line.indexOf('IMMEDIATE SKIP') >= 0)
-                html += '<span style="color:#e74c3c;font-weight:600;">' + line + '</span>\\n';
-            else if (line.indexOf('PREEMPTIVE TIMER') >= 0)
-                html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
-            else if (line.indexOf('SCHEDULE CONTINUE') >= 0 || line.indexOf('BACKUP ADVANCE') >= 0)
-                html += '<span style="color:#e67e22;">' + line + '</span>\\n';
-            else if (line.indexOf('REFRESH FLAGS') >= 0)
-                html += '<span style="color:#9b59b6;">' + line + '</span>\\n';
-            else if (line.indexOf('_advance_to_next_zone') >= 0)
-                html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
-            else if (line.indexOf('ERROR') >= 0)
-                html += '<span style="color:#e74c3c;">' + line + '</span>\\n';
-            else if (line.indexOf('on_zone_state_change') >= 0)
-                html += '<span style="color:#3498db;">' + line + '</span>\\n';
-            else if (line.indexOf('SUCCESS') >= 0)
-                html += '<span style="color:#27ae60;font-weight:600;">' + line + '</span>\\n';
-            else
-                html += line + '\\n';
+
+        if (_debugLogTab === 'moisture') {
+            html += await _buildMoistureDebugHtml();
+        } else {
+            html += await _buildRemoteDebugHtml();
         }
-        html += '</pre>';
-        showModal('Moisture Debug Log', html, '900px');
+        showModal('Debug Log', html, '900px');
     } catch(e) {
         showModal('Debug Log', '<p style="color:var(--color-danger);">Failed to load debug log: ' + e.message + '</p>', '400px');
     }
 }
-async function clearDebugLog() {
+
+async function _buildMoistureDebugHtml() {
+    var resp = await fetch(HBASE + '/debug/moisture-log?lines=500');
+    var data = await resp.json();
+    var lines = data.lines || [];
+    if (!lines.length) return '<p style="color:var(--text-muted);margin-top:12px;">No moisture debug log entries yet.</p>';
+
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;">';
+    html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
+    html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog(\\'moisture\\')" style="font-size:11px;">Clear Log</button>';
+    html += '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
+    html += '<span style="color:#e74c3c;font-weight:600;">● Fast/Immediate Skip</span>';
+    html += '<span style="color:#f39c12;font-weight:600;">● Preemptive Timer</span>';
+    html += '<span style="color:#e67e22;">● Schedule Continue / Backup Advance</span>';
+    html += '<span style="color:#9b59b6;">● Refresh Flags</span>';
+    html += '<span style="color:#2ecc71;font-weight:600;">● Zone Advance</span>';
+    html += '<span style="color:#3498db;">● Zone State Change</span>';
+    html += '<span style="color:#27ae60;font-weight:600;">● Success</span>';
+    html += '<span style="color:#e74c3c;">● Error</span>';
+    html += '</div>';
+    html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (line.indexOf('FAST SKIP') >= 0 || line.indexOf('IMMEDIATE SKIP') >= 0)
+            html += '<span style="color:#e74c3c;font-weight:600;">' + line + '</span>\\n';
+        else if (line.indexOf('PREEMPTIVE TIMER') >= 0)
+            html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
+        else if (line.indexOf('SCHEDULE CONTINUE') >= 0 || line.indexOf('BACKUP ADVANCE') >= 0)
+            html += '<span style="color:#e67e22;">' + line + '</span>\\n';
+        else if (line.indexOf('REFRESH FLAGS') >= 0)
+            html += '<span style="color:#9b59b6;">' + line + '</span>\\n';
+        else if (line.indexOf('_advance_to_next_zone') >= 0)
+            html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
+        else if (line.indexOf('ERROR') >= 0)
+            html += '<span style="color:#e74c3c;">' + line + '</span>\\n';
+        else if (line.indexOf('on_zone_state_change') >= 0)
+            html += '<span style="color:#3498db;">' + line + '</span>\\n';
+        else if (line.indexOf('SUCCESS') >= 0)
+            html += '<span style="color:#27ae60;font-weight:600;">' + line + '</span>\\n';
+        else
+            html += line + '\\n';
+    }
+    html += '</pre>';
+    return html;
+}
+
+async function _buildRemoteDebugHtml() {
+    var resp = await fetch(HBASE + '/debug/remote-log?lines=500');
+    var data = await resp.json();
+    var lines = data.lines || [];
+    if (!lines.length) return '<p style="color:var(--text-muted);margin-top:12px;">No remote debug log entries yet. Logs appear after add-on startup when a remote device is configured.</p>';
+
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;">';
+    html += '<span style="font-size:12px;color:var(--text-muted);">' + lines.length + ' entries</span>';
+    html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog(\\'remote\\')" style="font-size:11px;">Clear Log</button>';
+    html += '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
+    html += '<span style="color:#2ecc71;font-weight:600;">● Mirrored</span>';
+    html += '<span style="color:#3498db;">● Mapping</span>';
+    html += '<span style="color:#f39c12;font-weight:600;">● Warning</span>';
+    html += '<span style="color:#e74c3c;">● Error / Failed</span>';
+    html += '<span style="color:#9b59b6;">● Reconnect / Sync</span>';
+    html += '</div>';
+    html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (line.indexOf('FAILED') >= 0 || line.indexOf('ERROR') >= 0)
+            html += '<span style="color:#e74c3c;font-weight:600;">' + line + '</span>\\n';
+        else if (line.indexOf('WARNING') >= 0)
+            html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
+        else if (line.indexOf('Mirrored') >= 0)
+            html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
+        else if (line.indexOf('reconnect') >= 0 || line.indexOf('sync') >= 0 || line.indexOf('Sync') >= 0)
+            html += '<span style="color:#9b59b6;">' + line + '</span>\\n';
+        else if (line.indexOf('maps built') >= 0 || line.indexOf('suffixes') >= 0 || line.indexOf('entities') >= 0)
+            html += '<span style="color:#3498db;">' + line + '</span>\\n';
+        else
+            html += line + '\\n';
+    }
+    html += '</pre>';
+    return html;
+}
+
+async function clearDebugLog(logType) {
     if (managedGuard()) return;
-    var ok = await showConfirm({ title: 'Clear Debug Log', message: 'Clear the moisture debug log?', confirmText: 'Clear Log', confirmClass: 'btn-danger', icon: fluxIcon('bug',28) });
+    var label = logType === 'remote' ? 'remote' : 'moisture';
+    var ok = await showConfirm({ title: 'Clear ' + label + ' Log', message: 'Clear the ' + label + ' debug log?', confirmText: 'Clear Log', confirmClass: 'btn-danger', icon: fluxIcon('bug',28) });
     if (!ok) return;
     try {
-        await fetch(HBASE + '/debug/moisture-log', { method: 'DELETE' });
-        showToast('Debug log cleared');
-        closeDynamicModal();
+        await fetch(HBASE + '/debug/' + label + '-log', { method: 'DELETE' });
+        showToast(label + ' log cleared');
+        await _renderDebugLogModal();
     } catch(e) { showToast(e.message, 'error'); }
 }
 
