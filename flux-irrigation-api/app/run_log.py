@@ -862,7 +862,26 @@ async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state
 
     Suppressed while _remote_reconnect_pending is True (startup or reconnect)
     to prevent remote defaults from overwriting real controller values.
+
+    NUCLEAR OPTION: If sync_needed switch exists and is ON in HA, block
+    immediately regardless of flag state — reads live HA entity state.
     """
+    global _remote_reconnect_pending
+    # LIVE CHECK: If sync_needed switch is ON, block and trigger sync
+    sync_eid = _find_sync_needed_entity()
+    if sync_eid and not _remote_reconnect_pending:
+        try:
+            import ha_client
+            st = await ha_client.get_entity_state(sync_eid)
+            if st and st.get("state") == "on":
+                _remote_reconnect_pending = True
+                _remote_log(f"Suppressed remote→controller: {_extract_entity_suffix(entity_id)} "
+                            f"= {new_state} — sync_needed is ON (live check)")
+                import asyncio
+                asyncio.create_task(_handle_remote_reconnect(entity_id, set()))
+                return
+        except Exception:
+            pass
     # Block remote→controller during startup/reconnect sync
     if _remote_reconnect_pending:
         _remote_log(f"Suppressed remote→controller: {_extract_entity_suffix(entity_id)} "
@@ -1013,11 +1032,11 @@ async def sync_all_remote_state():
     _remote_log(f"Broker: full sync complete — {synced}/{len(total_c2r)} controller values pushed to remote")
 
 
-def get_broker_status() -> dict:
+async def get_broker_status() -> dict:
     """Return the broker's current entity mapping state for the debug UI.
 
     Provides a structured view of what the add-on (broker) understands about
-    each device's entities and how they are paired.
+    each device's entities and how they are paired, including sync state.
     """
     maps = _build_remote_entity_maps()
     controller_inv = maps.get("controller_inv", {})
@@ -1046,12 +1065,27 @@ def get_broker_status() -> dict:
                         for (d, f), eid in remote_inv.items()
                         if eid not in mapped_remote]
 
+    # Read live sync_needed state
+    sync_eid = _find_sync_needed_entity()
+    sync_state = None
+    if sync_eid:
+        try:
+            import ha_client
+            st = await ha_client.get_entity_state(sync_eid)
+            sync_state = st.get("state") if st else None
+        except Exception:
+            pass
+
     return {
         "matched": sorted(matched, key=lambda x: x["function"]),
         "unmatched_controller": sorted(unmatched_ctrl, key=lambda x: x["function"]),
         "unmatched_remote": sorted(unmatched_remote, key=lambda x: x["function"]),
         "total_controller": len(controller_inv),
         "total_remote": len(remote_inv),
+        "sync_needed_entity": sync_eid,
+        "sync_needed_state": sync_state,
+        "reconnect_pending": _remote_reconnect_pending,
+        "sync_running": _reconnect_sync_running,
     }
 
 
@@ -1232,6 +1266,24 @@ async def _watch_via_websocket(allowed_entities: set):
               f"({len(allowed_entities)} zone + {len(probe_entities)} probe + "
               f"{len(schedule_entities)} schedule + {len(remote_entities)} remote entities)")
 
+        # Step 3.5: On WS connect, check if sync_needed is ON and trigger sync
+        if remote_entities:
+            sync_eid = _find_sync_needed_entity()
+            if sync_eid:
+                try:
+                    import ha_client as _hac
+                    st = await _hac.get_entity_state(sync_eid)
+                    if st and st.get("state") == "on":
+                        _remote_reconnect_pending = True
+                        _remote_log("Broker: WebSocket connected — sync_needed is ON, triggering sync")
+                        asyncio.create_task(_handle_remote_reconnect("ws_connect", remote_entities))
+                    elif _remote_reconnect_pending:
+                        # WS reconnected but sync_needed is OFF — safe to clear
+                        _remote_log("Broker: WebSocket connected — sync_needed is OFF, clearing block")
+                        _remote_reconnect_pending = False
+                except Exception as e:
+                    _remote_log(f"Broker: WebSocket connect sync check failed: {e}")
+
         # Step 4: Listen for events
         async for raw_msg in ws:
             try:
@@ -1390,6 +1442,7 @@ async def watch_zone_states():
     Also enforces system pause: if the system is paused and a zone turns on,
     it is immediately turned off.
     """
+    global _remote_reconnect_pending
     import asyncio
     from config import get_config
 
@@ -1415,10 +1468,17 @@ async def watch_zone_states():
                 await _watch_via_websocket(allowed)
             except Exception as ws_err:
                 print(f"[RUN_LOG] WebSocket failed ({ws_err}), falling back to polling")
+                # Block remote→controller on WS drop — will be cleared after sync check
+                if config.allowed_remote_entities:
+                    _remote_reconnect_pending = True
+                    _remote_log("Broker: WebSocket dropped — blocking remote→controller")
                 await _watch_via_polling(allowed)
 
         except Exception as e:
             print(f"[RUN_LOG] Zone watcher error: {e}")
 
+        # Block remote→controller before reconnect attempt
+        if config.allowed_remote_entities:
+            _remote_reconnect_pending = True
         # If we get here, the connection dropped — reconnect after a brief delay
         await asyncio.sleep(5)

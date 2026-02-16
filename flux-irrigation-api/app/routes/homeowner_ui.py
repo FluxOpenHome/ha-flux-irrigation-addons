@@ -7289,6 +7289,58 @@ async function _buildBrokerDebugHtml() {
         var totalCtrl = status.total_controller || 0;
         var totalRemote = status.total_remote || 0;
 
+        // Sync status fields
+        var syncEid = status.sync_needed_entity || null;
+        var syncState = status.sync_needed_state || null;
+        var reconnPending = status.reconnect_pending || false;
+        var syncRunning = status.sync_running || false;
+
+        // --- Sync Status Banner ---
+        html += '<div style="margin:8px 0 12px 0;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;">';
+        html += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Sync Status</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:12px 24px;font-size:11px;font-family:monospace;align-items:center;">';
+
+        // Sync Needed entity + state
+        html += '<div style="display:flex;align-items:center;gap:6px;">';
+        html += '<span style="color:var(--text-muted);">Sync Needed:</span>';
+        if (syncEid) {
+            var syncDot = syncState === 'on' ? '#e74c3c' : '#2ecc71';
+            var syncLabel = syncState === 'on' ? 'ON (device booted)' : 'OFF (normal)';
+            html += '<span style="color:' + syncDot + ';font-weight:600;">\\u25CF ' + syncLabel + '</span>';
+        } else {
+            html += '<span style="color:var(--text-muted);font-style:italic;">Not detected</span>';
+        }
+        html += '</div>';
+
+        // Mirroring state
+        html += '<div style="display:flex;align-items:center;gap:6px;">';
+        html += '<span style="color:var(--text-muted);">Mirroring:</span>';
+        if (reconnPending) {
+            html += '<span style="color:#e74c3c;font-weight:600;">\\u25CF Suppressed (sync pending)</span>';
+        } else {
+            html += '<span style="color:#2ecc71;font-weight:600;">\\u25CF Enabled</span>';
+        }
+        html += '</div>';
+
+        // Sync running
+        html += '<div style="display:flex;align-items:center;gap:6px;">';
+        html += '<span style="color:var(--text-muted);">Sync:</span>';
+        if (syncRunning) {
+            html += '<span style="color:#f39c12;font-weight:600;">Syncing...</span>';
+        } else {
+            html += '<span style="color:var(--text-secondary);">Idle</span>';
+        }
+        html += '</div>';
+
+        // Force Sync button
+        html += '<button class="btn btn-sm managed-disabled" onclick="_brokerForceSync()" style="font-size:10px;padding:3px 10px;background:#9b59b6;color:#fff;border:none;border-radius:4px;cursor:pointer;">Force Sync Now</button>';
+
+        html += '</div>'; // flex row
+        if (syncEid) {
+            html += '<div style="margin-top:6px;font-size:10px;color:var(--text-muted);font-family:monospace;">' + esc(syncEid) + '</div>';
+        }
+        html += '</div>'; // banner
+
         html += '<div style="margin:8px 0 12px 0;">';
         html += '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">Entity Mapping</div>';
         html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">' + matched.length + ' matched, ' + unmatchedCtrl.length + ' unmatched controller, ' + unmatchedRemote.length + ' unmatched remote (of ' + totalCtrl + ' ctrl / ' + totalRemote + ' remote)</div>';
@@ -7359,22 +7411,25 @@ async function _buildBrokerDebugHtml() {
     html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog(\\'broker\\')" style="font-size:11px;">Clear Log</button>';
     html += '</div></div>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
-    html += '<span style="color:#2ecc71;font-weight:600;">● Relayed</span>';
-    html += '<span style="color:#3498db;">● Inventory / Mapping</span>';
-    html += '<span style="color:#f39c12;font-weight:600;">● Warning</span>';
-    html += '<span style="color:#e74c3c;">● Error / Failed</span>';
-    html += '<span style="color:#9b59b6;">● Reconnect / Sync</span>';
+    html += '<span style="color:#2ecc71;font-weight:600;">\\u25CF Relayed</span>';
+    html += '<span style="color:#3498db;">\\u25CF Inventory / Mapping</span>';
+    html += '<span style="color:#e67e22;font-weight:600;">\\u25CF Suppressed</span>';
+    html += '<span style="color:#f39c12;font-weight:600;">\\u25CF Warning</span>';
+    html += '<span style="color:#e74c3c;">\\u25CF Error / Failed</span>';
+    html += '<span style="color:#9b59b6;">\\u25CF Reconnect / Sync</span>';
     html += '</div>';
     html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:40vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i].replace(/</g, '&lt;').replace(/>/g, '&gt;');
         if (line.indexOf('FAILED') >= 0 || line.indexOf('ERROR') >= 0)
             html += '<span style="color:#e74c3c;font-weight:600;">' + line + '</span>\\n';
+        else if (line.indexOf('Suppressed') >= 0)
+            html += '<span style="color:#e67e22;font-weight:600;">' + line + '</span>\\n';
         else if (line.indexOf('WARNING') >= 0 || line.indexOf('Unmatched') >= 0)
             html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
         else if (line.indexOf('Relayed') >= 0)
             html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
-        else if (line.indexOf('reconnect') >= 0 || line.indexOf('sync') >= 0 || line.indexOf('Sync') >= 0)
+        else if (line.indexOf('reconnect') >= 0 || line.indexOf('sync') >= 0 || line.indexOf('Sync') >= 0 || line.indexOf('blocking') >= 0 || line.indexOf('force sync') >= 0)
             html += '<span style="color:#9b59b6;">' + line + '</span>\\n';
         else if (line.indexOf('inventory') >= 0 || line.indexOf('Broker matched') >= 0 || line.indexOf('Broker:') >= 0)
             html += '<span style="color:#3498db;">' + line + '</span>\\n';
@@ -7383,6 +7438,23 @@ async function _buildBrokerDebugHtml() {
     }
     html += '</pre>';
     return html;
+}
+
+async function _brokerForceSync() {
+    if (managedGuard()) return;
+    var ok = await showConfirm({ title: 'Force Sync', message: 'This will push ALL controller values to the remote device and reset the sync_needed flag. Continue?', confirmText: 'Force Sync', confirmClass: 'btn-primary', icon: fluxIcon('refresh',28) });
+    if (!ok) return;
+    try {
+        showToast('Syncing...');
+        var resp = await fetch(HBASE + '/debug/broker-force-sync', { method: 'POST' });
+        var data = await resp.json();
+        if (data.synced) {
+            showToast('Force sync complete');
+        } else {
+            showToast('Sync returned unexpected result', 'error');
+        }
+        await _renderDebugLogModal();
+    } catch(e) { showToast('Force sync failed: ' + e.message, 'error'); }
 }
 
 async function clearDebugLog(logType) {

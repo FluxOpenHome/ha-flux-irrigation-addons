@@ -1067,7 +1067,40 @@ async def homeowner_broker_status():
     """Get the current broker entity mapping state for the debug tool."""
     _require_homeowner_mode()
     from run_log import get_broker_status
-    return get_broker_status()
+    return await get_broker_status()
+
+
+@router.post("/debug/broker-force-sync", summary="Force a full broker sync")
+async def homeowner_broker_force_sync(request: Request):
+    """Manually trigger a full controller→remote sync and clear sync_needed."""
+    _require_data_control(request)
+    import run_log
+    import ha_client
+    import asyncio
+    from run_log import sync_all_remote_state, _find_sync_needed_entity
+
+    # Block mirroring during sync
+    run_log._remote_reconnect_pending = True
+    run_log._remote_log("Broker: manual force sync triggered")
+
+    # Run full sync
+    await sync_all_remote_state()
+
+    # Turn off sync_needed switch if present
+    sync_eid = _find_sync_needed_entity()
+    if sync_eid:
+        try:
+            await ha_client.call_service("switch", "turn_off", {"entity_id": sync_eid})
+            run_log._remote_log(f"Broker: turned OFF {sync_eid} (force sync)")
+        except Exception as e:
+            run_log._remote_log(f"Broker: failed to turn off sync_needed: {e}")
+
+    # Wait for settle then re-enable mirroring
+    await asyncio.sleep(3)
+    run_log._remote_reconnect_pending = False
+    run_log._remote_log("Broker: force sync complete — mirroring re-enabled")
+
+    return {"status": "ok", "synced": True}
 
 
 @router.get("/zone_aliases", summary="Get zone aliases")
