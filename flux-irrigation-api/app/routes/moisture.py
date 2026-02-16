@@ -1991,6 +1991,14 @@ def _is_moisture_device(name: str, manufacturer: str, model: str) -> bool:
     return manufacturer == "FluxOpenHome" and "gophr" in model.lower()
 
 
+def _is_zigbee_gophr(sensor_entities: list[dict]) -> bool:
+    """Check if device entities match Zigbee Gophr pattern (c6 in entity ID)."""
+    for s in sensor_entities:
+        if "_c6_" in s.get("entity_id", "").lower():
+            return True
+    return False
+
+
 async def list_moisture_devices() -> dict:
     """List FluxOpenHome Gophr devices.
 
@@ -3450,6 +3458,7 @@ class ProbeCreateRequest(BaseModel):
         None,
         description="Per-probe thresholds (uses defaults if not set)",
     )
+    probe_type: Optional[str] = Field(None, description="Device type: esphome, zigbee, cellular")
 
 
 class ProbeUpdateRequest(BaseModel):
@@ -3526,7 +3535,8 @@ async def api_autodetect_device_sensors(device_id: str):
     extra_map = {"wifi": None, "battery": None, "sleep_duration": None}
     disabled_sensor_entities = []  # Track disabled sensors for diagnostic
 
-    print(f"[MOISTURE] autodetect: {len(sensors)} sensors from get_device_sensors, {len(all_device_entity_ids)} total entities for device {device_id}")
+    is_zigbee = _is_zigbee_gophr(sensors)
+    print(f"[MOISTURE] autodetect: {len(sensors)} sensors from get_device_sensors, {len(all_device_entity_ids)} total entities for device {device_id}, is_zigbee={is_zigbee}")
 
     if not sensors:
         print(f"[MOISTURE] autodetect: 0 sensors — device_entities() returned nothing for this device")
@@ -3582,11 +3592,18 @@ async def api_autodetect_device_sensors(device_id: str):
                 print(f"[MOISTURE]   MATCH sleep: {s['entity_id']}")
             continue
 
-        # Skip non-moisture environmental sensors (AHT20 temperature, humidity, etc.)
-        # These are ambient sensors, not soil moisture sensors.
-        if any(kw in searchable for kw in ("temperature", "humidity", "aht")):
+        # Skip temperature and AHT sensors (always ambient)
+        if any(kw in searchable for kw in ("temperature", "aht")):
             if "moisture" not in searchable:
                 print(f"[MOISTURE]   SKIP ambient: {s['entity_id']}")
+                continue
+
+        # Humidity: ESPHome "humidity" = ambient (skip). Zigbee uses humidity_N for soil probes.
+        # Skip base humidity (no number suffix), allow numbered humidity_N through.
+        if "humidity" in searchable and "moisture" not in searchable:
+            eid_after_humidity = eid.split("humidity")[-1]
+            if not re.search(r'_\d+', eid_after_humidity):
+                print(f"[MOISTURE]   SKIP ambient humidity: {s['entity_id']}")
                 continue
 
         # Skip uptime, time_awake, minutes_to_next_wake — not moisture sensors
@@ -3595,23 +3612,40 @@ async def api_autodetect_device_sensors(device_id: str):
             continue
 
         # Moisture depth detection
-        # Priority 1: numbered sensors (sensor_3=shallow, sensor_2=mid, sensor_1=deep)
-        # Matches: moisture_1_percentage, moisture_sensor_1, moisture_1, etc.
-        num_match = re.search(r'(?:moisture|sensor|channel|probe)[_\s]*(\d+)', searchable)
+        # Priority 1: numbered sensors
+        # ESPHome: moisture_3=shallow, moisture_2=mid, moisture_1=deep
+        # Zigbee:  humidity_4=shallow, humidity_3=mid, humidity_2=deep
+        num_match = re.search(r'(?:moisture|humidity|sensor|channel|probe)[_\s]*(\d+)', searchable)
         if num_match:
             num = int(num_match.group(1))
-            if num == 3 and not depth_map["shallow"]:
-                depth_map["shallow"] = s["entity_id"]
-                print(f"[MOISTURE]   MATCH shallow (num 3): {s['entity_id']}")
-                continue
-            elif num == 2 and not depth_map["mid"]:
-                depth_map["mid"] = s["entity_id"]
-                print(f"[MOISTURE]   MATCH mid (num 2): {s['entity_id']}")
-                continue
-            elif num == 1 and not depth_map["deep"]:
-                depth_map["deep"] = s["entity_id"]
-                print(f"[MOISTURE]   MATCH deep (num 1): {s['entity_id']}")
-                continue
+            if is_zigbee:
+                # Zigbee: 4=shallow, 3=mid, 2=deep
+                if num == 4 and not depth_map["shallow"]:
+                    depth_map["shallow"] = s["entity_id"]
+                    print(f"[MOISTURE]   MATCH shallow (zigbee num 4): {s['entity_id']}")
+                    continue
+                elif num == 3 and not depth_map["mid"]:
+                    depth_map["mid"] = s["entity_id"]
+                    print(f"[MOISTURE]   MATCH mid (zigbee num 3): {s['entity_id']}")
+                    continue
+                elif num == 2 and not depth_map["deep"]:
+                    depth_map["deep"] = s["entity_id"]
+                    print(f"[MOISTURE]   MATCH deep (zigbee num 2): {s['entity_id']}")
+                    continue
+            else:
+                # ESPHome: 3=shallow, 2=mid, 1=deep
+                if num == 3 and not depth_map["shallow"]:
+                    depth_map["shallow"] = s["entity_id"]
+                    print(f"[MOISTURE]   MATCH shallow (num 3): {s['entity_id']}")
+                    continue
+                elif num == 2 and not depth_map["mid"]:
+                    depth_map["mid"] = s["entity_id"]
+                    print(f"[MOISTURE]   MATCH mid (num 2): {s['entity_id']}")
+                    continue
+                elif num == 1 and not depth_map["deep"]:
+                    depth_map["deep"] = s["entity_id"]
+                    print(f"[MOISTURE]   MATCH deep (num 1): {s['entity_id']}")
+                    continue
 
         # Priority 2: keyword matching
         if any(kw in searchable for kw in ("shallow", "surface", "top")):
@@ -3854,12 +3888,14 @@ async def api_autodetect_device_sensors(device_id: str):
             diagnostic["hint"] = (
                 f"Found {len(filtered_sensors)} sensor(s) but none matched depth patterns. "
                 f"Expected entity names containing 'moisture_1', 'moisture_2', 'moisture_3' "
+                f"(ESPHome) or 'humidity_2', 'humidity_3', 'humidity_4' (Zigbee) "
                 f"or keywords like 'shallow', 'mid', 'deep'."
             )
             diagnostic["sensor_entities"] = [s["entity_id"] for s in filtered_sensors]
 
     return {
         "device_id": device_id,
+        "probe_type": "zigbee" if is_zigbee else "esphome",
         "sensors": depth_map,
         "extra_sensors": {k: v for k, v in extra_map.items() if v is not None},
         "all_sensors": sensors,
@@ -4159,6 +4195,7 @@ async def api_add_probe(body: ProbeCreateRequest, request: Request):
         "extra_sensors": body.extra_sensors or {},
         "zone_mappings": body.zone_mappings,
         "thresholds": body.thresholds,
+        "probe_type": body.probe_type or "esphome",
     }
 
     data.setdefault("probes", {})[body.probe_id] = probe

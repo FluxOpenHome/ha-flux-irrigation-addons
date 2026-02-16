@@ -5944,6 +5944,7 @@ async function addHoProbeFromDevice() {
             sensors: cleanSensors,
             extra_sensors: extraSensors,
             zone_mappings: [],
+            probe_type: (_hoAutodetectCache && _hoAutodetectCache.probe_type) || 'esphome',
         });
         showToast('Probe "' + displayName + '" added — use Edit Zones to assign zones');
         _moistureDataCache = null;
