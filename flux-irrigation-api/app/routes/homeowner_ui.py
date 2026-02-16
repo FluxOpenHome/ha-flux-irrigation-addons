@@ -4337,7 +4337,7 @@ async function loadWeather() {
         // Weather source badge
         var _wsrc = data.weather_source || w.weather_source || '';
         var _srcLabel = '';
-        if (_wsrc === 'owm') _srcLabel = 'OpenWeatherMap';
+        if (_wsrc === 'management') _srcLabel = 'Management';
         else if (_wsrc === 'nws') _srcLabel = 'National Weather Service';
         else if (_wsrc === 'ha_entity') _srcLabel = 'Home Assistant';
         else if (_wsrc) _srcLabel = _wsrc;

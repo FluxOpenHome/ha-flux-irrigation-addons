@@ -804,7 +804,12 @@ async def homeowner_weather():
     rules_data = _load_weather_rules()
 
     # Determine weather source for badge display
-    weather_source = weather.get("weather_source", config.weather_source or "ha_entity")
+    # If external weather is being pushed by management server, show "management"
+    # regardless of the underlying API (OWM, etc.)
+    if has_external:
+        weather_source = "management"
+    else:
+        weather_source = config.weather_source or "ha_entity"
 
     return {
         "weather_enabled": True,

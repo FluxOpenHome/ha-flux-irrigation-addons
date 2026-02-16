@@ -1205,7 +1205,7 @@ async def run_weather_evaluation() -> dict:
         ext_qpf = rules_data.get("precip_qpf_inches")
         if ext_factors:
             avg_factor = round(sum(ext_factors.values()) / len(ext_factors), 3)
-            reason = (f"Precipitation Credit ({_ext_source.upper()}): "
+            reason = (f"Precipitation Credit (Management): "
                       f"{ext_qpf:.2f}\" forecast, avg zone factor {avg_factor}")
             new_adjustments.append({
                 "rule": "intelligent_precip", "action": "reduce",
@@ -1860,6 +1860,27 @@ async def receive_precip_factors(request: Request):
         rules_data["precip_qpf_inches"] = qpf_inches
     rules_data["precip_factors_source"] = source
     rules_data["precip_factors_pushed_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Update active_adjustments so the orange box immediately reflects pushed data
+    # (without waiting for the next periodic run_weather_evaluation cycle)
+    existing_adj = [
+        a for a in rules_data.get("active_adjustments", [])
+        if a.get("rule") != "intelligent_precip"
+    ]
+    if factors:
+        avg_factor = round(sum(factors.values()) / len(factors), 3)
+        qpf_display = qpf_inches if qpf_inches is not None else 0
+        reason = f"Precipitation Credit (Management): {qpf_display:.2f}\" forecast, avg zone factor {avg_factor}"
+        existing_adj.append({
+            "rule": "intelligent_precip",
+            "action": "reduce",
+            "factor": avg_factor,
+            "reason": reason,
+            "applied_at": rules_data["precip_factors_pushed_at"],
+            "source": source,
+        })
+    rules_data["active_adjustments"] = existing_adj
+
     _save_weather_rules(rules_data)
 
     # Store full weather data if provided (for add-on weather card + rules evaluation)
