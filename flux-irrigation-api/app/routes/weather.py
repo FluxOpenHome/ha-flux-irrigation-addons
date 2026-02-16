@@ -580,6 +580,20 @@ def _map_nws_forecast_period(period: dict) -> dict:
     }
 
 
+_NWS_SKY_MAP = {"CLR": 0, "SKC": 0, "FEW": 20, "SCT": 40, "BKN": 70, "OVC": 100}
+
+def _nws_cloud_cover(props: dict):
+    """Convert NWS cloudLayers array to a single 0-100 coverage percentage."""
+    layers = props.get("cloudLayers") or []
+    if not layers:
+        return None
+    cover = 0
+    for layer in layers:
+        amount = (layer.get("amount") or "").upper()
+        cover = max(cover, _NWS_SKY_MAP.get(amount, 0))
+    return cover
+
+
 async def _fetch_nws_observations(station_url: str, backup_stations: list = None) -> dict:
     """Fetch latest observations from an NWS station.
 
@@ -618,6 +632,8 @@ async def _fetch_nws_observations(station_url: str, backup_stations: list = None
                     "windDirection": _extract_nws_value(props.get("windDirection")),
                     "barometricPressure": _extract_nws_value(props.get("barometricPressure")),
                     "precipitationMm": precip_mm,
+                    "dewpoint": _extract_nws_value(props.get("dewpoint")),
+                    "cloudCover": _nws_cloud_cover(props),
                     "timestamp": props.get("timestamp"),
                 }
         except Exception as e:
@@ -875,6 +891,9 @@ async def get_weather_data_nws() -> dict:
         "precipitation_inches": precip_inches,
         "precipitation_mm": precip_mm,
         "qpf_inches": qpf_inches,
+        "dew_point": _c_to_f(obs.get("dewpoint")),
+        "cloud_cover": obs.get("cloudCover"),
+        "uv_index": None,  # Not available from NWS station observations
         "forecast": forecast,
         "last_updated": obs.get("timestamp"),
     }
@@ -938,6 +957,9 @@ async def get_weather_data() -> dict:
         "pressure": attrs.get("pressure"),
         "precipitation_inches": precip_inches,
         "precipitation_mm": precip_mm,
+        "dew_point": attrs.get("dew_point"),
+        "cloud_cover": attrs.get("cloud_coverage") or attrs.get("cloud_cover"),
+        "uv_index": attrs.get("uv_index"),
         "forecast": forecast[:7],
         "last_updated": state.get("last_updated"),
     }
