@@ -43,8 +43,10 @@ class Config:
     supervisor_token: Optional[str] = None
     system_mode: str = "standalone"  # "standalone" or "managed"
     detected_zone_count: int = 0
-    remote_device_id: str = ""
-    allowed_remote_entities: list[str] = field(default_factory=list)
+    remote_device_id: str = ""  # backward compat — use remote_device_ids instead
+    remote_device_ids: list[str] = field(default_factory=list)  # canonical list of remote device UUIDs
+    allowed_remote_entities: list[str] = field(default_factory=list)  # union of all remotes' entities
+    allowed_remote_entities_by_device: dict[str, list[str]] = field(default_factory=dict)  # device_id → entity list
 
     @classmethod
     def load(cls, prefer_file: bool = False) -> "Config":
@@ -142,9 +144,13 @@ class Config:
         config.weather_source = options.get(
             "weather_source", config.weather_source
         )
-        config.remote_device_id = options.get(
-            "remote_device_id", config.remote_device_id
-        )
+        # Multi-remote support: migrate old single remote_device_id to list
+        config.remote_device_ids = options.get("remote_device_ids", [])
+        old_remote = options.get("remote_device_id", "")
+        if old_remote and not config.remote_device_ids:
+            config.remote_device_ids = [old_remote]
+        # Keep backward compat field populated (first remote or empty)
+        config.remote_device_id = config.remote_device_ids[0] if config.remote_device_ids else ""
 
         return config
 
@@ -161,9 +167,10 @@ class Config:
             self.allowed_zone_entities = []
             self.allowed_sensor_entities = []
             self.allowed_control_entities = []
-        if not self.remote_device_id:
+        if not self.remote_device_ids:
             self.allowed_remote_entities = []
-        if not self.irrigation_device_id and not self.remote_device_id:
+            self.allowed_remote_entities_by_device = {}
+        if not self.irrigation_device_id and not self.remote_device_ids:
             return
 
         import asyncio
