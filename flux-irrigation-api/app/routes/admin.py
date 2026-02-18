@@ -1856,7 +1856,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <!-- Manual Coordinates (standalone fallback when address doesn't geocode) -->
-            <div id="manualCoordsSection" style="margin-top:12px;padding:12px;background:var(--bg-active-tile);border:1px solid var(--border-active);border-radius:8px;">
+            <div id="manualCoordsSection" style="display:none;margin-top:12px;padding:12px;background:var(--bg-active-tile);border:1px solid var(--border-active);border-radius:8px;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                     <strong style="font-size:13px;color:var(--color-primary);">Map Coordinates</strong>
                     <span id="coordSourceBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--border-light);color:var(--text-secondary);display:none;"></span>
@@ -3571,6 +3571,9 @@ ADMIN_HTML = """<!DOCTYPE html>
     function toggleManagementCardVisibility(mode) {
         const card = document.getElementById('managementAccessCard');
         if (card) card.style.display = mode === 'managed' ? '' : 'none';
+        // Show manual coordinates only in standalone mode
+        const coordSection = document.getElementById('manualCoordsSection');
+        if (coordSection) coordSection.style.display = mode === 'standalone' ? '' : 'none';
     }
 
     // --- Init ---
