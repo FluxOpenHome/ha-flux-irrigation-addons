@@ -4,6 +4,8 @@ List, read, and control all non-zone/non-sensor entities on the irrigation devic
 (numbers, selects, switches, buttons, text inputs, lights, etc.).
 """
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -252,6 +254,36 @@ async def set_entity(
 
     entity_id = _resolve_control_entity(entity_id, config)
     domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+    # --- Schedule lock check (set by management bulk scheduling) ---
+    # Only block homeowner-initiated changes (not management proxy calls)
+    actor = request.headers.get("X-Actor", "") or request.query_params.get("X-Actor", "")
+    if not actor:  # Homeowner-initiated
+        import re
+        eid_lower = entity_id.lower()
+        is_schedule_entity = bool(
+            re.search(r'schedule.*(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)', eid_lower)
+            or re.search(r'start_time', eid_lower)
+            or (re.search(r'zone[_\s]?\d+', eid_lower) and domain == "number")
+            or re.search(r'schedule_enable|enable_schedule', eid_lower)
+        )
+        if is_schedule_entity:
+            try:
+                import json as _json
+                _opts_path = "/data/options.json"
+                if os.path.exists(_opts_path):
+                    with open(_opts_path, "r") as _f:
+                        _opts = _json.load(_f)
+                    _lock = _opts.get("schedule_lock")
+                    if _lock and _lock.get("locked"):
+                        return JSONResponse(content={
+                            "status": "schedule_locked",
+                            "group_name": _lock.get("group_name", "Bulk Schedule"),
+                            "group_color": _lock.get("group_color", "#666"),
+                            "message": "Schedule is locked by management.",
+                        })
+            except Exception:
+                pass  # Don't block on lock check errors
 
     # Pre-flight conflict check for zone duration changes:
     # would this change prevent any probe's wake schedule from working?

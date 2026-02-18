@@ -3430,9 +3430,34 @@ async function setEntityValue(entityId, domain, bodyObj, force) {
             showModal('Probe Wake Conflict', html, '480px');
             return;
         }
+        // --- Bulk Schedule Lock ---
+        if (result && result.status === 'schedule_locked') {
+            _showScheduleLockModal(result);
+            return;
+        }
         showToast('Updated ' + entityId.split('.').pop());
         setTimeout(() => { loadControls(); loadSensors(); }, 1000);
     } catch (e) { showToast(e.message, 'error'); }
+}
+
+function _showScheduleLockModal(lockInfo) {
+    var color = lockInfo.group_color || '#666';
+    var html = '<div style="text-align:center;padding:10px 0;">';
+    html += '<div style="width:48px;height:48px;border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;' +
+        'background:' + esc(color) + '22;border:2px solid ' + esc(color) + ';">' +
+        '<span style="font-size:22px;">&#128274;</span></div>';
+    html += '<div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--text-primary);">Schedule Locked</div>';
+    html += '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">' +
+        'Your irrigation schedule is currently managed by your irrigation company.</div>';
+    html += '<div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:8px;' +
+        'background:var(--bg-tile);border-left:4px solid ' + esc(color) + ';margin-bottom:16px;">' +
+        '<span style="font-weight:600;font-size:14px;color:var(--text-primary);">' + esc(lockInfo.group_name || 'Bulk Schedule') + '</span></div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:18px;">' +
+        'Schedule changes are disabled while this bulk schedule is active. Contact your irrigation company to make changes.</div>';
+    html += '<div style="display:flex;gap:8px;justify-content:center;">';
+    html += '<button class="btn btn-primary" onclick="closeDynamicModal()">OK</button>';
+    html += '</div></div>';
+    showModal('Schedule Locked', html, '400px');
 }
 
 async function hoZoneModeChanged(modeEntityId, newMode) {

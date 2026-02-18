@@ -238,7 +238,31 @@ async def get_settings():
     result["stored_longitude"] = geo_cache.get("longitude")
     result["stored_geo_source"] = geo_cache.get("source")
 
+    # Schedule lock info (set by management bulk scheduling)
+    result["schedule_lock"] = options.get("schedule_lock", None)
+
     return result
+
+
+@router.put("/api/settings/schedule-lock", summary="Set or clear schedule lock")
+async def set_schedule_lock(request: Request):
+    """Set or clear the schedule lock (used by management bulk scheduling).
+
+    Body: { "locked": true, "group_name": "...", "group_color": "#..." }
+    or: { "locked": false } to clear.
+    """
+    body = await request.json()
+    options = _load_options()
+    if body.get("locked"):
+        options["schedule_lock"] = {
+            "locked": True,
+            "group_name": body.get("group_name", "Bulk Schedule"),
+            "group_color": body.get("group_color", "#1a7a4c"),
+        }
+    else:
+        options["schedule_lock"] = None
+    await _save_options(options)
+    return {"status": "ok", "schedule_lock": options["schedule_lock"]}
 
 
 @router.post("/api/keys", summary="Create a new API key")
