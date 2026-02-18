@@ -1864,7 +1864,6 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">
                     If your address doesn't show on maps, enter your property coordinates manually.
                     Find them at <a href="https://www.latlong.net/" target="_blank" style="color:var(--color-primary);">latlong.net</a>.
-                    In managed mode, coordinates are sent by your management company automatically.
                 </p>
                 <div class="form-row">
                     <div class="form-group" style="max-width:200px;">
