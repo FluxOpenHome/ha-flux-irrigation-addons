@@ -70,6 +70,28 @@ async def _count_usable_zones(config) -> int | None:
     return len(zones)
 
 
+async def _has_pump_or_master_valve(config) -> bool:
+    """Check if any zone is configured as pump start relay or master valve."""
+    import ha_client
+
+    if not config.allowed_control_entities:
+        return False
+
+    mode_eids = [
+        e for e in config.allowed_control_entities
+        if e.startswith("select.") and re.search(r'zone_\d+_mode', e.lower())
+    ]
+    if not mode_eids:
+        return False
+
+    mode_entities = await ha_client.get_entities_by_ids(mode_eids)
+    for me in mode_entities:
+        mode_val = (me.get("state") or "").lower()
+        if re.search(r'pump|relay|master.*valve|valve.*master', mode_val, re.IGNORECASE):
+            return True
+    return False
+
+
 def _load_options() -> dict:
     """Load current options from persistent storage."""
     if os.path.exists(OPTIONS_FILE):
@@ -106,6 +128,7 @@ async def _save_options(options: dict):
         "rate_limit_per_minute", "log_retention_days", "enable_audit_log",
         "connection_revoked", "weather_entity_id", "weather_enabled",
         "weather_check_interval_minutes", "weather_source", "remote_device_id",
+        "remote_device_ids",
     }
     supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
     if supervisor_token:
@@ -151,6 +174,11 @@ class DeviceSelect(BaseModel):
     device_id: str = Field(min_length=1)
 
 
+class RemoteDeviceAction(BaseModel):
+    device_id: str = Field(min_length=1)
+    action: str = Field(pattern=r"^(add|remove)$")
+
+
 class SettingsUpdate(BaseModel):
     rate_limit_per_minute: Optional[int] = Field(None, ge=1, le=300)
     log_retention_days: Optional[int] = Field(None, ge=1, le=730)
@@ -184,6 +212,7 @@ async def get_settings():
         "api_keys": api_keys,
         "irrigation_device_id": options.get("irrigation_device_id", ""),
         "remote_device_id": options.get("remote_device_id", ""),
+        "remote_device_ids": config.remote_device_ids,
         "allowed_zone_entities": config.allowed_zone_entities,
         "allowed_sensor_entities": config.allowed_sensor_entities,
         "allowed_control_entities": config.allowed_control_entities,
@@ -345,14 +374,20 @@ async def list_remote_devices():
     result = [d for d in all_devices if _is_remote_device(
         d["name"], d["manufacturer"], d["model"]
     )]
-    # If the currently selected remote isn't in the filtered list, include it
-    if config.remote_device_id:
-        selected_ids = {d["id"] for d in result}
-        if config.remote_device_id not in selected_ids:
+    # If any connected remote isn't in the filtered list, include it
+    connected_set = set(config.remote_device_ids)
+    result_ids = {d["id"] for d in result}
+    for sel_id in config.remote_device_ids:
+        if sel_id not in result_ids:
             for d in all_devices:
-                if d["id"] == config.remote_device_id:
+                if d["id"] == sel_id:
                     result.append(d)
+                    result_ids.add(sel_id)
                     break
+
+    # Annotate each device with connected status
+    for d in result:
+        d["connected"] = d["id"] in connected_set
 
     result.sort(key=lambda d: d["name"].lower())
     return {"devices": result}
@@ -401,38 +436,45 @@ async def select_device(body: DeviceSelect):
 
 
 async def sync_remote_settings(use_12h: bool | None = None):
-    """Push current settings to the remote device.
+    """Push current settings to all connected remote devices.
 
-    Syncs:
+    Syncs per-device:
       - zone_count (number entity) — from detected_zone_count or len(allowed_zone_entities)
       - use_12_hour_format (switch entity) — from the provided value or /data/settings.json
+      - pump_start_master_valve (switch entity) — ON if any zone is pump/relay/master valve
 
     These are one-way: add-on → remote.  The remote just displays them.
     """
     import ha_client
     config = get_config()
-    if not config.allowed_remote_entities:
+    if not config.allowed_remote_entities_by_device:
         return
 
-    # Find the remote entities by suffix pattern
-    zone_count_eid = None
-    use_12h_eid = None
-    for eid in config.allowed_remote_entities:
-        lower = eid.lower()
-        if eid.startswith("number.") and "zone_count" in lower:
-            zone_count_eid = eid
-        elif eid.startswith("switch.") and "12_hour" in lower:
-            use_12h_eid = eid
+    # Compute shared values once (same for all remotes)
+    zc = await _count_usable_zones(config)
+    if not zc:
+        zc = config.detected_zone_count
+        if not zc and config.allowed_zone_entities:
+            zc = len(config.allowed_zone_entities)
 
-    # Sync zone count — use filtered count (excludes pump/master valve + not-used)
-    if zone_count_eid:
-        zc = await _count_usable_zones(config)
-        if not zc:
-            # Fallback: raw count if usable-zone detection failed
-            zc = config.detected_zone_count
-            if not zc and config.allowed_zone_entities:
-                zc = len(config.allowed_zone_entities)
-        if zc and zc > 0:
+    has_pump = await _has_pump_or_master_valve(config)
+
+    # Sync to each connected remote device
+    for device_id, entities in config.allowed_remote_entities_by_device.items():
+        zone_count_eid = None
+        use_12h_eid = None
+        pump_flag_eid = None
+        for eid in entities:
+            lower = eid.lower()
+            if eid.startswith("number.") and "zone_count" in lower:
+                zone_count_eid = eid
+            elif eid.startswith("switch.") and "12_hour" in lower:
+                use_12h_eid = eid
+            elif eid.startswith("switch.") and "pump_start_master_valve" in lower:
+                pump_flag_eid = eid
+
+        # Sync zone count
+        if zone_count_eid and zc and zc > 0:
             ok = await ha_client.call_service(
                 "number", "set_value",
                 {"entity_id": zone_count_eid, "value": zc},
@@ -442,68 +484,113 @@ async def sync_remote_settings(use_12h: bool | None = None):
             else:
                 print(f"[REMOTE] Failed to sync zone_count to {zone_count_eid}")
 
-    # Sync 12-hour format
-    if use_12h_eid and use_12h is not None:
-        svc = "turn_on" if use_12h else "turn_off"
-        ok = await ha_client.call_service(
-            "switch", svc,
-            {"entity_id": use_12h_eid},
-        )
-        if ok:
-            print(f"[REMOTE] Synced use_12h={use_12h} → {use_12h_eid}")
-        else:
-            print(f"[REMOTE] Failed to sync use_12h to {use_12h_eid}")
+        # Sync 12-hour format
+        if use_12h_eid and use_12h is not None:
+            svc = "turn_on" if use_12h else "turn_off"
+            ok = await ha_client.call_service(
+                "switch", svc,
+                {"entity_id": use_12h_eid},
+            )
+            if ok:
+                print(f"[REMOTE] Synced use_12h={use_12h} → {use_12h_eid}")
+            else:
+                print(f"[REMOTE] Failed to sync use_12h to {use_12h_eid}")
+
+        # Sync pump/master valve flag
+        if pump_flag_eid:
+            svc = "turn_on" if has_pump else "turn_off"
+            ok = await ha_client.call_service(
+                "switch", svc,
+                {"entity_id": pump_flag_eid},
+            )
+            if ok:
+                print(f"[REMOTE] Synced pump_master_valve={has_pump} → {pump_flag_eid}")
+            else:
+                print(f"[REMOTE] Failed to sync pump_master_valve to {pump_flag_eid}")
 
 
-@router.put("/api/remote-device", summary="Select remote device")
+@router.put("/api/remote-device", summary="Select remote device (legacy)")
 async def select_remote_device(body: DeviceSelect):
-    """Select the irrigation remote device and resolve its entities."""
-    import ha_client
+    """Legacy single-remote endpoint. Wraps the new multi-remote add action."""
+    action = RemoteDeviceAction(device_id=body.device_id, action="add")
+    return await manage_remote_devices(action)
 
-    try:
-        entities = await ha_client.get_device_entities(body.device_id)
-    except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to fetch device entities: {e}",
-        )
+
+@router.put("/api/remote-devices", summary="Add or remove a remote device")
+async def manage_remote_devices(body: RemoteDeviceAction):
+    """Add or remove an irrigation remote device."""
+    import ha_client
+    from config import reload_config
 
     options = _load_options()
-    options["remote_device_id"] = body.device_id
-    await _save_options(options)
+    device_ids = options.get("remote_device_ids", [])
 
-    config = get_config()
+    if body.action == "add":
+        # Enforce max 5 remotes
+        if len(device_ids) >= 5 and body.device_id not in device_ids:
+            raise HTTPException(status_code=400, detail="Maximum of 5 remote devices allowed")
 
-    log_change("Homeowner", "Device Config", f"Selected remote: {body.device_id}")
+        # Verify the device exists
+        try:
+            await ha_client.get_device_entities(body.device_id)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch device entities: {e}")
 
-    all_entities = []
-    for category in ("zones", "sensors", "other"):
-        all_entities.extend(entities.get(category, []))
+        if body.device_id not in device_ids:
+            device_ids.append(body.device_id)
+        options["remote_device_ids"] = device_ids
+        # Keep backward compat: first remote is the primary
+        options["remote_device_id"] = device_ids[0] if device_ids else ""
+        await _save_options(options)
 
-    # Full sync to the newly connected remote — push ALL state
-    try:
-        # Invalidate cached maps so they rebuild with new remote entities
-        from run_log import invalidate_remote_maps, sync_all_remote_state
-        invalidate_remote_maps()
+        config = await reload_config()
+        log_change("Homeowner", "Device Config", f"Added remote: {body.device_id}")
 
-        settings_file = "/data/settings.json"
-        use_12h = True
-        if os.path.exists(settings_file):
-            with open(settings_file) as f:
-                settings = json.load(f)
-                use_12h = settings.get("time_format", "12h") != "24h"
-        await sync_remote_settings(use_12h=use_12h)
-        # Push all entity states (zones, schedules, durations, days, status)
-        await sync_all_remote_state()
-    except Exception as e:
-        print(f"[REMOTE] Full sync after device select failed: {e}")
+        # Full sync to the newly connected remote
+        try:
+            from run_log import invalidate_remote_maps, sync_all_remote_state
+            invalidate_remote_maps()
 
-    return {
-        "success": True,
-        "device_id": body.device_id,
-        "entities": all_entities,
-        "allowed_remote_entities": config.allowed_remote_entities,
-    }
+            settings_file = "/data/settings.json"
+            use_12h = True
+            if os.path.exists(settings_file):
+                with open(settings_file) as f:
+                    settings = json.load(f)
+                    use_12h = settings.get("time_format", "12h") != "24h"
+            await sync_remote_settings(use_12h=use_12h)
+            await sync_all_remote_state()
+        except Exception as e:
+            print(f"[REMOTE] Full sync after device add failed: {e}")
+
+        return {
+            "success": True,
+            "action": "add",
+            "device_id": body.device_id,
+            "remote_device_ids": config.remote_device_ids,
+        }
+
+    else:  # remove
+        if body.device_id in device_ids:
+            device_ids.remove(body.device_id)
+        options["remote_device_ids"] = device_ids
+        options["remote_device_id"] = device_ids[0] if device_ids else ""
+        await _save_options(options)
+
+        config = await reload_config()
+        log_change("Homeowner", "Device Config", f"Removed remote: {body.device_id}")
+
+        try:
+            from run_log import invalidate_remote_maps
+            invalidate_remote_maps()
+        except Exception as e:
+            print(f"[REMOTE] Map invalidation after device remove failed: {e}")
+
+        return {
+            "success": True,
+            "action": "remove",
+            "device_id": body.device_id,
+            "remote_device_ids": config.remote_device_ids,
+        }
 
 
 @router.put("/api/settings/time-format", summary="Update time format and sync to remote")
@@ -1527,24 +1614,27 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Irrigation Remote -->
+    <!-- Irrigation Remote(s) -->
     <div class="card">
         <div class="card-header" style="cursor:pointer;" onclick="document.getElementById('remoteCardBody').style.display = document.getElementById('remoteCardBody').style.display === 'none' ? 'block' : 'none'; document.getElementById('remoteChevron').textContent = document.getElementById('remoteCardBody').style.display === 'none' ? '▶' : '▼';">
-            <h2>🎛️ Irrigation Remote</h2>
+            <h2>🎛️ Irrigation Remote(s)</h2>
             <div style="display:flex;align-items:center;gap:8px;">
                 <span id="remoteStatusBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--bg-tile);color:var(--text-muted);">—</span>
                 <span id="remoteChevron" style="font-size:12px;color:var(--text-muted);">▶</span>
             </div>
         </div>
         <div class="card-body" id="remoteCardBody" style="display:none;">
-            <div class="form-group">
-                <label>Select Remote Device</label>
-                <select id="remoteDeviceSelect" onchange="onRemoteDeviceChange()" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
-                    <option value="">-- Select your irrigation remote --</option>
-                </select>
-            </div>
-            <div id="remoteDeviceEntities">
-                <div class="device-info empty">Select your irrigation remote device above to link it to this controller.</div>
+            <!-- Connected remotes list -->
+            <div id="connectedRemotesList" style="margin-bottom:12px;"></div>
+            <!-- Add new remote -->
+            <div class="form-group" style="margin-top:8px;">
+                <label>Add a Remote</label>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <select id="remoteDeviceSelect" style="flex:1;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">
+                        <option value="">-- Select a remote to add --</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="addRemoteDevice()" style="padding:8px 16px;white-space:nowrap;">Add</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2027,7 +2117,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 
             // Load devices and set current selection
             await loadDevices(data.irrigation_device_id || '');
-            await loadRemoteDevices(data.remote_device_id || '');
+            await loadRemoteDevices();
 
             // Show resolved entities if device is selected
             if (data.irrigation_device_id) {
@@ -2562,36 +2652,63 @@ ADMIN_HTML = """<!DOCTYPE html>
         if (e.target === this) closeRevokeModal();
     });
 
-    // --- Remote Device Selection ---
-    async function loadRemoteDevices(selectedId) {
+    // --- Remote Device Management (Multi-Remote) ---
+    async function loadRemoteDevices() {
         try {
-            const res = await fetch(`${BASE}/remote-devices`);
-            const data = await res.json();
-            const devices = data.devices || [];
-            const select = document.getElementById('remoteDeviceSelect');
-            if (!select) return;
+            var res = await fetch(BASE + '/remote-devices');
+            var data = await res.json();
+            var devices = data.devices || [];
 
-            if (selectedId === undefined) {
-                selectedId = select.value;
+            var sRes = await fetch(BASE + '/settings');
+            var sData = await sRes.json();
+            var connectedIds = sData.remote_device_ids || [];
+
+            // Render connected remotes list
+            var listEl = document.getElementById('connectedRemotesList');
+            if (connectedIds.length === 0) {
+                listEl.innerHTML = '<div class="device-info empty">No remote devices connected.</div>';
+            } else {
+                var html = '';
+                for (var ci = 0; ci < connectedIds.length; ci++) {
+                    var did = connectedIds[ci];
+                    var dev = null;
+                    for (var di = 0; di < devices.length; di++) {
+                        if (devices[di].id === did) { dev = devices[di]; break; }
+                    }
+                    var dName = dev ? dev.name : did.substring(0, 12) + '...';
+                    var dModel = dev && dev.model ? ' <span style="color:var(--text-muted);font-size:11px;">(' + dev.model + ')</span>' : '';
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;margin-bottom:4px;background:var(--bg-tile);border-radius:8px;border:1px solid var(--border-light);">';
+                    html += '<div style="display:flex;align-items:center;gap:8px;">';
+                    html += '<span style="color:var(--color-success);font-size:10px;">\\u25cf</span>';
+                    html += '<span style="font-weight:500;color:var(--text-primary);">' + dName + '</span>' + dModel;
+                    html += '</div>';
+                    html += '<button class="btn" onclick="removeRemoteDevice(\\'' + did + '\\')" style="font-size:11px;padding:4px 10px;background:rgba(231,76,60,0.1);color:var(--color-danger);border:1px solid rgba(231,76,60,0.3);border-radius:6px;">Remove</button>';
+                    html += '</div>';
+                }
+                listEl.innerHTML = html;
             }
 
-            select.innerHTML = '<option value="">-- Select your irrigation remote --</option>';
-            for (const device of devices) {
-                const label = device.manufacturer || device.model
-                    ? `${device.name} (${[device.manufacturer, device.model].filter(Boolean).join(' ')})`
-                    : device.name;
-                const opt = document.createElement('option');
-                opt.value = device.id;
-                opt.textContent = label;
-                if (device.id === selectedId) opt.selected = true;
-                select.appendChild(opt);
+            // Populate add dropdown with only unconnected devices
+            var select = document.getElementById('remoteDeviceSelect');
+            select.innerHTML = '<option value="">-- Select a remote to add --</option>';
+            for (var ai = 0; ai < devices.length; ai++) {
+                var d = devices[ai];
+                if (connectedIds.indexOf(d.id) === -1) {
+                    var label = d.manufacturer || d.model
+                        ? d.name + ' (' + [d.manufacturer, d.model].filter(Boolean).join(' ') + ')'
+                        : d.name;
+                    var opt = document.createElement('option');
+                    opt.value = d.id;
+                    opt.textContent = label;
+                    select.appendChild(opt);
+                }
             }
 
             // Update status badge
-            const badge = document.getElementById('remoteStatusBadge');
+            var badge = document.getElementById('remoteStatusBadge');
             if (badge) {
-                if (selectedId && select.value) {
-                    badge.textContent = 'Connected';
+                if (connectedIds.length > 0) {
+                    badge.textContent = connectedIds.length + ' Connected';
                     badge.style.background = 'rgba(46,204,113,0.15)';
                     badge.style.color = 'var(--color-success)';
                 } else if (devices.length > 0) {
@@ -2609,36 +2726,43 @@ ADMIN_HTML = """<!DOCTYPE html>
         }
     }
 
-    async function onRemoteDeviceChange() {
-        const deviceId = document.getElementById('remoteDeviceSelect').value;
-        const container = document.getElementById('remoteDeviceEntities');
-        if (!deviceId) {
-            container.innerHTML = '<div class="device-info empty">Select your irrigation remote device above to link it to this controller.</div>';
-            const badge = document.getElementById('remoteStatusBadge');
-            if (badge) { badge.textContent = '—'; badge.style.background = ''; badge.style.color = 'var(--text-muted)'; }
-            return;
-        }
-
+    async function addRemoteDevice() {
+        var deviceId = document.getElementById('remoteDeviceSelect').value;
+        if (!deviceId) { showToast('Select a remote device first', 'warning'); return; }
         try {
-            const res = await fetch(`${BASE}/remote-device`, {
+            var res = await fetch(BASE + '/remote-devices', {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ device_id: deviceId }),
+                body: JSON.stringify({ device_id: deviceId, action: 'add' }),
             });
-            const data = await res.json();
-
+            var data = await res.json();
             if (data.success) {
-                const entities = data.entities || [];
-                let html = '<div style="margin-top:8px;font-size:13px;color:var(--text-muted);">';
-                html += '<strong>' + entities.length + '</strong> entities linked';
-                html += '</div>';
-                container.innerHTML = html;
-                showToast('Remote device selected');
-                const badge = document.getElementById('remoteStatusBadge');
-                if (badge) { badge.textContent = 'Connected'; badge.style.background = 'rgba(46,204,113,0.15)'; badge.style.color = 'var(--color-success)'; }
+                showToast('Remote device added');
+                await loadRemoteDevices();
+            } else {
+                showToast(data.detail || 'Failed to add remote', 'error');
             }
         } catch (e) {
-            showToast('Failed to select remote device', 'error');
+            showToast('Failed to add remote device', 'error');
+        }
+    }
+
+    async function removeRemoteDevice(deviceId) {
+        try {
+            var res = await fetch(BASE + '/remote-devices', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ device_id: deviceId, action: 'remove' }),
+            });
+            var data = await res.json();
+            if (data.success) {
+                showToast('Remote device removed');
+                await loadRemoteDevices();
+            } else {
+                showToast(data.detail || 'Failed to remove remote', 'error');
+            }
+        } catch (e) {
+            showToast('Failed to remove remote device', 'error');
         }
     }
 

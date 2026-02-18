@@ -431,6 +431,9 @@ async def lifespan(app: FastAPI):
     print(f"[MAIN] Resolved zones: {len(config.allowed_zone_entities)}")
     print(f"[MAIN] Resolved sensors: {len(config.allowed_sensor_entities)}")
     print(f"[MAIN] Resolved controls: {len(config.allowed_control_entities)}")
+    if config.remote_device_ids:
+        print(f"[MAIN] Remote devices: {len(config.remote_device_ids)} "
+              f"({len(config.allowed_remote_entities)} entities)")
 
     print(f"[MAIN] Rate limit: {config.rate_limit_per_minute}/min")
     print(f"[MAIN] Audit logging: {'enabled' if config.enable_audit_log else 'disabled'}")
@@ -521,19 +524,24 @@ async def lifespan(app: FastAPI):
     zone_watcher_task = None
     entity_refresh_task = None
 
-    # Full state sync to remote device on startup (ALL entities)
+    # Full state sync to remote devices on startup (ALL entities, ALL remotes)
     # MUST run BEFORE starting the zone watcher to prevent dual-sync race —
     # if the WebSocket connects while startup sync is running, Step 3.5 would
     # see sync_needed=ON and launch a second concurrent sync via
     # _handle_remote_reconnect(), causing garbled entity writes.
     if config.allowed_remote_entities:
         import run_log
-        run_log._reconnect_sync_running = True  # Block any reconnect handler
+        from run_log import _find_sync_needed_entity_for_device
+        # Initialize per-device state and block all reconnect handlers
+        run_log._reconnect_sync_running = True
+        for did in config.remote_device_ids:
+            run_log._remote_reconnect_pending_by_device[did] = True
+            run_log._reconnect_sync_running_by_device[did] = True
         try:
-            from run_log import sync_all_remote_state, _find_sync_needed_entity
+            from run_log import sync_all_remote_state
             from routes.admin import sync_remote_settings
             import ha_client
-            # Push zone count + time format first (settings-only entities)
+            # Push zone count + time format + pump flag first (settings-only entities)
             settings_file = "/data/settings.json"
             use_12h = True
             if os.path.exists(settings_file):
@@ -543,31 +551,41 @@ async def lifespan(app: FastAPI):
             await sync_remote_settings(use_12h=use_12h)
             # Then push ALL entity states (zones, schedules, durations, days, status, etc.)
             await sync_all_remote_state()
-            # Hold suppression FIRST — let device finish booting before we tell it we synced
-            run_log._remote_log("Broker: startup — holding suppression 5s for remote to settle")
+            # Hold suppression FIRST — let devices finish booting before we tell them we synced
+            run_log._remote_log(f"Broker: startup — holding suppression 5s for "
+                                f"{len(config.remote_device_ids)} remote(s) to settle")
             await asyncio.sleep(5)
-            # THEN turn OFF sync_needed — device has had time to finish booting
-            sync_eid = _find_sync_needed_entity()
-            if sync_eid:
-                try:
-                    await ha_client.call_service("switch", "turn_off",
-                                                 {"entity_id": sync_eid})
-                    run_log._remote_log(f"Broker: startup — turned OFF {sync_eid}")
-                except Exception as e:
-                    run_log._remote_log(f"Broker: startup — failed to turn off sync_needed: {e}")
+            # THEN turn OFF sync_needed on each remote device
+            for did in config.remote_device_ids:
+                sync_eid = _find_sync_needed_entity_for_device(did)
+                if sync_eid:
+                    try:
+                        await ha_client.call_service("switch", "turn_off",
+                                                     {"entity_id": sync_eid})
+                        run_log._remote_log(f"Broker: startup — turned OFF {sync_eid} ({did[:12]})")
+                    except Exception as e:
+                        run_log._remote_log(f"Broker: startup — failed to turn off sync_needed for {did[:12]}: {e}")
             # Re-sync to overwrite any boot defaults that arrived during hold
             await sync_all_remote_state()
             run_log._remote_log("Broker: startup — second sync complete (post-settle)")
             await asyncio.sleep(3)
+            # Clear per-device and global flags
+            for did in config.remote_device_ids:
+                run_log._remote_reconnect_pending_by_device[did] = False
+                run_log._reconnect_sync_running_by_device[did] = False
             run_log._remote_reconnect_pending = False
-            run_log._remote_log("Broker: startup sync complete — remote→controller mirroring enabled")
+            run_log._remote_log(f"Broker: startup sync complete — "
+                                f"{len(config.remote_device_ids)} remote(s) mirroring enabled")
         except Exception as e:
             print(f"[MAIN] Remote device sync failed: {e}")
-            # Always clear the flag so mirroring can work even if sync failed
+            # Always clear flags so mirroring can work even if sync failed
+            for did in config.remote_device_ids:
+                run_log._remote_reconnect_pending_by_device[did] = False
+                run_log._reconnect_sync_running_by_device[did] = False
             run_log._remote_reconnect_pending = False
             run_log._remote_log("Broker: startup sync FAILED — remote→controller mirroring enabled (fallback)")
         finally:
-            run_log._reconnect_sync_running = False  # Allow future reconnect handlers
+            run_log._reconnect_sync_running = False
 
     # Start zone watcher AFTER startup sync — prevents dual-sync race condition
     if config.allowed_zone_entities:

@@ -41,6 +41,19 @@ _remote_mirror_guard: set = set()  # entity_ids currently being mirrored
 _remote_maps_cache: dict = {}  # {"r2c": {}, "c2r": {}, "remote_all": set(), "controller_status": set()}
 _remote_maps_logged: bool = False
 
+# Per-device entity maps for multi-remote support (max 5 remotes)
+_remote_maps_by_device: dict = {}  # device_id -> maps dict
+_remote_maps_logged_by_device: dict = {}  # device_id -> bool
+
+# Per-device sync/reconnect state
+_remote_reconnect_pending_by_device: dict = {}  # device_id -> bool
+_reconnect_sync_running_by_device: dict = {}  # device_id -> bool
+_sync_needed_by_device: dict = {}  # device_id -> entity_id or "" (searched, not found) or None (not searched)
+_manual_stop_by_device: dict = {}  # device_id -> entity_id or "" or None
+
+# Reverse lookup: entity_id -> device_id (for fast routing in WebSocket handler)
+_entity_to_device_cache: dict = {}  # entity_id -> device_id
+
 # Suffix aliases — different firmware names that refer to the same function.
 # Both sides are normalized to the canonical (value) name.
 _SUFFIX_ALIASES = {
@@ -104,9 +117,10 @@ def _convert_time_for_relay(value: str, source_eid: str) -> str:
 
 # Suffixes that are one-way: add-on → remote only (remote changes are ignored)
 _ONE_WAY_SUFFIXES = {
-    "zone_count",       # pushed via sync_remote_settings()
-    "use_12_hour_format",  # pushed via sync_remote_settings()
-    "sync_needed",      # remote boot flag — add-on reads it, never mirrors it
+    "zone_count",               # pushed via sync_remote_settings()
+    "use_12_hour_format",       # pushed via sync_remote_settings()
+    "sync_needed",              # remote boot flag — add-on reads it, never mirrors it
+    "pump_start_master_valve",  # pushed via sync_remote_settings()
 }
 
 # Duration suffix pattern — zone_N_duration entities are NOT broker-mirrored.
@@ -648,11 +662,97 @@ def _classify_device_entities(entity_ids: list[str]) -> dict[tuple[str, str], st
 def invalidate_remote_maps():
     """Clear cached entity maps so they are rebuilt on next access.
 
-    Call this when the remote device config changes (e.g. select_remote_device).
+    Call this when the remote device config changes (e.g. add/remove remote).
     """
     global _remote_maps_cache, _remote_maps_logged
+    global _remote_maps_by_device, _remote_maps_logged_by_device
+    global _sync_needed_by_device, _manual_stop_by_device, _entity_to_device_cache
     _remote_maps_cache = {}
     _remote_maps_logged = False
+    _remote_maps_by_device = {}
+    _remote_maps_logged_by_device = {}
+    _sync_needed_by_device = {}
+    _manual_stop_by_device = {}
+    _entity_to_device_cache = {}
+
+
+def _build_remote_entity_maps_for_device(device_id: str) -> dict:
+    """Build entity maps for a single remote device.
+
+    Returns {"r2c": {}, "c2r": {}, "status_map": {}, "remote_all": set(), ...}
+    Uses the same classification logic as _build_remote_entity_maps but scoped to one device.
+    """
+    global _remote_maps_by_device, _remote_maps_logged_by_device
+
+    if device_id in _remote_maps_by_device and _remote_maps_by_device[device_id]:
+        return _remote_maps_by_device[device_id]
+
+    from config import get_config
+    config = get_config()
+    device_entities = config.allowed_remote_entities_by_device.get(device_id, [])
+    if not device_entities:
+        empty = {"r2c": {}, "c2r": {}, "status_map": {}, "remote_all": set(), "controller_watched": set()}
+        _remote_maps_by_device[device_id] = empty
+        return empty
+
+    # Build using the same logic as the merged builder but scoped to this device's entities
+    all_controller = (set(config.allowed_zone_entities or [])
+                      | set(config.allowed_control_entities or [])
+                      | set(config.allowed_sensor_entities or []))
+    controller_inv = _classify_device_entities(list(all_controller))
+    remote_inv = _classify_device_entities(device_entities)
+
+    r2c = {}
+    c2r = {}
+    status_map = {}
+    controller_watched = set()
+
+    for func_key, remote_eid in remote_inv.items():
+        ctrl_eid = controller_inv.get(func_key)
+        if not ctrl_eid:
+            continue
+        suffix = _extract_entity_suffix(remote_eid)
+        # Status entities are one-way controller→remote
+        if remote_eid.startswith("text.") and suffix in ("valve_status", "time_remaining", "active_zone"):
+            status_map[ctrl_eid] = remote_eid
+            controller_watched.add(ctrl_eid)
+        else:
+            r2c[remote_eid] = ctrl_eid
+            c2r[ctrl_eid] = remote_eid
+            controller_watched.add(ctrl_eid)
+
+    result = {
+        "r2c": r2c,
+        "c2r": c2r,
+        "status_map": status_map,
+        "remote_all": set(device_entities),
+        "controller_watched": controller_watched,
+    }
+    _remote_maps_by_device[device_id] = result
+
+    if not _remote_maps_logged_by_device.get(device_id, False):
+        _remote_log(f"Broker: built maps for device {device_id[:12]}: "
+                    f"{len(r2c)} bidirectional, {len(status_map)} status, "
+                    f"{len(device_entities)} remote entities")
+        _remote_maps_logged_by_device[device_id] = True
+
+    return result
+
+
+def _get_entity_device_id(entity_id: str) -> str | None:
+    """Look up which remote device an entity belongs to."""
+    global _entity_to_device_cache
+    if entity_id in _entity_to_device_cache:
+        return _entity_to_device_cache[entity_id] or None
+
+    from config import get_config
+    config = get_config()
+    for did, entities in config.allowed_remote_entities_by_device.items():
+        if entity_id in entities:
+            _entity_to_device_cache[entity_id] = did
+            return did
+    _entity_to_device_cache[entity_id] = ""
+    return None
 
 
 def _build_remote_entity_maps() -> dict:
@@ -881,52 +981,97 @@ async def _mirror_entity_state(source_eid: str, target_eid: str, new_state: str)
 
 
 async def _handle_remote_entity_change(entity_id: str, new_state: str, old_state: str):
-    """A remote entity changed — mirror to the corresponding controller entity.
+    """A remote entity changed — mirror to the controller AND all other remotes.
 
-    One-way entities (zone_count, use_12_hour_format) are skipped — the remote
-    cannot update those on the controller.
+    One-way entities (zone_count, use_12_hour_format, pump_start_master_valve) are
+    skipped — the remote cannot update those on the controller.
 
-    Suppressed while _remote_reconnect_pending is True (startup or reconnect)
-    to prevent remote defaults from overwriting real controller values.
-
-    NUCLEAR OPTION: If sync_needed switch exists and is ON in HA, block
-    immediately regardless of flag state — reads live HA entity state.
+    Suppressed while the source device's reconnect is pending to prevent remote
+    defaults from overwriting real controller values.
     """
     global _remote_reconnect_pending
-    # LIVE CHECK: If sync_needed switch is ON, block and trigger sync
-    sync_eid = _find_sync_needed_entity()
-    if sync_eid and not _remote_reconnect_pending:
-        try:
-            import ha_client
-            st = await ha_client.get_entity_state(sync_eid)
-            if st and st.get("state") == "on":
-                _remote_reconnect_pending = True
-                _remote_log(f"Suppressed remote→controller: {_extract_entity_suffix(entity_id)} "
-                            f"= {new_state} — sync_needed is ON (live check)")
-                import asyncio
-                asyncio.create_task(_handle_remote_reconnect(entity_id, set()))
-                return
-        except Exception:
-            pass
-    # Block remote→controller during startup/reconnect sync
+    # Determine which remote device this entity belongs to
+    source_device_id = _get_entity_device_id(entity_id)
+
+    # LIVE CHECK: If this device's sync_needed switch is ON, block and trigger sync
+    if source_device_id:
+        sync_eid = _find_sync_needed_entity_for_device(source_device_id)
+        if sync_eid and not _remote_reconnect_pending_by_device.get(source_device_id, True):
+            try:
+                import ha_client
+                st = await ha_client.get_entity_state(sync_eid)
+                if st and st.get("state") == "on":
+                    _remote_reconnect_pending_by_device[source_device_id] = True
+                    _remote_reconnect_pending = True
+                    _remote_log(f"Suppressed remote→controller: {_extract_entity_suffix(entity_id)} "
+                                f"= {new_state} — sync_needed is ON (live check, device {source_device_id[:12]})")
+                    import asyncio
+                    asyncio.create_task(_handle_remote_reconnect(entity_id, set(), source_device_id))
+                    return
+            except Exception:
+                pass
+
+    # Block remote→controller during this device's startup/reconnect sync
+    if source_device_id and _remote_reconnect_pending_by_device.get(source_device_id, True):
+        _remote_log(f"Suppressed remote→controller: {_extract_entity_suffix(entity_id)} "
+                    f"= {new_state} (device {(source_device_id or '?')[:12]} syncing)")
+        return
+    # Fallback: global flag for backward compat
     if _remote_reconnect_pending:
         _remote_log(f"Suppressed remote→controller: {_extract_entity_suffix(entity_id)} "
-                    f"= {new_state} (sync in progress)")
+                    f"= {new_state} (global sync in progress)")
         return
+
     # Skip one-way entities (add-on → remote only)
     suffix = _extract_entity_suffix(entity_id)
     if suffix in _ONE_WAY_SUFFIXES:
         return
     # Duration entities: update the add-on's base_durations instead of mirroring
-    # directly to controller. This preserves the factor system (base × multiplier).
     if _DURATION_SUFFIX_RE.match(suffix):
         await _handle_remote_duration_change(entity_id, new_state, suffix)
+        # Also push the duration change to other remotes
+        await _mirror_to_other_remotes(entity_id, source_device_id, new_state)
         return
-    maps = _build_remote_entity_maps()
+
+    # Find controller entity via per-device map
+    if source_device_id:
+        maps = _build_remote_entity_maps_for_device(source_device_id)
+    else:
+        maps = _build_remote_entity_maps()
     controller_eid = maps["r2c"].get(entity_id)
     if not controller_eid:
         return
+    # Mirror to controller
     await _mirror_entity_state(entity_id, controller_eid, new_state)
+    # Mirror to all OTHER remotes (keep all remotes in sync)
+    await _mirror_to_other_remotes(entity_id, source_device_id, new_state)
+
+
+async def _mirror_to_other_remotes(source_entity_id: str, source_device_id: str | None, new_state: str):
+    """Push a state change from one remote to all other connected remotes."""
+    from config import get_config
+    config = get_config()
+    if len(config.remote_device_ids) < 2:
+        return  # Only one remote, nothing to cross-sync
+    suffix = _extract_entity_suffix(source_entity_id)
+    for device_id in config.remote_device_ids:
+        if device_id == source_device_id:
+            continue  # Don't echo back to source
+        if _remote_reconnect_pending_by_device.get(device_id, True):
+            continue  # This remote is still syncing
+        maps = _build_remote_entity_maps_for_device(device_id)
+        # Find the matching remote entity by looking up controller_eid → other remote's entity
+        # First find controller entity from source entity
+        if source_device_id:
+            src_maps = _build_remote_entity_maps_for_device(source_device_id)
+            controller_eid = src_maps["r2c"].get(source_entity_id)
+        else:
+            controller_eid = _build_remote_entity_maps()["r2c"].get(source_entity_id)
+        if not controller_eid:
+            return
+        other_remote_eid = maps["c2r"].get(controller_eid)
+        if other_remote_eid:
+            await _mirror_entity_state(source_entity_id, other_remote_eid, new_state)
 
 
 async def _handle_remote_duration_change(remote_eid: str, new_state: str, suffix: str):
@@ -1000,17 +1145,17 @@ async def _handle_remote_duration_change(remote_eid: str, new_state: str, suffix
 
 
 async def sync_base_durations_to_remote():
-    """Push BASE durations (not factored) from the add-on to the remote device.
+    """Push BASE durations (not factored) from the add-on to ALL remote devices.
 
     Called during full sync and after base durations are captured/changed.
     Reads base_durations from moisture.json and writes them to the corresponding
-    remote duration entities.
+    remote duration entities on each connected remote.
     """
     import ha_client
     from config import get_config
 
     config = get_config()
-    if not config.allowed_remote_entities:
+    if not config.allowed_remote_entities_by_device:
         return
 
     try:
@@ -1018,26 +1163,29 @@ async def sync_base_durations_to_remote():
         mdata = _load_moisture_data()
         base_durations = mdata.get("base_durations", {})
         if not base_durations:
-            _remote_log("Broker: no base_durations to sync to remote")
+            _remote_log("Broker: no base_durations to sync to remotes")
             return
 
-        maps = _build_remote_entity_maps()
-        synced = 0
-        for controller_eid, dur_info in base_durations.items():
-            base_val = dur_info.get("base_value")
-            if base_val is None:
-                continue
-            remote_eid = maps["c2r"].get(controller_eid)
-            if not remote_eid:
-                continue
-            # Use mirror with guard to prevent echo
-            await _mirror_entity_state(controller_eid, remote_eid, str(base_val))
-            synced += 1
+        total_synced = 0
+        for device_id in config.remote_device_ids:
+            maps = _build_remote_entity_maps_for_device(device_id)
+            synced = 0
+            for controller_eid, dur_info in base_durations.items():
+                base_val = dur_info.get("base_value")
+                if base_val is None:
+                    continue
+                remote_eid = maps["c2r"].get(controller_eid)
+                if not remote_eid:
+                    continue
+                await _mirror_entity_state(controller_eid, remote_eid, str(base_val))
+                synced += 1
+            total_synced += synced
 
-        if synced > 0:
-            _remote_log(f"Broker: synced {synced} base duration(s) to remote")
+        if total_synced > 0:
+            _remote_log(f"Broker: synced base durations to {len(config.remote_device_ids)} remote(s) "
+                        f"({total_synced} total writes)")
     except Exception as e:
-        _remote_log(f"Broker: error syncing base durations to remote: {e}")
+        _remote_log(f"Broker: error syncing base durations to remotes: {e}")
 
 
 # Guard to prevent multiple concurrent reconnect syncs.
@@ -1048,8 +1196,29 @@ _reconnect_sync_running = False  # prevents duplicate concurrent syncs
 _sync_needed_entity: str | None = None  # auto-detected switch.xxx_sync_needed
 
 
+def _find_sync_needed_entity_for_device(device_id: str) -> str | None:
+    """Auto-detect the sync_needed switch for a specific remote device."""
+    global _sync_needed_by_device
+    cached = _sync_needed_by_device.get(device_id)
+    if cached is not None:
+        return cached if cached else None
+    try:
+        from config import get_config
+        config = get_config()
+        entities = config.allowed_remote_entities_by_device.get(device_id, [])
+        for eid in entities:
+            if eid.startswith("switch.") and eid.endswith("_sync_needed"):
+                _sync_needed_by_device[device_id] = eid
+                _remote_log(f"Broker: found sync_needed entity for {device_id[:12]}: {eid}")
+                return eid
+    except Exception:
+        pass
+    _sync_needed_by_device[device_id] = ""
+    return None
+
+
 def _find_sync_needed_entity() -> str | None:
-    """Auto-detect the sync_needed switch from remote entity list."""
+    """Auto-detect any sync_needed switch (backward compat — returns first found)."""
     global _sync_needed_entity
     if _sync_needed_entity is not None:
         return _sync_needed_entity if _sync_needed_entity else None
@@ -1059,11 +1228,10 @@ def _find_sync_needed_entity() -> str | None:
         for eid in (config.allowed_remote_entities or []):
             if eid.startswith("switch.") and eid.endswith("_sync_needed"):
                 _sync_needed_entity = eid
-                _remote_log(f"Broker: found sync_needed entity: {eid}")
                 return eid
     except Exception:
         pass
-    _sync_needed_entity = ""  # empty string = searched but not found
+    _sync_needed_entity = ""
     return None
 
 
@@ -1071,8 +1239,29 @@ def _find_sync_needed_entity() -> str | None:
 _manual_stop_entity: str | None = None  # None=not searched, ""=not found
 
 
+def _find_manual_stop_entity_for_device(device_id: str) -> str | None:
+    """Auto-detect the manual_stop switch for a specific remote device."""
+    global _manual_stop_by_device
+    cached = _manual_stop_by_device.get(device_id)
+    if cached is not None:
+        return cached if cached else None
+    try:
+        from config import get_config
+        config = get_config()
+        entities = config.allowed_remote_entities_by_device.get(device_id, [])
+        for eid in entities:
+            if eid.startswith("switch.") and eid.endswith("_manual_stop"):
+                _manual_stop_by_device[device_id] = eid
+                _remote_log(f"Broker: found manual_stop entity for {device_id[:12]}: {eid}")
+                return eid
+    except Exception:
+        pass
+    _manual_stop_by_device[device_id] = ""
+    return None
+
+
 def _find_manual_stop_entity() -> str | None:
-    """Auto-detect the manual_stop switch from remote entity list."""
+    """Auto-detect any manual_stop switch (backward compat — returns first found)."""
     global _manual_stop_entity
     if _manual_stop_entity is not None:
         return _manual_stop_entity if _manual_stop_entity else None
@@ -1082,158 +1271,190 @@ def _find_manual_stop_entity() -> str | None:
         for eid in (config.allowed_remote_entities or []):
             if eid.startswith("switch.") and eid.endswith("_manual_stop"):
                 _manual_stop_entity = eid
-                _remote_log(f"Broker: found manual_stop entity: {eid}")
                 return eid
     except Exception:
         pass
-    _manual_stop_entity = ""  # empty string = searched but not found
+    _manual_stop_entity = ""
     return None
 
 
 async def signal_manual_stop():
-    """Turn ON the remote's manual_stop switch to signal a user-initiated zone stop."""
-    eid = _find_manual_stop_entity()
-    if not eid:
-        return
-    try:
-        import ha_client
-        await ha_client.call_service("switch", "turn_on", {"entity_id": eid})
-        _remote_log(f"Broker: signaled manual_stop ON → {eid}")
-    except Exception as e:
-        _remote_log(f"Broker: failed to signal manual_stop: {e}")
+    """Turn ON manual_stop switch on ALL connected remotes."""
+    from config import get_config
+    config = get_config()
+    import ha_client
+    for device_id in config.remote_device_ids:
+        eid = _find_manual_stop_entity_for_device(device_id)
+        if not eid:
+            continue
+        try:
+            await ha_client.call_service("switch", "turn_on", {"entity_id": eid})
+            _remote_log(f"Broker: signaled manual_stop ON → {eid}")
+        except Exception as e:
+            _remote_log(f"Broker: failed to signal manual_stop on {device_id[:12]}: {e}")
 
 
-async def _handle_remote_reconnect(entity_id: str, remote_entities: set):
+async def _handle_remote_reconnect(entity_id: str, remote_entities: set, device_id: str | None = None):
     """Remote device signaled sync needed — push ALL controller state to it.
 
     Triggered when:
     1. The sync_needed switch is detected ON (device just booted — ALWAYS_ON)
     2. A remote entity transitions from unavailable (backup detection)
 
-    _remote_reconnect_pending is already set True synchronously in the
-    WebSocket loop BEFORE this task runs, so remote→controller mirroring
-    is blocked instantly with no race window.  This function handles the
-    actual sync + settling, then clears the flag and turns sync_needed OFF.
+    Per-device: only blocks and syncs the specific device that reconnected.
+    Other remotes continue operating normally.
     """
-    global _remote_reconnect_pending, _reconnect_sync_running
-    if _reconnect_sync_running:
-        return  # Another sync task is already handling this reconnect
-    _reconnect_sync_running = True
+    global _remote_reconnect_pending
+
+    # Per-device guard
+    if device_id:
+        if _reconnect_sync_running_by_device.get(device_id, False):
+            return
+        _reconnect_sync_running_by_device[device_id] = True
+    else:
+        # Fallback: global guard (legacy)
+        global _reconnect_sync_running
+        if _reconnect_sync_running:
+            return
+        _reconnect_sync_running = True
 
     import asyncio
     import ha_client
-    _remote_log(f"Broker: remote sync triggered — suppressing remote→controller, "
+    dev_label = f" (device {device_id[:12]})" if device_id else ""
+    _remote_log(f"Broker: remote sync triggered{dev_label} — suppressing, "
                f"pushing controller state in 3s")
 
-    await asyncio.sleep(3)  # Brief wait for entities to stabilize
+    await asyncio.sleep(3)
     try:
         await sync_all_remote_state()
     except Exception as e:
-        _remote_log(f"Broker: reconnect sync FAILED: {e}")
+        _remote_log(f"Broker: reconnect sync FAILED{dev_label}: {e}")
 
-    # Hold suppression FIRST — let the device finish booting before we tell it we synced
-    _remote_log("Broker: holding suppression 5s for remote to settle")
+    _remote_log(f"Broker: holding suppression 5s for remote{dev_label} to settle")
     await asyncio.sleep(5)
 
-    # THEN turn OFF sync_needed — device has had time to finish booting
-    sync_eid = _find_sync_needed_entity()
+    # Turn OFF sync_needed for this specific device
+    if device_id:
+        sync_eid = _find_sync_needed_entity_for_device(device_id)
+    else:
+        sync_eid = _find_sync_needed_entity()
     if sync_eid:
         try:
-            await ha_client.call_service("switch", "turn_off",
-                                         {"entity_id": sync_eid})
+            await ha_client.call_service("switch", "turn_off", {"entity_id": sync_eid})
             _remote_log(f"Broker: turned OFF {sync_eid}")
         except Exception as e:
             _remote_log(f"Broker: failed to turn off sync_needed: {e}")
 
-    # Re-sync AGAIN to overwrite any boot defaults that snuck in during hold
+    # Re-sync
     try:
         await sync_all_remote_state()
-        _remote_log("Broker: second sync complete (post-settle)")
+        _remote_log(f"Broker: second sync complete{dev_label} (post-settle)")
     except Exception as e:
-        _remote_log(f"Broker: second sync FAILED: {e}")
+        _remote_log(f"Broker: second sync FAILED{dev_label}: {e}")
 
-    await asyncio.sleep(3)  # Final grace period
-    _reconnect_sync_running = False
-    _remote_reconnect_pending = False
-    _remote_log("Broker: remote→controller mirroring re-enabled")
+    await asyncio.sleep(3)
+
+    if device_id:
+        _reconnect_sync_running_by_device[device_id] = False
+        _remote_reconnect_pending_by_device[device_id] = False
+        # Clear global flag only if ALL devices are done
+        from config import get_config
+        config = get_config()
+        all_done = all(not _remote_reconnect_pending_by_device.get(d, True) for d in config.remote_device_ids)
+        if all_done:
+            _remote_reconnect_pending = False
+    else:
+        _reconnect_sync_running = False
+        _remote_reconnect_pending = False
+
+    _remote_log(f"Broker: remote→controller mirroring re-enabled{dev_label}")
 
 
 async def _handle_controller_to_remote(entity_id: str, new_state: str):
-    """A controller entity changed — mirror to the corresponding remote entity."""
+    """A controller entity changed — mirror to ALL connected remote devices."""
     # Never push unavailable/unknown to remote
     if new_state in ("unavailable", "unknown"):
         return
     # Skip duration entities — the add-on manages these through base_durations.
-    # The controller value is factored (base × weather/moisture multiplier), so
-    # mirroring it would overwrite the base value shown on the remote's input.
     suffix = _extract_entity_suffix(entity_id)
     if _DURATION_SUFFIX_RE.match(suffix):
         return
-    maps = _build_remote_entity_maps()
-    # Check bidirectional map first
-    remote_eid = maps["c2r"].get(entity_id)
-    if remote_eid:
-        await _mirror_entity_state(entity_id, remote_eid, new_state)
-        return
-    # Check status (one-way) map
-    remote_eid = maps["status_map"].get(entity_id)
-    if remote_eid:
-        await _mirror_entity_state(entity_id, remote_eid, new_state)
+
+    from config import get_config
+    config = get_config()
+
+    # Push to each connected remote device
+    for device_id in config.remote_device_ids:
+        if _remote_reconnect_pending_by_device.get(device_id, True):
+            continue  # This remote is syncing, skip
+        maps = _build_remote_entity_maps_for_device(device_id)
+        # Check bidirectional map first
+        remote_eid = maps["c2r"].get(entity_id)
+        if remote_eid:
+            await _mirror_entity_state(entity_id, remote_eid, new_state)
+            continue
+        # Check status (one-way) map
+        remote_eid = maps["status_map"].get(entity_id)
+        if remote_eid:
+            await _mirror_entity_state(entity_id, remote_eid, new_state)
 
 
 async def sync_all_remote_state():
-    """Push ALL current controller state to the remote device.
+    """Push ALL current controller state to ALL connected remote devices.
 
     Called on startup and when remote device is first connected.
-    Reads current state of every mapped controller entity and pushes to remote.
+    Reads current state of every mapped controller entity and pushes to each remote.
     """
     import ha_client
     from config import get_config
 
     config = get_config()
-    if not config.allowed_remote_entities:
+    if not config.allowed_remote_entities_by_device:
         return
-
-    maps = _build_remote_entity_maps()
-    total_c2r = {**maps["c2r"], **maps["status_map"]}
-    if not total_c2r:
-        _remote_log("Broker: no entity mappings found — cannot sync")
-        return
-
-    # Fetch current states of all controller entities that have remote counterparts
-    controller_eids = list(total_c2r.keys())
-    # Log schedule-related mappings for debugging
-    sched_count = sum(1 for k in total_c2r if "start_time" in k.lower() or "schedule" in k.lower())
-    _remote_log(f"Broker: syncing {len(total_c2r)} entities ({sched_count} schedule-related) to remote")
-    states = await ha_client.get_entities_by_ids(controller_eids)
 
     import asyncio
-    synced = 0
-    skipped_durations = 0
-    for entity_state in states:
-        ctrl_eid = entity_state.get("entity_id", "")
-        state_val = entity_state.get("state", "")
-        if not ctrl_eid or not state_val or state_val in ("unavailable", "unknown"):
-            continue
-        remote_eid = total_c2r.get(ctrl_eid)
-        if not remote_eid:
-            continue
-        # Skip duration entities — they get base values via sync_base_durations_to_remote()
-        suffix = _extract_entity_suffix(ctrl_eid)
-        if _DURATION_SUFFIX_RE.match(suffix):
-            skipped_durations += 1
-            continue
-        try:
-            await _mirror_entity_state(ctrl_eid, remote_eid, state_val)
-            synced += 1
-            # Small delay to avoid overwhelming the ESPHome device
-            if synced % 10 == 0:
-                await asyncio.sleep(0.1)
-        except Exception as e:
-            _remote_log(f"Broker: sync FAILED for {ctrl_eid}: {e}")
+    total_synced = 0
 
-    _remote_log(f"Broker: full sync complete — {synced}/{len(total_c2r)} controller values pushed "
-                f"to remote ({skipped_durations} duration(s) skipped — handled by base sync)")
+    for device_id in config.remote_device_ids:
+        maps = _build_remote_entity_maps_for_device(device_id)
+        total_c2r = {**maps["c2r"], **maps["status_map"]}
+        if not total_c2r:
+            continue
+
+        controller_eids = list(total_c2r.keys())
+        sched_count = sum(1 for k in total_c2r if "start_time" in k.lower() or "schedule" in k.lower())
+        _remote_log(f"Broker: syncing {len(total_c2r)} entities ({sched_count} schedule-related) "
+                    f"to remote {device_id[:12]}")
+        states = await ha_client.get_entities_by_ids(controller_eids)
+
+        synced = 0
+        skipped_durations = 0
+        for entity_state in states:
+            ctrl_eid = entity_state.get("entity_id", "")
+            state_val = entity_state.get("state", "")
+            if not ctrl_eid or not state_val or state_val in ("unavailable", "unknown"):
+                continue
+            remote_eid = total_c2r.get(ctrl_eid)
+            if not remote_eid:
+                continue
+            suffix = _extract_entity_suffix(ctrl_eid)
+            if _DURATION_SUFFIX_RE.match(suffix):
+                skipped_durations += 1
+                continue
+            try:
+                await _mirror_entity_state(ctrl_eid, remote_eid, state_val)
+                synced += 1
+                if synced % 10 == 0:
+                    await asyncio.sleep(0.1)
+            except Exception as e:
+                _remote_log(f"Broker: sync FAILED for {ctrl_eid} → {device_id[:12]}: {e}")
+
+        _remote_log(f"Broker: sync to {device_id[:12]} — {synced}/{len(total_c2r)} pushed "
+                    f"({skipped_durations} durations skipped)")
+        total_synced += synced
+
+    _remote_log(f"Broker: full sync complete — {total_synced} total values pushed to "
+                f"{len(config.remote_device_ids)} remote(s)")
 
     # Sync base durations separately (uses base values, not factored controller values)
     await sync_base_durations_to_remote()
@@ -1283,6 +1504,25 @@ async def get_broker_status() -> dict:
         except Exception:
             pass
 
+    # Per-device status
+    per_device = {}
+    for did in config.remote_device_ids:
+        dev_sync_eid = _find_sync_needed_entity_for_device(did)
+        dev_sync_state = None
+        if dev_sync_eid:
+            try:
+                import ha_client
+                dst = await ha_client.get_entity_state(dev_sync_eid)
+                dev_sync_state = dst.get("state") if dst else None
+            except Exception:
+                pass
+        per_device[did[:12]] = {
+            "sync_needed_entity": dev_sync_eid,
+            "sync_needed_state": dev_sync_state,
+            "reconnect_pending": _remote_reconnect_pending_by_device.get(did, False),
+            "sync_running": _reconnect_sync_running_by_device.get(did, False),
+        }
+
     return {
         "matched": sorted(matched, key=lambda x: x["function"]),
         "unmatched_controller": sorted(unmatched_ctrl, key=lambda x: x["function"]),
@@ -1293,6 +1533,7 @@ async def get_broker_status() -> dict:
         "sync_needed_state": sync_state,
         "reconnect_pending": _remote_reconnect_pending,
         "sync_running": _reconnect_sync_running,
+        "per_device": per_device,
     }
 
 
@@ -1473,23 +1714,35 @@ async def _watch_via_websocket(allowed_entities: set):
               f"({len(allowed_entities)} zone + {len(probe_entities)} probe + "
               f"{len(schedule_entities)} schedule + {len(remote_entities)} remote entities)")
 
-        # Step 3.5: On WS connect, check if sync_needed is ON and trigger sync
+        # Step 3.5: On WS connect, check if sync_needed is ON per remote device
         if remote_entities:
-            sync_eid = _find_sync_needed_entity()
-            if sync_eid:
+            import ha_client as _hac
+            for device_id in config.remote_device_ids:
+                sync_eid = _find_sync_needed_entity_for_device(device_id)
+                if not sync_eid:
+                    continue
                 try:
-                    import ha_client as _hac
                     st = await _hac.get_entity_state(sync_eid)
                     if st and st.get("state") == "on":
                         _remote_reconnect_pending = True
-                        _remote_log("Broker: WebSocket connected — sync_needed is ON, triggering sync")
-                        asyncio.create_task(_handle_remote_reconnect("ws_connect", remote_entities))
-                    elif _remote_reconnect_pending:
-                        # WS reconnected but sync_needed is OFF — safe to clear
-                        _remote_log("Broker: WebSocket connected — sync_needed is OFF, clearing block")
-                        _remote_reconnect_pending = False
+                        _remote_reconnect_pending_by_device[device_id] = True
+                        _remote_log(f"Broker: WS connected — sync_needed ON for {device_id[:12]}, triggering sync")
+                        asyncio.create_task(
+                            _handle_remote_reconnect("ws_connect", remote_entities, device_id=device_id)
+                        )
+                    elif _remote_reconnect_pending_by_device.get(device_id, False):
+                        _remote_log(f"Broker: WS connected — sync_needed OFF for {device_id[:12]}, clearing block")
+                        _remote_reconnect_pending_by_device[device_id] = False
                 except Exception as e:
-                    _remote_log(f"Broker: WebSocket connect sync check failed: {e}")
+                    _remote_log(f"Broker: WS connect sync check failed for {device_id[:12]}: {e}")
+            # Update global flag based on per-device state
+            all_clear = all(
+                not _remote_reconnect_pending_by_device.get(d, False)
+                for d in config.remote_device_ids
+            )
+            if all_clear and _remote_reconnect_pending:
+                _remote_reconnect_pending = False
+                _remote_log("Broker: all remotes synced — global mirroring unblocked")
 
         # Step 4: Listen for events
         async for raw_msg in ws:
@@ -1521,21 +1774,37 @@ async def _watch_via_websocket(allowed_entities: set):
                 # and needs both remote mirroring AND timeline recalculation).
 
                 if entity_id in remote_entities:
-                    _sync_eid = _find_sync_needed_entity()
+                    # Determine which remote device this entity belongs to
+                    _source_device = _get_entity_device_id(entity_id)
 
                     # --- Sync trigger 1: sync_needed switch turned ON (device booted) ---
-                    if _sync_eid and entity_id == _sync_eid and new_state == "on":
+                    if _source_device:
+                        _dev_sync_eid = _find_sync_needed_entity_for_device(_source_device)
+                    else:
+                        _dev_sync_eid = _find_sync_needed_entity()
+
+                    if _dev_sync_eid and entity_id == _dev_sync_eid and new_state == "on":
                         _remote_reconnect_pending = True
-                        _remote_log("Broker: sync_needed switch ON — remote just booted, blocking mirroring")
+                        if _source_device:
+                            _remote_reconnect_pending_by_device[_source_device] = True
+                        _remote_log(f"Broker: sync_needed ON for {(_source_device or 'unknown')[:12]} — blocking mirroring")
                         import asyncio
                         asyncio.create_task(
-                            _handle_remote_reconnect(entity_id, remote_entities)
+                            _handle_remote_reconnect(entity_id, remote_entities, device_id=_source_device)
                         )
                         continue
 
                     # --- Sync trigger 2 (backup): entity went unavailable → available ---
                     if old_state == "unavailable" and new_state != "unavailable":
-                        if not _remote_reconnect_pending:
+                        if _source_device and not _remote_reconnect_pending_by_device.get(_source_device, False):
+                            _remote_reconnect_pending_by_device[_source_device] = True
+                            _remote_reconnect_pending = True
+                            _remote_log(f"Broker: remote {_source_device[:12]} back from unavailable — blocking mirroring")
+                            import asyncio
+                            asyncio.create_task(
+                                _handle_remote_reconnect(entity_id, remote_entities, device_id=_source_device)
+                            )
+                        elif not _source_device and not _remote_reconnect_pending:
                             _remote_reconnect_pending = True
                             _remote_log("Broker: remote entity back from unavailable — blocking mirroring")
                             import asyncio
@@ -1545,14 +1814,14 @@ async def _watch_via_websocket(allowed_entities: set):
                         continue
 
                     # --- Skip the sync_needed entity itself (never mirror it) ---
-                    if _sync_eid and entity_id == _sync_eid:
+                    if _dev_sync_eid and entity_id == _dev_sync_eid:
                         continue
 
                     # --- Never mirror unavailable/unknown to controller ---
                     if new_state in ("unavailable", "unknown"):
                         continue
 
-                    # Remote entity changed → mirror to controller
+                    # Remote entity changed → mirror to controller (+ other remotes)
                     import asyncio
                     asyncio.create_task(
                         _handle_remote_entity_change(entity_id, new_state, old_state)
@@ -1682,7 +1951,9 @@ async def watch_zone_states():
                 # Block remote→controller on WS drop — will be cleared after sync check
                 if config.allowed_remote_entities:
                     _remote_reconnect_pending = True
-                    _remote_log("Broker: WebSocket dropped — blocking remote→controller")
+                    for did in config.remote_device_ids:
+                        _remote_reconnect_pending_by_device[did] = True
+                    _remote_log("Broker: WebSocket dropped — blocking all remotes")
                 await _watch_via_polling(allowed)
 
         except Exception as e:
@@ -1691,5 +1962,7 @@ async def watch_zone_states():
         # Block remote→controller before reconnect attempt
         if config.allowed_remote_entities:
             _remote_reconnect_pending = True
+            for did in config.remote_device_ids:
+                _remote_reconnect_pending_by_device[did] = True
         # If we get here, the connection dropped — reconnect after a brief delay
         await asyncio.sleep(5)

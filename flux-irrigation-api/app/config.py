@@ -239,18 +239,24 @@ class Config:
                         self.allowed_sensor_entities = []
                         self.allowed_control_entities = []
 
-        # --- Resolve remote device entities ---
-        if self.remote_device_id:
-            try:
-                result = await ha_client.get_device_entities(self.remote_device_id)
-                all_entities = []
-                for category in ("zones", "sensors", "other"):
-                    all_entities.extend(e["entity_id"] for e in result.get(category, []))
-                self.allowed_remote_entities = all_entities
-                print(f"[CONFIG] Remote device entities: {len(self.allowed_remote_entities)}")
-            except Exception as e:
-                print(f"[CONFIG] Failed to resolve remote device entities: {e}")
-                self.allowed_remote_entities = []
+        # --- Resolve remote device entities (all connected remotes) ---
+        if self.remote_device_ids:
+            all_remote = []
+            by_device = {}
+            for device_id in self.remote_device_ids:
+                try:
+                    result = await ha_client.get_device_entities(device_id)
+                    device_entities = []
+                    for category in ("zones", "sensors", "other"):
+                        device_entities.extend(e["entity_id"] for e in result.get(category, []))
+                    by_device[device_id] = device_entities
+                    all_remote.extend(device_entities)
+                    print(f"[CONFIG] Remote device {device_id[:12]}: {len(device_entities)} entities")
+                except Exception as e:
+                    print(f"[CONFIG] Failed to resolve remote device {device_id[:12]}: {e}")
+            self.allowed_remote_entities = all_remote
+            self.allowed_remote_entities_by_device = by_device
+            print(f"[CONFIG] Total remote entities: {len(all_remote)} across {len(by_device)} device(s)")
 
 
 # Global config instance
@@ -293,7 +299,7 @@ async def reload_config() -> Config:
     _config = Config.load(prefer_file=True)
     await _config.resolve_device_entities()
     print(f"[CONFIG] Reloaded: mode={_config.mode}, device={_config.irrigation_device_id or '(none)'}, "
-          f"remote={_config.remote_device_id or '(none)'}, "
+          f"remotes={len(_config.remote_device_ids)}, "
           f"zones={len(_config.allowed_zone_entities)}, sensors={len(_config.allowed_sensor_entities)}, "
           f"controls={len(_config.allowed_control_entities)}, "
           f"remote_entities={len(_config.allowed_remote_entities)}")
