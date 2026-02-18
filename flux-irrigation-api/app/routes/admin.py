@@ -30,11 +30,40 @@ def _extract_zone_number(entity_id: str) -> int:
     return int(m.group(1)) if m else 0
 
 
-async def _count_usable_zones(config) -> int | None:
+async def get_special_zone_numbers(config) -> set[int]:
+    """Return zone numbers configured as pump start relay or master valve.
+
+    Reads select.*_zone_N_mode entities from HA and returns the set of zone
+    numbers whose mode matches pump/relay/master valve.  This is the single
+    authoritative source — _count_usable_zones() and _has_pump_or_master_valve()
+    both delegate to it.
+    """
+    import ha_client
+
+    if not config.allowed_control_entities:
+        return set()
+
+    mode_eids = [
+        e for e in config.allowed_control_entities
+        if e.startswith("select.") and re.search(r'zone_\d+_mode', e.lower())
+    ]
+    if not mode_eids:
+        return set()
+
+    special = set()
+    mode_entities = await ha_client.get_entities_by_ids(mode_eids)
+    for me in mode_entities:
+        mode_val = (me.get("state") or "").lower()
+        zone_num = _extract_zone_number(me.get("entity_id", ""))
+        if zone_num and re.search(r'pump|relay|master.*valve|valve.*master', mode_val, re.IGNORECASE):
+            special.add(zone_num)
+    return special
+
+
+async def _count_usable_zones(config, special_zone_nums: set[int] | None = None) -> int | None:
     """Count zones excluding pump/master valve and not-used zones.
 
-    Uses zone mode entities (select.*_zone_N_mode) as the authoritative source
-    for identifying pumps/master valves, same approach as moisture.py.
+    If special_zone_nums is provided, uses it directly (avoids redundant HA call).
     """
     import ha_client
 
@@ -46,23 +75,8 @@ async def _count_usable_zones(config) -> int | None:
     if max_zones > 0:
         zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) <= max_zones]
 
-    # Find special zones (pump/master valve) via zone mode entities
-    mode_eids = [
-        e for e in config.allowed_control_entities
-        if e.startswith("select.") and re.search(r'zone_\d+_mode', e.lower())
-    ]
-    special_zone_nums = set()
-    if mode_eids:
-        mode_entities = await ha_client.get_entities_by_ids(mode_eids)
-        for me in mode_entities:
-            mode_val = (me.get("state") or "").lower()
-            zone_num = _extract_zone_number(me.get("entity_id", ""))
-            if re.search(r'pump|relay', mode_val, re.IGNORECASE):
-                if zone_num:
-                    special_zone_nums.add(zone_num)
-            elif re.search(r'master.*valve|valve.*master', mode_val, re.IGNORECASE):
-                if zone_num:
-                    special_zone_nums.add(zone_num)
+    if special_zone_nums is None:
+        special_zone_nums = await get_special_zone_numbers(config)
 
     # Filter out special zones and not-used zones
     zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) not in special_zone_nums]
@@ -72,24 +86,7 @@ async def _count_usable_zones(config) -> int | None:
 
 async def _has_pump_or_master_valve(config) -> bool:
     """Check if any zone is configured as pump start relay or master valve."""
-    import ha_client
-
-    if not config.allowed_control_entities:
-        return False
-
-    mode_eids = [
-        e for e in config.allowed_control_entities
-        if e.startswith("select.") and re.search(r'zone_\d+_mode', e.lower())
-    ]
-    if not mode_eids:
-        return False
-
-    mode_entities = await ha_client.get_entities_by_ids(mode_eids)
-    for me in mode_entities:
-        mode_val = (me.get("state") or "").lower()
-        if re.search(r'pump|relay|master.*valve|valve.*master', mode_val, re.IGNORECASE):
-            return True
-    return False
+    return bool(await get_special_zone_numbers(config))
 
 
 def _load_options() -> dict:
@@ -455,18 +452,27 @@ async def sync_remote_settings(use_12h: bool | None = None):
     These are one-way: add-on → remote.  The remote just displays them.
     """
     import ha_client
+    from run_log import update_special_zone_nums, get_special_zone_nums, invalidate_remote_maps
     config = get_config()
     if not config.allowed_remote_entities_by_device:
         return
 
-    # Compute shared values once (same for all remotes)
-    zc = await _count_usable_zones(config)
+    # Detect special zones (pump/relay/master valve) and update the broker cache
+    special_nums = await get_special_zone_numbers(config)
+    old_nums = get_special_zone_nums()
+    update_special_zone_nums(special_nums)
+    if special_nums != old_nums:
+        # Rebuild broker maps with the new filtering
+        invalidate_remote_maps()
+
+    has_pump = bool(special_nums)
+
+    # Compute usable zone count (pass special_nums to avoid redundant HA call)
+    zc = await _count_usable_zones(config, special_zone_nums=special_nums)
     if not zc:
         zc = config.detected_zone_count
         if not zc and config.allowed_zone_entities:
             zc = len(config.allowed_zone_entities)
-
-    has_pump = await _has_pump_or_master_valve(config)
 
     # Sync to each connected remote device
     for device_id, entities in config.allowed_remote_entities_by_device.items():

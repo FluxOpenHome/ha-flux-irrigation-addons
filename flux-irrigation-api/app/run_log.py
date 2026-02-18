@@ -51,6 +51,41 @@ _reconnect_sync_running_by_device: dict = {}  # device_id -> bool
 _sync_needed_by_device: dict = {}  # device_id -> entity_id or "" (searched, not found) or None (not searched)
 _manual_stop_by_device: dict = {}  # device_id -> entity_id or "" or None
 
+# Cached set of zone numbers that are pump/relay/master valve.
+# Populated by update_special_zone_nums() (called from sync_remote_settings).
+# Read by the synchronous map builders to filter out pump/MV zone entities.
+_special_zone_nums: set[int] = set()
+
+
+def update_special_zone_nums(zone_nums: set[int]):
+    """Update the cached set of special (pump/relay/master valve) zone numbers.
+
+    Called from sync_remote_settings() after async detection completes.
+    The synchronous map builders read this to filter pump/MV zone entities.
+    """
+    global _special_zone_nums
+    if zone_nums != _special_zone_nums:
+        _remote_log(f"Broker: special zone numbers updated: {_special_zone_nums} -> {zone_nums}")
+        _special_zone_nums = zone_nums
+
+
+def get_special_zone_nums() -> set[int]:
+    """Return the cached set of special zone numbers."""
+    return _special_zone_nums
+
+
+def _filter_special_zone_entities(entity_ids: set[str]) -> set[str]:
+    """Remove entities belonging to pump/relay/master valve zones.
+
+    Uses the cached _special_zone_nums set.  If no special zones are
+    configured, returns the input unchanged (no-op fast path).
+    """
+    if not _special_zone_nums:
+        return entity_ids
+    return {eid for eid in entity_ids
+            if not (_extract_zone_number(eid) and _extract_zone_number(eid) in _special_zone_nums)}
+
+
 # Reverse lookup: entity_id -> device_id (for fast routing in WebSocket handler)
 _entity_to_device_cache: dict = {}  # entity_id -> device_id
 
@@ -699,6 +734,8 @@ def _build_remote_entity_maps_for_device(device_id: str) -> dict:
     all_controller = (set(config.allowed_zone_entities or [])
                       | set(config.allowed_control_entities or [])
                       | set(config.allowed_sensor_entities or []))
+    # Exclude entities belonging to pump/relay/master valve zones
+    all_controller = _filter_special_zone_entities(all_controller)
     controller_inv = _classify_device_entities(list(all_controller))
     remote_inv = _classify_device_entities(device_entities)
 
@@ -789,9 +826,14 @@ def _build_remote_entity_maps() -> dict:
         return _remote_maps_cache
 
     # ── Phase 1: Classify each device's entities independently ──
-    all_controller = (set(config.allowed_zone_entities or [])
-                      | set(config.allowed_control_entities or [])
-                      | set(config.allowed_sensor_entities or []))
+    all_controller_raw = (set(config.allowed_zone_entities or [])
+                          | set(config.allowed_control_entities or [])
+                          | set(config.allowed_sensor_entities or []))
+    # Exclude entities belonging to pump/relay/master valve zones
+    all_controller = _filter_special_zone_entities(all_controller_raw)
+    if not _remote_maps_logged and len(all_controller) < len(all_controller_raw):
+        _remote_log(f"Broker: filtered {len(all_controller_raw) - len(all_controller)} "
+                    f"entities from special zones {_special_zone_nums}")
     controller_inv = _classify_device_entities(list(all_controller))
     remote_inv = _classify_device_entities(list(config.allowed_remote_entities))
 
@@ -1370,6 +1412,28 @@ async def _handle_remote_reconnect(entity_id: str, remote_entities: set, device_
     _remote_log(f"Broker: remote→controller mirroring re-enabled{dev_label}")
 
 
+async def _refresh_special_zones_on_mode_change():
+    """Re-detect special zones and rebuild broker maps when a zone mode changes."""
+    try:
+        from routes.admin import get_special_zone_numbers, sync_remote_settings
+        from config import get_config
+        config = get_config()
+
+        new_special = await get_special_zone_numbers(config)
+        old_special = _special_zone_nums
+
+        update_special_zone_nums(new_special)
+
+        if new_special != old_special:
+            _remote_log(f"Broker: zone mode change detected — special zones "
+                        f"{old_special} -> {new_special}, rebuilding maps")
+            invalidate_remote_maps()
+            # Re-sync settings (zone count + pump flag) to remotes
+            await sync_remote_settings()
+    except Exception as e:
+        print(f"[RUN_LOG] Special zone refresh on mode change failed: {e}")
+
+
 async def _handle_controller_to_remote(entity_id: str, new_state: str):
     """A controller entity changed — mirror to ALL connected remote devices."""
     # Never push unavailable/unknown to remote
@@ -1843,6 +1907,13 @@ async def _watch_via_websocket(allowed_entities: set):
                         import asyncio
                         asyncio.create_task(
                             _handle_controller_to_remote(entity_id, new_state)
+                        )
+                    # Detect zone mode changes → refresh special zone cache
+                    if (entity_id.startswith("select.") and
+                            "zone_" in entity_id and "_mode" in entity_id):
+                        import asyncio
+                        asyncio.create_task(
+                            _refresh_special_zones_on_mode_change()
                         )
 
                 # These handlers run IN ADDITION to the above (not exclusive)
