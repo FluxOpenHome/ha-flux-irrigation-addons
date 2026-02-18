@@ -1709,6 +1709,11 @@ async def check_timeline_conflicts(
     """
     config = get_config()
     data = _load_data()
+
+    # No conflicts to report if schedule sync is disabled
+    if not data.get("schedule_sync_enabled", True):
+        return []
+
     probes = data.get("probes", {})
 
     # Any probes with zone mappings?
