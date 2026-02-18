@@ -207,7 +207,7 @@ async def get_settings():
         del masked["key"]
         api_keys.append(masked)
 
-    return {
+    result = {
         "mode": config.mode,
         "api_keys": api_keys,
         "irrigation_device_id": options.get("irrigation_device_id", ""),
@@ -233,6 +233,15 @@ async def get_settings():
         "weather_check_interval_minutes": options.get("weather_check_interval_minutes", 15),
         "weather_source": options.get("weather_source", "ha_entity"),
     }
+
+    # Include stored coordinates from geocode cache
+    from routes.system import _load_geocode_cache
+    geo_cache = _load_geocode_cache()
+    result["stored_latitude"] = geo_cache.get("latitude")
+    result["stored_longitude"] = geo_cache.get("longitude")
+    result["stored_geo_source"] = geo_cache.get("source")
+
+    return result
 
 
 @router.post("/api/keys", summary="Create a new API key")
@@ -776,6 +785,8 @@ class ContactInfoRequest(BaseModel):
     first_name: str = Field("", max_length=50, description="Homeowner first name")
     last_name: str = Field("", max_length=50, description="Homeowner last name")
     label: str = Field("", max_length=100, description="Property label")
+    latitude: float | None = Field(None, description="Manual latitude override")
+    longitude: float | None = Field(None, description="Manual longitude override")
 
 
 @router.put("/api/contact-info", summary="Save contact and address info")
@@ -811,6 +822,26 @@ async def save_contact_info(body: ContactInfoRequest):
 
     await _save_options(options)
     await reload_config()
+
+    # Save manual coordinates to geocode cache (standalone mode fallback)
+    if body.latitude is not None and body.longitude is not None:
+        from routes.system import _load_geocode_cache, _save_geocode_cache
+        cache = _load_geocode_cache()
+        cache["latitude"] = float(body.latitude)
+        cache["longitude"] = float(body.longitude)
+        cache["source"] = "manual"
+        from datetime import datetime, timezone
+        cache["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _save_geocode_cache(cache)
+    elif body.latitude is None and body.longitude is None:
+        # If both cleared, remove manual coordinates (but keep management-pushed ones)
+        from routes.system import _load_geocode_cache, _save_geocode_cache
+        cache = _load_geocode_cache()
+        if cache.get("source") == "manual":
+            cache.pop("latitude", None)
+            cache.pop("longitude", None)
+            cache.pop("source", None)
+            _save_geocode_cache(cache)
 
     for change in contact_changes:
         log_change("Homeowner", "Connection Key", change)
@@ -1824,7 +1855,29 @@ ADMIN_HTML = """<!DOCTYPE html>
                     </p>
                 </div>
             </div>
-            <div style="margin-bottom:12px;">
+            <!-- Manual Coordinates (standalone fallback when address doesn't geocode) -->
+            <div id="manualCoordsSection" style="display:none;margin-top:12px;padding:12px;background:var(--bg-active-tile);border:1px solid var(--border-active);border-radius:8px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <strong style="font-size:13px;color:var(--color-primary);">Map Coordinates</strong>
+                    <span id="coordSourceBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--border-light);color:var(--text-secondary);display:none;"></span>
+                </div>
+                <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">
+                    If your address doesn't show on maps, enter your property coordinates manually.
+                    Find them at <a href="https://www.latlong.net/" target="_blank" style="color:var(--color-primary);">latlong.net</a>.
+                    In managed mode, coordinates are sent by your management company automatically.
+                </p>
+                <div class="form-row">
+                    <div class="form-group" style="max-width:200px;">
+                        <label>Latitude</label>
+                        <input type="number" id="manualLatitude" step="any" placeholder="e.g., 28.5383">
+                    </div>
+                    <div class="form-group" style="max-width:200px;">
+                        <label>Longitude</label>
+                        <input type="number" id="manualLongitude" step="any" placeholder="e.g., -81.3792">
+                    </div>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;margin-top:12px;">
                 <button class="btn btn-secondary" onclick="saveContactInfo()">Save Contact Info</button>
                 <span id="contactSaveStatus" style="font-size:12px;color:var(--color-success);margin-left:8px;display:none;">&#10003; Saved</span>
             </div>
@@ -2115,6 +2168,22 @@ ADMIN_HTML = """<!DOCTYPE html>
             document.getElementById('logRetention').value = data.log_retention_days || 365;
             document.getElementById('auditLogEnabled').checked = data.enable_audit_log !== false;
 
+            // Load stored coordinates into manual input fields
+            if (data.stored_latitude != null) {
+                document.getElementById('manualLatitude').value = data.stored_latitude;
+            }
+            if (data.stored_longitude != null) {
+                document.getElementById('manualLongitude').value = data.stored_longitude;
+            }
+            var badge = document.getElementById('coordSourceBadge');
+            if (badge && data.stored_geo_source) {
+                var label = data.stored_geo_source === 'management_server' ? 'From management' : data.stored_geo_source === 'manual' ? 'Manual' : data.stored_geo_source;
+                badge.textContent = label;
+                badge.style.display = 'inline';
+                badge.style.background = data.stored_geo_source === 'management_server' ? 'var(--bg-success-light)' : 'var(--border-light)';
+                badge.style.color = data.stored_geo_source === 'management_server' ? 'var(--text-success-dark)' : 'var(--text-secondary)';
+            }
+
             // Load devices and set current selection
             await loadDevices(data.irrigation_device_id || '');
             await loadRemoteDevices();
@@ -2392,6 +2461,13 @@ ADMIN_HTML = """<!DOCTYPE html>
             zip: document.getElementById('homeownerZip').value.trim(),
             phone: document.getElementById('homeownerPhone').value.trim(),
         };
+        // Include manual coordinates if provided
+        const latVal = document.getElementById('manualLatitude').value.trim();
+        const lonVal = document.getElementById('manualLongitude').value.trim();
+        if (latVal && lonVal) {
+            body.latitude = parseFloat(latVal);
+            body.longitude = parseFloat(lonVal);
+        }
         try {
             const res = await fetch(`${BASE}/contact-info`, {
                 method: 'PUT',
@@ -3495,6 +3571,10 @@ ADMIN_HTML = """<!DOCTYPE html>
     function toggleManagementCardVisibility(mode) {
         const card = document.getElementById('managementAccessCard');
         if (card) card.style.display = mode === 'managed' ? '' : 'none';
+        // Show manual coordinates section — always visible so users can enter coords
+        // In managed mode, show as read-only with source badge; in standalone, editable
+        const coordSection = document.getElementById('manualCoordsSection');
+        if (coordSection) coordSection.style.display = '';
     }
 
     // --- Init ---

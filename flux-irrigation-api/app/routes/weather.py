@@ -392,21 +392,34 @@ async def _get_or_create_nws_location(config) -> dict | None:
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            # Step 1: Geocode address via Nominatim
-            geo_resp = await client.get(
-                "https://nominatim.openstreetmap.org/search",
-                params={"format": "json", "limit": "1", "q": address_str},
-                headers={"User-Agent": NWS_USER_AGENT},
-            )
-            geo_resp.raise_for_status()
-            geo_results = geo_resp.json()
-            if not geo_results:
-                print(f"[WEATHER-NWS] Geocoding returned no results for: {address_str}")
-                return None
+            # Step 1: Geocode address — try stored coordinates first (pushed by management server),
+            # then fall back to Nominatim (free, but misses newer subdivisions)
+            lat = None
+            lon = None
 
-            lat = round(float(geo_results[0]["lat"]), 4)
-            lon = round(float(geo_results[0]["lon"]), 4)
-            print(f"[WEATHER-NWS] Geocoded address to {lat}, {lon}")
+            # Check for pre-geocoded coordinates from management server
+            from routes.system import _load_geocode_cache
+            stored = _load_geocode_cache()
+            if stored.get("latitude") is not None and stored.get("longitude") is not None:
+                lat = round(float(stored["latitude"]), 4)
+                lon = round(float(stored["longitude"]), 4)
+                print(f"[WEATHER-NWS] Using stored coordinates: ({lat}, {lon})")
+            else:
+                # Fall back to Nominatim geocoding
+                geo_resp = await client.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"format": "json", "limit": "1", "q": address_str},
+                    headers={"User-Agent": NWS_USER_AGENT},
+                )
+                geo_resp.raise_for_status()
+                geo_results = geo_resp.json()
+                if not geo_results:
+                    print(f"[WEATHER-NWS] Geocoding returned no results for: {address_str}")
+                    return None
+
+                lat = round(float(geo_results[0]["lat"]), 4)
+                lon = round(float(geo_results[0]["lon"]), 4)
+                print(f"[WEATHER-NWS] Geocoded address to {lat}, {lon}")
 
             # Step 2: NWS points lookup
             points_resp = await client.get(

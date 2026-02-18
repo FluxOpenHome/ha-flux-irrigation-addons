@@ -340,3 +340,61 @@ async def resume_system(request: Request):
         system_paused=False,
         message="Irrigation system resumed.",
     )
+
+
+# --- Geocode coordinate storage (pushed by management server) ---
+
+GEOCODE_CACHE_FILE = "/data/geocode_cache.json"
+
+
+def _load_geocode_cache() -> dict:
+    """Load stored geocode coordinates."""
+    import json, os
+    if os.path.exists(GEOCODE_CACHE_FILE):
+        try:
+            with open(GEOCODE_CACHE_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def _save_geocode_cache(data: dict):
+    """Save geocode coordinates to persistent storage."""
+    import json, os
+    os.makedirs(os.path.dirname(GEOCODE_CACHE_FILE), exist_ok=True)
+    with open(GEOCODE_CACHE_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+@router.post(
+    "/coordinates",
+    dependencies=[Depends(require_permission("system.control"))],
+    summary="Store geocoded coordinates (pushed by management server)",
+)
+async def store_coordinates(request: Request):
+    """Receive and store pre-geocoded lat/lng from the management server.
+
+    This avoids the HA add-on needing to geocode addresses itself.
+    Used by NWS weather lookups and the homeowner site map.
+    """
+    body = await request.json()
+    lat = body.get("latitude")
+    lon = body.get("longitude")
+
+    if lat is None or lon is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="latitude and longitude required")
+    if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="latitude and longitude must be numbers")
+
+    cache = _load_geocode_cache()
+    cache["latitude"] = float(lat)
+    cache["longitude"] = float(lon)
+    cache["source"] = "management_server"
+    cache["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _save_geocode_cache(cache)
+
+    print(f"[SYSTEM] Stored coordinates from management server: ({lat}, {lon})")
+    return {"success": True, "latitude": lat, "longitude": lon}

@@ -788,21 +788,35 @@ async def homeowner_history(
 
 @router.get("/geocode", summary="Geocode an address")
 async def homeowner_geocode(q: str = Query(..., min_length=3, description="Address to geocode")):
-    """Proxy geocoding via Nominatim so the browser doesn't need cross-origin access."""
+    """Proxy geocoding via Nominatim so the browser doesn't need cross-origin access.
+    Falls back to stored coordinates (pushed by management server) if Nominatim fails."""
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 "https://nominatim.openstreetmap.org/search",
                 params={"format": "json", "limit": "1", "q": q},
-                headers={"User-Agent": "FluxIrrigationAPI/1.1.11"},
+                headers={"User-Agent": "FluxIrrigationAPI/1.2.0"},
             )
             resp.raise_for_status()
             results = resp.json()
             if results and len(results) > 0:
                 return {"lat": float(results[0]["lat"]), "lon": float(results[0]["lon"])}
+            # Nominatim returned no results — try stored coordinates from management server
+            from routes.system import _load_geocode_cache
+            stored = _load_geocode_cache()
+            if stored.get("latitude") is not None and stored.get("longitude") is not None:
+                return {"lat": stored["latitude"], "lon": stored["longitude"]}
             return {"lat": None, "lon": None}
     except Exception as e:
+        # On network error, try stored coordinates before failing
+        try:
+            from routes.system import _load_geocode_cache
+            stored = _load_geocode_cache()
+            if stored.get("latitude") is not None and stored.get("longitude") is not None:
+                return {"lat": stored["latitude"], "lon": stored["longitude"]}
+        except Exception:
+            pass
         raise HTTPException(status_code=502, detail=f"Geocoding failed: {e}")
 
 
