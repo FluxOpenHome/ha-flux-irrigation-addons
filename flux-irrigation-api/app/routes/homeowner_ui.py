@@ -141,7 +141,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* Zone/Sensor Tiles */
 .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
-.tile { background: var(--bg-tile); border-radius: 10px; padding: 16px; border: 1px solid var(--border-light); min-height: 140px; position: relative; display:flex; flex-direction:column; }
+.tile { background: var(--bg-tile); border-radius: 10px; padding: 14px; border: 1px solid var(--border-light); min-height: 130px; position: relative; display:flex; flex-direction:column; }
 #cardBody_status .tile { min-height: auto; flex-direction:row; align-items:center; gap:12px; }
 #cardBody_status .tile .status-tile-text { flex:1; min-width:0; }
 #cardBody_status .tile .status-tile-text .tile-name { padding-right:0; margin-bottom:2px; }
@@ -163,13 +163,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tile-bottom-row { display:flex; align-items:flex-end; margin-top:auto; gap:0; }
 .tile-sprinkler-icon { display:flex; align-items:center; justify-content:center; flex:1; color:var(--text-muted); pointer-events:none; }
 .tile-sprinkler-icon svg { opacity:0.45; transition:all 0.3s ease; }
-.tile.active .tile-sprinkler-icon { position:absolute; top:60%; left:50%; transform:translate(-50%,-50%); flex:none; }
+.tile.active .tile-sprinkler-icon { position:absolute; bottom:12px; right:12px; left:auto; top:auto; transform:none; flex:none; }
 .tile.active .tile-sprinkler-icon svg { color:var(--color-info); opacity:0.85; animation:sprinklerPulse 2s ease-in-out infinite; }
 @keyframes sprinklerPulse { 0%,100%{ opacity:0.6; transform:scale(1); } 50%{ opacity:1; transform:scale(1.15); } }
 .tile-sprinkler-icon.pump-valve svg { opacity:0.45; }
-.tile.active .tile-sprinkler-icon.pump-valve { position:absolute; top:60%; left:50%; transform:translate(-50%,-50%); flex:none; }
+.tile.active .tile-sprinkler-icon.pump-valve { position:absolute; bottom:12px; right:12px; left:auto; top:auto; transform:none; flex:none; }
 .tile.active .tile-sprinkler-icon.pump-valve svg { color:var(--color-info); opacity:0.85; animation:pumpPulse 2s ease-in-out infinite; }
 @keyframes pumpPulse { 0%,100%{ opacity:0.6; transform:scale(1); } 50%{ opacity:1; transform:scale(1.15); } }
+.tile.active .tile-timer-wrap { max-width:62%; margin:2px 0 8px; }
+.tile.active .tile-bottom-row { max-width:55%; }
 
 /* Card Row — side-by-side cards */
 .card-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; }
