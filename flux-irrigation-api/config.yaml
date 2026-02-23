@@ -1,6 +1,6 @@
 # Flux Open Home Irrigation Control Add-on
 name: "Flux Open Home Irrigation Control"
-version: "1.2.0"
+version: "1.2.1"
 slug: "flux_irrigation_api"
 description: "Homeowner irrigation management for Flux Open Home. Exposes a secure API and dashboard for controlling zones, sensors, schedules, weather rules, and moisture probes."
 url: "https://github.com/FluxOpenHome/ha-flux-irrigation-addons"

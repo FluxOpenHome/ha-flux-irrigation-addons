@@ -370,6 +370,10 @@ async def homeowner_start_zone(zone_id: str, body: ZoneStartRequest, request: Re
     if entity is None:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
 
+    # Pre-announce the source so the WebSocket watcher knows this is a
+    # dashboard start even if the log entry hasn't been written yet (race condition fix).
+    run_log.pre_announce_zone_source(entity_id, "dashboard")
+
     svc_domain, svc_name = _get_zone_service(entity_id, "on")
     success = await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
     if not success:

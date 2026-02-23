@@ -32,6 +32,37 @@ _zone_states: dict[str, str] = {}
 # Cache of zone start times for duration calculation
 _zone_start_times: dict[str, str] = {}
 
+# Pre-announced zone sources — set BEFORE calling ha_client.call_service() so
+# the WebSocket watcher knows the real source even if the log entry hasn't been
+# written yet.  This fixes a race condition where the WebSocket event arrives
+# before log_zone_event() is called, causing the moisture system to default to
+# "schedule" source and auto-skip manual/API-triggered zone starts.
+_pre_announced_sources: dict[str, tuple[str, float]] = {}  # entity_id -> (source, timestamp)
+_PRE_ANNOUNCE_TTL_S = 15  # auto-expire after 15 seconds
+
+
+def pre_announce_zone_source(entity_id: str, source: str) -> None:
+    """Register the intended source for an upcoming zone state change.
+
+    Call this BEFORE ha_client.call_service() to win the race against the
+    WebSocket watcher.  The entry auto-expires after _PRE_ANNOUNCE_TTL_S.
+    """
+    import time
+    _pre_announced_sources[entity_id] = (source, time.time())
+    print(f"[RUN_LOG] Pre-announced source for {entity_id}: {source}")
+
+
+def _consume_pre_announced_source(entity_id: str) -> Optional[str]:
+    """Pop and return the pre-announced source if it hasn't expired."""
+    import time
+    entry = _pre_announced_sources.pop(entity_id, None)
+    if entry is None:
+        return None
+    source, ts = entry
+    if time.time() - ts > _PRE_ANNOUNCE_TTL_S:
+        return None  # expired
+    return source
+
 # --- Remote ↔ Controller entity mirroring ---
 # Guard to prevent infinite loops: when we mirror a state change, the resulting
 # state_changed event should be ignored.
@@ -594,9 +625,19 @@ async def _handle_state_change(entity_id: str, new_state: str, old_state: str,
             # Determine effective source: if the event was already logged by
             # the API endpoint (manual start), use that source so moisture
             # module knows not to auto-skip manual runs.
-            effective_source = source
-            if already_logged and recent:
+            #
+            # Priority:
+            # 1. Pre-announced source (set before call_service, wins the race)
+            # 2. Already-logged source from run history
+            # 3. Default source parameter ("schedule")
+            pre_source = _consume_pre_announced_source(entity_id)
+            if pre_source:
+                effective_source = pre_source
+                print(f"[RUN_LOG] Using pre-announced source for {entity_id}: {pre_source}")
+            elif already_logged and recent:
                 effective_source = recent[0].get("source", source)
+            else:
+                effective_source = source
             await on_zone_state_change(entity_id, new_state, effective_source)
         except Exception as e:
             print(f"[RUN_LOG] Moisture zone state hook error: {e}")

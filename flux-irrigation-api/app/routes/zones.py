@@ -87,8 +87,10 @@ def _zone_name(entity_id: str) -> str:
 def _resolve_zone_entity(zone_id: str, config) -> str:
     """Resolve a zone_id to a full entity_id, validating it's allowed.
 
-    Tries switch.{zone_id} and valve.{zone_id} to support both entity types.
-    Also accepts a full entity_id directly if it's in the allowed list.
+    Tries multiple resolution strategies:
+    1. Direct match (zone_id is already a full entity_id)
+    2. Prefix match (switch.{zone_id} or valve.{zone_id})
+    3. Zone number match (zone_id is "2" → find entity with zone_2 in name)
     """
     # Check if zone_id is already a full entity_id
     if zone_id in config.allowed_zone_entities:
@@ -99,6 +101,15 @@ def _resolve_zone_entity(zone_id: str, config) -> str:
         entity_id = f"{domain}.{zone_id}"
         if entity_id in config.allowed_zone_entities:
             return entity_id
+
+    # Try matching by zone number (e.g., zone_id="2" matches "switch.xxx_zone_2")
+    try:
+        target_num = int(zone_id)
+        for entity_id in config.allowed_zone_entities:
+            if _extract_zone_number(entity_id) == target_num:
+                return entity_id
+    except (ValueError, TypeError):
+        pass
 
     raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
 
@@ -237,6 +248,10 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
     entity = await ha_client.get_entity_state(entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found.")
+
+    # Pre-announce the source so the WebSocket watcher knows this is an API
+    # start even if the log entry hasn't been written yet (race condition fix).
+    run_log.pre_announce_zone_source(entity_id, "api")
 
     # Turn on the zone (supports both switch and valve entities)
     svc_domain, svc_name = _get_zone_service(entity_id, "on")
