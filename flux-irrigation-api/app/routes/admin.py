@@ -1098,6 +1098,178 @@ async def generate_connection_key(body: ConnectionKeyRequest):
     }
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# APP CONNECTION KEY — For homeowner's own iPhone app (no management co)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class AppConnectionKeyRequest(BaseModel):
+    url: str = Field(min_length=1, description="Externally reachable API URL")
+    ha_token: str = Field("", description="HA Long-Lived Access Token (for Nabu Casa mode)")
+    connection_mode: str = Field("direct", description="'nabu_casa' or 'direct'")
+
+
+@router.post("/api/app-connection-key", summary="Generate an App Connection Key")
+async def generate_app_connection_key(body: AppConnectionKeyRequest):
+    """Generate a connection key for the homeowner's own iPhone app.
+
+    Creates a separate API key entry named 'Mobile App (Connection Key)'
+    that can coexist with a management company key. Encodes with
+    purpose='app' to distinguish from management keys.
+    """
+    from connection_key import ConnectionKeyData, encode_connection_key
+
+    config = get_config()
+
+    url = body.url.strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"URL must start with http:// or https:// — got: '{url[:50]}'.",
+        )
+
+    options = _load_options()
+
+    # Preserve or update HA token
+    effective_ha_token = body.ha_token.strip() if body.ha_token else ""
+    if effective_ha_token:
+        options["app_ha_token"] = effective_ha_token
+    else:
+        effective_ha_token = options.get("app_ha_token", "")
+        # Fallback to homeowner token if app-specific not set
+        if not effective_ha_token:
+            effective_ha_token = options.get("homeowner_ha_token", "")
+
+    # Validate HA token for Nabu Casa mode
+    if body.connection_mode == "nabu_casa":
+        if not effective_ha_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Nabu Casa mode requires a Home Assistant Long-Lived Access Token.",
+            )
+        if len(effective_ha_token) < 100:
+            raise HTTPException(
+                status_code=400,
+                detail=f"The HA token is only {len(effective_ha_token)} characters — "
+                       f"a valid Long-Lived Access Token is typically 180+ characters.",
+            )
+
+    # Auto-detect zone count
+    zone_count = await _count_usable_zones(config)
+
+    # Create (or replace) the app API key — separate from management key
+    existing_keys = options.get("api_keys", [])
+    app_key_name = "Mobile App (Connection Key)"
+
+    # App permissions — control + read, no system.control
+    app_permissions = [
+        "zones.read", "zones.control", "schedule.read",
+        "schedule.write", "sensors.read", "entities.read",
+        "entities.control", "history.read",
+    ]
+
+    # Remove any existing app key — create fresh
+    existing_keys = [k for k in existing_keys if k.get("name") != app_key_name]
+
+    app_key = secrets.token_urlsafe(32)
+    existing_keys.append({
+        "key": app_key,
+        "name": app_key_name,
+        "permissions": app_permissions,
+    })
+    options["api_keys"] = existing_keys
+    options["app_connection_url"] = url
+    options["app_connection_mode"] = body.connection_mode
+    print(f"[ADMIN] Generated fresh app connection API key")
+
+    await _save_options(options)
+    await reload_config()
+
+    key_data = ConnectionKeyData(
+        url=url,
+        key=app_key,
+        zone_count=zone_count,
+        ha_token=effective_ha_token or None,
+        mode=body.connection_mode or "direct",
+        purpose="app",
+    )
+    encoded = encode_connection_key(key_data)
+
+    log_change("Homeowner", "App Connection Key", "Generated new app connection key")
+
+    return {
+        "success": True,
+        "connection_key": encoded,
+        "url": url,
+        "zone_count": zone_count,
+        "connection_mode": body.connection_mode,
+    }
+
+
+@router.get("/api/app-connection-key", summary="Check if app key exists")
+async def get_app_connection_key():
+    """Check whether an App Connection Key has been generated."""
+    from connection_key import ConnectionKeyData, encode_connection_key
+
+    options = _load_options()
+    existing_keys = options.get("api_keys", [])
+    app_key_name = "Mobile App (Connection Key)"
+    app_key_entry = None
+    for k in existing_keys:
+        if k.get("name") == app_key_name:
+            app_key_entry = k
+            break
+
+    has_app_key = app_key_entry is not None
+    url = options.get("app_connection_url", "")
+    mode = options.get("app_connection_mode", "direct")
+    ha_token = options.get("app_ha_token", "") or options.get("homeowner_ha_token", "")
+
+    connection_key = None
+    if has_app_key and url:
+        config = get_config()
+        zone_count = await _count_usable_zones(config)
+        key_data = ConnectionKeyData(
+            url=url,
+            key=app_key_entry["key"],
+            zone_count=zone_count,
+            ha_token=ha_token or None,
+            mode=mode,
+            purpose="app",
+        )
+        connection_key = encode_connection_key(key_data)
+
+    return {
+        "exists": has_app_key,
+        "url": url,
+        "connection_mode": mode,
+        "ha_token_set": bool(ha_token),
+        "connection_key": connection_key,
+    }
+
+
+@router.delete("/api/app-connection-key", summary="Revoke app connection key")
+async def revoke_app_connection_key():
+    """Revoke the App Connection Key (removes the API key entry)."""
+    options = _load_options()
+    existing_keys = options.get("api_keys", [])
+    app_key_name = "Mobile App (Connection Key)"
+    before_count = len(existing_keys)
+    existing_keys = [k for k in existing_keys if k.get("name") != app_key_name]
+    removed = before_count - len(existing_keys)
+    options["api_keys"] = existing_keys
+    options.pop("app_connection_url", None)
+    options.pop("app_connection_mode", None)
+    options.pop("app_ha_token", None)
+    await _save_options(options)
+    await reload_config()
+
+    if removed > 0:
+        log_change("Homeowner", "App Connection Key", "Revoked app connection key")
+
+    return {"success": True, "removed": removed > 0}
+
+
 @router.post("/api/test-url", summary="Test if a URL is reachable from this add-on")
 async def test_url(body: dict):
     """Test connectivity to a URL from the server side (inside the Docker container).
@@ -2011,6 +2183,111 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- App Connection Key (iPhone App) -->
+    <div class="card" id="appConnectionKeyCard">
+        <div class="card-header">
+            <h2>iPhone App Connection Key</h2>
+            <span id="appKeyBadge" style="font-size:12px;padding:3px 10px;border-radius:12px;background:var(--border-light);color:var(--text-secondary);">Not Configured</span>
+        </div>
+        <div class="card-body">
+            <p style="margin-bottom:16px; color:var(--text-secondary); font-size:14px;">
+                Generate a connection key to link this irrigation system to your iPhone&rsquo;s Flux Open Home app.
+                This works alongside management access &mdash; you can have both a management company connection and your own app connection at the same time.
+            </p>
+
+            <!-- Form section (shown when no key exists) -->
+            <div id="appKeyFormSection">
+                <!-- Connection Mode Selection -->
+                <div class="form-group">
+                    <label>Connection Method</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;" class="conn-mode-grid">
+                        <label style="display:block;cursor:pointer;padding:12px;border:2px solid var(--border-input);border-radius:8px;" id="appModeNabuLabel">
+                            <input type="radio" name="appConnMode" value="nabu_casa" checked onchange="toggleAppConnectionMode()">
+                            <strong style="font-size:14px;">Nabu Casa</strong>
+                            <span style="color:var(--color-success);font-size:11px;"> (Recommended)</span>
+                            <div style="font-size:12px;color:var(--text-hint);margin-top:4px;">Works with your existing Nabu Casa subscription. No extra setup needed.</div>
+                        </label>
+                        <label style="display:block;cursor:pointer;padding:12px;border:2px solid var(--border-input);border-radius:8px;" id="appModeDirectLabel">
+                            <input type="radio" name="appConnMode" value="direct" onchange="toggleAppConnectionMode()">
+                            <strong style="font-size:14px;">Direct Connection</strong>
+                            <div style="font-size:12px;color:var(--text-hint);margin-top:4px;">Requires port forwarding, Cloudflare Tunnel, or VPN.</div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Nabu Casa Fields -->
+                <div id="appNabuCasaFields">
+                    <div class="form-group">
+                        <label>Your Nabu Casa URL</label>
+                        <input type="text" id="appHomeownerUrl" placeholder="https://xxxxxxxx.ui.nabu.casa">
+                        <p style="font-size:12px; color:var(--text-placeholder); margin-top:4px;">
+                            Find this in HA: <strong>Settings &rarr; Home Assistant Cloud &rarr; Remote Control</strong>. Copy the URL shown there.
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label>Home Assistant Long-Lived Access Token</label>
+                        <input type="password" id="appHaToken" placeholder="Paste your HA token here">
+                        <p style="font-size:12px; color:var(--text-placeholder); margin-top:4px;">
+                            If you already entered a token in the Management Access section above, leave this blank &mdash; it will be used automatically.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Direct Mode Fields -->
+                <div id="appDirectFields" style="display:none;">
+                    <div class="form-group">
+                        <label>Your External API URL</label>
+                        <input type="text" id="appHomeownerUrlDirect" placeholder="https://your-domain.duckdns.org:8099">
+                        <p style="font-size:12px; color:var(--text-placeholder); margin-top:4px;">
+                            Port 8099 must be accessible externally via port forwarding, Cloudflare Tunnel, or VPN.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="appGenerateKeyArea">
+                    <button class="btn btn-primary" onclick="generateAppConnectionKey()">Generate App Connection Key</button>
+                </div>
+            </div>
+
+            <!-- Status section (shown when key exists) -->
+            <div id="appKeyStatusSection" style="display:none;">
+                <div style="display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg-success-light);border:1px solid var(--border-active);border-radius:10px;margin-bottom:16px;">
+                    <span style="font-size:24px;">&#9989;</span>
+                    <div>
+                        <div style="font-weight:600;color:var(--text-success-dark);">App Key Active</div>
+                        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+                            Mode: <strong id="appKeyStatusMode">Direct</strong> &bull; URL: <span id="appKeyStatusUrl" style="font-family:monospace;font-size:11px;">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key display (shown after generate or on load if key exists) -->
+            <div id="appConnectionKeyDisplay" class="new-key-display" style="display:none;">
+                <strong>App Connection Key</strong>
+                <code id="appConnectionKeyValue" style="font-size:13px;"></code>
+                <p class="warning">Open the Flux Open Home app on your iPhone &rarr; Add Device &rarr; Link Home Assistant &rarr; paste this key.</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="copyAppConnectionKey()">&#128203; Copy to Clipboard</button>
+                </div>
+            </div>
+
+            <!-- Revoke section -->
+            <div id="appRevokeSection" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-light);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:14px;font-weight:600;color:var(--text-primary);">App Access</div>
+                        <div style="font-size:13px;color:var(--color-success);margin-top:2px;">Active &mdash; your iPhone app can control this system</div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-secondary btn-sm" onclick="regenerateAppConnectionKey()">Regenerate</button>
+                        <button class="btn btn-danger btn-sm" onclick="revokeAppConnectionKey()">Revoke</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- General Settings -->
     <div class="card">
         <div class="card-header">
@@ -2756,6 +3033,200 @@ ADMIN_HTML = """<!DOCTYPE html>
     document.getElementById('revokeModal').addEventListener('click', function(e) {
         if (e.target === this) closeRevokeModal();
     });
+
+    // --- App Connection Key (iPhone App) ---
+    function getAppConnectionMode() {
+        var radios = document.querySelectorAll('input[name="appConnMode"]');
+        for (var i = 0; i < radios.length; i++) { if (radios[i].checked) return radios[i].value; }
+        return 'nabu_casa';
+    }
+
+    function toggleAppConnectionMode() {
+        var mode = getAppConnectionMode();
+        document.getElementById('appNabuCasaFields').style.display = mode === 'nabu_casa' ? 'block' : 'none';
+        document.getElementById('appDirectFields').style.display = mode === 'direct' ? 'block' : 'none';
+        document.getElementById('appModeNabuLabel').style.borderColor = mode === 'nabu_casa' ? 'var(--color-accent)' : 'var(--border-input)';
+        document.getElementById('appModeDirectLabel').style.borderColor = mode === 'direct' ? 'var(--color-accent)' : 'var(--border-input)';
+    }
+
+    function getAppEffectiveUrl() {
+        var mode = getAppConnectionMode();
+        if (mode === 'nabu_casa') return document.getElementById('appHomeownerUrl').value.trim();
+        return document.getElementById('appHomeownerUrlDirect').value.trim();
+    }
+
+    async function loadAppKeyStatus() {
+        try {
+            var res = await fetch(BASE + '/app-connection-key');
+            var data = await res.json();
+            var badge = document.getElementById('appKeyBadge');
+
+            if (data.exists) {
+                // Key exists — show status + key display
+                document.getElementById('appKeyStatusSection').style.display = 'block';
+                document.getElementById('appKeyFormSection').style.display = 'none';
+                document.getElementById('appKeyStatusUrl').textContent = data.url || '—';
+                document.getElementById('appKeyStatusMode').textContent = data.connection_mode === 'nabu_casa' ? 'Nabu Casa' : 'Direct';
+                document.getElementById('appRevokeSection').style.display = 'block';
+                badge.textContent = 'Active';
+                badge.style.background = 'var(--bg-success-light)';
+                badge.style.color = 'var(--text-success-dark)';
+
+                if (data.connection_key) {
+                    document.getElementById('appConnectionKeyValue').textContent = data.connection_key;
+                    document.getElementById('appConnectionKeyDisplay').style.display = 'block';
+                }
+            } else {
+                // No key — show form
+                document.getElementById('appKeyStatusSection').style.display = 'none';
+                document.getElementById('appKeyFormSection').style.display = 'block';
+                document.getElementById('appConnectionKeyDisplay').style.display = 'none';
+                document.getElementById('appRevokeSection').style.display = 'none';
+                badge.textContent = 'Not Configured';
+                badge.style.background = 'var(--border-light)';
+                badge.style.color = 'var(--text-secondary)';
+
+                // Pre-fill from management connection if available
+                prefillAppKeyFromManagement();
+            }
+        } catch(e) {
+            // First time — no key yet, pre-fill from management
+            prefillAppKeyFromManagement();
+        }
+    }
+
+    function prefillAppKeyFromManagement() {
+        // If management URL/mode already configured, pre-fill the app key fields
+        try {
+            var mgmtMode = getConnectionMode();
+            var mgmtUrl = getEffectiveUrl();
+            if (mgmtUrl) {
+                var radio = document.querySelector('input[name="appConnMode"][value="' + mgmtMode + '"]');
+                if (radio) radio.checked = true;
+                if (mgmtMode === 'nabu_casa') {
+                    document.getElementById('appHomeownerUrl').value = mgmtUrl;
+                    document.getElementById('appHaToken').placeholder = 'Uses management token if blank (or enter a new one)';
+                } else {
+                    document.getElementById('appHomeownerUrlDirect').value = mgmtUrl;
+                }
+                toggleAppConnectionMode();
+            }
+        } catch(e) { /* management fields might not be loaded yet */ }
+    }
+
+    async function generateAppConnectionKey() {
+        var mode = getAppConnectionMode();
+        var url = getAppEffectiveUrl();
+        if (!url) { showToast('Enter your URL first', 'error'); return; }
+
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            showToast('URL must start with http:// or https://', 'error');
+            return;
+        }
+
+        var ha_token = mode === 'nabu_casa' ? document.getElementById('appHaToken').value.trim() : '';
+
+        var body = { url: url, connection_mode: mode };
+        if (ha_token && ha_token !== '********') {
+            body.ha_token = ha_token;
+        }
+
+        try {
+            var res = await fetch(BASE + '/app-connection-key', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            });
+            var data = await res.json();
+            if (!res.ok) {
+                showToast(data.detail || 'Failed to generate key', 'error');
+                return;
+            }
+            if (data.connection_key) {
+                document.getElementById('appConnectionKeyValue').textContent = data.connection_key;
+                document.getElementById('appConnectionKeyDisplay').style.display = 'block';
+                document.getElementById('appKeyStatusSection').style.display = 'block';
+                document.getElementById('appKeyFormSection').style.display = 'none';
+                document.getElementById('appRevokeSection').style.display = 'block';
+                document.getElementById('appKeyStatusUrl').textContent = url;
+                document.getElementById('appKeyStatusMode').textContent = mode === 'nabu_casa' ? 'Nabu Casa' : 'Direct';
+                var badge = document.getElementById('appKeyBadge');
+                badge.textContent = 'Active';
+                badge.style.background = 'var(--bg-success-light)';
+                badge.style.color = 'var(--text-success-dark)';
+                showToast('App connection key generated! Copy it to your iPhone app.');
+            }
+        } catch(e) { showToast('Failed to generate key: ' + e.message, 'error'); }
+    }
+
+    function copyAppConnectionKey() {
+        var key = document.getElementById('appConnectionKeyValue').textContent;
+        navigator.clipboard.writeText(key).then(function() { showToast('App connection key copied!'); });
+    }
+
+    async function regenerateAppConnectionKey() {
+        var ok = await showConfirm({
+            title: 'Regenerate App Key?',
+            message: 'This will replace the current app connection key. Your iPhone app will need the new key to reconnect.',
+            confirmText: 'Regenerate',
+            confirmClass: 'btn-primary',
+            icon: '&#128260;',
+        });
+        if (!ok) return;
+
+        // Show the form pre-filled so they can adjust settings if needed
+        document.getElementById('appKeyFormSection').style.display = 'block';
+        document.getElementById('appKeyStatusSection').style.display = 'none';
+        document.getElementById('appConnectionKeyDisplay').style.display = 'none';
+
+        // Pre-fill from existing app key data
+        try {
+            var res = await fetch(BASE + '/app-connection-key');
+            var data = await res.json();
+            if (data.url) {
+                var mode = data.connection_mode || 'direct';
+                var radio = document.querySelector('input[name="appConnMode"][value="' + mode + '"]');
+                if (radio) radio.checked = true;
+                if (mode === 'nabu_casa') {
+                    document.getElementById('appHomeownerUrl').value = data.url;
+                    if (data.ha_token_set) document.getElementById('appHaToken').value = '********';
+                } else {
+                    document.getElementById('appHomeownerUrlDirect').value = data.url;
+                }
+                toggleAppConnectionMode();
+            }
+        } catch(e) { /* use existing form values */ }
+    }
+
+    async function revokeAppConnectionKey() {
+        var ok = await showConfirm({
+            title: 'Revoke App Key?',
+            message: 'This will disconnect your iPhone app from this irrigation system. You can generate a new key later.',
+            confirmText: 'Revoke',
+            confirmClass: 'btn-danger',
+            icon: '&#128241;',
+        });
+        if (!ok) return;
+
+        try {
+            var res = await fetch(BASE + '/app-connection-key', { method: 'DELETE' });
+            var data = await res.json();
+            if (data.success) {
+                showToast('App connection key revoked');
+                document.getElementById('appConnectionKeyDisplay').style.display = 'none';
+                document.getElementById('appRevokeSection').style.display = 'none';
+                document.getElementById('appKeyStatusSection').style.display = 'none';
+                document.getElementById('appKeyFormSection').style.display = 'block';
+                var badge = document.getElementById('appKeyBadge');
+                badge.textContent = 'Not Configured';
+                badge.style.background = 'var(--border-light)';
+                badge.style.color = 'var(--text-secondary)';
+                prefillAppKeyFromManagement();
+            } else {
+                showToast(data.detail || 'Failed to revoke', 'error');
+            }
+        } catch(e) { showToast('Failed to revoke: ' + e.message, 'error'); }
+    }
 
     // --- Remote Device Management (Multi-Remote) ---
     async function loadRemoteDevices() {
@@ -3608,6 +4079,7 @@ ADMIN_HTML = """<!DOCTYPE html>
     // --- Init ---
     loadSettings();
     loadConnectionKey();
+    loadAppKeyStatus();
     loadWeatherSettings();
     loadStatus();
     loadSystemMode();

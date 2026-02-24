@@ -41,6 +41,7 @@ class ConnectionKeyData:
     zone_count: Optional[int] = None
     ha_token: Optional[str] = None
     mode: str = "direct"  # "direct" or "nabu_casa"
+    purpose: Optional[str] = None  # "management" or "app" — distinguishes key type
 
 
 def encode_connection_key(data: ConnectionKeyData) -> str:
@@ -66,6 +67,8 @@ def encode_connection_key(data: ConnectionKeyData) -> str:
         payload["zone_count"] = data.zone_count
     if data.ha_token:
         payload["ha_token"] = data.ha_token
+    if data.purpose:
+        payload["purpose"] = data.purpose
     json_str = json.dumps(payload, separators=(",", ":"))
     return base64.urlsafe_b64encode(json_str.encode()).decode()
 
@@ -102,4 +105,5 @@ def decode_connection_key(encoded: str) -> ConnectionKeyData:
         zone_count=payload.get("zone_count"),
         ha_token=payload.get("ha_token"),
         mode=payload.get("mode", "direct"),
+        purpose=payload.get("purpose"),
     )
