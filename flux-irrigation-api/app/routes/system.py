@@ -29,6 +29,7 @@ router = APIRouter(prefix="/system", tags=["System"])
 class SystemStatus(BaseModel):
     online: bool
     ha_connected: bool
+    device_online: bool = True  # True if zone entities are available (not "unavailable")
     system_paused: bool
     weather_schedule_disabled: bool = False
     weather_disable_reason: str = ""
@@ -144,6 +145,22 @@ async def get_system_status(request: Request):
     used_zones = [z for z in zones if not is_zone_not_used(z.get("entity_id", ""))]
     active_zones = [z for z in used_zones if z.get("state") == "on"]
 
+    # Check if the physical irrigation controller device is online.
+    # When the ESPHome device disconnects from HA, all zone entities become "unavailable".
+    # If ALL zone entities are unavailable, the device is offline and zones cannot be controlled.
+    device_online = True
+    all_zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+    if all_zone_entities:
+        unavailable_count = sum(1 for z in all_zone_entities if z.get("state") in ("unavailable", "unknown"))
+        if unavailable_count == len(all_zone_entities):
+            device_online = False
+    elif not config.allowed_zone_entities:
+        # No zones configured yet — treat as online (setup pending)
+        device_online = True
+    else:
+        # Entities configured but HA returned nothing — device likely offline
+        device_online = False
+
     # Count sensors
     sensors = await ha_client.get_entities_by_ids(config.allowed_sensor_entities)
 
@@ -196,8 +213,9 @@ async def get_system_status(request: Request):
         pass
 
     return SystemStatus(
-        online=True,
+        online=device_online,
         ha_connected=ha_connected,
+        device_online=device_online,
         system_paused=schedule_data.get("system_paused", False),
         weather_schedule_disabled=schedule_data.get("weather_schedule_disabled", False),
         weather_disable_reason=schedule_data.get("weather_disable_reason", ""),
