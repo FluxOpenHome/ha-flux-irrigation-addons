@@ -2269,6 +2269,26 @@ ADMIN_HTML = """<!DOCTYPE html>
                 <p class="warning">Open the Flux Open Home app on your iPhone &rarr; Add Device &rarr; Link Home Assistant &rarr; paste this key.</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button class="btn btn-secondary btn-sm" onclick="copyAppConnectionKey()">&#128203; Copy to Clipboard</button>
+                    <button class="btn btn-secondary btn-sm" onclick="emailAppConnectionKey()">&#9993; Email Key</button>
+                    <button class="btn btn-secondary btn-sm" onclick="showAppQRCode()">&#9783; QR Code</button>
+                </div>
+
+                <!-- App QR Code Modal -->
+                <div id="appQrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">
+                    <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                            <h3 style="font-size:16px;font-weight:600;margin:0;color:var(--text-primary);">iPhone App Key QR Code</h3>
+                            <button onclick="closeAppQRModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-placeholder);padding:0 4px;">&times;</button>
+                        </div>
+                        <div id="appQrCodeContainer" style="display:flex;justify-content:center;padding:16px;background:var(--bg-card);border-radius:8px;"></div>
+                        <p style="font-size:12px;color:var(--text-hint);text-align:center;margin-top:12px;">
+                            Scan this QR code from your iPhone to import the app connection key.
+                        </p>
+                        <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;">
+                            <button class="btn btn-secondary btn-sm" onclick="downloadAppQRCode()">&#128190; Download QR</button>
+                            <button class="btn btn-secondary btn-sm" onclick="closeAppQRModal()">Close</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -3162,6 +3182,91 @@ ADMIN_HTML = """<!DOCTYPE html>
     function copyAppConnectionKey() {
         var key = document.getElementById('appConnectionKeyValue').textContent;
         navigator.clipboard.writeText(key).then(function() { showToast('App connection key copied!'); });
+    }
+
+    function emailAppConnectionKey() {
+        var key = document.getElementById('appConnectionKeyValue').textContent;
+        if (!key) { showToast('No app connection key to email', 'error'); return; }
+        var label = document.getElementById('homeownerLabel').value.trim() || 'My Property';
+        var subject = encodeURIComponent(label + ' — Flux Open Home iPhone App Key');
+        var body = encodeURIComponent(
+            'Hello,\\n\\n' +
+            'Here is your iPhone app connection key for "' + label + '":\\n\\n' +
+            key + '\\n\\n' +
+            'To connect:\\n' +
+            '1. Open the Flux Open Home app on your iPhone\\n' +
+            '2. Tap "Add Device"\\n' +
+            '3. Choose "Link Home Assistant"\\n' +
+            '4. Paste this key\\n\\n' +
+            'Thanks!'
+        );
+        window.open('mailto:?subject=' + subject + '&body=' + body, '_self');
+    }
+
+    function showAppQRCode() {
+        var key = document.getElementById('appConnectionKeyValue').textContent;
+        if (!key) { showToast('No app connection key to generate QR code', 'error'); return; }
+        var container = document.getElementById('appQrCodeContainer');
+        container.innerHTML = '';
+
+        if (typeof qrcode === 'undefined') {
+            container.innerHTML = '<p style="color:var(--color-danger);font-size:13px;">QR code library failed to load.</p>';
+            document.getElementById('appQrModal').style.display = 'flex';
+            return;
+        }
+
+        var qr = qrcode(0, 'L');
+        qr.addData(key);
+        qr.make();
+
+        var cellSize = 6;
+        var margin = 4;
+        var moduleCount = qr.getModuleCount();
+        var size = moduleCount * cellSize + margin * 2 * cellSize;
+        var canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        canvas.id = 'appQrCodeCanvas';
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = '#000000';
+        for (var row = 0; row < moduleCount; row++) {
+            for (var col = 0; col < moduleCount; col++) {
+                if (qr.isDark(row, col)) {
+                    ctx.fillRect(
+                        (col + margin) * cellSize,
+                        (row + margin) * cellSize,
+                        cellSize, cellSize
+                    );
+                }
+            }
+        }
+        canvas.style.cssText = 'max-width:100%;border-radius:4px;image-rendering:pixelated;';
+        container.appendChild(canvas);
+
+        var label = document.getElementById('homeownerLabel').value.trim();
+        if (label) {
+            var labelEl = document.createElement('div');
+            labelEl.style.cssText = 'text-align:center;font-size:13px;font-weight:600;color:var(--text-primary);margin-top:8px;';
+            labelEl.textContent = label;
+            container.appendChild(labelEl);
+        }
+
+        document.getElementById('appQrModal').style.display = 'flex';
+    }
+
+    function closeAppQRModal() {
+        document.getElementById('appQrModal').style.display = 'none';
+    }
+
+    function downloadAppQRCode() {
+        var qrCanvas = document.getElementById('appQrCodeCanvas');
+        if (!qrCanvas) { showToast('No QR code to download', 'error'); return; }
+        var link = document.createElement('a');
+        link.download = 'flux-app-connection-key-qr.png';
+        link.href = qrCanvas.toDataURL('image/png');
+        link.click();
     }
 
     async function regenerateAppConnectionKey() {
