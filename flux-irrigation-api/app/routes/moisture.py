@@ -491,20 +491,29 @@ async def _check_probe_awake(probe_id: str) -> bool:
     state = await ha_client.get_entity_state(status_led_eid)
     if not state:
         # Couldn't read state — use cached value or assume sleeping
+        global _consecutive_unavailable
+        _consecutive_unavailable += 1
         return _probe_awake_cache.get(probe_id, False)
 
     raw = state.get("state", "").lower()
+    if raw in ("unavailable", "unknown"):
+        _consecutive_unavailable += 1
+        return _probe_awake_cache.get(probe_id, False)
+
+    # Device is responsive — reset backoff
+    _consecutive_unavailable = 0
     is_awake = raw == "on"
     _probe_awake_cache[probe_id] = is_awake
     return is_awake
 
 
 _awake_poller_task: asyncio.Task | None = None
-_AWAKE_POLL_INTERVAL = 5  # seconds
+_AWAKE_POLL_INTERVAL = 30  # seconds (was 5 — reduced to prevent ESP32 overload)
+_consecutive_unavailable = 0  # backoff counter when device is offline
 
 
 async def _awake_poll_loop():
-    """Background task that polls all configured probes every 5 seconds.
+    """Background task that polls all configured probes periodically.
 
     Reads each probe's status LED entity (light.*_status_led) to determine
     awake/sleeping state.  Detects wake transitions and fires pending writes.
@@ -515,11 +524,18 @@ async def _awake_poll_loop():
     2. Wake transition check: when a prepped probe wakes up, check moisture
        and either skip the zone (saturated) or disable sleep (keep awake)
     """
+    global _consecutive_unavailable
     while True:
         try:
-            await asyncio.sleep(_AWAKE_POLL_INTERVAL)
+            # Back off when device is unavailable to stop hammering it
+            if _consecutive_unavailable >= 3:
+                backoff = min(_consecutive_unavailable * 30, 300)  # max 5 min
+                await asyncio.sleep(backoff)
+            else:
+                await asyncio.sleep(_AWAKE_POLL_INTERVAL)
             data = _load_data()
             if not data.get("enabled"):
+                _consecutive_unavailable = 0
                 continue
             probes = data.get("probes", {})
 

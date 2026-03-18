@@ -70,6 +70,12 @@ async def disable_schedules() -> dict[str, str]:
     for entity in states:
         entity_id = entity["entity_id"]
         current_state = entity.get("state", "unknown")
+
+        # Skip unavailable entities — don't hammer an offline device
+        if current_state in ("unavailable", "unknown"):
+            print(f"[SCHED_CTRL] Skipping {entity_id} — state is {current_state}")
+            continue
+
         saved_states[entity_id] = current_state
 
         if current_state == "on":
@@ -115,6 +121,11 @@ async def restore_schedules(saved_states: dict[str, str]):
     restored = []
     for entity_id, previous_state in saved_states.items():
         if previous_state == "on":
+            # Check entity is available before sending command
+            current = await ha_client.get_entity_state(entity_id)
+            if current and current.get("state") in ("unavailable", "unknown"):
+                print(f"[SCHED_CTRL] Skipping restore of {entity_id} — device unavailable")
+                continue
             success = await ha_client.call_service(
                 "switch", "turn_on", {"entity_id": entity_id}
             )
