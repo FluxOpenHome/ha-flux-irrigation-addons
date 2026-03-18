@@ -538,6 +538,10 @@ async def _awake_poll_loop():
                 _consecutive_unavailable = 0
                 continue
             probes = data.get("probes", {})
+            if not probes:
+                # No probes configured — nothing to poll
+                await asyncio.sleep(60)
+                continue
 
             # Load schedule timeline for prep logic
             timeline = _load_schedule_timeline()

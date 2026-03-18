@@ -7064,8 +7064,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('Could not load address for map:', e);
     }
 
-    // Auto-refresh every 30 seconds
-    refreshTimer = setInterval(loadDashboard, 30000);
+    // Auto-refresh every 60 seconds (reduced from 30s to prevent ESP32 overload)
+    refreshTimer = setInterval(loadDashboard, 60000);
 });
 
 // --- Help Modal ---
