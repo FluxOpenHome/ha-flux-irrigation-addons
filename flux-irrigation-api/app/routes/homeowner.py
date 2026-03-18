@@ -33,6 +33,82 @@ def _extract_zone_number(entity_id: str) -> int:
 router = APIRouter(prefix="/admin/api/homeowner", tags=["Homeowner Dashboard"])
 
 ALIASES_FILE = "/data/homeowner_aliases.json"
+_QUICK_RUNS_FILE = "/data/quick_runs.json"
+
+
+def _load_quick_runs() -> list:
+    """Load saved quick-run programs from disk."""
+    try:
+        with open(_QUICK_RUNS_FILE) as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _save_quick_runs(programs: list) -> None:
+    """Persist quick-run programs to disk."""
+    with open(_QUICK_RUNS_FILE, "w") as f:
+        json.dump(programs, f, indent=2)
+
+
+@router.get("/quick-runs", summary="List saved quick-run programs")
+async def homeowner_get_quick_runs():
+    """Return saved quick-run programs."""
+    return _load_quick_runs()
+
+
+@router.post("/quick-runs", summary="Create a quick-run program")
+async def homeowner_create_quick_run(request: Request):
+    """Create and persist a new quick-run program."""
+    body = await request.json()
+    name = body.get("name", "Quick Run")
+    duration_minutes = body.get("duration_minutes", 5)
+    zones = body.get("zones")
+
+    import time
+    programs = _load_quick_runs()
+    new_id = str(int(time.time() * 1000))
+    new_program = {
+        "id": new_id,
+        "name": name,
+        "duration_minutes": int(duration_minutes),
+        "is_default": False,
+    }
+    if zones:
+        new_program["zones"] = zones
+    programs.append(new_program)
+    _save_quick_runs(programs)
+    return new_program
+
+
+@router.put("/quick-runs/{program_id}", summary="Update a quick-run program")
+async def homeowner_update_quick_run(program_id: str, request: Request):
+    """Update an existing quick-run program."""
+    body = await request.json()
+    programs = _load_quick_runs()
+    for p in programs:
+        if p.get("id") == program_id:
+            if "name" in body:
+                p["name"] = body["name"]
+            if "duration_minutes" in body:
+                p["duration_minutes"] = int(body["duration_minutes"])
+            if "zones" in body:
+                p["zones"] = body["zones"]
+            _save_quick_runs(programs)
+            return p
+    raise HTTPException(status_code=404, detail="Program not found")
+
+
+@router.delete("/quick-runs/{program_id}", summary="Delete a quick-run program")
+async def homeowner_delete_quick_run(program_id: str):
+    """Delete a saved quick-run program by ID."""
+    programs = _load_quick_runs()
+    filtered = [p for p in programs if p.get("id") != program_id]
+    if len(filtered) == len(programs):
+        raise HTTPException(status_code=404, detail="Program not found")
+    _save_quick_runs(filtered)
+    return {"ok": True}
 
 
 def _require_homeowner_mode():

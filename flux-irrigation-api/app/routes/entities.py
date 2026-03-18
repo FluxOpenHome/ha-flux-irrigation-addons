@@ -95,7 +95,10 @@ def _get_set_service(domain: str, body: EntitySetRequest) -> tuple[str, str, dic
     Returns: (service_domain, service_name, service_data_extras)
     """
     if domain in ("switch", "light"):
+        # Accept "state" field, or fall back to "value" (iOS app sends {"value":"on"})
         state = (body.state or "").lower()
+        if state not in ("on", "off") and body.value is not None:
+            state = str(body.value).lower()
         if state not in ("on", "off"):
             raise HTTPException(
                 status_code=400,
@@ -348,6 +351,24 @@ async def set_entity(
     action_desc = f"{svc_domain}.{svc_name}"
     if extra_data:
         action_desc += f" ({extra_data})"
+
+    # When a user manually enables the schedule, clear any weather pause.
+    # Otherwise the weather eval loop will immediately re-disable it.
+    if svc_name == "turn_on" and domain == "switch":
+        import schedule_control
+        if schedule_control._is_schedule_enable(entity_id):
+            try:
+                from routes.schedule import _load_schedules, _save_schedules
+                sched_data = _load_schedules()
+                if sched_data.get("weather_schedule_disabled"):
+                    sched_data["weather_schedule_disabled"] = False
+                    sched_data["system_paused"] = False
+                    sched_data.pop("weather_disable_reason", None)
+                    sched_data.pop("saved_schedule_states", None)
+                    _save_schedules(sched_data)
+                    print(f"[ENTITIES] Cleared weather pause — user manually enabled schedule")
+            except Exception as e:
+                print(f"[ENTITIES] Failed to clear weather pause: {e}")
 
     # Update stored base duration when a duration entity is set
     if domain == "number" and body.value is not None:

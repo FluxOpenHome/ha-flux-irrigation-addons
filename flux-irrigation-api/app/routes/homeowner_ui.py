@@ -3022,7 +3022,7 @@ function renderScheduleCard(sched, durData, multData) {
                 '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM">' +
                 '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
                 '\\',\\'text\\',{value:document.getElementById(\\'' + inputId + '\\').value})">Set</button>' +
-                '<div class="st-current">' + esc(st.state) + '</div>' +
+                '<div class="st-current">' + fluxFormatTimeStr(st.state) + '</div>' +
                 '</div>' +
                 '</div>';
         }
@@ -6794,6 +6794,18 @@ function fluxFormatTime(date, extraOpts) {
     var opts = { hour: is24 ? '2-digit' : 'numeric', minute: '2-digit', hour12: !is24 };
     if (extraOpts) { for (var k in extraOpts) opts[k] = extraOpts[k]; }
     return date.toLocaleTimeString(is24 ? 'en-GB' : 'en-US', opts);
+}
+function fluxFormatTimeStr(hhmm) {
+    // Format "HH:MM" string (e.g. "17:00") respecting user's 12h/24h preference
+    if (!hhmm || hhmm === '--:--' || hhmm.length < 4) return hhmm || '--:--';
+    if (fluxTimeIs24h()) return hhmm;
+    var parts = hhmm.split(':');
+    var h = parseInt(parts[0], 10);
+    var m = parts[1] || '00';
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    if (h === 0) h = 12;
+    else if (h > 12) h -= 12;
+    return h + ':' + m + ' ' + ampm;
 }
 function fluxFormatDateTime(date, extraOpts) {
     if (!(date instanceof Date)) date = new Date(date);
