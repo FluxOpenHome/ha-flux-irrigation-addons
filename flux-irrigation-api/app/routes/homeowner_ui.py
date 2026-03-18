@@ -6800,11 +6800,12 @@ function fluxFormatTime(date, extraOpts) {
 }
 function fluxFormatTimeStr(hhmm) {
     // Format "HH:MM" string (e.g. "17:00") respecting user's 12h/24h preference
-    if (!hhmm || hhmm === '--:--' || hhmm.length < 4) return hhmm || '--:--';
+    if (!hhmm || hhmm === '--:--' || hhmm === 'unavailable' || hhmm === 'unknown' || hhmm.indexOf(':') === -1) return hhmm || '--:--';
     if (fluxTimeIs24h()) return hhmm;
     var parts = hhmm.split(':');
     var h = parseInt(parts[0], 10);
     var m = parts[1] || '00';
+    if (isNaN(h)) return hhmm;
     var ampm = h >= 12 ? 'PM' : 'AM';
     if (h === 0) h = 12;
     else if (h > 12) h -= 12;
