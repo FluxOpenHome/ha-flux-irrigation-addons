@@ -305,7 +305,13 @@ async def _periodic_log_cleanup():
 
 
 async def _periodic_weather_check():
-    """Periodically evaluate weather rules for irrigation adjustments."""
+    """Periodically evaluate weather rules for irrigation adjustments.
+
+    IMPORTANT: Weather evaluation only reads weather data and calculates multipliers.
+    It does NOT write to device entities unless apply_factors_to_schedule is enabled.
+    When it does write (disable/restore schedules), calls are throttled with 500ms delays
+    and skip unavailable entities to prevent ESP32 overload.
+    """
     while True:
         try:
             config = get_config()
@@ -328,7 +334,11 @@ async def _periodic_weather_check():
 
 
 async def _periodic_moisture_evaluation():
-    """Periodically evaluate moisture probes, adjust run durations, and recalculate schedule timeline."""
+    """Periodically evaluate moisture probes and recalculate schedule timeline.
+
+    Duration writes to device entities are throttled (500ms between calls)
+    and skip unavailable entities to prevent ESP32 overload.
+    """
     while True:
         try:
             config = get_config()
@@ -351,7 +361,8 @@ async def _periodic_moisture_evaluation():
             print(f"[MAIN] Moisture evaluation error: {e}")
 
         config = get_config()
-        interval = max(config.weather_check_interval_minutes, 5) * 60
+        # Minimum 15 minute interval to reduce device load
+        interval = max(config.weather_check_interval_minutes, 15) * 60
         await asyncio.sleep(interval)
 
 
