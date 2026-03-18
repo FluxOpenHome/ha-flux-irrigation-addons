@@ -3016,13 +3016,14 @@ function renderScheduleCard(sched, durData, multData) {
             const label = 'Start Time ' + (num < 99 ? num : '?');
             const eid = st.entity_id;
             const inputId = 'st_' + eid.replace(/[^a-zA-Z0-9]/g, '_');
+            var displayVal = fluxFormatTimeStr(st.state);
+            var placeholder = fluxTimeIs24h() ? 'HH:MM' : 'h:MM AM/PM';
             html += '<div class="start-time-row">' +
                 '<div class="st-label">' + esc(label) + '</div>' +
                 '<div class="st-input-group">' +
-                '<input type="text" id="' + inputId + '" value="' + esc(st.state) + '" placeholder="HH:MM">' +
-                '<button class="btn btn-primary btn-sm" onclick="setEntityValue(\\'' + eid +
-                '\\',\\'text\\',{value:document.getElementById(\\'' + inputId + '\\').value})">Set</button>' +
-                '<div class="st-current">' + fluxFormatTimeStr(st.state) + '</div>' +
+                '<input type="text" id="' + inputId + '" value="' + esc(displayVal) + '" placeholder="' + placeholder + '">' +
+                '<button class="btn btn-primary btn-sm" onclick="setStartTime(\\'' + eid +
+                '\\',\\'' + inputId + '\\')">Set</button>' +
                 '</div>' +
                 '</div>';
         }
@@ -6810,6 +6811,29 @@ function fluxFormatTimeStr(hhmm) {
     if (h === 0) h = 12;
     else if (h > 12) h -= 12;
     return h + ':' + m + ' ' + ampm;
+}
+function fluxParseTo24h(timeStr) {
+    // Convert user input to 24h "HH:MM" for device. Accepts:
+    //   "17:00", "5:00 PM", "5:00PM", "5:00 pm", "07:00", "7:00 AM"
+    if (!timeStr) return timeStr;
+    var s = timeStr.trim();
+    if (s === '--:--' || s === '') return s;
+    var isPM = /pm/i.test(s);
+    var isAM = /am/i.test(s);
+    s = s.replace(/[APap][Mm]/g, '').trim();
+    if (s.indexOf(':') === -1) return timeStr;
+    var parts = s.split(':');
+    var h = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return timeStr;
+    if (isPM && h !== 12) h += 12;
+    if (isAM && h === 12) h = 0;
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+}
+function setStartTime(entityId, inputId) {
+    var raw = document.getElementById(inputId).value;
+    var val24 = fluxParseTo24h(raw);
+    setEntityValue(entityId, 'text', {value: val24});
 }
 function fluxFormatDateTime(date, extraOpts) {
     if (!(date instanceof Date)) date = new Date(date);
