@@ -12,6 +12,7 @@ The saved schedule states are stored in /data/schedules.json under the
 key "saved_schedule_states" so they survive add-on restarts.
 """
 
+import asyncio
 import re
 import ha_client
 from config import get_config
@@ -86,6 +87,7 @@ async def disable_schedules() -> dict[str, str]:
                 print(f"[SCHED_CTRL] Disabled schedule: {entity_id}")
             else:
                 print(f"[SCHED_CTRL] Failed to disable schedule: {entity_id}")
+            await asyncio.sleep(0.5)  # Throttle to avoid ESP32 overload
 
     print(f"[SCHED_CTRL] Disabled {len(saved_states)} schedule(s): {saved_states}")
     return saved_states
@@ -134,5 +136,6 @@ async def restore_schedules(saved_states: dict[str, str]):
                 print(f"[SCHED_CTRL] Restored schedule: {entity_id}")
             else:
                 print(f"[SCHED_CTRL] Failed to restore schedule: {entity_id}")
+            await asyncio.sleep(0.5)  # Throttle to avoid ESP32 overload
 
     print(f"[SCHED_CTRL] Restored {len(restored)} schedule(s)")

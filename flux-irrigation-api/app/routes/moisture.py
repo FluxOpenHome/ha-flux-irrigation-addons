@@ -3327,15 +3327,23 @@ async def apply_adjusted_durations() -> dict:
             combined = weather_mult * moisture_mult * precip_factor
             adjusted_value = float(max(1, round(base * combined)))
 
-        # Write adjusted duration to HA
+        # Write adjusted duration to HA (throttled to avoid overwhelming ESP32)
         precip_log = f", precip={precip_factor:.3f}" if precip_factor < 1.0 else ""
         print(f"[MOISTURE] Setting {dur_eid}: base={base} → adjusted={adjusted_value} "
               f"(weather={weather_mult}, moisture={moisture_mult:.3f}{precip_log}, "
               f"zone={zone_entity_id or 'unknown'}, skip={skip})")
+        # Check device availability before sending command
+        entity_state = await ha_client.get_entity_state(dur_eid)
+        if entity_state and entity_state.get("state") in ("unavailable", "unknown"):
+            print(f"[MOISTURE] Skipping {dur_eid} — device unavailable")
+            failed.append(dur_eid)
+            continue
         success = await ha_client.call_service("number", "set_value", {
             "entity_id": dur_eid,
             "value": adjusted_value,
         })
+        # Throttle: 500ms between service calls to avoid ESP32 overload
+        await asyncio.sleep(0.5)
 
         if success:
             applied_count += 1
@@ -3427,6 +3435,11 @@ async def restore_base_durations() -> dict:
     restored_count = 0
     for dur_eid, dur_data in base_durations.items():
         base_value = float(dur_data["base_value"])
+        # Skip unavailable entities
+        entity_state = await ha_client.get_entity_state(dur_eid)
+        if entity_state and entity_state.get("state") in ("unavailable", "unknown"):
+            print(f"[MOISTURE] Skipping restore of {dur_eid} — device unavailable")
+            continue
         success = await ha_client.call_service("number", "set_value", {
             "entity_id": dur_eid,
             "value": base_value,
@@ -3436,6 +3449,8 @@ async def restore_base_durations() -> dict:
             print(f"[MOISTURE] Restored {dur_eid} to base value {base_value}")
         else:
             print(f"[MOISTURE] Failed to restore {dur_eid} to {base_value}")
+        # Throttle between calls
+        await asyncio.sleep(0.5)
 
     data["duration_adjustment_active"] = False
     data["adjusted_durations"] = {}
