@@ -3175,7 +3175,9 @@ function renderScheduleCard(sched, durData, multData) {
                 }
                 if (!zoneHasMoisture) zoneCombined = liveWeatherMult;
                 // --- Build factor cards: Moisture, Weather, Combined ---
+                // Only show factor badges when "Apply Factors to Schedule" is ON
                 var factorBadge = '';
+                if (!factorsActive) { /* factors disabled — no badges */ } else {
                 var _sr = (adj && adj.sensor_readings) || zoneSensorReadings;
                 var _gophrImg = '<img src="' + HBASE + '/assets/gophr-logo" class="gophr-logo" style="height:16px;" alt="Gophr">';
 
@@ -3284,6 +3286,7 @@ function renderScheduleCard(sched, durData, multData) {
                 } else if (_hasWeather) {
                     factorBadge = weatherCard;
                 }
+                } // end factorsActive check
                 if (factorBadge) {
                     html += '</div><div class="zs-factors">' + factorBadge;
                 }
