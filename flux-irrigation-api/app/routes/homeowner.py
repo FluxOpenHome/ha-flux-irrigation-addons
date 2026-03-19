@@ -364,23 +364,41 @@ async def homeowner_zones():
     config = get_config()
 
     entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+
+    # Build zone_number → duration_minutes map from duration entities
+    from routes.moisture import _find_duration_entities, _extract_zone_num_from_duration
+    dur_eids = _find_duration_entities(config.allowed_control_entities)
+    dur_map = {}  # zone_number → duration_minutes
+    if dur_eids:
+        dur_states = await ha_client.get_entities_by_ids(dur_eids)
+        for ds in dur_states:
+            zn = _extract_zone_num_from_duration(ds["entity_id"])
+            if zn > 0:
+                try:
+                    dur_map[zn] = float(ds.get("state", 0))
+                except (ValueError, TypeError):
+                    pass
+
     zones = []
     max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
     for entity in entities:
         # Filter zones beyond the detected expansion board zone count
-        if max_zones > 0:
-            zn = _extract_zone_number(entity["entity_id"])
-            if zn > max_zones:
-                continue
+        zn = _extract_zone_number(entity["entity_id"])
+        if max_zones > 0 and zn > max_zones:
+            continue
         attrs = entity.get("attributes", {})
-        zones.append({
+        zone_data = {
             "entity_id": entity["entity_id"],
             "name": _zone_name(entity["entity_id"]),
             "state": entity.get("state", "unknown"),
             "friendly_name": attrs.get("friendly_name"),
             "last_changed": entity.get("last_changed"),
             "attributes": attrs,
-        })
+        }
+        # Include duration so management UI can display correct timers
+        if zn in dur_map and dur_map[zn] > 0:
+            zone_data["duration_minutes"] = dur_map[zn]
+        zones.append(zone_data)
     return zones
 
 
