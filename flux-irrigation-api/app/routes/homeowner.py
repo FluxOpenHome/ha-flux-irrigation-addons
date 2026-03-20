@@ -113,18 +113,60 @@ async def homeowner_delete_quick_run(program_id: str):
 
 @router.post("/test-program", summary="Run test program — all zones sequentially")
 async def homeowner_test_program(request: Request):
-    """Start a test program via the zone controller's test-program endpoint."""
+    """Start a test program — run all enabled zones sequentially."""
+    import asyncio
+    from routes.zones import (
+        _test_program_task, _run_test_program_sequence,
+        _get_zone_service, _zone_name,
+    )
+    import routes.zones as _zones_mod
+    import ha_client
+    from config import get_config
+
     body = {}
     try:
         body = await request.json()
     except Exception:
         pass
     duration_minutes = body.get("duration_minutes", 2)
+    if duration_minutes < 1:
+        duration_minutes = 1
+    if duration_minutes > 120:
+        duration_minutes = 120
 
-    # Delegate to the zone router's test-program endpoint
-    from routes.zones import run_test_program, TestProgramRequest
-    fake_body = TestProgramRequest(duration_minutes=duration_minutes)
-    return await run_test_program(fake_body, request)
+    # Cancel any existing test program
+    if _zones_mod._test_program_task and not _zones_mod._test_program_task.done():
+        _zones_mod._test_program_task.cancel()
+        try:
+            await _zones_mod._test_program_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    # Get ordered enabled zones
+    config = get_config()
+    try:
+        from routes.moisture import _get_ordered_enabled_zones
+        ordered = await _get_ordered_enabled_zones()
+        zone_entities = [z["zone_entity_id"] for z in ordered if not z.get("is_special")]
+    except Exception as e:
+        print(f"[TEST_PROGRAM] Falling back to config zones: {e}")
+        entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+        zone_entities = [e["entity_id"] for e in entities if e.get("state") != "unavailable"]
+
+    if not zone_entities:
+        return {"success": False, "message": "No enabled zones found"}
+
+    client_ip = request.client.host if request.client else "unknown"
+    _zones_mod._test_program_task = asyncio.create_task(
+        _run_test_program_sequence(zone_entities, duration_minutes, client_ip)
+    )
+
+    return {
+        "success": True,
+        "zone_id": "test_program",
+        "action": "test_program",
+        "message": f"Test program started: {len(zone_entities)} zone(s), {duration_minutes} min each",
+    }
 
 
 def _require_homeowner_mode():
