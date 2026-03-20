@@ -247,13 +247,18 @@ async def _save_dashboard_config(url_path: str, config: dict):
 
 def _build_overview_view(
     zone_eids: list[str],
+    pump_zone_eids: list[str],
     sensor_eids: list[str],
     weather_entity_id: str,
     rain_sensor_eids: list[str],
     rain_control_eids: list[str],
     name_map: dict[str, str],
 ) -> dict:
-    """Build the Overview view with tile cards and modern layout."""
+    """Build the Overview view with tile cards and modern layout.
+
+    zone_eids: active irrigation zones (not-used and pump zones already filtered out)
+    pump_zone_eids: zones configured as pump/relay/master valve
+    """
     cards: list[dict] = []
 
     # --- Welcome / Info banner ---
@@ -276,7 +281,7 @@ def _build_overview_view(
             "forecast_type": "daily",
         })
 
-    # --- Zone tile cards in a grid ---
+    # --- Irrigation zone tile cards in a grid ---
     if zone_eids:
         sorted_zones = sorted(zone_eids, key=_extract_zone_number)
         zone_tiles = []
@@ -296,6 +301,24 @@ def _build_overview_view(
             "columns": 3,
             "square": False,
             "cards": zone_tiles,
+        })
+
+    # --- Pump / Master valve zones (separate section) ---
+    if pump_zone_eids:
+        pump_tiles = []
+        for eid in sorted(pump_zone_eids, key=_extract_zone_number):
+            pump_tiles.append({
+                "type": "tile",
+                "entity": eid,
+                "name": _n(eid, name_map),
+                "icon": "mdi:pump",
+                "color": "red",
+            })
+        cards.append({
+            "type": "grid",
+            "columns": min(len(pump_tiles), 2),
+            "square": False,
+            "cards": pump_tiles,
         })
 
     # --- Rain sensor / controls ---
@@ -778,6 +801,34 @@ def _build_history_view(zone_eids: list[str], name_map: dict[str, str]) -> Optio
 #  Main config assembly
 # ---------------------------------------------------------------------------
 
+async def _get_zone_modes(control_eids: list[str]) -> dict[int, str]:
+    """Read zone mode entities to find which zones are pumps/relays.
+
+    Returns {zone_number: mode_value} for all zone mode entities.
+    E.g., {6: "pump", 5: "normal"}
+    """
+    modes: dict[int, str] = {}
+    for eid in control_eids:
+        domain = eid.split(".")[0] if "." in eid else ""
+        if domain == "select" and re.search(r"zone_\d+_mode", eid.lower()):
+            zone_num = _extract_zone_number(eid)
+            state = await ha_client.get_entity_state(eid)
+            if state:
+                mode_val = (state.get("state") or "").lower()
+                modes[zone_num] = mode_val
+    return modes
+
+
+def _get_not_used_zones() -> set[int]:
+    """Read the not-used zones file. Returns set of zone numbers marked not-used."""
+    try:
+        from routes.homeowner import load_not_used_zones
+        nu = load_not_used_zones()
+        return {int(k) for k, v in nu.items() if v}
+    except Exception:
+        return set()
+
+
 async def _build_lovelace_config() -> dict:
     """Build the complete Lovelace dashboard config from current system state."""
     config = get_config()
@@ -791,6 +842,36 @@ async def _build_lovelace_config() -> dict:
     rain_sensor_eids = [eid for eid in sensor_eids if _is_rain_entity(eid)]
     rain_control_eids = [eid for eid in control_eids if _is_rain_entity(eid)]
 
+    # Determine which zones are not-used and which are pumps
+    not_used_zones = _get_not_used_zones()
+    zone_modes = await _get_zone_modes(control_eids)
+
+    # Separate zones into: active irrigation zones vs pump zones
+    # Skip not-used zones entirely
+    irrigation_zone_eids = []
+    pump_zone_eids = []
+    for eid in zone_eids:
+        zn = _extract_zone_number(eid)
+        if zn in not_used_zones:
+            continue  # Skip not-used zones
+        mode = zone_modes.get(zn, "normal")
+        if re.search(r"pump|relay|master", mode):
+            pump_zone_eids.append(eid)
+        else:
+            irrigation_zone_eids.append(eid)
+
+    # Also filter schedule entities: don't show durations/enables for not-used zones
+    filtered_control_eids = []
+    for eid in control_eids:
+        zn = _extract_zone_number(eid)
+        # If this is a zone-specific entity and that zone is not-used, skip it
+        if zn != 99 and zn in not_used_zones:
+            # Check if it's a zone-specific schedule entity
+            cat = _classify_entity(eid, eid.split(".")[0] if "." in eid else "")
+            if cat in ("run_durations", "zone_enables", "zone_modes"):
+                continue
+        filtered_control_eids.append(eid)
+
     # Load moisture probe data
     moisture_data: dict = {}
     try:
@@ -800,10 +881,9 @@ async def _build_lovelace_config() -> dict:
         pass
 
     # Collect ALL entity IDs that will appear on the dashboard
-    all_eids = set(zone_eids + sensor_eids + control_eids)
+    all_eids = set(irrigation_zone_eids + pump_zone_eids + sensor_eids + filtered_control_eids)
     if weather_eid:
         all_eids.add(weather_eid)
-    # Add moisture probe entity IDs
     for probe in moisture_data.get("probes", {}).values():
         for depth_eid in probe.get("sensors", {}).values():
             if depth_eid:
@@ -819,17 +899,17 @@ async def _build_lovelace_config() -> dict:
     views: list[dict] = []
 
     views.append(_build_overview_view(
-        zone_eids, sensor_eids, weather_eid,
+        irrigation_zone_eids, pump_zone_eids, sensor_eids, weather_eid,
         rain_sensor_eids, rain_control_eids, name_map,
     ))
 
-    views.append(_build_schedule_view(control_eids, name_map))
+    views.append(_build_schedule_view(filtered_control_eids, name_map))
 
     moisture_view = _build_moisture_view(moisture_data, name_map)
     if moisture_view:
         views.append(moisture_view)
 
-    history_view = _build_history_view(zone_eids, name_map)
+    history_view = _build_history_view(irrigation_zone_eids, name_map)
     if history_view:
         views.append(history_view)
 
