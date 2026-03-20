@@ -550,6 +550,19 @@ body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);ba
         </div>
     </div>
 
+    <!-- Run Programs Card -->
+    <div class="card">
+        <div class="card-header" onclick="toggleCard('quickrun')" style="cursor:pointer;user-select:none;">
+            <h2 style="display:flex;align-items:center;gap:8px;"><span id="cardChevron_quickrun" style="font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(90deg);">&#9654;</span> Run Programs</h2>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <a href="#" onclick="lockCard('quickrun',event)" id="cardLock_quickrun" style="text-decoration:none;display:inline-flex;align-items:center;color:var(--text-muted);" title="Lock open"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="11" width="16" height="11" rx="2" opacity="0.5"/><rect x="9" y="14" width="6" height="5" rx="1" opacity="0.65"/><path d="M8 11 L8 7 Q8 2 12 2 Q16 2 16 7 L16 8" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/></svg></a>
+            </div>
+        </div>
+        <div class="card-body" id="cardBody_quickrun">
+            <div class="loading">Loading programs...</div>
+        </div>
+    </div>
+
     <!-- Schedule Card (entity-based) -->
     <div class="card">
         <div class="card-header" onclick="toggleCard('schedule')" style="cursor:pointer;user-select:none;">
@@ -1422,10 +1435,11 @@ function renderActiveIssuesBanner(issues) {
         const isResolved = issue.status === 'resolved';
         const isReturned = issue.status === 'returned';
         const dt = new Date(issue.created_at);
-        const _isMon = dt.toLocaleDateString('en-US', {month:'short'});
-        const _isDay = dt.getDate();
-        const _isYr = String(dt.getFullYear()).slice(-2);
-        const _isTime = fluxFormatTime(dt);
+        const _tzO = _homeTimezone ? {timeZone: _homeTimezone} : {};
+        const _isMon = dt.toLocaleDateString('en-US', Object.assign({month:'short'}, _tzO));
+        const _isDay = parseInt(dt.toLocaleDateString('en-US', Object.assign({day:'numeric'}, _tzO)), 10);
+        const _isYr = String(dt.toLocaleDateString('en-US', Object.assign({year:'numeric'}, _tzO))).slice(-2);
+        const _isTime = fluxFormatTime(dt, _tzO);
         const timeStr = _isMon + ' ' + _isDay + '-' + _isYr + ' ' + _isTime;
         html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);' + (isResolved ? 'opacity:0.85;' : '') + '">';
         if (isResolved) {
@@ -1971,6 +1985,7 @@ async function loadDashboard() {
     await loadSensors();   // Must complete before loadControls — sets _expansionSensors / _detectedZoneCount
     await loadControls();  // Must complete before loadZones — sets _zoneModes for pump/valve detection
     loadZones();
+    loadQuickRuns();
     if (!_initialLoadDone) _initialLoadDone = true;
     loadHistory();
     loadEstGallons();
@@ -2113,6 +2128,179 @@ async function forceResume() {
     }
 }
 
+// --- Quick Run Programs ---
+var _quickRunPrograms = [];
+var _quickRunDefaults = [
+    { id: '_default_1', name: '1 Minute Test', duration_minutes: 1, is_default: true },
+    { id: '_default_2', name: '2 Minute Test', duration_minutes: 2, is_default: true },
+    { id: '_default_5', name: '5 Minute Test', duration_minutes: 5, is_default: true },
+];
+
+async function loadQuickRuns() {
+    var el = document.getElementById('cardBody_quickrun');
+    if (!el) return;
+    try {
+        var saved = await api('/quick-runs');
+        _quickRunPrograms = Array.isArray(saved) ? saved : [];
+    } catch(e) {
+        _quickRunPrograms = [];
+    }
+    _renderQuickRuns(el);
+}
+
+function _renderQuickRuns(el) {
+    var all = _quickRunDefaults.concat(_quickRunPrograms);
+    var html = '<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">';
+    html += '<span style="font-size:13px;color:var(--text-muted);">Run all enabled zones sequentially for a set duration per zone.</span>';
+    html += '<button class="btn btn-primary btn-sm" onclick="qrShowCreateModal()" style="white-space:nowrap;">+ New Program</button>';
+    html += '</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+    for (var i = 0; i < all.length; i++) {
+        var p = all[i];
+        var isDef = p.is_default;
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-hover);border-radius:8px;border:1px solid var(--border-light);">';
+        html += '<div style="flex:1;min-width:0;">';
+        html += '<div style="font-weight:600;color:var(--text-primary);font-size:14px;">' + esc(p.name) + '</div>';
+        html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' + p.duration_minutes + ' min per zone';
+        if (p.zones && p.zones.length > 0) {
+            html += ' &middot; Zones ' + p.zones.join(', ');
+        } else {
+            html += ' &middot; All enabled zones';
+        }
+        html += '</div></div>';
+        html += '<div style="display:flex;align-items:center;gap:6px;">';
+        if (!isDef) {
+            html += '<button class="btn btn-sm" onclick="qrEditProgram(\\'' + p.id + '\\')" style="padding:4px 10px;border:1px solid var(--border-input);background:var(--bg-input);color:var(--text-primary);border-radius:6px;font-size:12px;cursor:pointer;">Edit</button>';
+            html += '<button class="btn btn-sm" onclick="qrDeleteProgram(\\'' + p.id + '\\')" style="padding:4px 8px;border:1px solid var(--border-input);background:var(--bg-input);color:var(--color-danger);border-radius:6px;font-size:12px;cursor:pointer;">Delete</button>';
+        }
+        html += '<button class="btn btn-primary btn-sm" onclick="qrRunProgram(\\'' + p.id + '\\')" style="padding:6px 14px;font-weight:600;">Run</button>';
+        html += '</div></div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+async function qrRunProgram(progId) {
+    var all = _quickRunDefaults.concat(_quickRunPrograms);
+    var prog = all.find(function(p) { return String(p.id) === progId; });
+    if (!prog) { showToast('Program not found', 'error'); return; }
+    var ok = await showConfirm({
+        title: 'Run Program',
+        message: 'Run <strong>' + esc(prog.name) + '</strong>?<br><span style="font-size:13px;color:var(--text-secondary);">' + prog.duration_minutes + ' min per zone' + (prog.zones && prog.zones.length > 0 ? ' (Zones ' + prog.zones.join(', ') + ')' : ' (all enabled zones)') + '</span>',
+        confirmText: 'Run',
+    });
+    if (!ok) return;
+    try {
+        var body = { duration_minutes: prog.duration_minutes };
+        if (prog.zones && prog.zones.length > 0) body.zones = prog.zones;
+        await api('/test-program', { method: 'POST', body: JSON.stringify(body) });
+        showToast('Program started: ' + esc(prog.name), 'success');
+        setTimeout(function() { loadZones(); }, 1000);
+    } catch(e) {
+        showToast('Failed to start program: ' + esc(e.message), 'error');
+    }
+}
+
+function qrShowCreateModal() {
+    _qrShowEditModal(null);
+}
+
+function qrEditProgram(progId) {
+    var prog = _quickRunPrograms.find(function(p) { return String(p.id) === progId; });
+    if (!prog) { showToast('Program not found', 'error'); return; }
+    _qrShowEditModal(prog);
+}
+
+function _qrShowEditModal(prog) {
+    var isEdit = !!prog;
+    var name = isEdit ? prog.name : '';
+    var dur = isEdit ? prog.duration_minutes : 5;
+    var selZones = isEdit && prog.zones ? prog.zones : [];
+
+    // Get zone list from last loaded zones
+    var zoneEls = document.querySelectorAll('#cardBody_zones .tile');
+    var zoneList = [];
+    zoneEls.forEach(function(tile) {
+        var zId = tile.getAttribute('data-zone-id') || '';
+        var zNum = parseInt(zId.replace(/\\D/g, '')) || 0;
+        var zName = tile.querySelector('.tile-name');
+        if (zNum > 0 && zName) {
+            zoneList.push({ num: zNum, name: zName.textContent || ('Zone ' + zNum) });
+        }
+    });
+    // Fallback if tiles don't have data attributes — generate zones 1-6
+    if (zoneList.length === 0) {
+        for (var i = 1; i <= 6; i++) {
+            zoneList.push({ num: i, name: 'Zone ' + i });
+        }
+    }
+
+    var html = '<div style="display:flex;flex-direction:column;gap:14px;">';
+    html += '<div><label style="font-size:13px;font-weight:600;color:var(--text-primary);display:block;margin-bottom:4px;">Program Name</label>';
+    html += '<input type="text" id="qrEditName" value="' + esc(name) + '" placeholder="e.g. Morning Run" style="width:100%;padding:8px 12px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);box-sizing:border-box;"></div>';
+    html += '<div><label style="font-size:13px;font-weight:600;color:var(--text-primary);display:block;margin-bottom:4px;">Duration per Zone (minutes)</label>';
+    html += '<input type="number" id="qrEditDur" value="' + dur + '" min="1" max="120" step="1" style="width:100px;padding:8px 12px;border:1px solid var(--border-input);border-radius:6px;font-size:14px;background:var(--bg-input);color:var(--text-primary);"></div>';
+    html += '<div><label style="font-size:13px;font-weight:600;color:var(--text-primary);display:block;margin-bottom:4px;">Zones</label>';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">Leave all unchecked to run all enabled zones.</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+    for (var j = 0; j < zoneList.length; j++) {
+        var z = zoneList[j];
+        var checked = selZones.indexOf(z.num) >= 0 ? 'checked' : '';
+        html += '<label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--border-light);border-radius:6px;font-size:12px;cursor:pointer;background:var(--bg-hover);"><input type="checkbox" class="qrZoneCb" value="' + z.num + '" ' + checked + '> ' + esc(z.name) + '</label>';
+    }
+    html += '</div></div>';
+    html += '</div>';
+
+    showConfirm({
+        title: isEdit ? 'Edit Program' : 'Create Program',
+        message: html,
+        confirmText: isEdit ? 'Save' : 'Create',
+    }).then(async function(ok) {
+        if (!ok) return;
+        var newName = (document.getElementById('qrEditName') || {}).value || 'Quick Run';
+        var newDur = parseInt((document.getElementById('qrEditDur') || {}).value) || 5;
+        if (newDur < 1) newDur = 1;
+        if (newDur > 120) newDur = 120;
+        var newZones = [];
+        document.querySelectorAll('.qrZoneCb:checked').forEach(function(cb) { newZones.push(parseInt(cb.value)); });
+        try {
+            if (isEdit) {
+                var body = { name: newName, duration_minutes: newDur };
+                if (newZones.length > 0) { body.zones = newZones; } else { body.zones = null; }
+                await api('/quick-runs/' + prog.id, { method: 'PUT', body: JSON.stringify(body) });
+                showToast('Program updated', 'success');
+            } else {
+                var body2 = { name: newName, duration_minutes: newDur };
+                if (newZones.length > 0) body2.zones = newZones;
+                await api('/quick-runs', { method: 'POST', body: JSON.stringify(body2) });
+                showToast('Program created', 'success');
+            }
+            loadQuickRuns();
+        } catch(e) {
+            showToast('Failed: ' + esc(e.message), 'error');
+        }
+    });
+}
+
+async function qrDeleteProgram(progId) {
+    var prog = _quickRunPrograms.find(function(p) { return String(p.id) === progId; });
+    if (!prog) return;
+    var ok = await showConfirm({
+        title: 'Delete Program',
+        message: 'Delete <strong>' + esc(prog.name) + '</strong>?',
+        confirmText: 'Delete',
+        confirmClass: 'btn-danger',
+    });
+    if (!ok) return;
+    try {
+        await api('/quick-runs/' + progId, { method: 'DELETE' });
+        showToast('Program deleted', 'success');
+        loadQuickRuns();
+    } catch(e) {
+        showToast('Failed: ' + esc(e.message), 'error');
+    }
+}
+
 // --- Zones ---
 async function loadZones() {
     const el = document.getElementById('cardBody_zones');
@@ -2136,6 +2324,15 @@ async function loadZones() {
                 if (catResult) window._hoZoneSprinklerCat[eid2] = catResult;
             }
         } catch(e) { window._hoZoneGpmMap = {}; window._hoZoneGpmShow = {}; window._hoZoneHeadCountShow = {}; window._hoZoneHeadCount = {}; window._hoZoneSprinklerCat = {}; }
+        // Pump GPM fallback: if no zone has per-head GPM, use pump max_gpm for all zones
+        if (Object.keys(window._hoZoneGpmMap).length === 0) {
+            try {
+                var pumpS = await api('/pump_settings?t=' + Date.now());
+                if (pumpS && pumpS.max_gpm && parseFloat(pumpS.max_gpm) > 0) {
+                    window._pumpFallbackGpm = parseFloat(pumpS.max_gpm);
+                }
+            } catch(pe) {}
+        }
         const data = await api('/zones');
         let zones = Array.isArray(data) ? data : (data.zones || []);
         // Filter by detected zone count (server already filters, but belt-and-suspenders)
@@ -3552,9 +3749,10 @@ async function loadHistory() {
         const hasProbeData = events.some(e => e.moisture && e.moisture.moisture_multiplier != null);
         const hasSoilReadings = events.some(e => e.moisture && e.moisture.sensor_readings && (e.moisture.sensor_readings.T != null || e.moisture.sensor_readings.M != null || e.moisture.sensor_readings.B != null));
 
-        // Determine if any event's zone has GPM data configured
+        // Determine if any event's zone has GPM data configured (with pump fallback)
         const gpmMap = window._hoZoneGpmMap || {};
-        const hasGpmData = events.some(e => gpmMap[e.entity_id] > 0);
+        const pumpGpm = window._pumpFallbackGpm || 0;
+        const hasGpmData = events.some(e => (gpmMap[e.entity_id] > 0) || pumpGpm > 0);
         // Check if any event has water savings data
         const hasWaterSaved = events.some(e => e.water_saved_gallons > 0 || e.water_saved_minutes > 0);
 
@@ -3661,13 +3859,14 @@ async function loadHistory() {
                 } else {
                     zoneDisplay = esc(resolveZoneName(e.entity_id, e.zone_name));
                 }
-                // GPM and Estimated Gallons cells
+                // GPM and Estimated Gallons cells (zone heads GPM → pump max_gpm fallback)
                 let gpmCell = '-';
                 let estGalCell = '-';
                 if (hasGpmData && !isProbeEvent) {
-                    const zGpm = gpmMap[e.entity_id];
+                    const zGpm = gpmMap[e.entity_id] || pumpGpm;
                     if (zGpm > 0) {
-                        gpmCell = zGpm.toFixed(1);
+                        var gpmLabel = gpmMap[e.entity_id] ? zGpm.toFixed(1) : zGpm.toFixed(1) + '<div style="font-size:9px;color:var(--text-muted);">pump</div>';
+                        gpmCell = gpmLabel;
                         // duration_seconds is set on OFF events (calculated from ON→OFF span)
                         if (e.duration_seconds > 0) {
                             const gal = (e.duration_seconds / 60) * zGpm;
@@ -3696,10 +3895,11 @@ function formatTime(ts) {
     if (!ts) return '-';
     try {
         const d = new Date(ts);
-        const mon = d.toLocaleDateString('en-US', {month:'short'});
-        const day = d.getDate();
-        const yr = String(d.getFullYear()).slice(-2);
-        const time = fluxFormatTime(d);
+        const tzOpts = _homeTimezone ? {timeZone: _homeTimezone} : {};
+        const mon = d.toLocaleDateString('en-US', Object.assign({month:'short'}, tzOpts));
+        const day = parseInt(d.toLocaleDateString('en-US', Object.assign({day:'numeric'}, tzOpts)), 10);
+        const yr = String(d.toLocaleDateString('en-US', Object.assign({year:'numeric'}, tzOpts))).slice(-2);
+        const time = fluxFormatTime(d, tzOpts);
         return mon + ' ' + day + '-' + yr + ' ' + time;
     } catch { return ts; }
 }
@@ -3709,8 +3909,9 @@ async function loadEstGallons() {
     const card = document.getElementById('estGallonsCard');
     const el = document.getElementById('cardBody_gallons');
     const gpmMap = window._hoZoneGpmMap || {};
-    // Hide card if no zones have GPM data
-    if (Object.keys(gpmMap).length === 0) { card.style.display = 'none'; return; }
+    const pumpGpm = window._pumpFallbackGpm || 0;
+    // Hide card if no zones have GPM data AND no pump fallback
+    if (Object.keys(gpmMap).length === 0 && pumpGpm <= 0) { card.style.display = 'none'; return; }
     try {
         const hoursRaw = document.getElementById('gallonsRange') ? document.getElementById('gallonsRange').value : '24';
         const hours = parseInt(hoursRaw, 10) || 24;
@@ -3720,8 +3921,8 @@ async function loadEstGallons() {
         var waterSettings = null;
         try { waterSettings = await api('/water_settings?t=' + Date.now()); } catch(e) {}
         if (waterSettings) window._cachedWaterSettings = waterSettings;
-        // Filter to events with duration and GPM (duration_seconds is set on OFF events)
-        const relevant = events.filter(e => e.duration_seconds > 0 && gpmMap[e.entity_id]);
+        // Filter to events with duration and GPM (zone heads or pump fallback)
+        const relevant = events.filter(e => e.duration_seconds > 0 && (gpmMap[e.entity_id] || pumpGpm > 0));
         // Also collect water_saved_gallons from all events
         // Filter by water_savings_reset_at if set (homeowner can reset savings
         // counter without clearing run history)
@@ -3742,7 +3943,7 @@ async function loadEstGallons() {
         const zoneMinutes = {};
         const zoneNames = {};
         relevant.forEach(e => {
-            const gpm = gpmMap[e.entity_id] || 0;
+            const gpm = gpmMap[e.entity_id] || pumpGpm || 0;
             const mins = e.duration_seconds / 60;
             const gal = mins * gpm;
             if (!zoneGallons[e.entity_id]) zoneGallons[e.entity_id] = 0;
@@ -7021,6 +7222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initCardState('weather', false);
     initCardState('moisture', false);
     initCardState('zones', false);
+    initCardState('quickrun', false);
     initCardState('schedule', false);
     initCardState('sensors', false);
     initCardState('controls', true);

@@ -111,6 +111,22 @@ async def homeowner_delete_quick_run(program_id: str):
     return {"ok": True}
 
 
+@router.post("/test-program", summary="Run test program — all zones sequentially")
+async def homeowner_test_program(request: Request):
+    """Start a test program via the zone controller's test-program endpoint."""
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    duration_minutes = body.get("duration_minutes", 2)
+
+    # Delegate to the zone router's test-program endpoint
+    from routes.zones import run_test_program, TestProgramRequest
+    fake_body = TestProgramRequest(duration_minutes=duration_minutes)
+    return await run_test_program(fake_body, request)
+
+
 def _require_homeowner_mode():
     """No-op — homeowner endpoints are always available.
 

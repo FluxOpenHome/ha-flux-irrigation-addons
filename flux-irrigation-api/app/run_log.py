@@ -384,6 +384,7 @@ def log_zone_event(
         try:
             from routes.moisture import _load_data as _load_moisture_data
             import zone_nozzle_data
+            import pump_data
 
             moisture_data = _load_moisture_data()
             base_durations = moisture_data.get("base_durations", {})
@@ -408,9 +409,21 @@ def log_zone_event(
                 saved_minutes = base_minutes - actual_minutes
 
                 if saved_minutes > 0.05:  # Only record meaningful savings (>3 seconds)
-                    # Get GPM for this zone
+                    # Get GPM for this zone — try zone heads first, fall back to pump max_gpm
                     heads_data = zone_nozzle_data.get_zone_heads(entity_id)
                     total_gpm = heads_data.get("total_gpm", 0)
+                    gpm_source = "zone_heads"
+
+                    # Fallback: if no per-zone GPM, use pump max_gpm
+                    if total_gpm <= 0:
+                        try:
+                            pump_settings = pump_data.get_pump_settings()
+                            pump_gpm = pump_settings.get("max_gpm", 0)
+                            if pump_gpm and float(pump_gpm) > 0:
+                                total_gpm = float(pump_gpm)
+                                gpm_source = "pump_max_gpm"
+                        except Exception:
+                            pass
 
                     entry["water_saved_minutes"] = round(saved_minutes, 2)
                     entry["water_saved_source"] = source
@@ -419,7 +432,7 @@ def log_zone_event(
                         entry["water_saved_gallons"] = water_saved
                         print(f"[RUN_LOG] Water saved ({source}): {entity_id} ran "
                               f"{actual_minutes:.1f}min vs {base_minutes:.1f}min base → "
-                              f"saved {saved_minutes:.1f}min × {total_gpm:.2f}GPM = "
+                              f"saved {saved_minutes:.1f}min × {total_gpm:.2f}GPM ({gpm_source}) = "
                               f"{water_saved:.2f} gal")
                     else:
                         entry["water_saved_no_gpm"] = True

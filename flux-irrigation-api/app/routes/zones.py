@@ -459,3 +459,123 @@ async def stop_all_zones(request: Request):
         action="stop_all",
         message=f"Stopped {len(stopped)} active zone(s)",
     )
+
+
+# ── Test Program (Quick Run — all zones sequentially) ──
+
+
+class TestProgramRequest(BaseModel):
+    duration_minutes: int = Field(default=2, ge=1, le=120, description="Duration per zone (1-120 min)")
+
+
+# Track the active test-program task so it can be cancelled
+_test_program_task: Optional[asyncio.Task] = None
+
+
+async def _run_test_program_sequence(zone_entities: list[str], duration_minutes: int, request_ip: str):
+    """Background task: run each zone for `duration_minutes`, then move to the next."""
+    global _test_program_task
+    try:
+        for i, entity_id in enumerate(zone_entities):
+            print(f"[TEST_PROGRAM] Zone {i+1}/{len(zone_entities)}: starting {entity_id} for {duration_minutes} min")
+            run_log.pre_announce_zone_source(entity_id, "api")
+            svc_domain, svc_name = _get_zone_service(entity_id, "on")
+            success = await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
+            if success:
+                run_log.log_zone_event(
+                    entity_id=entity_id, state="on", source="api",
+                    zone_name=_zone_name(entity_id),
+                )
+                log_change("Test Program", "Zone Control",
+                           f"Test program: started {_zone_name(entity_id).replace('_', ' ').title()} ({duration_minutes} min)",
+                           {"entity_id": entity_id})
+            else:
+                print(f"[TEST_PROGRAM] Failed to start {entity_id}, skipping")
+                continue
+
+            # Wait for the duration
+            await asyncio.sleep(duration_minutes * 60)
+
+            # Stop the zone
+            svc_domain_off, svc_name_off = _get_zone_service(entity_id, "off")
+            await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": entity_id})
+            run_log.log_zone_event(
+                entity_id=entity_id, state="off", source="test_program",
+                zone_name=_zone_name(entity_id),
+                duration_seconds=duration_minutes * 60,
+            )
+            print(f"[TEST_PROGRAM] Zone {entity_id} stopped after {duration_minutes} min")
+
+        print(f"[TEST_PROGRAM] Complete — {len(zone_entities)} zone(s) tested")
+    except asyncio.CancelledError:
+        print("[TEST_PROGRAM] Cancelled — stopping current zone")
+        config = get_config()
+        entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+        for entity in entities:
+            eid = entity["entity_id"]
+            if entity.get("state") in ("on", "open"):
+                sd, sn = _get_zone_service(eid, "off")
+                await ha_client.call_service(sd, sn, {"entity_id": eid})
+    finally:
+        _test_program_task = None
+
+
+@router.post(
+    "/test-program",
+    response_model=ZoneActionResponse,
+    dependencies=[Depends(require_permission("zones.control"))],
+    summary="Run test program — all enabled zones sequentially",
+)
+async def run_test_program(body: TestProgramRequest, request: Request):
+    """Start a test program that runs all enabled zones in sequence."""
+    global _test_program_task
+    config = get_config()
+    key_config: ApiKeyConfig = request.state.api_key_config
+
+    # Cancel any existing test program
+    if _test_program_task and not _test_program_task.done():
+        _test_program_task.cancel()
+        try:
+            await _test_program_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    # Get ordered enabled zones
+    try:
+        from routes.moisture import _get_ordered_enabled_zones
+        ordered = await _get_ordered_enabled_zones()
+        zone_entities = [z["zone_entity_id"] for z in ordered if not z.get("is_special")]
+    except Exception as e:
+        print(f"[TEST_PROGRAM] Falling back to config zones: {e}")
+        entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+        zone_entities = [e["entity_id"] for e in entities if e.get("state") != "unavailable"]
+
+    if not zone_entities:
+        raise HTTPException(status_code=400, detail="No enabled zones found to test")
+
+    client_ip = request.client.host if request.client else "unknown"
+    _test_program_task = asyncio.create_task(
+        _run_test_program_sequence(zone_entities, body.duration_minutes, client_ip)
+    )
+
+    log_change(
+        get_actor(request), "Zone Control",
+        f"Test program started: {len(zone_entities)} zones × {body.duration_minutes} min",
+        {"zones": [z for z in zone_entities], "duration": body.duration_minutes},
+    )
+
+    audit_log.log_action(
+        api_key_name=key_config.name,
+        method="POST",
+        path="/api/zones/test-program",
+        action="run_test_program",
+        details={"zones": len(zone_entities), "duration_minutes": body.duration_minutes},
+        client_ip=request.client.host if request.client else None,
+    )
+
+    return ZoneActionResponse(
+        success=True,
+        zone_id="test_program",
+        action="test_program",
+        message=f"Test program started: {len(zone_entities)} zone(s), {body.duration_minutes} min each",
+    )
