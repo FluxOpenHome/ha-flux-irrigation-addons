@@ -28,6 +28,11 @@ def _extract_zone_number(entity_id: str) -> int:
 # Track active timed-run tasks so they can be cancelled on manual stop
 _timed_run_tasks: dict[str, asyncio.Task] = {}
 
+# Track the actual duration (seconds) each zone was started with.
+# This is the REAL run duration (from manual start, timed run, schedule, or program)
+# — NOT the schedule entity value. Cleared when zone stops.
+_active_zone_durations: dict[str, int] = {}  # entity_id → duration_seconds
+
 
 async def _timed_shutoff(entity_id: str, duration_minutes: int):
     """Background task: wait for duration then turn off the zone."""
@@ -46,6 +51,7 @@ async def _timed_shutoff(entity_id: str, duration_minutes: int):
         print(f"[ZONES] Timed run cancelled for {entity_id}")
     finally:
         _timed_run_tasks.pop(entity_id, None)
+        _active_zone_durations.pop(entity_id, None)
 
 
 router = APIRouter(prefix="/zones", tags=["Zones"])
@@ -57,6 +63,7 @@ class ZoneStatus(BaseModel):
     state: str  # "on" or "off"
     friendly_name: Optional[str] = None
     last_changed: Optional[str] = None
+    active_duration_seconds: Optional[int] = None  # actual run duration if zone is on
     attributes: dict = {}
 
 
@@ -160,13 +167,15 @@ async def list_zones(request: Request):
     zones = []
     for entity in entities:
         attrs = entity.get("attributes", {})
+        eid = entity["entity_id"]
         zones.append(
             ZoneStatus(
-                entity_id=entity["entity_id"],
-                name=_zone_name(entity["entity_id"]),
+                entity_id=eid,
+                name=_zone_name(eid),
                 state=entity.get("state", "unknown"),
                 friendly_name=attrs.get("friendly_name"),
                 last_changed=entity.get("last_changed"),
+                active_duration_seconds=_active_zone_durations.get(eid),
                 attributes=attrs,
             )
         )
@@ -303,7 +312,12 @@ async def start_zone(zone_id: str, body: ZoneStartRequest, request: Request):
             _timed_shutoff(entity_id, adjusted_duration)
         )
         _timed_run_tasks[entity_id] = task
+        # Track the actual run duration so /api/zones returns it
+        _active_zone_durations[entity_id] = adjusted_duration * 60
         print(f"[ZONES] Timed run started: {entity_id} for {adjusted_duration} min")
+    else:
+        # Manual start without duration — no countdown, just track as open-ended
+        _active_zone_durations.pop(entity_id, None)
 
     message = f"Zone '{zone_id}' started"
     if body.duration_minutes:
@@ -366,6 +380,7 @@ async def stop_zone(zone_id: str, request: Request):
     existing = _timed_run_tasks.pop(entity_id, None)
     if existing and not existing.done():
         existing.cancel()
+    _active_zone_durations.pop(entity_id, None)
 
     svc_domain, svc_name = _get_zone_service(entity_id, "off")
     service_data = {"entity_id": entity_id}
@@ -482,6 +497,8 @@ async def _run_test_program_sequence(zone_entities: list[str], duration_minutes:
             svc_domain, svc_name = _get_zone_service(entity_id, "on")
             success = await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
             if success:
+                # Track the actual run duration for this zone
+                _active_zone_durations[entity_id] = duration_minutes * 60
                 run_log.log_zone_event(
                     entity_id=entity_id, state="on", source="api",
                     zone_name=_zone_name(entity_id),
@@ -497,6 +514,7 @@ async def _run_test_program_sequence(zone_entities: list[str], duration_minutes:
             await asyncio.sleep(duration_minutes * 60)
 
             # Stop the zone
+            _active_zone_durations.pop(entity_id, None)
             svc_domain_off, svc_name_off = _get_zone_service(entity_id, "off")
             await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": entity_id})
             run_log.log_zone_event(

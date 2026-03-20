@@ -445,9 +445,10 @@ async def homeowner_zones():
         if max_zones > 0 and zn > max_zones:
             continue
         attrs = entity.get("attributes", {})
+        eid = entity["entity_id"]
         zone_data = {
-            "entity_id": entity["entity_id"],
-            "name": _zone_name(entity["entity_id"]),
+            "entity_id": eid,
+            "name": _zone_name(eid),
             "state": entity.get("state", "unknown"),
             "friendly_name": attrs.get("friendly_name"),
             "last_changed": entity.get("last_changed"),
@@ -456,6 +457,10 @@ async def homeowner_zones():
         # Include duration so management UI can display correct timers
         if zn in dur_map and dur_map[zn] > 0:
             zone_data["duration_minutes"] = dur_map[zn]
+        # Include ACTUAL run duration if zone is currently active
+        from routes.zones import _active_zone_durations
+        if eid in _active_zone_durations:
+            zone_data["active_duration_seconds"] = _active_zone_durations[eid]
         zones.append(zone_data)
     return zones
 
