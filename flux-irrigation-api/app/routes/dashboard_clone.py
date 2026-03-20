@@ -129,10 +129,78 @@ def _extract_zone_number(entity_id: str) -> int:
     return int(m.group(1)) if m else 99
 
 
-def _zone_display_name(entity_id: str) -> str:
-    """Derive a readable name from entity ID: 'switch.zone_1' → 'Zone 1'."""
-    name = entity_id.split(".", 1)[-1].replace("_", " ").title()
-    return name
+def _find_common_prefix(names: list[str]) -> str:
+    """Find the longest common prefix across a list of friendly names.
+
+    E.g., ['Irrigation System Sprinkler Zone 1', 'Irrigation System Sprinkler Zone 2',
+           'Irrigation System Sprinkler Schedule Monday']
+    → 'Irrigation System Sprinkler '
+    """
+    if not names or len(names) < 2:
+        return ""
+    shortest = min(names, key=len)
+    for i, ch in enumerate(shortest):
+        for name in names:
+            if name[i] != ch:
+                # Back up to the last space boundary
+                prefix = shortest[:i]
+                last_space = prefix.rfind(" ")
+                return prefix[:last_space + 1] if last_space >= 0 else ""
+    return shortest
+
+
+def _strip_device_prefix(friendly_name: str, prefix: str) -> str:
+    """Strip the common device prefix from a friendly name.
+
+    'Irrigation System Sprinkler Schedule Monday' with prefix
+    'Irrigation System Sprinkler ' → 'Schedule Monday'
+    """
+    if prefix and friendly_name.startswith(prefix):
+        stripped = friendly_name[len(prefix):].strip()
+        return stripped if stripped else friendly_name
+    return friendly_name
+
+
+async def _build_friendly_name_map(entity_ids: list[str]) -> dict[str, str]:
+    """Fetch friendly names from HA for all entity IDs, then strip the
+    common device prefix to produce short, readable names.
+
+    Returns {entity_id: short_name}.
+    """
+    if not entity_ids:
+        return {}
+
+    # Fetch all states in one call (faster than individual fetches)
+    all_states = await ha_client.get_all_states()
+    state_map = {s["entity_id"]: s for s in all_states}
+
+    # Build raw friendly name map
+    raw_names: dict[str, str] = {}
+    for eid in entity_ids:
+        state = state_map.get(eid)
+        if state and state.get("attributes", {}).get("friendly_name"):
+            raw_names[eid] = state["attributes"]["friendly_name"]
+        else:
+            # Fallback: derive from entity ID
+            raw_names[eid] = eid.split(".", 1)[-1].replace("_", " ").title()
+
+    # Find common prefix across ALL friendly names
+    all_friendly = list(raw_names.values())
+    prefix = _find_common_prefix(all_friendly)
+
+    # Strip prefix from each name
+    short_names: dict[str, str] = {}
+    for eid, fname in raw_names.items():
+        short_names[eid] = _strip_device_prefix(fname, prefix)
+
+    return short_names
+
+
+def _n(entity_id: str, name_map: dict[str, str]) -> str:
+    """Look up short name for an entity. Fallback to entity ID parsing."""
+    if entity_id in name_map:
+        return name_map[entity_id]
+    return entity_id.split(".", 1)[-1].replace("_", " ").title()
 
 
 def _zone_color(index: int) -> str:
@@ -183,6 +251,7 @@ def _build_overview_view(
     weather_entity_id: str,
     rain_sensor_eids: list[str],
     rain_control_eids: list[str],
+    name_map: dict[str, str],
 ) -> dict:
     """Build the Overview view with tile cards and modern layout."""
     cards: list[dict] = []
@@ -215,14 +284,13 @@ def _build_overview_view(
             tile = {
                 "type": "tile",
                 "entity": eid,
-                "name": _zone_display_name(eid),
+                "name": _n(eid, name_map),
                 "icon": "mdi:sprinkler-variant",
                 "color": _zone_color(i),
                 "vertical": False,
             }
             zone_tiles.append(tile)
 
-        # Use a grid card to arrange zone tiles nicely
         cards.append({
             "type": "grid",
             "columns": 3,
@@ -236,40 +304,19 @@ def _build_overview_view(
         rain_tiles = []
         for eid in rain_all:
             domain = eid.split(".")[0]
-            if domain == "binary_sensor":
-                rain_tiles.append({
-                    "type": "tile",
-                    "entity": eid,
-                    "icon": "mdi:weather-rainy",
-                    "color": "blue",
-                })
-            elif domain == "switch":
-                rain_tiles.append({
-                    "type": "tile",
-                    "entity": eid,
-                    "icon": "mdi:weather-pouring",
-                    "color": "blue",
-                })
-            elif domain == "number":
-                rain_tiles.append({
-                    "type": "tile",
-                    "entity": eid,
-                    "icon": "mdi:timer-sand",
-                    "color": "blue",
-                })
-            elif domain == "select":
-                rain_tiles.append({
-                    "type": "tile",
-                    "entity": eid,
-                    "icon": "mdi:water-alert",
-                    "color": "blue",
-                })
-            else:
-                rain_tiles.append({
-                    "type": "tile",
-                    "entity": eid,
-                    "color": "blue",
-                })
+            icon_map = {
+                "binary_sensor": "mdi:weather-rainy",
+                "switch": "mdi:weather-pouring",
+                "number": "mdi:timer-sand",
+                "select": "mdi:water-alert",
+            }
+            rain_tiles.append({
+                "type": "tile",
+                "entity": eid,
+                "name": _n(eid, name_map),
+                "icon": icon_map.get(domain, "mdi:water"),
+                "color": "blue",
+            })
         cards.append({
             "type": "grid",
             "columns": 2,
@@ -315,20 +362,13 @@ def _build_overview_view(
                 icon = "mdi:checkbox-marked-circle-outline"
                 color = "green"
 
-            if domain in ("sensor", "binary_sensor"):
-                sensor_tiles.append({
-                    "type": "tile",
-                    "entity": eid,
-                    "icon": icon,
-                    "color": color,
-                })
-            else:
-                sensor_tiles.append({
-                    "type": "tile",
-                    "entity": eid,
-                    "icon": icon,
-                    "color": color,
-                })
+            sensor_tiles.append({
+                "type": "tile",
+                "entity": eid,
+                "name": _n(eid, name_map),
+                "icon": icon,
+                "color": color,
+            })
 
         cards.append({
             "type": "grid",
@@ -345,7 +385,7 @@ def _build_overview_view(
     }
 
 
-def _build_schedule_view(control_eids: list[str]) -> dict:
+def _build_schedule_view(control_eids: list[str], name_map: dict[str, str]) -> dict:
     """Build a modern Schedule view with tile cards grouped by category."""
     # Classify all control entities
     categories: dict[str, list[str]] = {
@@ -393,6 +433,7 @@ def _build_schedule_view(control_eids: list[str]) -> dict:
             tiles.append({
                 "type": "tile",
                 "entity": eid,
+                "name": _n(eid, name_map),
                 "icon": icon,
                 "color": color,
             })
@@ -426,6 +467,7 @@ def _build_schedule_view(control_eids: list[str]) -> dict:
             day_tiles.append({
                 "type": "tile",
                 "entity": eid,
+                "name": _n(eid, name_map),
                 "icon": icon,
                 "color": "green",
             })
@@ -444,6 +486,7 @@ def _build_schedule_view(control_eids: list[str]) -> dict:
             st_tiles.append({
                 "type": "tile",
                 "entity": eid,
+                "name": _n(eid, name_map),
                 "icon": "mdi:clock-start",
                 "color": "amber",
             })
@@ -462,6 +505,7 @@ def _build_schedule_view(control_eids: list[str]) -> dict:
             dur_tiles.append({
                 "type": "tile",
                 "entity": eid,
+                "name": _n(eid, name_map),
                 "icon": "mdi:timer-outline",
                 "color": _zone_color(i),
             })
@@ -480,6 +524,7 @@ def _build_schedule_view(control_eids: list[str]) -> dict:
             en_tiles.append({
                 "type": "tile",
                 "entity": eid,
+                "name": _n(eid, name_map),
                 "icon": "mdi:checkbox-marked-circle-outline",
                 "color": _zone_color(i),
             })
@@ -498,6 +543,7 @@ def _build_schedule_view(control_eids: list[str]) -> dict:
             mode_tiles.append({
                 "type": "tile",
                 "entity": eid,
+                "name": _n(eid, name_map),
                 "icon": "mdi:tune-variant",
                 "color": _zone_color(i),
             })
@@ -515,6 +561,7 @@ def _build_schedule_view(control_eids: list[str]) -> dict:
             cyc_tiles.append({
                 "type": "tile",
                 "entity": eid,
+                "name": _n(eid, name_map),
                 "icon": "mdi:repeat",
                 "color": "deep-purple",
             })
@@ -539,7 +586,7 @@ def _build_schedule_view(control_eids: list[str]) -> dict:
     }
 
 
-def _build_moisture_view(moisture_data: dict) -> Optional[dict]:
+def _build_moisture_view(moisture_data: dict, name_map: dict[str, str]) -> Optional[dict]:
     """Build a modern Moisture Probes view with gauges and statistics graphs."""
     probes = moisture_data.get("probes", {})
     if not probes:
@@ -624,6 +671,7 @@ def _build_moisture_view(moisture_data: dict) -> Optional[dict]:
             device_tiles.append({
                 "type": "tile",
                 "entity": extra["wifi"],
+                "name": _n(extra["wifi"], name_map),
                 "icon": "mdi:wifi",
                 "color": "indigo",
             })
@@ -631,6 +679,7 @@ def _build_moisture_view(moisture_data: dict) -> Optional[dict]:
             device_tiles.append({
                 "type": "tile",
                 "entity": extra["battery"],
+                "name": _n(extra["battery"], name_map),
                 "icon": "mdi:battery",
                 "color": "green",
             })
@@ -638,6 +687,7 @@ def _build_moisture_view(moisture_data: dict) -> Optional[dict]:
             device_tiles.append({
                 "type": "tile",
                 "entity": extra["sleep_duration"],
+                "name": _n(extra["sleep_duration"], name_map),
                 "icon": "mdi:sleep",
                 "color": "deep-purple",
             })
@@ -645,6 +695,7 @@ def _build_moisture_view(moisture_data: dict) -> Optional[dict]:
             device_tiles.append({
                 "type": "tile",
                 "entity": extra["status_led"],
+                "name": _n(extra["status_led"], name_map),
                 "icon": "mdi:led-on",
                 "color": "amber",
             })
@@ -668,7 +719,7 @@ def _build_moisture_view(moisture_data: dict) -> Optional[dict]:
     }
 
 
-def _build_history_view(zone_eids: list[str]) -> Optional[dict]:
+def _build_history_view(zone_eids: list[str], name_map: dict[str, str]) -> Optional[dict]:
     """Build a modern History view with statistics graphs."""
     if not zone_eids:
         return None
@@ -694,7 +745,7 @@ def _build_history_view(zone_eids: list[str]) -> Optional[dict]:
 
     # --- Individual zone tiles + history in a nice grid ---
     for i, eid in enumerate(sorted_zones):
-        name = _zone_display_name(eid)
+        name = _n(eid, name_map)
         # Vertical stack: tile card on top, history below
         cards.append({
             "type": "vertical-stack",
@@ -748,21 +799,37 @@ async def _build_lovelace_config() -> dict:
     except Exception:
         pass
 
+    # Collect ALL entity IDs that will appear on the dashboard
+    all_eids = set(zone_eids + sensor_eids + control_eids)
+    if weather_eid:
+        all_eids.add(weather_eid)
+    # Add moisture probe entity IDs
+    for probe in moisture_data.get("probes", {}).values():
+        for depth_eid in probe.get("sensors", {}).values():
+            if depth_eid:
+                all_eids.add(depth_eid)
+        for extra_eid in probe.get("extra_sensors", {}).values():
+            if extra_eid:
+                all_eids.add(extra_eid)
+
+    # Fetch friendly names from HA and strip common device prefix
+    name_map = await _build_friendly_name_map(list(all_eids))
+
     # Build views
     views: list[dict] = []
 
     views.append(_build_overview_view(
         zone_eids, sensor_eids, weather_eid,
-        rain_sensor_eids, rain_control_eids,
+        rain_sensor_eids, rain_control_eids, name_map,
     ))
 
-    views.append(_build_schedule_view(control_eids))
+    views.append(_build_schedule_view(control_eids, name_map))
 
-    moisture_view = _build_moisture_view(moisture_data)
+    moisture_view = _build_moisture_view(moisture_data, name_map)
     if moisture_view:
         views.append(moisture_view)
 
-    history_view = _build_history_view(zone_eids)
+    history_view = _build_history_view(zone_eids, name_map)
     if history_view:
         views.append(history_view)
 
