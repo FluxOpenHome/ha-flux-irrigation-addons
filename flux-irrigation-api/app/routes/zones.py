@@ -5,6 +5,7 @@ List zones, start/stop individual zones, get zone status.
 
 import asyncio
 import re
+import time as _time
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -488,9 +489,17 @@ _test_program_task: Optional[asyncio.Task] = None
 
 
 async def _run_test_program_sequence(zone_entities: list[str], duration_minutes: int, request_ip: str):
-    """Background task: run each zone for `duration_minutes`, then move to the next."""
+    """Background task: run each zone for `duration_minutes`, then move to the next.
+
+    Uses overlapping zone transitions to prevent pump cycling:
+    next zone ON → 1 second overlap → previous zone OFF.
+    The pump stays running because at least one zone is always active.
+    """
     global _test_program_task
     try:
+        prev_entity_id = None
+        prev_start_time = None
+
         for i, entity_id in enumerate(zone_entities):
             print(f"[TEST_PROGRAM] Zone {i+1}/{len(zone_entities)}: starting {entity_id} for {duration_minutes} min")
             run_log.pre_announce_zone_source(entity_id, "api")
@@ -510,23 +519,42 @@ async def _run_test_program_sequence(zone_entities: list[str], duration_minutes:
                 print(f"[TEST_PROGRAM] Failed to start {entity_id}, skipping")
                 continue
 
+            # ── Overlap handover: turn OFF previous zone 1s AFTER new zone is ON ──
+            if prev_entity_id:
+                await asyncio.sleep(1)  # 1-second overlap — both zones on, pump stays alive
+                _active_zone_durations.pop(prev_entity_id, None)
+                svc_domain_off, svc_name_off = _get_zone_service(prev_entity_id, "off")
+                await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": prev_entity_id})
+                actual_dur = int(_time.time() - prev_start_time) if prev_start_time else duration_minutes * 60
+                run_log.log_zone_event(
+                    entity_id=prev_entity_id, state="off", source="test_program",
+                    zone_name=_zone_name(prev_entity_id),
+                    duration_seconds=actual_dur,
+                )
+                print(f"[TEST_PROGRAM] Zone {prev_entity_id} stopped (overlap handover)")
+
+            prev_entity_id = entity_id
+            prev_start_time = _time.time()
+
             # Wait for the duration
             await asyncio.sleep(duration_minutes * 60)
 
-            # Stop the zone
-            _active_zone_durations.pop(entity_id, None)
-            svc_domain_off, svc_name_off = _get_zone_service(entity_id, "off")
-            await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": entity_id})
+        # ── Turn off the LAST zone (no next zone to overlap with) ──
+        if prev_entity_id:
+            _active_zone_durations.pop(prev_entity_id, None)
+            svc_domain_off, svc_name_off = _get_zone_service(prev_entity_id, "off")
+            await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": prev_entity_id})
+            actual_dur = int(_time.time() - prev_start_time) if prev_start_time else duration_minutes * 60
             run_log.log_zone_event(
-                entity_id=entity_id, state="off", source="test_program",
-                zone_name=_zone_name(entity_id),
-                duration_seconds=duration_minutes * 60,
+                entity_id=prev_entity_id, state="off", source="test_program",
+                zone_name=_zone_name(prev_entity_id),
+                duration_seconds=actual_dur,
             )
-            print(f"[TEST_PROGRAM] Zone {entity_id} stopped after {duration_minutes} min")
+            print(f"[TEST_PROGRAM] Last zone {prev_entity_id} stopped")
 
         print(f"[TEST_PROGRAM] Complete — {len(zone_entities)} zone(s) tested")
     except asyncio.CancelledError:
-        print("[TEST_PROGRAM] Cancelled — stopping current zone")
+        print("[TEST_PROGRAM] Cancelled — stopping all active zones")
         config = get_config()
         entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
         for entity in entities:
