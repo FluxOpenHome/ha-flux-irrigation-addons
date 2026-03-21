@@ -15,6 +15,8 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" crossorigin=""></script>
 <style>
 :root {
     --bg-body: #f5f6fa;
@@ -8762,6 +8764,23 @@ document.addEventListener('keydown', function(e) {
 // ============================================================
 var _dnCharts = {};
 var _dnRawData = null;
+
+function _dnZoomPluginCfg() {
+    return {
+        zoom: {
+            drag: { enabled: true, backgroundColor: 'rgba(46,204,113,0.15)', borderColor: 'rgba(46,204,113,0.6)', borderWidth: 1 },
+            mode: 'x',
+            onZoomComplete: function(ctx) { var c = ctx.chart.canvas; var panel = c.closest('.dn-panel'); if (panel) { var rb = panel.querySelector('.dn-reset-zoom'); if (rb) rb.style.display = 'inline-block'; } }
+        }
+    };
+}
+function dnResetChartZoom(btn) {
+    var panel = btn.closest('.dn-panel');
+    if (!panel) return;
+    var canvas = panel.querySelector('canvas');
+    if (canvas && _dnCharts[canvas.id]) { _dnCharts[canvas.id].resetZoom(); }
+    btn.style.display = 'none';
+}
 var _dnCurrentRange = 720; // 30 days default
 var _dnCurrentUnit = 'gallons'; // or 'minutes'
 var _dnThemeObserver = null;
@@ -9283,7 +9302,8 @@ function dnBuildWaterUsage(canvasId, data, gpmMap) {
                 x: Object.assign({}, cfg.scales.x, { stacked: true }),
                 y: Object.assign({}, cfg.scales.y, { stacked: true, title: { display: true, text: _dnCurrentUnit === 'gallons' ? 'Gallons' : 'Minutes', color: cfg.scales.y.ticks.color } })
             },
-            interaction: { mode: 'index', intersect: false }
+            interaction: { mode: 'index', intersect: false },
+            plugins: { zoom: _dnZoomPluginCfg() }
         })
     });
     return _dnCharts[canvasId];
@@ -9340,7 +9360,8 @@ function dnBuildMoisture(canvasId, data) {
                 y: Object.assign({}, cfg.scales.y, { min: 0, max: 100, title: { display: true, text: 'Moisture %', color: cfg.scales.y.ticks.color } }),
                 y1: { position: 'right', min: 0, max: 2.5, grid: { drawOnChartArea: false }, ticks: { color: cfg.scales.y.ticks.color, font: { size: 10 } }, title: { display: true, text: 'Multiplier', color: cfg.scales.y.ticks.color } }
             },
-            interaction: { mode: 'index', intersect: false }
+            interaction: { mode: 'index', intersect: false },
+            plugins: { zoom: _dnZoomPluginCfg() }
         })
     });
     return _dnCharts[canvasId];
@@ -9415,7 +9436,7 @@ function dnBuildWeather(canvasId, data) {
         options: Object.assign({}, cfg, {
             scales: scales,
             interaction: { mode: 'index', intersect: false },
-            plugins: Object.assign({}, cfg.plugins, { tooltip: Object.assign({}, cfg.plugins.tooltip || {}, weatherTooltip) })
+            plugins: Object.assign({}, cfg.plugins, { tooltip: Object.assign({}, cfg.plugins.tooltip || {}, weatherTooltip), zoom: _dnZoomPluginCfg() })
         })
     });
     return _dnCharts[canvasId];
@@ -9556,8 +9577,9 @@ function dnRenderAllCharts(data) {
     var _eb = _dnExpandBtn();
     // 1. Summary cards
     html += '<div class="dn-full">' + dnBuildSummaryCards(data, gpmMap) + '</div>';
+    var _rzb = '<button class="dn-reset-zoom" onclick="dnResetChartZoom(this)" style="display:none;font-size:10px;padding:2px 8px;border:1px solid var(--border-light);border-radius:4px;background:var(--bg-hover);color:var(--text-muted);cursor:pointer;margin-left:8px;">Reset Zoom</button>';
     // 2. Water Usage
-    html += '<div class="dn-panel dn-wide"><div class="dn-panel-title">Water Usage Over Time' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartUsage"></canvas></div></div>';
+    html += '<div class="dn-panel dn-wide"><div class="dn-panel-title">Water Usage Over Time' + _rzb + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartUsage"></canvas></div></div>';
     // 3. Water Savings
     html += '<div class="dn-panel"><div class="dn-panel-title">Water Savings Analysis' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartSavings"></canvas></div>';
     // Savings pills
@@ -9569,10 +9591,10 @@ function dnRenderAllCharts(data) {
     html += '</div></div>';
     // 4. Moisture Trends (only if probes exist)
     if (hasProbes) {
-        html += '<div class="dn-panel"><div class="dn-panel-title">Moisture Trends' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartMoisture"></canvas></div></div>';
+        html += '<div class="dn-panel"><div class="dn-panel-title">Moisture Trends' + _rzb + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartMoisture"></canvas></div></div>';
     }
     // 5. Weather Impact
-    html += '<div class="dn-panel"><div class="dn-panel-title">Weather Impact' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartWeather"></canvas></div></div>';
+    html += '<div class="dn-panel"><div class="dn-panel-title">Weather Impact' + _rzb + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartWeather"></canvas></div></div>';
     // 6. Zone Performance — with bar/radar toggle
     html += '<div class="dn-panel"><div class="dn-panel-title">Zone Performance <div class="dn-tab-group"><button class="dn-tab-btn active" onclick="dnZoneView(&quot;bar&quot;,this)">Bar</button><button class="dn-tab-btn" onclick="dnZoneView(&quot;radar&quot;,this)">Radar</button></div>' + _eb + '</div><div class="dn-chart-wrap" id="dnZoneWrap"><canvas id="dnChartZoneBar"></canvas></div></div>';
     // 7. Probe Health (only if probes exist)
