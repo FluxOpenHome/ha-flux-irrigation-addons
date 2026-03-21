@@ -5,7 +5,6 @@ List zones, start/stop individual zones, get zone status.
 
 import asyncio
 import re
-import time as _time
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -489,80 +488,132 @@ _test_program_task: Optional[asyncio.Task] = None
 
 
 async def _run_test_program_sequence(zone_entities: list[str], duration_minutes: int, request_ip: str):
-    """Background task: run each zone for `duration_minutes`, then move to the next.
+    """Start a test program by setting zone durations and letting the ESPHome
+    sprinkler component handle the sequencing.  The firmware controls valve
+    overlap and pump management — the add-on NEVER touches the pump or
+    manually sequences zones.
 
-    Uses overlapping zone transitions to prevent pump cycling:
-    next zone ON → 1 second overlap → previous zone OFF.
-    The pump stays running because at least one zone is always active.
+    Steps:
+      1. Save each zone's current run duration
+      2. Set each zone's duration number entity to the test duration
+      3. Turn on auto_advance + main_switch — firmware runs all enabled zones
+         with valve_overlap (2s) so the pump never cycles
+      4. Monitor main_switch — when firmware turns it off, the cycle is done
+      5. Restore original durations
     """
     global _test_program_task
+    config = get_config()
+    original_durations = {}  # entity_id -> original value
+
     try:
-        prev_entity_id = None
-        prev_start_time = None
+        # ── 1. Find the duration number entities for each zone ──
+        # Zone switch entity_id pattern: switch.irrigation_system_zone_1
+        # Duration number entity_id pattern: number.irrigation_system_zone_1
+        all_entities = await ha_client.get_all_states()
+        state_map = {s["entity_id"]: s for s in all_entities}
 
-        for i, entity_id in enumerate(zone_entities):
-            print(f"[TEST_PROGRAM] Zone {i+1}/{len(zone_entities)}: starting {entity_id} for {duration_minutes} min")
-            run_log.pre_announce_zone_source(entity_id, "api")
-            svc_domain, svc_name = _get_zone_service(entity_id, "on")
-            success = await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
-            if success:
-                # Track the actual run duration for this zone
-                _active_zone_durations[entity_id] = duration_minutes * 60
-                run_log.log_zone_event(
-                    entity_id=entity_id, state="on", source="api",
-                    zone_name=_zone_name(entity_id),
-                )
-                log_change("Test Program", "Zone Control",
-                           f"Test program: started {_zone_name(entity_id).replace('_', ' ').title()} ({duration_minutes} min)",
-                           {"entity_id": entity_id})
-            else:
-                print(f"[TEST_PROGRAM] Failed to start {entity_id}, skipping")
-                continue
+        # Find the device prefix from zone entities
+        # e.g. switch.irrigation_system_zone_1 -> "irrigation_system"
+        device_prefix = None
+        for ze in zone_entities:
+            parts = ze.split(".", 1)
+            if len(parts) == 2:
+                # strip "zone_N" or zone name from the end to find prefix
+                name = parts[1]
+                # Try to find matching number entity
+                for eid in state_map:
+                    if eid.startswith("number.") and eid.endswith(name.split("zone")[-1] if "zone" in name else ""):
+                        pass
+                break
 
-            # ── Overlap handover: turn OFF previous zone 1s AFTER new zone is ON ──
-            if prev_entity_id:
-                await asyncio.sleep(1)  # 1-second overlap — both zones on, pump stays alive
-                _active_zone_durations.pop(prev_entity_id, None)
-                svc_domain_off, svc_name_off = _get_zone_service(prev_entity_id, "off")
-                await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": prev_entity_id})
-                actual_dur = int(_time.time() - prev_start_time) if prev_start_time else duration_minutes * 60
-                run_log.log_zone_event(
-                    entity_id=prev_entity_id, state="off", source="test_program",
-                    zone_name=_zone_name(prev_entity_id),
-                    duration_seconds=actual_dur,
-                )
-                print(f"[TEST_PROGRAM] Zone {prev_entity_id} stopped (overlap handover)")
+        # Build zone switch -> duration number entity mapping
+        # The sprinkler component uses number entities named like the zone
+        # e.g. zone switch "irrigation_controller_1" has duration "valve_0"
+        # We find them by looking for number entities with matching device
+        duration_entities = []
+        for eid in state_map:
+            if eid.startswith("number.") and state_map[eid].get("attributes", {}).get("unit_of_measurement") == "Min":
+                duration_entities.append(eid)
 
-            prev_entity_id = entity_id
-            prev_start_time = _time.time()
+        print(f"[TEST_PROGRAM] Found {len(duration_entities)} duration entities: {duration_entities}")
 
-            # Wait for the duration
-            await asyncio.sleep(duration_minutes * 60)
+        # ── 2. Save original durations and set test duration ──
+        for dur_eid in duration_entities:
+            st = state_map.get(dur_eid)
+            if st:
+                try:
+                    original_durations[dur_eid] = float(st["state"])
+                except (ValueError, TypeError):
+                    original_durations[dur_eid] = 2.0  # fallback
+                await ha_client.call_service("number", "set_value", {
+                    "entity_id": dur_eid,
+                    "value": duration_minutes,
+                })
+                print(f"[TEST_PROGRAM] Set {dur_eid} = {duration_minutes} min (was {original_durations[dur_eid]})")
 
-        # ── Turn off the LAST zone (no next zone to overlap with) ──
-        if prev_entity_id:
-            _active_zone_durations.pop(prev_entity_id, None)
-            svc_domain_off, svc_name_off = _get_zone_service(prev_entity_id, "off")
-            await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": prev_entity_id})
-            actual_dur = int(_time.time() - prev_start_time) if prev_start_time else duration_minutes * 60
-            run_log.log_zone_event(
-                entity_id=prev_entity_id, state="off", source="test_program",
-                zone_name=_zone_name(prev_entity_id),
-                duration_seconds=actual_dur,
-            )
-            print(f"[TEST_PROGRAM] Last zone {prev_entity_id} stopped")
+        # ── 3. Find main_switch and auto_advance entities ──
+        main_switch_eid = None
+        auto_advance_eid = None
+        for eid in state_map:
+            if eid.startswith("switch.") and "start_stop" in eid.lower().replace("-", "_"):
+                main_switch_eid = eid
+            elif eid.startswith("switch.") and "auto_advance" in eid.lower():
+                auto_advance_eid = eid
 
-        print(f"[TEST_PROGRAM] Complete — {len(zone_entities)} zone(s) tested")
+        if not main_switch_eid:
+            print("[TEST_PROGRAM] ERROR: Could not find main_switch entity")
+            return
+
+        print(f"[TEST_PROGRAM] main_switch={main_switch_eid}, auto_advance={auto_advance_eid}")
+
+        # ── 4. Pre-announce all zones as API source ──
+        for ze in zone_entities:
+            run_log.pre_announce_zone_source(ze, "api")
+
+        # ── 5. Turn on auto_advance then main_switch — firmware takes over ──
+        if auto_advance_eid:
+            await ha_client.call_service("switch", "turn_on", {"entity_id": auto_advance_eid})
+            print("[TEST_PROGRAM] Auto advance ON")
+
+        await ha_client.call_service("switch", "turn_on", {"entity_id": main_switch_eid})
+        print(f"[TEST_PROGRAM] Main switch ON — firmware running {len(zone_entities)} zones × {duration_minutes} min with valve_overlap")
+
+        log_change("Test Program", "Zone Control",
+                   f"Test program: firmware sequencing {len(zone_entities)} zones × {duration_minutes} min",
+                   {"zones": [z for z in zone_entities], "duration": duration_minutes})
+
+        # ── 6. Wait for the firmware to finish (main_switch turns off) ──
+        # Total max time = zones × duration + margin
+        max_wait = len(zone_entities) * duration_minutes * 60 + 120
+        elapsed = 0
+        poll_interval = 5
+        while elapsed < max_wait:
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+            ms_state = await ha_client.get_entity_state(main_switch_eid)
+            if ms_state and ms_state.get("state") == "off":
+                print(f"[TEST_PROGRAM] Firmware completed cycle (main_switch off after {elapsed}s)")
+                break
+        else:
+            print(f"[TEST_PROGRAM] Timed out after {max_wait}s — firmware may still be running")
+
+        print(f"[TEST_PROGRAM] Complete")
+
     except asyncio.CancelledError:
-        print("[TEST_PROGRAM] Cancelled — stopping all active zones")
-        config = get_config()
-        entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
-        for entity in entities:
-            eid = entity["entity_id"]
-            if entity.get("state") in ("on", "open"):
-                sd, sn = _get_zone_service(eid, "off")
-                await ha_client.call_service(sd, sn, {"entity_id": eid})
+        print("[TEST_PROGRAM] Cancelled — stopping via main_switch")
+        if main_switch_eid:
+            await ha_client.call_service("switch", "turn_off", {"entity_id": main_switch_eid})
     finally:
+        # ── 7. Restore original durations ──
+        for dur_eid, orig_val in original_durations.items():
+            try:
+                await ha_client.call_service("number", "set_value", {
+                    "entity_id": dur_eid,
+                    "value": orig_val,
+                })
+                print(f"[TEST_PROGRAM] Restored {dur_eid} = {orig_val}")
+            except Exception as e:
+                print(f"[TEST_PROGRAM] Failed to restore {dur_eid}: {e}")
         _test_program_task = None
 
 
