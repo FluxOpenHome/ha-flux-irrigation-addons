@@ -328,6 +328,66 @@ _sensor_cache_loaded = False
 # This is a simple HA state read — no writes required.
 _probe_awake_cache: dict[str, bool] = {}  # probe_id -> True=awake, False=sleeping
 
+# --- Wake/Sleep Event Log ---
+# Actual observed transitions with real timestamps from the status LED.
+# Each entry: {"wake_at": ISO, "sleep_at": ISO|None}
+# Persisted to /data/probe_wake_log.json so it survives add-on restarts.
+_WAKE_LOG_PATH = "/data/probe_wake_log.json"
+_WAKE_LOG_MAX_ENTRIES = 200  # per probe, rolling window
+
+_probe_wake_log: dict[str, list] = {}  # probe_id -> [{wake_at, sleep_at}, ...]
+
+
+def _load_wake_log():
+    global _probe_wake_log
+    try:
+        with open(_WAKE_LOG_PATH, "r") as f:
+            _probe_wake_log = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        _probe_wake_log = {}
+
+
+def _save_wake_log():
+    try:
+        with open(_WAKE_LOG_PATH, "w") as f:
+            json.dump(_probe_wake_log, f)
+    except Exception as e:
+        print(f"[MOISTURE] Failed to save wake log: {e}")
+
+
+def _log_wake(probe_id: str):
+    """Record a wake transition with the current timestamp."""
+    if probe_id not in _probe_wake_log:
+        _probe_wake_log[probe_id] = []
+    _probe_wake_log[probe_id].append({
+        "wake_at": datetime.now().isoformat(),
+        "sleep_at": None,
+    })
+    # Trim old entries
+    if len(_probe_wake_log[probe_id]) > _WAKE_LOG_MAX_ENTRIES:
+        _probe_wake_log[probe_id] = _probe_wake_log[probe_id][-_WAKE_LOG_MAX_ENTRIES:]
+    _save_wake_log()
+
+
+def _log_sleep(probe_id: str):
+    """Record a sleep transition — closes the last open wake session."""
+    if probe_id not in _probe_wake_log:
+        _probe_wake_log[probe_id] = []
+        return
+    entries = _probe_wake_log[probe_id]
+    if entries and entries[-1].get("sleep_at") is None:
+        entries[-1]["sleep_at"] = datetime.now().isoformat()
+        _save_wake_log()
+
+
+def get_wake_log(probe_id: str = None) -> dict:
+    """Return wake/sleep history. If probe_id given, return just that probe."""
+    _load_wake_log()
+    if probe_id:
+        return {probe_id: _probe_wake_log.get(probe_id, [])}
+    return dict(_probe_wake_log)
+
+
 # --- Max Wake Time Enforcement ---
 # Tracks when each probe became awake (Unix timestamp).  Used by
 # _awake_poll_loop() to enforce max_wake_minutes and auto re-enable sleep.
@@ -558,6 +618,11 @@ async def _awake_poll_loop():
                     display = probe.get("display_name", probe_id)
                     transition = "SLEEPING → AWAKE" if now_awake else "AWAKE → SLEEPING"
                     print(f"[MOISTURE] Probe {display} state change: {transition}")
+                    # Persist actual wake/sleep timestamps
+                    if now_awake:
+                        _log_wake(probe_id)
+                    else:
+                        _log_sleep(probe_id)
 
                 # --- Schedule-aware prep: time-based trigger ---
                 prep = probe_prep.get(probe_id)
@@ -1180,6 +1245,7 @@ def start_awake_poller():
     global _awake_poller_task
     if _awake_poller_task and not _awake_poller_task.done():
         return  # Already running
+    _load_wake_log()  # Restore persisted wake/sleep history
     _awake_poller_task = asyncio.create_task(_awake_poll_loop())
     print("[MOISTURE] Awake poller started (interval: 5s)")
 
@@ -4969,6 +5035,13 @@ async def api_get_cellular_probes():
         "probes": cellular,
         "total": len(cellular),
     }
+
+
+@router.get("/wake-log", summary="Get probe wake/sleep transition history")
+async def api_get_wake_log():
+    """Return actual wake/sleep transition timestamps observed from status LED."""
+    _load_wake_log()
+    return {"wake_log": _probe_wake_log}
 
 
 @router.get("/settings", summary="Get moisture probe settings")
