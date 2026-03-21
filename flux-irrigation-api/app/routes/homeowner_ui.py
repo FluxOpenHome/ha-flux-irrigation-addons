@@ -9400,12 +9400,13 @@ function dnBuildWeather(canvasId, data) {
     }
     // Cloud cover (hidden axis, shown in tooltip)
     if (_hasData(td.cloud_cover)) {
-        datasets.push({ label: 'Clouds %', data: td.cloud_cover, borderColor: 'rgba(149,165,166,0.5)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yHumid', hidden: true });
+        datasets.push({ label: 'Clouds %', data: td.cloud_cover, borderColor: 'rgba(149,165,166,0.5)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yClouds', hidden: true });
+        scales.yClouds = { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(149,165,166,0.6)', font: { size: 10 } }, title: { display: true, text: 'Clouds %', color: 'rgba(149,165,166,0.6)' } };
     }
-    // UV Index (hidden by default, visible in tooltip)
+    // UV Index (hidden by default)
     if (_hasData(td.uv_index)) {
         datasets.push({ label: 'UV Index', data: td.uv_index, borderColor: 'rgba(243,156,18,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yUV', hidden: true });
-        scales.yUV = { display: false };
+        scales.yUV = { position: 'right', min: 0, max: 12, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(243,156,18,0.7)', font: { size: 10 } }, title: { display: true, text: 'UV', color: 'rgba(243,156,18,0.7)' } };
     }
     var weatherTooltip = { callbacks: { title: function(items) { if (!items.length) return ''; var label = items[0].label || ''; var d = new Date(label); if (isNaN(d)) return label; return fluxFormatDateTime(d); }, afterBody: function(items) { if (!items.length || !td.condition) return ''; var idx = items[0].dataIndex; var cond = td.condition[idx]; return cond ? 'Condition: ' + cond : ''; } } };
     _dnCharts[canvasId] = new Chart(ctx, {
