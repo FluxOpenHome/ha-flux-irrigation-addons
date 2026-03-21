@@ -488,73 +488,79 @@ _test_program_task: Optional[asyncio.Task] = None
 
 
 async def _run_test_program_sequence(zone_entities: list[str], duration_minutes: int, request_ip: str):
-    """Run each zone for duration_minutes, then move to the next.
-
-    Turn ON next zone first, THEN turn OFF previous zone.
-    Firmware controls the pump — it stays on because a zone is always active.
-    """
+    """Set zone durations, turn on main_switch + auto_advance.
+    Firmware handles ALL sequencing, overlap, and pump control."""
     global _test_program_task
+    config = get_config()
+    original_durations = {}
+
     try:
-        prev_entity_id = None
+        # Find duration number entities (unit = "Min")
+        all_states = await ha_client.get_all_states()
+        state_map = {s["entity_id"]: s for s in all_states}
+        dur_entities = [eid for eid, s in state_map.items()
+                        if eid.startswith("number.") and
+                        s.get("attributes", {}).get("unit_of_measurement") == "Min"]
 
-        for i, entity_id in enumerate(zone_entities):
-            print(f"[TEST_PROGRAM] Zone {i+1}/{len(zone_entities)}: starting {entity_id} for {duration_minutes} min")
-            run_log.pre_announce_zone_source(entity_id, "api")
-            svc_domain, svc_name = _get_zone_service(entity_id, "on")
-            success = await ha_client.call_service(svc_domain, svc_name, {"entity_id": entity_id})
-            if success:
-                _active_zone_durations[entity_id] = duration_minutes * 60
-                run_log.log_zone_event(
-                    entity_id=entity_id, state="on", source="api",
-                    zone_name=_zone_name(entity_id),
-                )
-                log_change("Test Program", "Zone Control",
-                           f"Test program: started {_zone_name(entity_id).replace('_', ' ').title()} ({duration_minutes} min)",
-                           {"entity_id": entity_id})
-            else:
-                print(f"[TEST_PROGRAM] Failed to start {entity_id}, skipping")
-                continue
+        # Save original durations and set test duration
+        for eid in dur_entities:
+            try:
+                original_durations[eid] = float(state_map[eid]["state"])
+            except (ValueError, TypeError):
+                original_durations[eid] = 2.0
+            await ha_client.call_service("number", "set_value",
+                                         {"entity_id": eid, "value": duration_minutes})
 
-            # Turn OFF previous zone AFTER new zone is already ON
-            if prev_entity_id:
-                _active_zone_durations.pop(prev_entity_id, None)
-                svc_domain_off, svc_name_off = _get_zone_service(prev_entity_id, "off")
-                await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": prev_entity_id})
-                run_log.log_zone_event(
-                    entity_id=prev_entity_id, state="off", source="test_program",
-                    zone_name=_zone_name(prev_entity_id),
-                    duration_seconds=duration_minutes * 60,
-                )
-                print(f"[TEST_PROGRAM] Previous zone {prev_entity_id} stopped")
+        # Find main_switch and auto_advance
+        main_sw = None
+        auto_adv = None
+        for eid in state_map:
+            el = eid.lower().replace("-", "_")
+            if eid.startswith("switch.") and "start_stop" in el:
+                main_sw = eid
+            elif eid.startswith("switch.") and "auto_advance" in el:
+                auto_adv = eid
 
-            prev_entity_id = entity_id
+        if not main_sw:
+            print("[TEST_PROGRAM] ERROR: main_switch not found")
+            return
 
-            # Wait for the duration
-            await asyncio.sleep(duration_minutes * 60)
+        # Pre-announce sources for run log
+        for ze in zone_entities:
+            run_log.pre_announce_zone_source(ze, "api")
 
-        # Turn off the last zone
-        if prev_entity_id:
-            _active_zone_durations.pop(prev_entity_id, None)
-            svc_domain_off, svc_name_off = _get_zone_service(prev_entity_id, "off")
-            await ha_client.call_service(svc_domain_off, svc_name_off, {"entity_id": prev_entity_id})
-            run_log.log_zone_event(
-                entity_id=prev_entity_id, state="off", source="test_program",
-                zone_name=_zone_name(prev_entity_id),
-                duration_seconds=duration_minutes * 60,
-            )
-            print(f"[TEST_PROGRAM] Last zone {prev_entity_id} stopped")
+        # Turn on auto_advance then main_switch — firmware does the rest
+        if auto_adv:
+            await ha_client.call_service("switch", "turn_on", {"entity_id": auto_adv})
+        await ha_client.call_service("switch", "turn_on", {"entity_id": main_sw})
 
-        print(f"[TEST_PROGRAM] Complete — {len(zone_entities)} zone(s) tested")
+        print(f"[TEST_PROGRAM] Started — firmware running {len(zone_entities)} zones × {duration_minutes} min")
+        log_change("Test Program", "Zone Control",
+                   f"Test program: {len(zone_entities)} zones × {duration_minutes} min",
+                   {"zones": zone_entities, "duration": duration_minutes})
+
+        # Wait for firmware to finish
+        max_wait = len(zone_entities) * duration_minutes * 60 + 120
+        elapsed = 0
+        while elapsed < max_wait:
+            await asyncio.sleep(5)
+            elapsed += 5
+            ms = await ha_client.get_entity_state(main_sw)
+            if ms and ms.get("state") == "off":
+                print(f"[TEST_PROGRAM] Complete ({elapsed}s)")
+                break
+
     except asyncio.CancelledError:
-        print("[TEST_PROGRAM] Cancelled — stopping all active zones")
-        config = get_config()
-        entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
-        for entity in entities:
-            eid = entity["entity_id"]
-            if entity.get("state") in ("on", "open"):
-                sd, sn = _get_zone_service(eid, "off")
-                await ha_client.call_service(sd, sn, {"entity_id": eid})
+        print("[TEST_PROGRAM] Cancelled")
+        if main_sw:
+            await ha_client.call_service("switch", "turn_off", {"entity_id": main_sw})
     finally:
+        for eid, val in original_durations.items():
+            try:
+                await ha_client.call_service("number", "set_value",
+                                             {"entity_id": eid, "value": val})
+            except Exception:
+                pass
         _test_program_task = None
 
 
