@@ -8980,7 +8980,7 @@ function dnChartDefaults() {
             }
         },
         scales: {
-            x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 45, callback: function(value) { var label = this.getLabelForValue(value); if (!label) return label; var d = new Date(label); if (isNaN(d)) return label; return fluxFormatDateTime(d); } } },
+            x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 45, callback: function(value) { var label = this.getLabelForValue(value); if (!label) return label; if (typeof label === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(label)) { var parts = label.split('-'); return parseInt(parts[1]) + '/' + parseInt(parts[2]); } if (typeof label === 'string' && /^\d{4}-\d{2}$/.test(label)) { return label; } var d = new Date(label); if (isNaN(d)) return label; return fluxFormatDateTime(d); } } },
             y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } }, beginAtZero: true }
         }
     };
