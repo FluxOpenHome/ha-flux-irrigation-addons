@@ -1000,6 +1000,16 @@ function getStatusTileSvg(key, size) {
             + '<path d="M7.5 17.5 L6 21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>'
             + '<path d="M11.5 17.5 L10 21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>'
             + '<path d="M15.5 17.5 L14 21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>'
+            + '</svg>',
+        'device': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="currentColor">'
+            + '<rect x="4" y="3" width="16" height="14" rx="2" opacity="0.4"/>'
+            + '<rect x="6" y="5" width="4" height="2" rx="0.5" opacity="0.7"/>'
+            + '<rect x="6" y="9" width="4" height="2" rx="0.5" opacity="0.5"/>'
+            + '<circle cx="15" cy="6" r="1.2" opacity="0.7"/>'
+            + '<circle cx="15" cy="10" r="1.2" opacity="0.5"/>'
+            + '<path d="M8 17 L8 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>'
+            + '<path d="M12 17 L12 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>'
+            + '<path d="M16 17 L16 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>'
             + '</svg>'
     };
     return svgs[key] || '';
@@ -2046,15 +2056,35 @@ async function loadStatus() {
             addrEl.style.display = 'block';
         }
 
+        // Determine connection + device status for tiles
+        var connIcon, connClass, connLabel;
+        if (!s.ha_connected) {
+            connIcon = 'icon-off'; connClass = ''; connLabel = 'Disconnected';
+        } else {
+            connIcon = 'icon-on'; connClass = 'on'; connLabel = 'Connected';
+        }
+        var devIcon, devClass, devLabel;
+        if (!s.ha_connected) {
+            devIcon = 'icon-off'; devClass = ''; devLabel = 'Unknown';
+        } else if (!s.device_online) {
+            devIcon = 'icon-off'; devClass = ''; devLabel = 'Offline';
+        } else {
+            devIcon = 'icon-on'; devClass = 'on'; devLabel = 'Online';
+        }
+
         el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
             <div class="tile">
-                <div class="status-tile-icon ${s.ha_connected ? 'icon-on' : 'icon-off'}">${getStatusTileSvg('connection', 32)}</div>
-                <div class="status-tile-text"><div class="tile-name">Connection</div><div class="tile-state ${s.ha_connected ? 'on' : ''}">${s.ha_connected ? 'Connected' : 'Disconnected'}</div></div>
+                <div class="status-tile-icon ${connIcon}">${getStatusTileSvg('connection', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">HA Connection</div><div class="tile-state ${connClass}">${connLabel}</div></div>
             </div>
             <div class="tile">
-                <div class="status-tile-icon ${s.system_paused || s.weather_schedule_disabled ? 'icon-warn' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>
-                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused || s.weather_schedule_disabled ? '' : 'on'}">${s.system_paused ? 'Paused <span style="font-size:11px;cursor:pointer;color:var(--color-primary);text-decoration:underline;margin-left:4px;" onclick="event.stopPropagation();forceResume()">Resume</span>' : s.weather_schedule_disabled ? 'Weather Hold' : 'Active'}</div></div>
+                <div class="status-tile-icon ${devIcon}">${getStatusTileSvg('device', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">Controller</div><div class="tile-state ${devClass}">${devLabel}</div></div>
+            </div>
+            <div class="tile">
+                <div class="status-tile-icon ${s.system_paused || s.weather_schedule_disabled ? 'icon-warn' : !s.device_online ? 'icon-off' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused || s.weather_schedule_disabled || !s.device_online ? '' : 'on'}">${!s.device_online ? 'Unavailable' : s.system_paused ? 'Paused <span style="font-size:11px;cursor:pointer;color:var(--color-primary);text-decoration:underline;margin-left:4px;" onclick="event.stopPropagation();forceResume()">Resume</span>' : s.weather_schedule_disabled ? 'Weather Hold' : 'Active'}</div></div>
             </div>
             <div class="tile">
                 <div class="status-tile-icon ${s.active_zones > 0 ? 'icon-on' : ''}">${getStatusTileSvg('zones', 32)}</div>
@@ -9024,8 +9054,9 @@ function dnGetRunEvents(runs) {
     return out;
 }
 
-function dnTransformWaterUsage(runs, gpmMap, unit) {
+function dnTransformWaterUsage(runs, gpmMap, unit, resetAt) {
     var onRuns = dnGetRunEvents(runs);
+    if (resetAt) { var ra = new Date(resetAt).getTime(); onRuns = onRuns.filter(function(r) { return new Date(r.timestamp).getTime() >= ra; }); }
     var zoneMap = {};
     var daySet = {};
     for (var i = 0; i < onRuns.length; i++) {
@@ -9055,8 +9086,30 @@ function dnTransformWaterUsage(runs, gpmMap, unit) {
     return { labels: labels, zones: zones };
 }
 
-function dnTransformSavings(runs, gpmMap) {
+async function dnResetWaterUsage() {
+    var ok = await showConfirm({ title: 'Reset Water Usage', message: 'Reset the water usage chart to zero from this point forward?<br><br>Run history will be kept — only the chart display resets.', confirmText: 'Reset Usage', confirmClass: 'btn-warning', icon: fluxIcon('droplet',28) });
+    if (!ok) return;
+    try {
+        await api('/water_settings/reset_usage', { method: 'POST' });
+        if (_dnRawData && _dnRawData.waterSettings) { _dnRawData.waterSettings.water_usage_reset_at = new Date().toISOString(); }
+        dnDestroyCharts(); dnRenderAllCharts(_dnRawData);
+        showToast('Water usage counter reset');
+    } catch(e) { showToast('Failed to reset: ' + e.message, 'error'); }
+}
+async function dnResetWaterSavings() {
+    var ok = await showConfirm({ title: 'Reset Water Savings', message: 'Reset the water savings chart to zero from this point forward?<br><br>Run history will be kept — only the chart display resets.', confirmText: 'Reset Savings', confirmClass: 'btn-warning', icon: fluxIcon('droplet',28) });
+    if (!ok) return;
+    try {
+        await api('/water_settings/reset_savings', { method: 'POST' });
+        if (_dnRawData && _dnRawData.waterSettings) { _dnRawData.waterSettings.water_savings_reset_at = new Date().toISOString(); }
+        dnDestroyCharts(); dnRenderAllCharts(_dnRawData);
+        showToast('Water savings counter reset');
+    } catch(e) { showToast('Failed to reset: ' + e.message, 'error'); }
+}
+
+function dnTransformSavings(runs, gpmMap, resetAt) {
     var runEvts = dnGetRunEvents(runs);
+    if (resetAt) { var ra = new Date(resetAt).getTime(); runEvts = runEvts.filter(function(r) { return new Date(r.timestamp).getTime() >= ra; }); }
     var daySet = {};
     for (var i = 0; i < runEvts.length; i++) {
         var r = runEvts[i];
@@ -9274,7 +9327,8 @@ function dnBuildSummaryCards(data, gpmMap) {
 
 // --- Chart builders ---
 function dnBuildWaterUsage(canvasId, data, gpmMap) {
-    var td = dnTransformWaterUsage(data.runs, gpmMap, _dnCurrentUnit);
+    var usageResetAt = (data.waterSettings && data.waterSettings.water_usage_reset_at) || null;
+    var td = dnTransformWaterUsage(data.runs, gpmMap, _dnCurrentUnit, usageResetAt);
     if (td.labels.length === 0) return null;
     var cfg = dnChartDefaults();
     var ctx = document.getElementById(canvasId);
@@ -9310,7 +9364,8 @@ function dnBuildWaterUsage(canvasId, data, gpmMap) {
 }
 
 function dnBuildSavings(canvasId, data, gpmMap) {
-    var td = dnTransformSavings(data.runs, gpmMap);
+    var savingsResetAt = (data.waterSettings && data.waterSettings.water_savings_reset_at) || null;
+    var td = dnTransformSavings(data.runs, gpmMap, savingsResetAt);
     if (td.labels.length === 0) return null;
     var cfg = dnChartDefaults();
     var ctx = document.getElementById(canvasId);
@@ -9579,11 +9634,13 @@ function dnRenderAllCharts(data) {
     html += '<div class="dn-full">' + dnBuildSummaryCards(data, gpmMap) + '</div>';
     var _rzb = '<button class="dn-reset-zoom" onclick="dnResetChartZoom(this)" style="display:none;font-size:10px;padding:2px 8px;border:1px solid var(--border-light);border-radius:4px;background:var(--bg-hover);color:var(--text-muted);cursor:pointer;margin-left:8px;">Reset Zoom</button>';
     // 2. Water Usage
-    html += '<div class="dn-panel dn-wide"><div class="dn-panel-title">Water Usage Over Time' + _rzb + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartUsage"></canvas></div></div>';
+    var _usageReset = '<button style="font-size:10px;padding:2px 8px;border:1px solid #e74c3c55;border-radius:4px;background:transparent;color:#e74c3c;cursor:pointer;margin-left:8px;" onclick="dnResetWaterUsage()" title="Reset water usage counter to zero">Reset</button>';
+    html += '<div class="dn-panel dn-wide"><div class="dn-panel-title">Water Usage Over Time' + _usageReset + _rzb + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartUsage"></canvas></div></div>';
     // 3. Water Savings
-    html += '<div class="dn-panel"><div class="dn-panel-title">Water Savings Analysis' + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartSavings"></canvas></div>';
+    var _savingsReset = '<button style="font-size:10px;padding:2px 8px;border:1px solid #e74c3c55;border-radius:4px;background:transparent;color:#e74c3c;cursor:pointer;margin-left:8px;" onclick="dnResetWaterSavings()" title="Reset water savings counter to zero">Reset</button>';
+    html += '<div class="dn-panel"><div class="dn-panel-title">Water Savings Analysis' + _savingsReset + _eb + '</div><div class="dn-chart-wrap"><canvas id="dnChartSavings"></canvas></div>';
     // Savings pills
-    var sv = dnTransformSavings(data.runs, gpmMap);
+    var sv = dnTransformSavings(data.runs, gpmMap, (data.waterSettings && data.waterSettings.water_savings_reset_at) || null);
     html += '<div style="margin-top:8px;text-align:center;">';
     html += '<span class="dn-pill" style="background:rgba(52,152,219,0.15);color:rgba(52,152,219,0.9);">Weather: ' + dnFmtNum(sv.totalWeather) + ' gal</span>';
     html += '<span class="dn-pill" style="background:rgba(46,204,113,0.15);color:rgba(46,204,113,0.9);">Moisture: ' + dnFmtNum(sv.totalMoisture) + ' gal</span>';

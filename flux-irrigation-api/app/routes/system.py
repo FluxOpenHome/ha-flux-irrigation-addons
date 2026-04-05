@@ -77,6 +77,20 @@ async def health_check():
     import json, os
     ha_connected = await ha_client.check_connection()
 
+    # Check if the physical irrigation controller device is online
+    device_online = True
+    if ha_connected:
+        config = get_config()
+        all_zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+        if all_zone_entities:
+            unavailable_count = sum(1 for z in all_zone_entities if z.get("state") in ("unavailable", "unknown"))
+            if unavailable_count == len(all_zone_entities):
+                device_online = False
+        elif config.allowed_zone_entities:
+            device_online = False
+    else:
+        device_online = False
+
     # Check if the homeowner has revoked management access
     revoked = False
     try:
@@ -88,9 +102,11 @@ async def health_check():
     except Exception:
         pass
 
+    overall = "healthy" if (ha_connected and device_online) else "degraded"
     return {
-        "status": "healthy" if ha_connected else "degraded",
+        "status": overall,
         "ha_connected": ha_connected,
+        "device_online": device_online,
         "revoked": revoked,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

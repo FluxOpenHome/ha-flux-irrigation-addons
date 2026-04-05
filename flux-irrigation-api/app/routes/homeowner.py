@@ -1719,6 +1719,19 @@ async def homeowner_reset_water_savings(request: Request):
     return {"success": True, "water_savings_reset_at": settings["water_savings_reset_at"]}
 
 
+@router.post("/water_settings/reset_usage", summary="Reset water usage counter")
+async def homeowner_reset_water_usage(request: Request):
+    """Set a timestamp so the water usage chart only shows events after now."""
+    _require_data_control(request)
+    import water_data
+    from datetime import datetime, timezone
+    settings = water_data.get_water_settings()
+    settings["water_usage_reset_at"] = datetime.now(timezone.utc).isoformat()
+    water_data.save_water_settings(settings)
+    log_change(get_actor(request), "Water Settings", "Reset water usage counter")
+    return {"success": True, "water_usage_reset_at": settings["water_usage_reset_at"]}
+
+
 # --- Report Settings ---
 
 

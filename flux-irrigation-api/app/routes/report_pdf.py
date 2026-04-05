@@ -696,7 +696,8 @@ def build_report(
     if "system_status" not in hidden_sections:
         pdf.section_header("System Status")
         pdf.key_value("HA Connection", "Connected" if status.get("ha_connected") else "Disconnected")
-        pdf.key_value("System State", "Paused" if status.get("system_paused") else "Active")
+        pdf.key_value("Controller", "Online" if status.get("device_online") else "Offline")
+        pdf.key_value("System State", "Paused" if status.get("system_paused") else ("Unavailable" if not status.get("device_online") else "Active"))
         pdf.key_value("Total Zones", str(status.get("total_zones", 0)))
         pdf.key_value("Active Zones", str(status.get("active_zones", 0)))
         pdf.key_value("Total Sensors", str(status.get("total_sensors", 0)))

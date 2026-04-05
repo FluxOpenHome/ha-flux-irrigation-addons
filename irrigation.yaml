@@ -1,0 +1,836 @@
+substitutions:
+  zone_1_name: "Zone 1"
+  zone_2_name: "Zone 2"
+  zone_3_name: "Zone 3"
+  zone_4_name: "Zone 4"
+  zone_5_name: "Zone 5"
+  zone_6_name: "Zone 6"
+  software_version: "ESP32_V1.2"
+  sensor_update_frequency: "15s"
+  log_level: "DEBUG"
+  zone_1_valve_id: valve_0
+  zone_2_valve_id: valve_1
+  zone_3_valve_id: valve_2
+  zone_4_valve_id: valve_3
+  zone_5_valve_id: valve_4
+  zone_6_valve_id: valve_5
+  esphome_name: irrigation-esp32
+  esphome_comment: "Six Zone ESP32 Irrigation Controller with Flexible Zone 6"
+  esphome_project_name: "FluxOpenHome.Irrigation"
+  esphome_project_version: ${software_version}
+  devicename: irrigation_controller
+  upper_devicename: "Irrigation Controller"
+  uom: "Min"
+esphome:
+  name: irrigation-system
+  friendly_name: Irrigation System
+  project:
+    name: ${esphome_project_name}
+    version: ${esphome_project_version}
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          ESP_LOGI("boot", "=== IRRIGATION BOOT ===");
+          ESP_LOGI("boot", "Firmware: ${software_version}");
+          ESP_LOGI("boot", "Free heap: %u bytes", esp_get_free_heap_size());
+          ESP_LOGI("boot", "Min free heap: %u bytes", esp_get_minimum_free_heap_size());
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "System Ready"
+      - sprinkler.set_multiplier:
+          id: ${devicename}
+          multiplier: 1
+      - lambda: |-
+          ESP_LOGI("boot", "Boot complete. Free heap: %u bytes", esp_get_free_heap_size());
+globals:
+  - id: is_paused
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: user_auto_advance_pref
+    type: bool
+    restore_value: yes
+    initial_value: 'false'
+  - id: scheduled_run_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "15"
+      CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0: "y"
+      CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
+  variant: esp32
+logger:
+  level: ${log_level}
+  baud_rate: 115200
+  logs:
+    text_sensor: WARN
+    component: ERROR
+    # Verbose heap tracking
+    sensor: INFO
+    debug: DEBUG
+    sprinkler: DEBUG
+    api: DEBUG
+    api.connection: DEBUG
+    wifi: INFO
+    safe_mode: DEBUG
+debug:
+  update_interval: 30s
+safe_mode:
+  boot_is_good_after: 60s
+  num_attempts: 5
+api:
+  encryption:
+    key: "W88o0ykHjhbBwyDmpJbKUfpvvwguEqe/U32xmXcXfoA="
+  reboot_timeout: 5min
+ota:
+  platform: esphome
+  password: "b1ec0e1fff2e77f6f206e29d48bc299d"
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: NONE
+  ap:
+    ssid: "${esphome_name} Fallback"
+    password: ""
+  on_connect:
+    - lambda: 'ESP_LOGI("wifi", "Connected! Heap: %u", esp_get_free_heap_size());'
+  on_disconnect:
+    - lambda: 'ESP_LOGW("wifi", "Disconnected! Heap: %u", esp_get_free_heap_size());'
+captive_portal:
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+text:
+  - platform: template
+    id: schedule_start_time_1
+    name: "Schedule Start Time 1 (24hr: 06:00 or 12hr: 6:00 AM)"
+    optimistic: true
+    min_length: 0
+    max_length: 8
+    mode: text
+    restore_value: true
+    entity_category: config
+    initial_value: "06:00"
+  - platform: template
+    id: schedule_start_time_2
+    name: "Schedule Start Time 2 (Optional)"
+    optimistic: true
+    min_length: 0
+    max_length: 8
+    mode: text
+    restore_value: true
+    entity_category: config
+    initial_value: ""
+  - platform: template
+    id: schedule_start_time_3
+    name: "Schedule Start Time 3 (Optional)"
+    optimistic: true
+    min_length: 0
+    max_length: 8
+    mode: text
+    restore_value: true
+    entity_category: config
+    initial_value: ""
+  - platform: template
+    id: schedule_start_time_4
+    name: "Schedule Start Time 4 (Optional)"
+    optimistic: true
+    min_length: 0
+    max_length: 8
+    mode: text
+    restore_value: true
+    entity_category: config
+    initial_value: ""
+select:
+  - platform: template
+    id: zone6_mode
+    name: "Zone 6 Mode"
+    optimistic: true
+    restore_value: true
+    entity_category: config
+    initial_option: "Zone"
+    options:
+      - "Zone"
+      - "Master Valve"
+      - "Pump Start Relay"
+text_sensor:
+  - platform: version
+    name: "${esphome_name} ESPHome Version"
+  - platform: wifi_info
+    ip_address:
+      name: "${esphome_name} IP"
+    ssid:
+      name: "${esphome_name} SSID"
+  - platform: template
+    id: time_remaining
+    name: "${upper_devicename} Time Remaining"
+    update_interval: ${sensor_update_frequency}
+    icon: "mdi:timer-sand"
+    lambda: |-
+      float raw_time = id(${devicename}).time_remaining_active_valve().value_or(0);
+      int minutes = (int)(raw_time / 60.0);
+      int seconds = (int)raw_time % 60;
+      char buf[12];
+      snprintf(buf, sizeof(buf), "%dm %ds", minutes, seconds);
+      return std::string(buf);
+  - platform: template
+    id: progress_percent
+    name: "${upper_devicename} Progress %"
+    update_interval: ${sensor_update_frequency}
+    icon: "mdi:progress-clock"
+    lambda: |-
+      if (!id(${devicename}).active_valve().has_value()) {
+        return std::string("0%");
+      }
+      int active_valve = id(${devicename}).active_valve().value();
+      float total_time = id(${devicename}).valve_run_duration_adjusted(active_valve);
+      float remaining_time = id(${devicename}).time_remaining_active_valve().value_or(0);
+      if (total_time <= 0) return std::string("0%");
+      int progress = (int)round(((total_time - remaining_time) * 100.0f) / total_time);
+      char buf[8];
+      snprintf(buf, sizeof(buf), "%d%%", progress);
+      return std::string(buf);
+  - platform: debug
+    device:
+      name: "${upper_devicename} Device Info"
+    reset_reason:
+      name: "${upper_devicename} Reset Reason"
+  - platform: template
+    id: valve_status
+    name: "${upper_devicename} Status"
+    update_interval: never
+    icon: "mdi:information-variant"
+sensor:
+  - platform: uptime
+    name: "${upper_devicename} Uptime"
+    id: uptime_sensor
+  - platform: wifi_signal
+    name: "${upper_devicename} WiFi Signal"
+    update_interval: 60s
+  - platform: debug
+    free:
+      name: "${upper_devicename} Free Heap"
+      id: free_heap
+    loop_time:
+      name: "${upper_devicename} Loop Time"
+      id: loop_time
+  - platform: template
+    name: "${upper_devicename} Min Free Heap"
+    id: min_free_heap
+    unit_of_measurement: "bytes"
+    accuracy_decimals: 0
+    icon: "mdi:memory"
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: 'return esp_get_minimum_free_heap_size();'
+  - platform: template
+    name: "${upper_devicename} Heap Fragmentation"
+    id: heap_fragmentation
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    icon: "mdi:chart-scatter-plot"
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      size_t free = esp_get_free_heap_size();
+      size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+      if (free == 0) return 0.0f;
+      return (1.0f - ((float)largest / (float)free)) * 100.0f;
+number:
+  - platform: template
+    id: ${zone_1_valve_id}
+    name: ${zone_1_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 0
+          run_duration: !lambda 'return x * 60;'
+  - platform: template
+    id: ${zone_2_valve_id}
+    name: ${zone_2_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 1
+          run_duration: !lambda 'return x * 60;'
+  - platform: template
+    id: ${zone_3_valve_id}
+    name: ${zone_3_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 2
+          run_duration: !lambda 'return x * 60;'
+  - platform: template
+    id: ${zone_4_valve_id}
+    name: ${zone_4_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 3
+          run_duration: !lambda 'return x * 60;'
+  - platform: template
+    id: ${zone_5_valve_id}
+    name: ${zone_5_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 4
+          run_duration: !lambda 'return x * 60;'
+  - platform: template
+    id: ${zone_6_valve_id}
+    name: ${zone_6_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 5
+          run_duration: !lambda 'return x * 60;'
+  - platform: template
+    id: sprinkler_ctrlr_repeat_cycles
+    name: "Sprinkler Repeat Cycles"
+    min_value: 0
+    max_value: 5
+    step: 1
+    mode: box
+    icon: "mdi:water-sync"
+    lambda: "return id(${devicename}).repeat();"
+    set_action:
+      - sprinkler.set_repeat:
+          id: ${devicename}
+          repeat: !lambda 'return x;'
+sprinkler:
+  - id: ${devicename}
+    main_switch:
+# CHANGED: "Start/Stop/Resume" → "Start-Stop-Resume"
+# The "/" character in entity names causes API protocol corruption in newer
+# ESPHome versions (2024.x+). The entity ID generated from the name contains
+# slashes that break protobuf serialization, causing the device to crash
+# shortly after HA connects and starts communicating with the entity.
+# This was fine in older ESPHome but the newer API frame helper is stricter.
+      name: "Start-Stop-Resume"
+      id: main_switch
+      on_turn_off:
+        - script.execute: handle_cycle_complete
+    auto_advance_switch:
+      name: "Auto Advance"
+      id: auto_advance_switch
+      on_turn_on:
+        - script.execute: save_auto_advance_on
+      on_turn_off:
+        - script.execute: save_auto_advance_off
+    valve_overlap: 2s
+    repeat_number: "Repeat"
+    valves:
+      - valve_switch: ${zone_1_name}
+        enable_switch:
+          name: "Enable ${zone_1_name}"
+          id: irrigation_controller_enable_1
+        run_duration_number: ${zone_1_valve_id}
+        valve_switch_id: irrigation_controller_1
+      - valve_switch: ${zone_2_name}
+        enable_switch:
+          name: "Enable ${zone_2_name}"
+          id: irrigation_controller_enable_2
+        run_duration_number: ${zone_2_valve_id}
+        valve_switch_id: irrigation_controller_2
+      - valve_switch: ${zone_3_name}
+        enable_switch:
+          name: "Enable ${zone_3_name}"
+          id: irrigation_controller_enable_3
+        run_duration_number: ${zone_3_valve_id}
+        valve_switch_id: irrigation_controller_3
+      - valve_switch: ${zone_4_name}
+        enable_switch:
+          name: "Enable ${zone_4_name}"
+          id: irrigation_controller_enable_4
+        run_duration_number: ${zone_4_valve_id}
+        valve_switch_id: irrigation_controller_4
+      - valve_switch: ${zone_5_name}
+        enable_switch:
+          name: "Enable ${zone_5_name}"
+          id: irrigation_controller_enable_5
+        run_duration_number: ${zone_5_valve_id}
+        valve_switch_id: irrigation_controller_5
+      - valve_switch: ${zone_6_name}
+        enable_switch:
+          name: "Enable ${zone_6_name}"
+          id: irrigation_controller_enable_6
+        run_duration_number: ${zone_6_valve_id}
+        valve_switch_id: irrigation_controller_6
+button:
+  - platform: template
+    id: sprinkler_pause
+    name: "Pause"
+    icon: "mdi:pause"
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(is_paused);'
+            then:
+              - text_sensor.template.publish:
+                  id: valve_status
+                  state: "Resuming"
+              - lambda: 'id(is_paused) = false;'
+              - sprinkler.resume: ${devicename}
+              - if:
+                  condition:
+                    lambda: 'return id(zone6_mode).state == "Pump Start Relay" || id(zone6_mode).state == "Master Valve";'
+                  then:
+                    - delay: 2s
+                    - switch.turn_on: irrigation_controller_6
+            else:
+              - text_sensor.template.publish:
+                  id: valve_status
+                  state: "Paused"
+              - lambda: 'id(is_paused) = true;'
+              - if:
+                  condition:
+                    lambda: 'return id(zone6_mode).state == "Pump Start Relay" || id(zone6_mode).state == "Master Valve";'
+                  then:
+                    - switch.turn_off: irrigation_controller_6
+              - sprinkler.pause: ${devicename}
+switch:
+  - platform: restart
+    name: "Restart ${devicename}"
+  - platform: template
+    id: schedule_enabled
+    name: "Schedule Enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+  - platform: template
+    id: use_12hour_format
+    name: "Use 12-Hour Time Format"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+  - platform: template
+    id: monday_enabled
+    name: "Schedule: Monday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+  - platform: template
+    id: tuesday_enabled
+    name: "Schedule: Tuesday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+  - platform: template
+    id: wednesday_enabled
+    name: "Schedule: Wednesday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+  - platform: template
+    id: thursday_enabled
+    name: "Schedule: Thursday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+  - platform: template
+    id: friday_enabled
+    name: "Schedule: Friday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+  - platform: template
+    id: saturday_enabled
+    name: "Schedule: Saturday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+  - platform: template
+    id: sunday_enabled
+    name: "Schedule: Sunday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+  - platform: gpio
+    name: "Relay 1"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    id: irrigation_controller_1
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_1_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_6
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_1).state) id(irrigation_controller_6).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - script.execute: update_valve_status
+    pin:
+      number: GPIO32
+      inverted: false
+  - platform: gpio
+    name: "Relay 2"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    id: irrigation_controller_2
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_2_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_6
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_2).state) id(irrigation_controller_6).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - script.execute: update_valve_status
+    pin:
+      number: GPIO33
+      inverted: false
+  - platform: gpio
+    name: "Relay 3"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    id: irrigation_controller_3
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_3_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_6
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_3).state) id(irrigation_controller_6).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - script.execute: update_valve_status
+    pin:
+      number: GPIO25
+      inverted: false
+  - platform: gpio
+    name: "Relay 4"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    id: irrigation_controller_4
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_4_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_6
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_4).state) id(irrigation_controller_6).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - script.execute: update_valve_status
+    pin:
+      number: GPIO26
+      inverted: false
+  - platform: gpio
+    name: "Relay 5"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    id: irrigation_controller_5
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_5_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_6
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_5).state) id(irrigation_controller_6).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - script.execute: update_valve_status
+    pin:
+      number: GPIO27
+      inverted: false
+  - platform: gpio
+    name: "Relay 6"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    id: irrigation_controller_6
+    on_turn_on:
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Zone";'
+          then:
+            - text_sensor.template.publish:
+                id: valve_status
+                state: "${zone_6_name} Active"
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(zone6_mode).state == "Master Valve";'
+                then:
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Master Valve Open"
+                else:
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Pump Running"
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Zone";'
+          then:
+            - text_sensor.template.publish:
+                id: valve_status
+                state: "Idle"
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(zone6_mode).state == "Master Valve";'
+                then:
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Master Valve Closed"
+                else:
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Pump Stopped"
+    pin:
+      number: GPIO22
+      inverted: false
+script:
+  - id: run_all_zones
+    then:
+      - lambda: |-
+          ESP_LOGI("irrigation", "=== Starting scheduled irrigation cycle ===");
+          ESP_LOGI("irrigation", "Heap: %u free, %u min-ever", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
+          id(is_paused) = false;
+          id(scheduled_run_active) = true;
+      - switch.turn_on: auto_advance_switch
+      - switch.turn_on: main_switch
+  - id: handle_cycle_complete
+    then:
+      - lambda: |-
+          ESP_LOGI("irrigation", "=== Cycle complete ===");
+          ESP_LOGI("irrigation", "Heap: %u free, %u min-ever", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
+          if (id(scheduled_run_active)) {
+            id(scheduled_run_active) = false;
+            if (id(user_auto_advance_pref)) {
+              id(auto_advance_switch).turn_on();
+            } else {
+              id(auto_advance_switch).turn_off();
+            }
+          }
+      - if:
+          condition:
+            lambda: 'return id(zone6_mode).state == "Pump Start Relay" || id(zone6_mode).state == "Master Valve";'
+          then:
+            - script.execute: pump_off_safe
+  - id: pump_off_safe
+    then:
+      - logger.log: "Pump shutdown: waiting 2s before turning off pump relay"
+      - delay: 2s
+      - switch.turn_off: irrigation_controller_6
+  - id: check_pump_off
+    then:
+      - if:
+          condition:
+            lambda: |-
+              if (id(zone6_mode).state != "Pump Start Relay" && id(zone6_mode).state != "Master Valve") return false;
+              bool any_active =
+                id(irrigation_controller_1).state || id(irrigation_controller_2).state ||
+                id(irrigation_controller_3).state || id(irrigation_controller_4).state ||
+                id(irrigation_controller_5).state;
+              if (any_active) return false;
+              if (id(main_switch).state && (id(auto_advance_switch).state || id(scheduled_run_active))) return false;
+              return true;
+          then:
+            - script.execute: pump_off_safe
+  - id: update_valve_status
+    then:
+      - lambda: |-
+          if (id(irrigation_controller_1).state) { id(valve_status).publish_state("${zone_1_name} Active"); return; }
+          if (id(irrigation_controller_2).state) { id(valve_status).publish_state("${zone_2_name} Active"); return; }
+          if (id(irrigation_controller_3).state) { id(valve_status).publish_state("${zone_3_name} Active"); return; }
+          if (id(irrigation_controller_4).state) { id(valve_status).publish_state("${zone_4_name} Active"); return; }
+          if (id(irrigation_controller_5).state) { id(valve_status).publish_state("${zone_5_name} Active"); return; }
+          if (id(irrigation_controller_6).state) {
+            if (id(zone6_mode).state == "Zone") { id(valve_status).publish_state("${zone_6_name} Active"); return; }
+            if (id(zone6_mode).state == "Master Valve") { id(valve_status).publish_state("Master Valve Open"); return; }
+            id(valve_status).publish_state("Pump Running"); return;
+          }
+          id(valve_status).publish_state("Idle");
+  - id: save_auto_advance_on
+    then:
+      - lambda: |-
+          if (!id(scheduled_run_active)) {
+            id(user_auto_advance_pref) = true;
+          }
+  - id: save_auto_advance_off
+    then:
+      - lambda: |-
+          if (!id(scheduled_run_active)) {
+            id(user_auto_advance_pref) = false;
+          }
+interval:
+  - interval: 1min
+    then:
+      - lambda: |-
+          // Periodic heap health check
+          static uint32_t check_count = 0;
+          check_count++;
+          size_t free_h = esp_get_free_heap_size();
+          size_t min_h = esp_get_minimum_free_heap_size();
+          if (check_count % 5 == 0) {
+            ESP_LOGI("health", "Heap: %u free, %u min-ever, uptime: %us", free_h, min_h, (uint32_t)(millis()/1000));
+          }
+          if (free_h < 20000) {
+            ESP_LOGW("health", "LOW HEAP WARNING: %u bytes free!", free_h);
+          }
+          if (free_h < 10000) {
+            ESP_LOGE("health", "CRITICAL HEAP: %u bytes - restarting!", free_h);
+            delay(100);
+            esp_restart();
+          }
+      - lambda: |-
+          auto time = id(homeassistant_time).now();
+          if (!time.is_valid()) return;
+          if (!id(schedule_enabled).state) return;
+          int cur_h = time.hour;
+          int cur_m = time.minute;
+          int wd = time.day_of_week;
+          // day_of_week: 1=Sun .. 7=Sat
+          bool day_ok = false;
+          switch (wd) {
+            case 1: day_ok = id(sunday_enabled).state; break;
+            case 2: day_ok = id(monday_enabled).state; break;
+            case 3: day_ok = id(tuesday_enabled).state; break;
+            case 4: day_ok = id(wednesday_enabled).state; break;
+            case 5: day_ok = id(thursday_enabled).state; break;
+            case 6: day_ok = id(friday_enabled).state; break;
+            case 7: day_ok = id(saturday_enabled).state; break;
+          }
+          if (!day_ok) return;
+          // Parse "HH:MM" or "H:MM AM/PM" into hour+minute, match against current
+          auto check_time = [&](const std::string &s) -> bool {
+            if (s.empty() || s.length() < 4) return false;
+            int h = 0, m = 0;
+            bool has_ampm = false, is_pm = false;
+            for (char c : s) {
+              if (c == 'P' || c == 'p') { has_ampm = true; is_pm = true; }
+              if (c == 'A' || c == 'a') { has_ampm = true; }
+            }
+            // Find colon
+            size_t cp = s.find(':');
+            if (cp == std::string::npos || cp == 0) return false;
+            h = atoi(s.c_str());
+            m = atoi(s.c_str() + cp + 1);
+            if (has_ampm) {
+              if (is_pm && h != 12) h += 12;
+              else if (!is_pm && h == 12) h = 0;
+            }
+            return (h == cur_h && m == cur_m);
+          };
+          if (check_time(id(schedule_start_time_1).state) ||
+              check_time(id(schedule_start_time_2).state) ||
+              check_time(id(schedule_start_time_3).state) ||
+              check_time(id(schedule_start_time_4).state)) {
+            ESP_LOGI("schedule", "Time match! Starting irrigation. Heap: %u", esp_get_free_heap_size());
+            id(run_all_zones).execute();
+          }
+  - interval: 5s
+    then:
+      - lambda: |-
+          // Safety: turn off pump/master valve if main switch is off
+          if ((id(zone6_mode).state == "Pump Start Relay" || id(zone6_mode).state == "Master Valve") && id(irrigation_controller_6).state) {
+            if (!id(main_switch).state) {
+              ESP_LOGW("safety", "Pump/MV on but main switch off - turning off relay 6");
+              id(irrigation_controller_6).turn_off();
+            }
+          }

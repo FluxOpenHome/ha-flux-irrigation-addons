@@ -2533,12 +2533,15 @@ ADMIN_HTML = """<!DOCTYPE html>
             const data = await res.json();
             const dot = document.getElementById('statusDot');
             const text = document.getElementById('statusText');
-            if (data.ha_connected) {
+            if (data.ha_connected && data.device_online) {
                 dot.className = 'status-dot green';
-                text.textContent = 'Connected to Home Assistant';
+                text.textContent = 'Connected - Controller Online';
+            } else if (data.ha_connected && !data.device_online) {
+                dot.className = 'status-dot red';
+                text.textContent = 'Controller Offline (Device Unavailable)';
             } else {
                 dot.className = 'status-dot red';
-                text.textContent = 'Home Assistant disconnected';
+                text.textContent = 'Home Assistant Disconnected';
             }
         } catch (e) {
             document.getElementById('statusDot').className = 'status-dot red';
