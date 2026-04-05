@@ -78,19 +78,19 @@ async def health_check():
     ha_connected = await ha_client.check_connection()
 
     # Check if the physical irrigation controller device is online
-    # Same logic as /status: if ANY zone entity is "unavailable", device is offline
+    # If at least ONE zone entity has a real state, the device is reachable.
     device_online = False
     if ha_connected:
         config = get_config()
         if not config.allowed_zone_entities:
-            device_online = True  # no zones configured = setup pending
+            device_online = True
         else:
             zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
             if zone_entities:
-                device_online = not any(
-                    z.get("state") in ("unavailable", "unknown") for z in zone_entities
+                device_online = any(
+                    z.get("state") not in ("unavailable", "unknown", None)
+                    for z in zone_entities
                 )
-            # else: entities configured but HA returned nothing → stays False
 
     # Check if the homeowner has revoked management access
     revoked = False
@@ -166,16 +166,17 @@ async def get_system_status(request: Request):
     # Fetch zone entities ONCE — reused for both counting and device_online check
     all_zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
 
-    # Device is online if we got entities back and NONE have state "unavailable".
-    # If even ONE zone is "unavailable", the controller is offline/disconnected.
-    # No entities configured yet = treat as online (setup pending).
+    # Device online = at least ONE zone entity has a real state (on/off/idle/etc).
+    # When the ESP32 is truly offline, ALL entities become "unavailable" in HA.
+    # A single valid state proves the device is reachable.
     if not config.allowed_zone_entities:
-        device_online = True
+        device_online = True  # no zones configured = setup pending
     elif not all_zone_entities:
-        device_online = False
+        device_online = False  # configured but HA returned nothing
     else:
-        device_online = not any(
-            z.get("state") in ("unavailable", "unknown") for z in all_zone_entities
+        device_online = any(
+            z.get("state") not in ("unavailable", "unknown", None)
+            for z in all_zone_entities
         )
 
     # Count zones and active zones using the same approach as moisture.py

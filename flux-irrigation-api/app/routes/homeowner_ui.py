@@ -2038,6 +2038,7 @@ async function loadStatus() {
     const el = document.getElementById('cardBody_status');
     try {
         const s = await api('/status');
+        console.log('[FLUX-DEBUG] /status response:', JSON.stringify({ha_connected: s.ha_connected, device_online: s.device_online, total_zones: s.total_zones, active_zones: s.active_zones}));
         currentSystemPaused = !!s.system_paused;
         const btn = document.getElementById('pauseResumeBtn');
         if (s.system_paused) {
