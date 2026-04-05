@@ -1256,8 +1256,15 @@ async def homeowner_clear_remote_debug_log(request: Request):
 async def homeowner_broker_status():
     """Get the current broker entity mapping state for the debug tool."""
     _require_homeowner_mode()
-    from run_log import get_broker_status
-    return await get_broker_status()
+    try:
+        from run_log import get_broker_status
+        return await get_broker_status()
+    except Exception as e:
+        return {
+            "matched": [], "unmatched_controller": [], "unmatched_remote": [],
+            "total_controller": 0, "total_remote": 0,
+            "error": str(e),
+        }
 
 
 @router.post("/debug/broker-force-sync", summary="Force a full broker sync")

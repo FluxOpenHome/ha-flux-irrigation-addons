@@ -2038,7 +2038,6 @@ async function loadStatus() {
     const el = document.getElementById('cardBody_status');
     try {
         const s = await api('/status');
-        console.log('[FLUX-DEBUG] /status response:', JSON.stringify({ha_connected: s.ha_connected, device_online: s.device_online, total_zones: s.total_zones, active_zones: s.active_zones}));
         currentSystemPaused = !!s.system_paused;
         const btn = document.getElementById('pauseResumeBtn');
         if (s.system_paused) {
@@ -2057,6 +2056,20 @@ async function loadStatus() {
             addrEl.style.display = 'block';
         }
 
+        // Determine device_online by checking /zones entity states directly.
+        // This bypasses the backend device_online field which may be stale.
+        var deviceOnline = s.device_online; // fallback
+        if (s.ha_connected) {
+            try {
+                var zoneList = await api('/zones');
+                if (zoneList && zoneList.length > 0) {
+                    deviceOnline = zoneList.some(function(z) {
+                        return z.state && z.state !== 'unavailable' && z.state !== 'unknown';
+                    });
+                }
+            } catch(e) { /* keep backend value */ }
+        }
+
         // Determine connection + device status for tiles
         var connIcon, connClass, connLabel;
         if (!s.ha_connected) {
@@ -2067,7 +2080,7 @@ async function loadStatus() {
         var devIcon, devClass, devLabel;
         if (!s.ha_connected) {
             devIcon = 'icon-off'; devClass = ''; devLabel = 'Unknown';
-        } else if (!s.device_online) {
+        } else if (!deviceOnline) {
             devIcon = 'icon-off'; devClass = ''; devLabel = 'Offline';
         } else {
             devIcon = 'icon-on'; devClass = 'on'; devLabel = 'Online';
@@ -2081,11 +2094,11 @@ async function loadStatus() {
             </div>
             <div class="tile">
                 <div class="status-tile-icon ${devIcon}">${getStatusTileSvg('device', 32)}</div>
-                <div class="status-tile-text"><div class="tile-name">Controller</div><div class="tile-state ${devClass}">${devLabel}</div>${!s.device_online && s.device_debug ? '<div style="font-size:9px;color:var(--text-muted);margin-top:2px;word-break:break-all;">' + esc(s.device_debug) + '</div>' : ''}</div>
+                <div class="status-tile-text"><div class="tile-name">Controller</div><div class="tile-state ${devClass}">${devLabel}</div></div>
             </div>
             <div class="tile">
-                <div class="status-tile-icon ${s.system_paused || s.weather_schedule_disabled ? 'icon-warn' : !s.device_online ? 'icon-off' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>
-                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused || s.weather_schedule_disabled || !s.device_online ? '' : 'on'}">${!s.device_online ? 'Unavailable' : s.system_paused ? 'Paused <span style="font-size:11px;cursor:pointer;color:var(--color-primary);text-decoration:underline;margin-left:4px;" onclick="event.stopPropagation();forceResume()">Resume</span>' : s.weather_schedule_disabled ? 'Weather Hold' : 'Active'}</div></div>
+                <div class="status-tile-icon ${s.system_paused || s.weather_schedule_disabled ? 'icon-warn' : !deviceOnline ? 'icon-off' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>
+                <div class="status-tile-text"><div class="tile-name">System</div><div class="tile-state ${s.system_paused || s.weather_schedule_disabled || !deviceOnline ? '' : 'on'}">${!deviceOnline ? 'Unavailable' : s.system_paused ? 'Paused <span style="font-size:11px;cursor:pointer;color:var(--color-primary);text-decoration:underline;margin-left:4px;" onclick="event.stopPropagation();forceResume()">Resume</span>' : s.weather_schedule_disabled ? 'Weather Hold' : 'Active'}</div></div>
             </div>
             <div class="tile">
                 <div class="status-tile-icon ${s.active_zones > 0 ? 'icon-on' : ''}">${getStatusTileSvg('zones', 32)}</div>
@@ -7566,13 +7579,16 @@ async function _renderDebugLogModal() {
         var tabStyle = 'padding:6px 14px;font-size:12px;border:1px solid var(--border);border-radius:6px 6px 0 0;cursor:pointer;background:var(--bg-secondary);color:var(--text-muted);';
         var activeStyle = tabStyle + 'background:var(--bg-tile);color:var(--text-primary);font-weight:600;border-bottom:1px solid var(--bg-tile);';
         var html = '<div style="display:flex;gap:4px;margin-bottom:-1px;position:relative;z-index:1;flex-wrap:wrap;">';
+        html += '<button style="' + (_debugLogTab === 'connectivity' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'connectivity\\';_renderDebugLogModal()">Connectivity</button>';
         html += '<button style="' + (_debugLogTab === 'weather' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'weather\\';_renderDebugLogModal()">Weather</button>';
         html += '<button style="' + (_debugLogTab === 'schedule' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'schedule\\';_renderDebugLogModal()">Schedule</button>';
         html += '<button style="' + (_debugLogTab === 'moisture' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'moisture\\';_renderDebugLogModal()">Moisture</button>';
         html += '<button style="' + (_debugLogTab === 'broker' ? activeStyle : tabStyle) + '" onclick="_debugLogTab=\\'broker\\';_renderDebugLogModal()">Broker</button>';
         html += '</div>';
 
-        if (_debugLogTab === 'weather') {
+        if (_debugLogTab === 'connectivity') {
+            html += await _buildConnectivityDebugHtml();
+        } else if (_debugLogTab === 'weather') {
             html += await _buildWeatherDebugHtml();
         } else if (_debugLogTab === 'schedule') {
             html += await _buildScheduleDebugHtml();
@@ -7585,6 +7601,111 @@ async function _renderDebugLogModal() {
     } catch(e) {
         showModal('Debug Log', '<p style="color:var(--color-danger);">Failed to load debug log: ' + e.message + '</p>', '400px');
     }
+}
+
+// --- Connectivity Debug Tab ---
+async function _buildConnectivityDebugHtml() {
+    var html = '<div style="padding:10px 0;">';
+
+    // 1. Fetch /status for backend device_online value
+    var status = {};
+    try { status = await api('/status'); } catch(e) { status = {error: e.message}; }
+
+    // 2. Fetch /zones to get ACTUAL zone entity states
+    var zones = [];
+    try { zones = await api('/zones'); } catch(e) {}
+
+    // 3. Fetch /health (no auth) for basic check
+    var health = {};
+    try {
+        var hr = await fetch(HBASE + '/health?t=' + Date.now());
+        health = await hr.json();
+    } catch(e) { health = {error: e.message}; }
+
+    // 4. Determine device_online ourselves from zone states
+    var anyOnline = false;
+    var allUnavailable = true;
+    for (var i = 0; i < zones.length; i++) {
+        var st = zones[i].state || 'NULL';
+        if (st !== 'unavailable' && st !== 'unknown') {
+            anyOnline = true;
+            allUnavailable = false;
+        }
+    }
+    var actualOnline = zones.length > 0 ? anyOnline : false;
+
+    // --- BANNER ---
+    var bannerBg = actualOnline ? 'rgba(46,204,113,0.12)' : 'rgba(231,76,60,0.12)';
+    var bannerBorder = actualOnline ? '#2ecc71' : '#e74c3c';
+    var bannerIcon = actualOnline ? '\\u2705' : '\\u274C';
+    var bannerText = actualOnline ? 'Controller ONLINE' : 'Controller OFFLINE';
+    html += '<div style="padding:12px 16px;background:' + bannerBg + ';border:1px solid ' + bannerBorder + ';border-radius:8px;margin-bottom:14px;">';
+    html += '<div style="font-size:14px;font-weight:700;color:' + bannerBorder + ';">' + bannerIcon + ' ' + bannerText + '</div>';
+    if (!actualOnline && zones.length === 0) {
+        html += '<div style="font-size:12px;color:var(--text-primary);margin-top:4px;">No zone entities returned from /zones endpoint</div>';
+    }
+    html += '</div>';
+
+    // --- Backend vs Frontend comparison ---
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Detection Comparison</div>';
+    var bkVal = status.device_online;
+    var bkColor = bkVal ? '#2ecc71' : '#e74c3c';
+    var feColor = actualOnline ? '#2ecc71' : '#e74c3c';
+    html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
+    html += '<span style="color:' + bkColor + ';font-weight:600;">\\u25CF Backend device_online = ' + bkVal + '</span></div>';
+    html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
+    html += '<span style="color:' + feColor + ';font-weight:600;">\\u25CF Frontend check (from /zones) = ' + actualOnline + '</span></div>';
+    if (bkVal !== actualOnline) {
+        html += '<div style="font-size:11px;color:#e74c3c;font-weight:600;margin-top:4px;">\\u26A0 MISMATCH! Backend disagrees with frontend.</div>';
+    }
+    if (status.device_debug) {
+        html += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;word-break:break-all;">Backend debug: ' + esc(status.device_debug) + '</div>';
+    }
+    html += '</div>';
+
+    // --- Health endpoint ---
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Health Endpoint (/health)</div>';
+    html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
+    html += 'ha_connected: <strong>' + (health.ha_connected || false) + '</strong> | ';
+    html += 'device_online: <strong>' + (health.device_online !== undefined ? health.device_online : 'N/A') + '</strong> | ';
+    html += 'status: <strong>' + esc(health.status || '?') + '</strong>';
+    html += '</div></div>';
+
+    // --- Zone Entity States (the key data) ---
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Zone Entity States (' + zones.length + ' zones from /zones)</div>';
+    if (zones.length === 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);">No zones returned — check device configuration</div>';
+    }
+    for (var i = 0; i < zones.length; i++) {
+        var z = zones[i];
+        var zState = z.state || 'NULL';
+        var zColor = (zState === 'unavailable' || zState === 'unknown') ? '#e74c3c' : '#2ecc71';
+        html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
+        html += '<span style="color:' + zColor + ';font-weight:600;">\\u25CF ' + zState.toUpperCase() + '</span> ';
+        html += '<span style="color:var(--text-secondary);">' + esc(z.entity_id || '?') + '</span>';
+        if (z.friendly_name) html += ' <span style="color:var(--text-muted);">(' + esc(z.friendly_name) + ')</span>';
+        html += '</div>';
+    }
+    html += '</div>';
+
+    // --- Status endpoint raw fields ---
+    html += '<div style="margin-bottom:14px;">';
+    html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Status Endpoint (/status) Key Fields</div>';
+    var fields = ['online','ha_connected','device_online','total_zones','active_zones','total_sensors','has_pump_relay','has_master_valve'];
+    for (var fi = 0; fi < fields.length; fi++) {
+        var fk = fields[fi];
+        var fv = status[fk];
+        html += '<div style="font-size:11px;font-family:monospace;padding:2px 0;">';
+        html += '<span style="color:var(--text-muted);">' + fk + ':</span> <strong>' + fv + '</strong>';
+        html += '</div>';
+    }
+    html += '</div>';
+
+    html += '</div>';
+    return html;
 }
 
 // --- Weather Debug Tab ---
