@@ -86,7 +86,14 @@ async def health_check():
             unavailable_count = sum(1 for z in all_zone_entities if z.get("state") in ("unavailable", "unknown"))
             if unavailable_count == len(all_zone_entities):
                 device_online = False
-        elif config.allowed_zone_entities:
+        elif not config.allowed_zone_entities:
+            # No zones configured yet — treat as online (setup pending)
+            device_online = True
+        else:
+            # Entities configured but HA returned nothing — device likely offline
+            # Log for debugging
+            print(f"[HEALTH] device_online=False: configured {len(config.allowed_zone_entities)} zones "
+                  f"but got {len(all_zone_entities)} back from HA")
             device_online = False
     else:
         device_online = False
@@ -125,9 +132,27 @@ async def get_system_status(request: Request):
 
     ha_connected = await ha_client.check_connection()
 
+    # Fetch zone entities ONCE — reused for both counting and device_online check
+    all_zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+
+    # Determine if the physical irrigation controller device is online.
+    # When the ESPHome device disconnects from HA, all zone entities become "unavailable".
+    # If ALL zone entities are unavailable, the device is offline.
+    device_online = True
+    if all_zone_entities:
+        unavailable_count = sum(1 for z in all_zone_entities if z.get("state") in ("unavailable", "unknown"))
+        if unavailable_count == len(all_zone_entities):
+            device_online = False
+    elif not config.allowed_zone_entities:
+        # No zones configured yet — treat as online (setup pending)
+        device_online = True
+    else:
+        # Entities configured but HA returned nothing — device likely offline
+        device_online = False
+
     # Count zones and active zones using the same approach as moisture.py
     # _get_ordered_enabled_zones() — detects pumps/master valves via zone mode entities
-    zones = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
+    zones = list(all_zone_entities)  # copy so filtering doesn't affect the original
     max_zones = config.detected_zone_count  # 0 = no limit (no expansion board)
     if max_zones > 0:
         zones = [z for z in zones if _extract_zone_number(z.get("entity_id", "")) <= max_zones]
@@ -160,22 +185,6 @@ async def get_system_status(request: Request):
     # Exclude "not used" zones from the count
     used_zones = [z for z in zones if not is_zone_not_used(z.get("entity_id", ""))]
     active_zones = [z for z in used_zones if z.get("state") == "on"]
-
-    # Check if the physical irrigation controller device is online.
-    # When the ESPHome device disconnects from HA, all zone entities become "unavailable".
-    # If ALL zone entities are unavailable, the device is offline and zones cannot be controlled.
-    device_online = True
-    all_zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
-    if all_zone_entities:
-        unavailable_count = sum(1 for z in all_zone_entities if z.get("state") in ("unavailable", "unknown"))
-        if unavailable_count == len(all_zone_entities):
-            device_online = False
-    elif not config.allowed_zone_entities:
-        # No zones configured yet — treat as online (setup pending)
-        device_online = True
-    else:
-        # Entities configured but HA returned nothing — device likely offline
-        device_online = False
 
     # Count sensors
     sensors = await ha_client.get_entities_by_ids(config.allowed_sensor_entities)
