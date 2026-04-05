@@ -2081,7 +2081,7 @@ async function loadStatus() {
             </div>
             <div class="tile">
                 <div class="status-tile-icon ${devIcon}">${getStatusTileSvg('device', 32)}</div>
-                <div class="status-tile-text"><div class="tile-name">Controller</div><div class="tile-state ${devClass}">${devLabel}</div></div>
+                <div class="status-tile-text"><div class="tile-name">Controller</div><div class="tile-state ${devClass}">${devLabel}</div>${!s.device_online && s.device_debug ? '<div style="font-size:9px;color:var(--text-muted);margin-top:2px;word-break:break-all;">' + esc(s.device_debug) + '</div>' : ''}</div>
             </div>
             <div class="tile">
                 <div class="status-tile-icon ${s.system_paused || s.weather_schedule_disabled ? 'icon-warn' : !s.device_online ? 'icon-off' : 'icon-on'}">${getStatusTileSvg('system', 32)}</div>

@@ -29,7 +29,8 @@ router = APIRouter(prefix="/system", tags=["System"])
 class SystemStatus(BaseModel):
     online: bool
     ha_connected: bool
-    device_online: bool = True  # True if zone entities are available (not "unavailable")
+    device_online: bool = True
+    device_debug: str = ""  # temporary: raw entity states for debugging
     system_paused: bool
     weather_schedule_disabled: bool = False
     weather_disable_reason: str = ""
@@ -166,18 +167,7 @@ async def get_system_status(request: Request):
     # Fetch zone entities ONCE — reused for both counting and device_online check
     all_zone_entities = await ha_client.get_entities_by_ids(config.allowed_zone_entities)
 
-    # Device online = at least ONE zone entity has a real state (on/off/idle/etc).
-    # When the ESP32 is truly offline, ALL entities become "unavailable" in HA.
-    # A single valid state proves the device is reachable.
-    if not config.allowed_zone_entities:
-        device_online = True  # no zones configured = setup pending
-    elif not all_zone_entities:
-        device_online = False  # configured but HA returned nothing
-    else:
-        device_online = any(
-            z.get("state") not in ("unavailable", "unknown", None)
-            for z in all_zone_entities
-        )
+    # --- device_online: determined AFTER sensors are fetched (below) ---
 
     # Count zones and active zones using the same approach as moisture.py
     # _get_ordered_enabled_zones() — detects pumps/master valves via zone mode entities
@@ -217,6 +207,20 @@ async def get_system_status(request: Request):
 
     # Count sensors
     sensors = await ha_client.get_entities_by_ids(config.allowed_sensor_entities)
+
+    # Determine device_online using ALL fetched entities (zones + sensors).
+    # If ANY entity from the device has a real state, the controller is reachable.
+    _all_device_entities = all_zone_entities + sensors
+    if not _all_device_entities:
+        device_online = not config.allowed_zone_entities  # True if nothing configured (setup pending)
+    else:
+        device_online = any(
+            e.get("state") not in ("unavailable", "unknown", None)
+            for e in _all_device_entities
+        )
+    print(f"[STATUS] device_online={device_online} "
+          f"(zones={len(all_zone_entities)} sensors={len(sensors)} "
+          f"states={[e.get('state') for e in _all_device_entities[:6]]})")
 
     # Check schedule state for pause/rain delay
     from routes.schedule import _load_schedules
@@ -266,10 +270,17 @@ async def get_system_status(request: Request):
     except Exception:
         pass
 
+    # Build debug string so we can see exactly what's happening in the UI
+    _dbg_parts = []
+    for e in _all_device_entities[:8]:
+        _dbg_parts.append(f"{e.get('entity_id','?')}={e.get('state','NULL')}")
+    _dbg = f"online={device_online} cfg={len(config.allowed_zone_entities)} fetched_z={len(all_zone_entities)} fetched_s={len(sensors)} | {'; '.join(_dbg_parts)}"
+
     return SystemStatus(
         online=device_online,
         ha_connected=ha_connected,
         device_online=device_online,
+        device_debug=_dbg,
         system_paused=schedule_data.get("system_paused", False),
         weather_schedule_disabled=schedule_data.get("weather_schedule_disabled", False),
         weather_disable_reason=schedule_data.get("weather_disable_reason", ""),
