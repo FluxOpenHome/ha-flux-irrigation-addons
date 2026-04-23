@@ -47,7 +47,7 @@ For irrigation management companies, the companion [Flux Management Server](http
 ## Installation
 
 1. Open Home Assistant
-2. Go to **Settings → Add-ons → Add-on Store**
+2. Go to **Settings → Apps → Install app**
 3. Click the **⋮** (three dots) menu → **Repositories**
 4. Paste: `https://github.com/FluxOpenHome/ha-flux-irrigation-addons`
 5. Click **Add → Close**
