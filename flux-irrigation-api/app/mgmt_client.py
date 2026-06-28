@@ -103,6 +103,15 @@ class MgmtClient:
         data = await self._get("/user/api/lora-network")
         return data if isinstance(data, dict) else {}
 
+    async def get_lora_topology(self) -> dict:
+        """Network-map graph (nodes + edges) — same data the portal map uses."""
+        data = await self._get("/user/api/lora-network/topology")
+        return data if isinstance(data, dict) else {}
+
+    async def get_moisture_probes(self) -> Any:
+        """Moisture probes (incl. LoRa Gophr) with readings + telemetry."""
+        return await self._get("/user/api/moisture/probes")
+
     async def get_entities(self) -> Any:
         """All controllable/sensor entities for the account's devices."""
         return await self._get("/user/api/entities")
