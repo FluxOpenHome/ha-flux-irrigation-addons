@@ -46,6 +46,13 @@ class Config:
     remote_device_id: str = ""  # backward compat — use remote_device_ids instead
     remote_device_ids: list[str] = field(default_factory=list)  # canonical list of remote device UUIDs
     allowed_remote_entities: list[str] = field(default_factory=list)  # union of all remotes' entities
+    # Cloud → HA bridge (server-firmware LoRa devices). When enabled, the
+    # add-on logs into the homeowner's Flux account and mirrors their cloud
+    # LoRa gateways/extenders/Gophr probes into HA via MQTT Discovery.
+    mgmt_bridge_enabled: bool = False
+    mgmt_server_url: str = "https://app.fluxopenhome.com"
+    mgmt_account_email: str = ""
+    mgmt_account_password: str = ""
     allowed_remote_entities_by_device: dict[str, list[str]] = field(default_factory=dict)  # device_id → entity list
 
     @classmethod
@@ -120,6 +127,10 @@ class Config:
         config.homeowner_phone = options.get("homeowner_phone", config.homeowner_phone)
         config.homeowner_first_name = options.get("homeowner_first_name", config.homeowner_first_name)
         config.homeowner_last_name = options.get("homeowner_last_name", config.homeowner_last_name)
+        config.mgmt_bridge_enabled = options.get("mgmt_bridge_enabled", config.mgmt_bridge_enabled)
+        config.mgmt_server_url = options.get("mgmt_server_url", config.mgmt_server_url)
+        config.mgmt_account_email = options.get("mgmt_account_email", config.mgmt_account_email)
+        config.mgmt_account_password = options.get("mgmt_account_password", config.mgmt_account_password)
         config.irrigation_device_id = options.get(
             "irrigation_device_id", config.irrigation_device_id
         )

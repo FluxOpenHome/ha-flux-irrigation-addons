@@ -46,6 +46,10 @@ options:
   weather_enabled: false
   weather_check_interval_minutes: 15
   weather_source: "ha_entity"
+  mgmt_bridge_enabled: false
+  mgmt_server_url: "https://app.fluxopenhome.com"
+  mgmt_account_email: ""
+  mgmt_account_password: ""
 schema:
   homeowner_url: "str?"
   homeowner_label: "str?"
@@ -76,6 +80,10 @@ schema:
   weather_enabled: "bool?"
   weather_check_interval_minutes: "int(5,60)?"
   weather_source: "str?"
+  mgmt_bridge_enabled: "bool?"
+  mgmt_server_url: "str?"
+  mgmt_account_email: "str?"
+  mgmt_account_password: "password?"
 map:
   - config:rw
 init: false
