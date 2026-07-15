@@ -32,9 +32,9 @@ _GOPHR_LOGO = os.path.join(_ASSETS_DIR, "gophr_logo.jpg")
 _ZONE_NUMBER_RE = re.compile(r'zone[_]?(\d+)', re.IGNORECASE)
 
 # ─── Brand Colors ──────────────────────────────────────────────────────
-GREEN_PRIMARY = (26, 122, 76)       # #1a7a4c
-GREEN_ACCENT = (46, 204, 113)       # #2ecc71
-GREEN_LIGHT = (212, 237, 218)       # #d4edda
+GREEN_PRIMARY = (26, 122, 76)       # #007e93
+GREEN_ACCENT = (46, 204, 113)       # #00bad0
+GREEN_LIGHT = (212, 237, 218)       # #d0f0f5
 TEXT_DARK = (44, 62, 80)            # #2c3e50
 TEXT_MUTED = (127, 140, 141)        # #7f8c8d
 TEXT_LIGHT = (149, 165, 166)        # #95a5a6
@@ -498,7 +498,7 @@ def build_report(
     rs = report_settings or {}
     company_name = rs.get("company_name", "") or ""
     custom_footer = rs.get("custom_footer", "") or ""
-    accent_hex = rs.get("accent_color", "#1a7a4c") or "#1a7a4c"
+    accent_hex = rs.get("accent_color", "#007e93") or "#007e93"
     hidden_sections = set(rs.get("hidden_sections", []))
 
     # Parse accent color

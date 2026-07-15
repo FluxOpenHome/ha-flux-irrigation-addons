@@ -662,7 +662,7 @@ def _build_moisture_view(moisture_data: dict, name_map: dict[str, str]) -> Optio
                     "segments": [
                         {"from": 0, "color": "#e74c3c"},
                         {"from": 20, "color": "#f39c12"},
-                        {"from": 40, "color": "#2ecc71"},
+                        {"from": 40, "color": "#00bad0"},
                         {"from": 80, "color": "#3498db"},
                     ],
                 })

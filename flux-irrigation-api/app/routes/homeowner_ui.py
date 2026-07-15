@@ -26,12 +26,12 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
     --bg-weather: #f0f8ff;
     --bg-secondary-btn: #ecf0f1;
     --bg-secondary-btn-hover: #dfe6e9;
-    --bg-active-tile: #e8f5e9;
+    --bg-active-tile: #e0f7fa;
     --bg-inactive-tile: #fbe9e7;
     --bg-toast: #2c3e50;
     --bg-modal-overlay: rgba(0,0,0,0.5);
     --bg-warning: #fff3cd;
-    --bg-success-light: #d4edda;
+    --bg-success-light: #d0f0f5;
     --bg-danger-light: #f8d7da;
     --bg-hover: #f5f6f8;
     --text-primary: #2c3e50;
@@ -46,13 +46,13 @@ HOMEOWNER_HTML = """<!DOCTYPE html>
     --border-light: #eee;
     --border-input: #ddd;
     --border-card: #bdc3c7;
-    --border-active: #a5d6a7;
+    --border-active: #a3dde6;
     --border-hover: #bbb;
     --border-row: #f0f0f0;
     --color-primary: #007e93;
     --color-primary-hover: #00697b;
     --color-accent: #00bad0;
-    --color-success: #27ae60;
+    --color-success: #009db1;
     --color-danger: #e74c3c;
     --color-danger-hover: #c0392b;
     --color-warning: #f39c12;
@@ -91,13 +91,13 @@ body.dark-mode {
     --border-light: #253555;
     --border-input: #304060;
     --border-card: #304060;
-    --border-active: #2d7a4a;
+    --border-active: #0e6b7c;
     --border-hover: #405575;
     --border-row: #253555;
     --color-primary: #00bad0;
     --color-primary-hover: #007e93;
     --color-accent: #00bad0;
-    --color-success: #2ecc71;
+    --color-success: #00bad0;
     --color-danger: #e74c3c;
     --color-danger-hover: #c0392b;
     --color-warning: #f39c12;
@@ -269,7 +269,7 @@ body:not(.dark-mode) .gophr-logo { filter: invert(1); }
 }
 /* Notification event list */
 .notif-item { padding: 12px 20px; border-bottom: 1px solid var(--border-light); }
-.notif-item.unread { background: rgba(26,122,76,0.06); padding: 12px 20px; }
+.notif-item.unread { background: rgba(0,126,147,0.06); padding: 12px 20px; }
 /* Toggle switch */
 .toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -325,16 +325,16 @@ body:not(.dark-mode) .gophr-logo { filter: invert(1); }
 #dataNerdOverlay { position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;background:rgba(245,246,250,0.97);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:opacity 0.3s ease; }
 body.dark-mode #dataNerdOverlay { background:rgba(18,18,35,0.97); }
 #dnToolbar { display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(255,255,255,0.95);border-bottom:1px solid rgba(0,0,0,0.08);flex-shrink:0; }
-body.dark-mode #dnToolbar { background:rgba(15,25,50,0.95);border-bottom:1px solid rgba(46,204,113,0.15); }
+body.dark-mode #dnToolbar { background:rgba(15,25,50,0.95);border-bottom:1px solid rgba(0,186,208,0.15); }
 #dnContent { flex:1;overflow-y:auto;padding:16px; }
 #dnGrid { display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:1600px;margin:0 auto; }
 @media(max-width:1024px){ #dnGrid { grid-template-columns:1fr; } }
 @media(min-width:1400px){ #dnGrid { grid-template-columns:repeat(3,1fr); } #dnGrid .dn-wide { grid-column:span 2; } }
 .dn-full { grid-column:1/-1; }
 .dn-panel { background:rgba(255,255,255,0.9);border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:16px;backdrop-filter:blur(10px);transition:box-shadow 0.3s ease; }
-.dn-panel:hover { box-shadow:0 0 20px rgba(46,204,113,0.1); }
-body.dark-mode .dn-panel { background:rgba(22,33,62,0.8);border-color:rgba(46,204,113,0.15); }
-body.dark-mode .dn-panel:hover { box-shadow:0 0 24px rgba(46,204,113,0.15); }
+.dn-panel:hover { box-shadow:0 0 20px rgba(0,186,208,0.1); }
+body.dark-mode .dn-panel { background:rgba(22,33,62,0.8);border-color:rgba(0,186,208,0.15); }
+body.dark-mode .dn-panel:hover { box-shadow:0 0 24px rgba(0,186,208,0.15); }
 .dn-panel-title { font-size:13px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center; }
 .dn-chart-wrap { position:relative;width:100%;height:280px; }
 .dn-chart-wrap canvas { width:100%!important;height:100%!important; }
@@ -344,13 +344,13 @@ body.dark-mode .dn-panel:hover { box-shadow:0 0 24px rgba(46,204,113,0.15); }
 .dn-panel.dn-expanded #dnHeatmap,
 .dn-panel.dn-expanded #dnProbeHealth { flex:1;overflow-y:auto; }
 .dn-expand-btn { background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px 4px;border-radius:4px;transition:all 0.15s;font-size:14px;line-height:1;display:flex;align-items:center; }
-.dn-expand-btn:hover { color:var(--color-primary);background:rgba(46,204,113,0.1); }
+.dn-expand-btn:hover { color:var(--color-primary);background:rgba(0,186,208,0.1); }
 .dn-range-group { display:flex;border-radius:6px;overflow:hidden;border:1px solid rgba(0,0,0,0.12); }
 body.dark-mode .dn-range-group { border-color:rgba(255,255,255,0.15); }
 .dn-range-btn { padding:5px 14px;background:rgba(0,0,0,0.04);border:none;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s; }
 body.dark-mode .dn-range-btn { background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7); }
-.dn-range-btn.active { background:rgba(46,204,113,0.2);color:#1a7a4c; }
-body.dark-mode .dn-range-btn.active { background:rgba(46,204,113,0.3);color:#2ecc71; }
+.dn-range-btn.active { background:rgba(0,186,208,0.2);color:#007e93; }
+body.dark-mode .dn-range-btn.active { background:rgba(0,186,208,0.3);color:#00bad0; }
 .dn-range-btn:hover:not(.active) { background:rgba(0,0,0,0.08); }
 body.dark-mode .dn-range-btn:hover:not(.active) { background:rgba(255,255,255,0.12); }
 .dn-toolbar-btn { padding:6px 14px;border-radius:6px;border:1px solid rgba(0,0,0,0.12);background:rgba(0,0,0,0.03);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s; }
@@ -359,10 +359,10 @@ body.dark-mode .dn-toolbar-btn { border-color:rgba(255,255,255,0.15);background:
 body.dark-mode .dn-toolbar-btn:hover { background:rgba(255,255,255,0.12); }
 .dn-summary-row { display:grid;grid-template-columns:repeat(4,1fr);gap:12px; }
 @media(max-width:768px){ .dn-summary-row { grid-template-columns:repeat(2,1fr); } }
-.dn-stat-card { background:linear-gradient(135deg,rgba(46,204,113,0.08),rgba(52,152,219,0.08));border:1px solid rgba(46,204,113,0.15);border-radius:10px;padding:14px;text-align:center;backdrop-filter:blur(8px); }
-body.dark-mode .dn-stat-card { background:linear-gradient(135deg,rgba(46,204,113,0.12),rgba(52,152,219,0.12));border-color:rgba(46,204,113,0.2); }
+.dn-stat-card { background:linear-gradient(135deg,rgba(0,186,208,0.08),rgba(52,152,219,0.08));border:1px solid rgba(0,186,208,0.15);border-radius:10px;padding:14px;text-align:center;backdrop-filter:blur(8px); }
+body.dark-mode .dn-stat-card { background:linear-gradient(135deg,rgba(0,186,208,0.12),rgba(52,152,219,0.12));border-color:rgba(0,186,208,0.2); }
 .dn-stat-val { font-size:28px;font-weight:700;color:var(--color-primary);line-height:1.2; }
-body.dark-mode .dn-stat-val { color:#2ecc71; }
+body.dark-mode .dn-stat-val { color:#00bad0; }
 .dn-stat-label { font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-top:2px; }
 .dn-stat-sub { font-size:11px;color:var(--text-hint);margin-top:4px; }
 .dn-heatmap { display:flex;flex-direction:column;gap:2px; }
@@ -375,12 +375,12 @@ body.dark-mode .dn-stat-val { color:#2ecc71; }
 .dn-loading { display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-muted);font-size:14px; }
 .dn-tab-group { display:flex;gap:4px; }
 .dn-tab-btn { padding:3px 10px;border-radius:4px;border:1px solid transparent;background:none;color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer; }
-.dn-tab-btn.active { background:rgba(46,204,113,0.15);color:var(--color-primary);border-color:rgba(46,204,113,0.3); }
-body.dark-mode .dn-tab-btn.active { color:#2ecc71; }
+.dn-tab-btn.active { background:rgba(0,186,208,0.15);color:var(--color-primary);border-color:rgba(0,186,208,0.3); }
+body.dark-mode .dn-tab-btn.active { color:#00bad0; }
 .dn-pill { display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;margin:2px; }
-.dn-nerd-btn { padding:6px 14px;border-radius:6px;border:1px solid rgba(46,204,113,0.3);background:linear-gradient(135deg,rgba(46,204,113,0.1),rgba(52,152,219,0.1));color:var(--color-primary);font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px; }
-body.dark-mode .dn-nerd-btn { color:#2ecc71;border-color:rgba(46,204,113,0.4);background:linear-gradient(135deg,rgba(46,204,113,0.15),rgba(52,152,219,0.15)); }
-.dn-nerd-btn:hover { background:linear-gradient(135deg,rgba(46,204,113,0.2),rgba(52,152,219,0.2));box-shadow:0 0 12px rgba(46,204,113,0.15); }
+.dn-nerd-btn { padding:6px 14px;border-radius:6px;border:1px solid rgba(0,186,208,0.3);background:linear-gradient(135deg,rgba(0,186,208,0.1),rgba(52,152,219,0.1));color:var(--color-primary);font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px; }
+body.dark-mode .dn-nerd-btn { color:#00bad0;border-color:rgba(0,186,208,0.4);background:linear-gradient(135deg,rgba(0,186,208,0.15),rgba(52,152,219,0.15)); }
+.dn-nerd-btn:hover { background:linear-gradient(135deg,rgba(0,186,208,0.2),rgba(52,152,219,0.2));box-shadow:0 0 12px rgba(0,186,208,0.15); }
 </style>
 </head>
 <body>
@@ -1455,7 +1455,7 @@ function renderActiveIssuesBanner(issues) {
         const timeStr = _isMon + ' ' + _isDay + '-' + _isYr + ' ' + _isTime;
         html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);' + (isResolved ? 'opacity:0.85;' : '') + '">';
         if (isResolved) {
-            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#27ae6022;color:#27ae60;white-space:nowrap;">' + fluxIcon('check',12) + ' Resolved</span>';
+            html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#009db122;color:#009db1;white-space:nowrap;">' + fluxIcon('check',12) + ' Resolved</span>';
         } else if (isReturned) {
             html += '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#e74c3c22;color:#e74c3c;white-space:nowrap;">&#8635; Returned</span>';
         } else {
@@ -5317,7 +5317,7 @@ async function loadMoisture() {
                     const stale = s.stale;
                     const isCached = s.cached === true;
                     const pct = val != null ? Math.min(val, 100) : 0;
-                    const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
+                    const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#00bad0' : '#e67e22';
                     html += '<div style="margin-bottom:6px;">';
                     html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:2px;">';
                     html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + '</span>';
@@ -5465,8 +5465,8 @@ async function loadMoisture() {
                     }
                     if (_hasZones) {
                         var _wsDisabled = window['_wakeScheduleDisabled_' + pid] || false;
-                        var _wsColor = _wsDisabled ? 'var(--text-muted, #666)' : 'var(--color-success, #2ecc71)';
-                        var _wsBorder = _wsDisabled ? 'var(--border-light)' : 'var(--color-success, #2ecc71)';
+                        var _wsColor = _wsDisabled ? 'var(--text-muted, #666)' : 'var(--color-success, #00bad0)';
+                        var _wsBorder = _wsDisabled ? 'var(--border-light)' : 'var(--color-success, #00bad0)';
                         var _wsBg = _wsDisabled ? 'var(--bg-tile)' : 'transparent';
                         html += '<button id="hoWakeSchedBtn_' + esc(pid) + '" onclick="hoShowWakeSchedule(\\'' + esc(pid) + '\\')" style="padding:2px 8px;font-size:10px;border:1px solid ' + _wsBorder + ';border-radius:4px;cursor:pointer;background:' + _wsBg + ';color:' + _wsColor + ';" title="View probe wake schedule">Wake Schedule</button>';
                     }
@@ -5538,7 +5538,7 @@ async function loadMoisture() {
                     const stale = s.stale;
                     const isCached = s.cached === true;
                     const pct = val != null ? Math.min(val, 100) : 0;
-                    const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#2ecc71' : '#e67e22';
+                    const color = val == null ? '#bbb' : stale ? '#999' : val > 70 ? '#3498db' : val > 40 ? '#00bad0' : '#e67e22';
                     html += '<div style="margin-bottom:6px;">';
                     html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:2px;">';
                     html += '<span>' + depth.charAt(0).toUpperCase() + depth.slice(1) + (isCached ? ' <span style="font-size:9px;opacity:0.7;">(retained)</span>' : '') + '</span>';
@@ -6571,7 +6571,7 @@ async function hoShowWakeSchedule(probeId) {
     body += '<div style="margin-top:12px;padding:8px 10px;background:var(--bg-tile);border-radius:6px;display:flex;align-items:center;justify-content:space-between;">';
     body += '<div style="font-size:12px;color:var(--text-secondary);"><strong>Wake Schedule</strong><br><span style="font-size:11px;color:var(--text-muted);">When disabled, probe sleep won\\'t be managed around irrigation runs</span></div>';
     body += '<button id="wakeSchedToggleBtn" onclick="hoToggleWakeSchedule(\\'' + esc(probeId) + '\\')" style="padding:5px 14px;border-radius:4px;border:none;cursor:pointer;font-size:12px;font-weight:600;' +
-        (isDisabled ? 'background:var(--color-success, #2ecc71);color:#fff;">Enable' : 'background:rgba(150,150,150,0.2);color:var(--text-muted, #888);">Disable') + '</button>';
+        (isDisabled ? 'background:var(--color-success, #00bad0);color:#fff;">Enable' : 'background:rgba(150,150,150,0.2);color:var(--text-muted, #888);">Disable') + '</button>';
     body += '</div>';
 
     showModal('Wake Schedule', body, '440px');
@@ -6592,8 +6592,8 @@ async function hoToggleWakeSchedule(probeId) {
                 cardBtn.style.borderColor = 'var(--border-light)';
                 cardBtn.style.background = 'var(--bg-tile)';
             } else {
-                cardBtn.style.color = 'var(--color-success, #2ecc71)';
-                cardBtn.style.borderColor = 'var(--color-success, #2ecc71)';
+                cardBtn.style.color = 'var(--color-success, #00bad0)';
+                cardBtn.style.borderColor = 'var(--color-success, #00bad0)';
                 cardBtn.style.background = 'transparent';
             }
         }
@@ -7633,8 +7633,8 @@ async function _buildConnectivityDebugHtml() {
     var actualOnline = zones.length > 0 ? anyOnline : false;
 
     // --- BANNER ---
-    var bannerBg = actualOnline ? 'rgba(46,204,113,0.12)' : 'rgba(231,76,60,0.12)';
-    var bannerBorder = actualOnline ? '#2ecc71' : '#e74c3c';
+    var bannerBg = actualOnline ? 'rgba(0,186,208,0.12)' : 'rgba(231,76,60,0.12)';
+    var bannerBorder = actualOnline ? '#00bad0' : '#e74c3c';
     var bannerIcon = actualOnline ? '\\u2705' : '\\u274C';
     var bannerText = actualOnline ? 'Controller ONLINE' : 'Controller OFFLINE';
     html += '<div style="padding:12px 16px;background:' + bannerBg + ';border:1px solid ' + bannerBorder + ';border-radius:8px;margin-bottom:14px;">';
@@ -7648,8 +7648,8 @@ async function _buildConnectivityDebugHtml() {
     html += '<div style="margin-bottom:14px;">';
     html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Detection Comparison</div>';
     var bkVal = status.device_online;
-    var bkColor = bkVal ? '#2ecc71' : '#e74c3c';
-    var feColor = actualOnline ? '#2ecc71' : '#e74c3c';
+    var bkColor = bkVal ? '#00bad0' : '#e74c3c';
+    var feColor = actualOnline ? '#00bad0' : '#e74c3c';
     html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
     html += '<span style="color:' + bkColor + ';font-weight:600;">\\u25CF Backend device_online = ' + bkVal + '</span></div>';
     html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
@@ -7680,7 +7680,7 @@ async function _buildConnectivityDebugHtml() {
     for (var i = 0; i < zones.length; i++) {
         var z = zones[i];
         var zState = z.state || 'NULL';
-        var zColor = (zState === 'unavailable' || zState === 'unknown') ? '#e74c3c' : '#2ecc71';
+        var zColor = (zState === 'unavailable' || zState === 'unknown') ? '#e74c3c' : '#00bad0';
         html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
         html += '<span style="color:' + zColor + ';font-weight:600;">\\u25CF ' + zState.toUpperCase() + '</span> ';
         html += '<span style="color:var(--text-secondary);">' + esc(z.entity_id || '?') + '</span>';
@@ -7714,8 +7714,8 @@ async function _buildWeatherDebugHtml() {
 
     // --- STATUS BANNER ---
     var isPaused = d.weather_schedule_disabled;
-    var bannerBg = isPaused ? 'rgba(231,76,60,0.12)' : 'rgba(46,204,113,0.12)';
-    var bannerBorder = isPaused ? '#e74c3c' : '#2ecc71';
+    var bannerBg = isPaused ? 'rgba(231,76,60,0.12)' : 'rgba(0,186,208,0.12)';
+    var bannerBorder = isPaused ? '#e74c3c' : '#00bad0';
     var bannerIcon = isPaused ? '\\u26A0' : '\\u2705';
     var bannerText = isPaused ? 'SCHEDULE PAUSED BY WEATHER' : 'Schedule Active — No Weather Hold';
     html += '<div style="padding:12px 16px;background:' + bannerBg + ';border:1px solid ' + bannerBorder + ';border-radius:8px;margin-bottom:14px;">';
@@ -7743,7 +7743,7 @@ async function _buildWeatherDebugHtml() {
         for (var si = 0; si < swKeys.length; si++) {
             var swEid = swKeys[si];
             var swState = switches[swEid];
-            var swColor = swState === 'on' ? '#2ecc71' : '#e74c3c';
+            var swColor = swState === 'on' ? '#00bad0' : '#e74c3c';
             html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
             html += '<span style="color:' + swColor + ';font-weight:600;">\\u25CF ' + swState.toUpperCase() + '</span> ';
             html += '<span style="color:var(--text-secondary);">' + esc(swEid) + '</span>';
@@ -7823,7 +7823,7 @@ async function _buildWeatherDebugHtml() {
         var rk = ruleKeys[ri];
         var rv = rules[rk] || {};
         var rEnabled = rv.enabled;
-        var rDot = rEnabled ? '#2ecc71' : '#95a5a6';
+        var rDot = rEnabled ? '#00bad0' : '#95a5a6';
         html += '<div style="font-size:11px;font-family:monospace;padding:2px 0;">';
         html += '<span style="color:' + rDot + ';font-weight:600;">\\u25CF</span> ';
         html += '<span style="color:var(--text-primary);">' + esc(rk) + '</span>';
@@ -7861,8 +7861,8 @@ async function _buildScheduleDebugHtml() {
 
     // --- SYSTEM STATUS BANNER ---
     var anyPause = d.system_paused || d.weather_schedule_disabled;
-    var bannerBg = anyPause ? 'rgba(231,76,60,0.12)' : 'rgba(46,204,113,0.12)';
-    var bannerBorder = anyPause ? '#e74c3c' : '#2ecc71';
+    var bannerBg = anyPause ? 'rgba(231,76,60,0.12)' : 'rgba(0,186,208,0.12)';
+    var bannerBorder = anyPause ? '#e74c3c' : '#00bad0';
     html += '<div style="padding:12px 16px;background:' + bannerBg + ';border:1px solid ' + bannerBorder + ';border-radius:8px;margin-bottom:14px;">';
     html += '<div style="font-size:14px;font-weight:700;color:' + bannerBorder + ';">';
     if (!anyPause) {
@@ -7886,7 +7886,7 @@ async function _buildScheduleDebugHtml() {
     for (var si = 0; si < swKeys.length; si++) {
         var swEid = swKeys[si];
         var swState = switches[swEid];
-        var swColor = swState === 'on' ? '#2ecc71' : '#e74c3c';
+        var swColor = swState === 'on' ? '#00bad0' : '#e74c3c';
         html += '<div style="font-size:11px;font-family:monospace;padding:3px 0;">';
         html += '<span style="color:' + swColor + ';font-weight:600;">\\u25CF ' + swState.toUpperCase() + '</span> ';
         html += '<span style="color:var(--text-secondary);">' + esc(swEid) + '</span>';
@@ -7931,11 +7931,11 @@ async function _buildScheduleDebugHtml() {
         html += '<div style="color:#e74c3c;font-size:11px;">Error: ' + esc(f.error) + '</div>';
     } else {
         html += '<div style="display:flex;flex-wrap:wrap;gap:6px 20px;font-size:11px;font-family:monospace;margin-bottom:8px;">';
-        html += '<div><span style="color:var(--text-muted);">Apply Factors:</span> <span style="font-weight:600;color:' + (f.apply_factors_to_schedule ? '#2ecc71' : '#95a5a6') + ';">' + (f.apply_factors_to_schedule ? 'ON' : 'OFF') + '</span></div>';
+        html += '<div><span style="color:var(--text-muted);">Apply Factors:</span> <span style="font-weight:600;color:' + (f.apply_factors_to_schedule ? '#00bad0' : '#95a5a6') + ';">' + (f.apply_factors_to_schedule ? 'ON' : 'OFF') + '</span></div>';
         html += '<div><span style="color:var(--text-muted);">Adjustment Active:</span> <span style="font-weight:600;">' + (f.duration_adjustment_active ? 'Yes' : 'No') + '</span></div>';
         html += '<div><span style="color:var(--text-muted);">Weather Mult:</span> <span style="font-weight:600;">' + (f.weather_multiplier != null ? f.weather_multiplier.toFixed(2) : '?') + 'x</span></div>';
         html += '<div><span style="color:var(--text-muted);">Moisture:</span> <span style="font-weight:600;">' + (f.moisture_enabled ? 'ON' : 'OFF') + '</span></div>';
-        html += '<div><span style="color:var(--text-muted);">Deferred Apply:</span> <span style="font-weight:600;color:' + (f.deferred_factor_apply ? '#e74c3c' : '#2ecc71') + ';">' + (f.deferred_factor_apply ? 'PENDING' : 'No') + '</span></div>';
+        html += '<div><span style="color:var(--text-muted);">Deferred Apply:</span> <span style="font-weight:600;color:' + (f.deferred_factor_apply ? '#e74c3c' : '#00bad0') + ';">' + (f.deferred_factor_apply ? 'PENDING' : 'No') + '</span></div>';
         html += '</div>';
 
         // Base vs Live durations
@@ -8025,9 +8025,9 @@ async function _buildMoistureDebugHtml() {
     html += '<span style="color:#f39c12;font-weight:600;">● Preemptive Timer</span>';
     html += '<span style="color:#e67e22;">● Schedule Continue / Backup Advance</span>';
     html += '<span style="color:#9b59b6;">● Refresh Flags</span>';
-    html += '<span style="color:#2ecc71;font-weight:600;">● Zone Advance</span>';
+    html += '<span style="color:#00bad0;font-weight:600;">● Zone Advance</span>';
     html += '<span style="color:#3498db;">● Zone State Change</span>';
-    html += '<span style="color:#27ae60;font-weight:600;">● Success</span>';
+    html += '<span style="color:#009db1;font-weight:600;">● Success</span>';
     html += '<span style="color:#e74c3c;">● Error</span>';
     html += '</div>';
     html += '<pre style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.5;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace;">';
@@ -8042,13 +8042,13 @@ async function _buildMoistureDebugHtml() {
         else if (line.indexOf('REFRESH FLAGS') >= 0)
             html += '<span style="color:#9b59b6;">' + line + '</span>\\n';
         else if (line.indexOf('_advance_to_next_zone') >= 0)
-            html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
+            html += '<span style="color:#00bad0;font-weight:600;">' + line + '</span>\\n';
         else if (line.indexOf('ERROR') >= 0)
             html += '<span style="color:#e74c3c;">' + line + '</span>\\n';
         else if (line.indexOf('on_zone_state_change') >= 0)
             html += '<span style="color:#3498db;">' + line + '</span>\\n';
         else if (line.indexOf('SUCCESS') >= 0)
-            html += '<span style="color:#27ae60;font-weight:600;">' + line + '</span>\\n';
+            html += '<span style="color:#009db1;font-weight:600;">' + line + '</span>\\n';
         else
             html += line + '\\n';
     }
@@ -8084,7 +8084,7 @@ async function _buildBrokerDebugHtml() {
         html += '<div style="display:flex;align-items:center;gap:6px;">';
         html += '<span style="color:var(--text-muted);">Sync Needed:</span>';
         if (syncEid) {
-            var syncDot = syncState === 'on' ? '#e74c3c' : '#2ecc71';
+            var syncDot = syncState === 'on' ? '#e74c3c' : '#00bad0';
             var syncLabel = syncState === 'on' ? 'ON (device booted)' : 'OFF (normal)';
             html += '<span style="color:' + syncDot + ';font-weight:600;">\\u25CF ' + syncLabel + '</span>';
         } else {
@@ -8098,7 +8098,7 @@ async function _buildBrokerDebugHtml() {
         if (reconnPending) {
             html += '<span style="color:#e74c3c;font-weight:600;">\\u25CF Suppressed (sync pending)</span>';
         } else {
-            html += '<span style="color:#2ecc71;font-weight:600;">\\u25CF Enabled</span>';
+            html += '<span style="color:#00bad0;font-weight:600;">\\u25CF Enabled</span>';
         }
         html += '</div>';
 
@@ -8137,7 +8137,7 @@ async function _buildBrokerDebugHtml() {
             for (var i = 0; i < matched.length; i++) {
                 var m = matched[i];
                 var arrow = m.direction === 'bidirectional' ? '↔' : '→';
-                var arrowColor = m.direction === 'bidirectional' ? '#2ecc71' : '#3498db';
+                var arrowColor = m.direction === 'bidirectional' ? '#00bad0' : '#3498db';
                 html += '<tr style="border-bottom:1px solid var(--border);">';
                 html += '<td style="padding:3px 8px;color:var(--text-primary);">' + esc(m.function) + '</td>';
                 html += '<td style="padding:3px 4px;text-align:center;color:' + arrowColor + ';font-weight:600;">' + arrow + '</td>';
@@ -8191,7 +8191,7 @@ async function _buildBrokerDebugHtml() {
     html += '<button class="btn btn-secondary btn-sm managed-disabled" onclick="clearDebugLog(\\'broker\\')" style="font-size:11px;">Clear Log</button>';
     html += '</div></div>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;padding:6px 10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:10px;font-family:monospace;">';
-    html += '<span style="color:#2ecc71;font-weight:600;">\\u25CF Relayed</span>';
+    html += '<span style="color:#00bad0;font-weight:600;">\\u25CF Relayed</span>';
     html += '<span style="color:#3498db;">\\u25CF Inventory / Mapping</span>';
     html += '<span style="color:#e67e22;font-weight:600;">\\u25CF Suppressed</span>';
     html += '<span style="color:#f39c12;font-weight:600;">\\u25CF Warning</span>';
@@ -8208,7 +8208,7 @@ async function _buildBrokerDebugHtml() {
         else if (line.indexOf('WARNING') >= 0 || line.indexOf('Unmatched') >= 0)
             html += '<span style="color:#f39c12;font-weight:600;">' + line + '</span>\\n';
         else if (line.indexOf('Relayed') >= 0)
-            html += '<span style="color:#2ecc71;font-weight:600;">' + line + '</span>\\n';
+            html += '<span style="color:#00bad0;font-weight:600;">' + line + '</span>\\n';
         else if (line.indexOf('reconnect') >= 0 || line.indexOf('sync') >= 0 || line.indexOf('Sync') >= 0 || line.indexOf('blocking') >= 0 || line.indexOf('force sync') >= 0)
             html += '<span style="color:#9b59b6;">' + line + '</span>\\n';
         else if (line.indexOf('inventory') >= 0 || line.indexOf('Broker matched') >= 0 || line.indexOf('Broker:') >= 0)
@@ -8918,7 +8918,7 @@ var _dnRawData = null;
 function _dnZoomPluginCfg() {
     return {
         zoom: {
-            drag: { enabled: true, backgroundColor: 'rgba(46,204,113,0.15)', borderColor: 'rgba(46,204,113,0.6)', borderWidth: 1 },
+            drag: { enabled: true, backgroundColor: 'rgba(0,186,208,0.15)', borderColor: 'rgba(0,186,208,0.6)', borderWidth: 1 },
             mode: 'x',
             onZoomComplete: function(ctx) { var c = ctx.chart.canvas; var panel = c.closest('.dn-panel'); if (panel) { var rb = panel.querySelector('.dn-reset-zoom'); if (rb) rb.style.display = 'inline-block'; } }
         }
@@ -8936,7 +8936,7 @@ var _dnCurrentUnit = 'gallons'; // or 'minutes'
 var _dnThemeObserver = null;
 
 var DN_COLORS = [
-    {border:'rgba(46,204,113,0.85)',fill:'rgba(46,204,113,0.12)'},
+    {border:'rgba(0,186,208,0.85)',fill:'rgba(0,186,208,0.12)'},
     {border:'rgba(52,152,219,0.85)',fill:'rgba(52,152,219,0.12)'},
     {border:'rgba(26,188,156,0.75)',fill:'rgba(26,188,156,0.10)'},
     {border:'rgba(155,89,182,0.75)',fill:'rgba(155,89,182,0.10)'},
@@ -9121,7 +9121,7 @@ function dnChartDefaults() {
                 backgroundColor: isDark ? 'rgba(15,25,50,0.95)' : 'rgba(255,255,255,0.95)',
                 titleColor: isDark ? '#e0e0e0' : '#2c3e50',
                 bodyColor: isDark ? '#b0b0b0' : '#555',
-                borderColor: isDark ? 'rgba(46,204,113,0.3)' : 'rgba(0,0,0,0.1)',
+                borderColor: isDark ? 'rgba(0,186,208,0.3)' : 'rgba(0,0,0,0.1)',
                 borderWidth: 1,
                 padding: 10,
                 cornerRadius: 8,
@@ -9434,7 +9434,7 @@ function dnBuildSummaryCards(data, gpmMap) {
 
     var html = '<div class="dn-summary-row">';
     html += '<div class="dn-stat-card"><div class="dn-stat-val">' + dnFmtNum(Math.round(totalGal)) + '</div><div class="dn-stat-label">Total Gallons</div><div class="dn-stat-sub">' + Math.round(totalMins) + ' minutes runtime</div></div>';
-    html += '<div class="dn-stat-card"><div class="dn-stat-val" style="color:#27ae60;">' + dnFmtNum(Math.round(totalSaved)) + '</div><div class="dn-stat-label">Gallons Saved (' + savePct + '%)</div><div class="dn-stat-sub">' + (costSaved > 0 ? '$' + costSaved.toFixed(2) + ' saved' : 'No cost data') + '</div></div>';
+    html += '<div class="dn-stat-card"><div class="dn-stat-val" style="color:#009db1;">' + dnFmtNum(Math.round(totalSaved)) + '</div><div class="dn-stat-label">Gallons Saved (' + savePct + '%)</div><div class="dn-stat-sub">' + (costSaved > 0 ? '$' + costSaved.toFixed(2) + ' saved' : 'No cost data') + '</div></div>';
     html += '<div class="dn-stat-card"><div class="dn-stat-val">' + (avgMoist != null ? avgMoist + '%' : '--') + '</div><div class="dn-stat-label">Avg Moisture</div><div class="dn-stat-sub">' + probeKeys.length + ' probe' + (probeKeys.length !== 1 ? 's' : '') + '</div></div>';
     // Zone count
     var zoneSet = {};
@@ -9496,8 +9496,8 @@ function dnBuildSavings(canvasId, data, gpmMap) {
             labels: td.labels,
             datasets: [
                 { label: 'Gallons Used', data: td.used, backgroundColor: 'rgba(52,152,219,0.6)', borderRadius: 4, order: 2 },
-                { label: 'Gallons Saved', data: td.saved, backgroundColor: 'rgba(46,204,113,0.6)', borderRadius: 4, order: 2 },
-                { label: 'Cumulative Savings', data: td.cumulativeSaved, type: 'line', borderColor: 'rgba(46,204,113,0.9)', backgroundColor: 'rgba(46,204,113,0.08)', fill: true, tension: 0.3, yAxisID: 'y1', pointRadius: 0, borderWidth: 2, order: 1 }
+                { label: 'Gallons Saved', data: td.saved, backgroundColor: 'rgba(0,186,208,0.6)', borderRadius: 4, order: 2 },
+                { label: 'Cumulative Savings', data: td.cumulativeSaved, type: 'line', borderColor: 'rgba(0,186,208,0.9)', backgroundColor: 'rgba(0,186,208,0.08)', fill: true, tension: 0.3, yAxisID: 'y1', pointRadius: 0, borderWidth: 2, order: 1 }
             ]
         },
         options: Object.assign({}, cfg, {
@@ -9523,7 +9523,7 @@ function dnBuildMoisture(canvasId, data) {
         data: {
             labels: td.labels,
             datasets: [
-                { label: 'Shallow', data: td.shallow, borderColor: 'rgba(46,204,113,0.85)', backgroundColor: 'rgba(46,204,113,0.08)', fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+                { label: 'Shallow', data: td.shallow, borderColor: 'rgba(0,186,208,0.85)', backgroundColor: 'rgba(0,186,208,0.08)', fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 },
                 { label: 'Mid', data: td.mid, borderColor: 'rgba(52,152,219,0.85)', backgroundColor: 'rgba(52,152,219,0.08)', fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 },
                 { label: 'Deep', data: td.deep, borderColor: 'rgba(155,89,182,0.8)', backgroundColor: 'rgba(155,89,182,0.06)', fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 },
                 { label: 'Multiplier', data: td.multiplier, borderColor: 'rgba(243,156,18,0.8)', borderDash: [5,3], fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2, yAxisID: 'y1' }
@@ -9566,13 +9566,13 @@ function dnBuildWeather(canvasId, data) {
     var datasets = [
         { label: 'Temperature', data: td.temperature, borderColor: 'rgba(231,76,60,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yTemp' },
         { label: 'Humidity %', data: td.humidity, borderColor: 'rgba(52,152,219,0.5)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1, yAxisID: 'yHumid' },
-        { label: 'Multiplier', data: td.multiplier, borderColor: 'rgba(46,204,113,0.9)', backgroundColor: 'rgba(46,204,113,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2.5, yAxisID: 'yMult' }
+        { label: 'Multiplier', data: td.multiplier, borderColor: 'rgba(0,186,208,0.9)', backgroundColor: 'rgba(0,186,208,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2.5, yAxisID: 'yMult' }
     ];
     var scales = {
         x: cfg.scales.x,
         yTemp: { position: 'left', grid: { color: cfg.scales.x.grid.color }, ticks: { color: 'rgba(231,76,60,0.7)', font: { size: 10 } }, title: { display: true, text: 'Temp', color: 'rgba(231,76,60,0.7)' } },
         yHumid: { display: false },
-        yMult: { position: 'right', min: 0, max: 2, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(46,204,113,0.8)', font: { size: 10 } }, title: { display: true, text: 'Multiplier', color: 'rgba(46,204,113,0.8)' } }
+        yMult: { position: 'right', min: 0, max: 2, grid: { drawOnChartArea: false }, ticks: { color: 'rgba(0,186,208,0.8)', font: { size: 10 } }, title: { display: true, text: 'Multiplier', color: 'rgba(0,186,208,0.8)' } }
     };
     if (_hasData(td.wind_speed)) {
         datasets.push({ label: 'Wind (mph)', data: td.wind_speed, borderColor: 'rgba(155,89,182,0.7)', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'yWind' });
@@ -9629,7 +9629,7 @@ function dnBuildZoneBar(canvasId, data, gpmMap) {
             labels: zones.map(function(z) { return z.name; }),
             datasets: [
                 { label: 'Gallons Used', data: zones.map(function(z) { return Math.round(z.gallons); }), backgroundColor: 'rgba(52,152,219,0.6)', borderRadius: 4 },
-                { label: 'Runtime (min)', data: zones.map(function(z) { return Math.round(z.runtime); }), backgroundColor: 'rgba(46,204,113,0.6)', borderRadius: 4 }
+                { label: 'Runtime (min)', data: zones.map(function(z) { return Math.round(z.runtime); }), backgroundColor: 'rgba(0,186,208,0.6)', borderRadius: 4 }
             ]
         },
         options: Object.assign({}, cfg, {
@@ -9704,7 +9704,7 @@ function dnBuildHeatmap(containerId, data) {
         for (var h = 0; h < 24; h++) {
             var v = matrix[d][h];
             var intensity = maxVal > 0 ? v / maxVal : 0;
-            var bg = intensity > 0 ? 'rgba(46,204,113,' + (0.15 + intensity * 0.7).toFixed(2) + ')' : 'rgba(128,128,128,0.06)';
+            var bg = intensity > 0 ? 'rgba(0,186,208,' + (0.15 + intensity * 0.7).toFixed(2) + ')' : 'rgba(128,128,128,0.06)';
             html += '<div class="dn-heatmap-cell" style="background:' + bg + ';" title="' + days[d] + ' ' + h + ':00 \\u2014 ' + Math.round(v) + ' min"></div>';
         }
         html += '</div>';
@@ -9729,7 +9729,7 @@ function dnBuildProbeHealth(containerId, data) {
         html += '<div style="font-weight:600;font-size:13px;margin-bottom:8px;">' + esc(p.name) + '</div>';
         html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Battery: <span style="font-weight:600;color:' + (p.battery != null && p.battery < 20 ? 'var(--color-danger)' : 'var(--text-primary)') + ';">' + (p.battery != null ? p.battery + '%' : '--') + '</span></div>';
         html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">WiFi: <span style="font-weight:600;">' + (p.wifi != null ? p.wifi + ' dBm' : '--') + '</span></div>';
-        html += '<div style="font-size:12px;color:var(--text-muted);">Status: <span style="font-weight:600;color:' + (p.isAwake ? '#27ae60' : 'var(--text-hint)') + ';">' + (p.isAwake ? 'Awake' : 'Sleeping') + '</span></div>';
+        html += '<div style="font-size:12px;color:var(--text-muted);">Status: <span style="font-weight:600;color:' + (p.isAwake ? '#009db1' : 'var(--text-hint)') + ';">' + (p.isAwake ? 'Awake' : 'Sleeping') + '</span></div>';
         html += '<div style="font-size:11px;color:var(--text-hint);margin-top:4px;">' + p.mappedZones + ' zone' + (p.mappedZones !== 1 ? 's' : '') + ' mapped</div>';
         html += '</div>';
     }
@@ -9763,7 +9763,7 @@ function dnRenderAllCharts(data) {
     var sv = dnTransformSavings(data.runs, gpmMap, (data.waterSettings && data.waterSettings.water_savings_reset_at) || null);
     html += '<div style="margin-top:8px;text-align:center;">';
     html += '<span class="dn-pill" style="background:rgba(52,152,219,0.15);color:rgba(52,152,219,0.9);">Weather: ' + dnFmtNum(sv.totalWeather) + ' gal</span>';
-    html += '<span class="dn-pill" style="background:rgba(46,204,113,0.15);color:rgba(46,204,113,0.9);">Moisture: ' + dnFmtNum(sv.totalMoisture) + ' gal</span>';
+    html += '<span class="dn-pill" style="background:rgba(0,186,208,0.15);color:rgba(0,186,208,0.9);">Moisture: ' + dnFmtNum(sv.totalMoisture) + ' gal</span>';
     html += '<span class="dn-pill" style="background:rgba(155,89,182,0.15);color:rgba(155,89,182,0.9);">Total: ' + dnFmtNum(sv.totalSaved) + ' gal</span>';
     html += '</div></div>';
     // 4. Moisture Trends (only if probes exist)

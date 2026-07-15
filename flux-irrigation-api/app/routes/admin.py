@@ -257,7 +257,7 @@ async def set_schedule_lock(request: Request):
         options["schedule_lock"] = {
             "locked": True,
             "group_name": body.get("group_name", "Bulk Schedule"),
-            "group_color": body.get("group_color", "#1a7a4c"),
+            "group_color": body.get("group_color", "#007e93"),
         }
     else:
         options["schedule_lock"] = None
@@ -1484,12 +1484,12 @@ ADMIN_HTML = """<!DOCTYPE html>
             --bg-weather: #f0f8ff;
             --bg-secondary-btn: #ecf0f1;
             --bg-secondary-btn-hover: #ddd;
-            --bg-active-tile: #e8f5e9;
+            --bg-active-tile: #e0f7fa;
             --bg-inactive-tile: #fbe9e7;
             --bg-toast: #2c3e50;
             --bg-modal-overlay: rgba(0,0,0,0.5);
             --bg-warning: #fff3cd;
-            --bg-success-light: #d4edda;
+            --bg-success-light: #d0f0f5;
             --bg-danger-light: #f8d7da;
             --bg-new-key: #fffde7;
             --text-primary: #2c3e50;
@@ -1505,19 +1505,19 @@ ADMIN_HTML = """<!DOCTYPE html>
             --border-light: #eee;
             --border-input: #ddd;
             --border-card: #bdc3c7;
-            --border-active: #a5d6a7;
+            --border-active: #a3dde6;
             --border-hover: #bbb;
             --border-row: #f5f5f5;
             --border-new-key: #f9a825;
-            --color-primary: #2ecc71;
-            --color-primary-hover: #27ae60;
-            --color-accent: #2ecc71;
-            --color-success: #2ecc71;
+            --color-primary: #00bad0;
+            --color-primary-hover: #009db1;
+            --color-accent: #00bad0;
+            --color-success: #00bad0;
             --color-danger: #e74c3c;
             --color-danger-hover: #c0392b;
             --color-warning: #f39c12;
             --color-link: #3498db;
-            --header-gradient: linear-gradient(135deg, #1a7a4c, #2ecc71);
+            --header-gradient: linear-gradient(135deg, #007e93, #00bad0);
             --shadow-card: 0 1px 3px rgba(0,0,0,0.08);
             --shadow-header: 0 2px 8px rgba(0,0,0,0.15);
             --toggle-bg: #ccc;
@@ -1551,14 +1551,14 @@ ADMIN_HTML = """<!DOCTYPE html>
             --border-light: #253555;
             --border-input: #304060;
             --border-card: #304060;
-            --border-active: #2d7a4a;
+            --border-active: #0e6b7c;
             --border-hover: #405575;
             --border-row: #253555;
             --border-new-key: #8a7020;
-            --color-primary: #2ecc71;
-            --color-primary-hover: #27ae60;
-            --color-accent: #2ecc71;
-            --color-success: #2ecc71;
+            --color-primary: #00bad0;
+            --color-primary-hover: #009db1;
+            --color-accent: #00bad0;
+            --color-success: #00bad0;
             --color-danger: #e74c3c;
             --color-danger-hover: #c0392b;
             --color-warning: #f39c12;
@@ -1752,7 +1752,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             display: inline-block;
             margin-right: 4px;
         }
-        .status-dot.green { background: #2ecc71; }
+        .status-dot.green { background: #00bad0; }
         .status-dot.red { background: #e74c3c; }
         .status-dot.yellow { background: #f39c12; }
 
@@ -3393,7 +3393,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             if (badge) {
                 if (connectedIds.length > 0) {
                     badge.textContent = connectedIds.length + ' Connected';
-                    badge.style.background = 'rgba(46,204,113,0.15)';
+                    badge.style.background = 'rgba(0,186,208,0.15)';
                     badge.style.color = 'var(--color-success)';
                 } else if (devices.length > 0) {
                     badge.textContent = devices.length + ' found';

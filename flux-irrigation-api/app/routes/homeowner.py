@@ -1745,7 +1745,7 @@ async def homeowner_reset_water_usage(request: Request):
 class SaveReportSettingsRequest(BaseModel):
     company_name: str = ""
     custom_footer: str = ""
-    accent_color: str = "#1a7a4c"
+    accent_color: str = "#007e93"
     hidden_sections: list = []
 
 
