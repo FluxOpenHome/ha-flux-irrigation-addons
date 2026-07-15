@@ -1872,7 +1872,7 @@ ADMIN_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Gophr Moisture Probes -->
+    <!-- gophr Moisture Probes -->
     <div class="card">
         <div class="card-header" style="cursor:pointer;" onclick="document.getElementById('moistureCardBody').style.display = document.getElementById('moistureCardBody').style.display === 'none' ? 'block' : 'none'; document.getElementById('moistureChevron').textContent = document.getElementById('moistureCardBody').style.display === 'none' ? '▶' : '▼';">
             <h2 style="display:flex;align-items:center;gap:8px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="155 170 745 295" style="height:28px;width:auto;"><path fill="var(--text-primary)" fill-rule="evenodd" d="M322.416931,281.625397 C323.073517,288.667053 324.062378,295.290680 324.095001,301.918976 C324.240021,331.407532 324.573761,360.907135 323.953278,390.384125 C323.315430,420.685608 305.951965,442.817230 276.750000,451.004150 C252.045670,457.930115 227.631088,457.462616 204.859512,444.061829 C193.733704,437.514404 185.529037,427.904022 179.913101,416.206268 C179.426056,415.191742 179.182327,414.060425 178.732849,412.703430 C192.772842,404.558502 206.657608,396.503632 221.095810,388.127686 C222.548920,398.588440 227.417007,406.291168 236.306213,411.228241 C242.295563,414.554749 248.872574,415.283630 255.195541,413.607391 C269.094299,409.922882 279.602142,400.331543 276.985321,375.408997 C268.292480,376.997406 259.625824,379.362396 250.827682,380.053528 C212.511551,383.063599 177.112976,355.681854 170.128632,318.134705 C162.288498,275.986908 187.834488,236.765533 229.805115,227.777832 C248.650925,223.742157 267.514679,224.860764 285.481567,232.988800 C306.417999,242.460220 318.099121,258.975830 322.416931,281.625397 M216.907806,286.065979 C225.295822,272.331604 237.176926,265.403442 252.929047,267.162231 C267.323669,268.769440 277.405518,277.037170 282.681366,290.504517 C288.739105,305.967712 282.622986,322.699615 267.827820,332.537079 C254.597519,341.334045 236.860046,339.821564 225.031052,328.887756 C212.268768,317.091309 209.342514,302.099945 216.907806,286.065979z"/><path fill="var(--text-primary)" fill-rule="evenodd" d="M440.778076,230.141632 C466.800079,239.483002 484.434601,256.637787 491.839233,283.105133 C500.007050,312.300537 489.084961,342.278625 464.074921,361.493744 C431.640076,386.413300 382.445770,383.545990 353.656403,355.057953 C318.682434,320.450043 324.759583,264.850739 366.581024,238.762604 C389.708984,224.335434 414.506042,222.091354 440.778076,230.141632 M419.079773,266.764740 C437.440765,270.748535 450.546936,286.287720 449.715515,302.670624 C448.781708,321.070160 434.135437,336.279297 415.803497,337.885803 C397.935547,339.451660 380.905334,327.358856 376.509705,309.984161 C370.390747,285.797394 393.025116,262.545013 419.079773,266.764740z"/><path fill="var(--text-primary)" fill-rule="evenodd" d="M505.651459,275.706696 C519.676758,244.101715 544.491516,227.960754 577.827881,226.121109 C611.160156,224.281693 638.083069,237.473114 655.040100,266.968140 C676.296448,303.941376 659.723389,352.082367 620.168030,369.955170 C596.583435,380.611755 572.628662,381.200958 548.535156,371.444641 C547.794678,371.144745 546.983826,371.018707 545.645447,370.662506 C545.645447,390.059296 545.645447,409.111145 545.645447,428.497070 C530.607544,428.497070 516.074341,428.497070 500.996918,428.497070 C500.996918,426.395355 500.996918,424.628113 500.996918,422.860901 C500.996948,382.885895 500.731262,342.907776 501.200592,302.938263 C501.306030,293.961548 503.980682,285.014954 505.651459,275.706696 M598.115479,334.281433 C575.892517,344.478851 553.161804,330.843811 547.077026,312.404572 C542.453613,298.393616 547.708435,283.178833 560.344666,273.573029 C572.626587,264.236572 589.550232,263.566986 602.341309,271.911499 C626.866516,287.910980 624.857971,320.051117 598.115479,334.281433z"/><path fill="var(--text-primary)" d="M670.825439,182.155045 C670.825439,180.187927 670.825439,178.699997 670.825439,176.849915 C685.635620,176.849915 700.198181,176.849915 715.259155,176.849915 C715.259155,197.175491 715.259155,217.587784 715.259155,238.510025 C716.406799,238.089737 717.045288,238.015717 717.473022,237.676285 C735.466553,223.398956 755.376953,222.532013 775.856384,230.443253 C790.949036,236.273605 798.483093,249.035553 801.756714,264.225281 C803.287109,271.326416 804.004150,278.725677 804.067200,285.998688 C804.319702,315.143738 804.171570,344.292236 804.171570,373.721710 C789.407043,373.721710 774.836182,373.721710 759.827942,373.721710 C759.827942,371.711731 759.835571,369.768616 759.826843,367.825562 C759.706604,341.165588 760.090210,314.490112 759.275696,287.851318 C758.772949,271.407867 746.863953,263.163330 731.353210,266.883484 C722.925842,268.904694 717.127258,275.714691 716.057434,285.099060 C715.681213,288.399445 715.542114,291.742798 715.536499,295.066956 C715.495117,319.566559 715.514954,344.066254 715.515503,368.565918 C715.515503,370.204803 715.515503,371.843689 715.515503,373.824829 C700.566040,373.824829 685.988281,373.824829 670.825439,373.824829 C670.825439,310.162415 670.825439,246.398331 670.825439,182.155045z"/><path fill="var(--text-primary)" d="M855.839355,323.000092 C855.839355,340.127289 855.839355,356.754486 855.839355,373.695129 C840.823486,373.695129 826.114746,373.695129 810.997253,373.695129 C810.997253,371.683563 810.994263,369.731567 810.997681,367.779572 C811.046997,339.965515 810.786316,312.145172 811.345886,284.341370 C811.503601,276.506470 813.144958,268.402985 815.701904,260.971832 C822.865173,240.153290 839.259949,230.438156 859.952881,227.148788 C867.723389,225.913574 875.715454,226.072052 883.918213,225.576279 C883.918213,240.530334 883.918213,254.247711 883.918213,268.202820 C883.009399,267.944122 882.380005,267.791504 881.768005,267.586914 C867.262085,262.736725 856.693237,269.680603 856.083313,285.032410 C855.587708,297.505157 855.890564,310.009644 855.839355,323.000092z"/><path fill="#6DAC39" d="M397.000000,391.998138 C428.473236,391.998138 459.446503,391.998138 490.792969,391.998138 C490.792969,404.699890 490.792969,417.072754 490.792969,429.726562 C438.290070,429.726562 385.895660,429.726562 333.244019,429.726562 C333.244019,417.257721 333.244019,404.991150 333.244019,391.998138 C354.328308,391.998138 375.414154,391.998138 397.000000,391.998138z"/></svg> Moisture Probes</h2>
@@ -3680,7 +3680,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             // Enable toggle
             html += '<div style="margin-bottom:16px;">';
             html += '<label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="checkbox" id="cfgMoistureEnabled" ' + (settings.enabled ? 'checked' : '') + '> Enable Moisture Probe Integration</label>';
-            html += '<p style="font-size:12px;color:var(--text-muted);margin-top:4px;">When enabled, soil moisture data from Gophr probes adjusts irrigation durations automatically.</p>';
+            html += '<p style="font-size:12px;color:var(--text-muted);margin-top:4px;">When enabled, soil moisture data from gophr probes adjusts irrigation durations automatically.</p>';
             html += '</div>';
 
             // Stale threshold
@@ -3718,7 +3718,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             html += '<hr style="margin:20px 0;border:none;border-top:1px solid var(--border-light);">';
 
             // Probe management
-            html += '<h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">Gophr Moisture Probes</h3>';
+            html += '<h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">gophr Moisture Probes</h3>';
 
             // Existing probes
             if (probeCount > 0) {
@@ -3773,7 +3773,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 }
                 html += '</div>';
             } else {
-                html += '<p style="color:var(--text-muted);margin-bottom:16px;">No probes configured yet. Select a Gophr device below to add a probe.</p>';
+                html += '<p style="color:var(--text-muted);margin-bottom:16px;">No probes configured yet. Select a gophr device below to add a probe.</p>';
             }
 
             // Device picker for adding probes
@@ -3782,7 +3782,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             html += '<div style="display:flex;gap:8px;align-items:start;">';
             html += '<div style="flex:1;">';
             html += '<select id="cfgMoistureDeviceSelect" onchange="onMoistureDeviceChange()" style="width:100%;padding:8px;border:1px solid var(--border-input);border-radius:6px;background:var(--bg-input);color:var(--text-primary);">';
-            html += '<option value="">-- Select a Gophr device --</option>';
+            html += '<option value="">-- Select a gophr device --</option>';
             html += '</select>';
             html += '</div>';
             html += '<button class="btn btn-secondary btn-sm" onclick="refreshMoistureDevices()" style="white-space:nowrap;">Refresh</button>';
@@ -3838,7 +3838,7 @@ ADMIN_HTML = """<!DOCTYPE html>
                 }
             } catch (_) {}
 
-            select.innerHTML = '<option value="">-- Select a Gophr device --</option>';
+            select.innerHTML = '<option value="">-- Select a gophr device --</option>';
             for (const device of devices) {
                 const label = device.manufacturer || device.model
                     ? device.name + ' (' + [device.manufacturer, device.model].filter(Boolean).join(' ') + ')'
@@ -3912,7 +3912,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             }
 
             if (detected.length === 0) {
-                html += '<div style="color:var(--text-warning);font-size:12px;margin-bottom:8px;">Could not auto-detect moisture sensors. Make sure this is a Gophr device.</div>';
+                html += '<div style="color:var(--text-warning);font-size:12px;margin-bottom:8px;">Could not auto-detect moisture sensors. Make sure this is a gophr device.</div>';
             }
 
             // Display name
@@ -3948,7 +3948,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             }
 
             const nameInput = document.getElementById('cfgProbeDevice_name');
-            const displayName = nameInput ? nameInput.value.trim() : 'Gophr Probe';
+            const displayName = nameInput ? nameInput.value.trim() : 'gophr Probe';
             const probeId = 'probe_' + displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
             await mcfg('/probes', 'POST', {
@@ -4022,7 +4022,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <li style="margin-bottom:4px;"><strong>Email</strong> — Opens your email client with the key pre-filled</li>
 <li style="margin-bottom:4px;"><strong>QR Code</strong> — Generate a scannable QR code. Your management company can scan this directly from their dashboard using the 📷 Scan QR Code button when adding a property.</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The connection key grants access to all your devices — irrigation zones, Gophr moisture probes, weather settings, schedules, and sensors. If you regenerate a key, the old one stops working immediately. Any changes to your contact info (name, phone, address) are recorded in the configuration change log with old and new values.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The connection key grants access to all your devices — irrigation zones, gophr moisture probes, weather settings, schedules, and sensors. If you regenerate a key, the old one stops working immediately. Any changes to your contact info (name, phone, address) are recorded in the configuration change log with old and new values.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Weather Settings</h4>
 <p style="margin-bottom:10px;">Enable weather-aware irrigation by connecting a Home Assistant weather entity. When enabled, weather data is used for smart watering adjustments on the Homeowner Dashboard.</p>
@@ -4043,18 +4043,18 @@ ADMIN_HTML = """<!DOCTYPE html>
 </ul>
 <div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 Weather rules and thresholds (rain skip, wind delay, temperature adjustments, etc.) are configured from the Homeowner Dashboard's weather section.</div>
 
-<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Gophr Moisture Probes</h4>
-<p style="margin-bottom:10px;">Integrate Gophr moisture probes with your irrigation system for data-driven watering adjustments. Expand the Moisture Probes card to configure:</p>
+<h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">gophr Moisture Probes</h4>
+<p style="margin-bottom:10px;">Integrate gophr moisture probes with your irrigation system for data-driven watering adjustments. Expand the Moisture Probes card to configure:</p>
 <ul style="margin:4px 0 12px 20px;">
 <li style="margin-bottom:4px;"><strong>Enable/Disable</strong> — Toggle moisture-aware irrigation on or off</li>
-<li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your Gophr device from the dropdown. Only devices with "gophr" in the name are shown. Click "Show all devices" if your device doesn't appear.</li>
+<li style="margin-bottom:4px;"><strong>Select Device</strong> — Choose your gophr device from the dropdown. Only devices with "gophr" in the name are shown. Click "Show all devices" if your device doesn't appear.</li>
 <li style="margin-bottom:4px;"><strong>Map Sensors</strong> — After selecting a device, map its sensor entities to shallow, mid, and deep depth readings. Sensors with matching depth names are auto-selected.</li>
 <li style="margin-bottom:4px;"><strong>Add Probe</strong> — Creates a probe from the selected device sensors. Zone assignments are done from the Homeowner Dashboard or Management Dashboard, not from this page.</li>
 <li style="margin-bottom:4px;"><strong>Edit Zones</strong> — Click "Edit Zones" on any probe card to assign or unassign zones. Changes can also be made from the management dashboard.</li>
 <li style="margin-bottom:4px;"><strong>Settings</strong> — Configure stale data threshold, root zone thresholds (Skip, Wet, Optimal, Dry), max increase/decrease percentages, and rain detection sensitivity</li>
 <li style="margin-bottom:4px;">Once probes are added and enabled, the Moisture Probes card appears on the Homeowner Dashboard with live readings, device status, and zone multipliers</li>
 </ul>
-<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The combined weather &times; moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled durations automatically. Because Gophr probes sleep between readings, stale values are still shown with a ⏳ indicator until the device wakes and reports new data.</div>
+<div style="background:var(--bg-tile);border-radius:6px;padding:8px 12px;margin:8px 0 12px 0;font-size:13px;">💡 The combined weather &times; moisture multiplier adjusts both API/dashboard timed runs and ESPHome scheduled durations automatically. Because gophr probes sleep between readings, stale values are still shown with a ⏳ indicator until the device wakes and reports new data.</div>
 
 <h4 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:20px 0 8px 0;">Revoking Access</h4>
 <p style="margin-bottom:10px;">If you need to disconnect a management company, use the <strong>Revoke Access</strong> button. This immediately invalidates the current API key and connection key, preventing any further remote access.</p>

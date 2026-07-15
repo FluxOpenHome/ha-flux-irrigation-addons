@@ -1942,7 +1942,7 @@ async def record_notification(body: RecordNotificationRequest):
             print(f"[RECORD_NOTIF] Sending HA notification via notify.{service_name}")
             result = await ha_client.call_service("notify", service_name, {
                 "message": body.message or body.title,
-                "title": "Flux: " + body.title,
+                "title": "Ripple: " + body.title,
             })
             print(f"[RECORD_NOTIF] HA notification result: {result}")
     except Exception as exc:
