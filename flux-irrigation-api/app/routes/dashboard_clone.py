@@ -1,5 +1,5 @@
 """
-Flux Open Home - Clone Dashboard to Native HA Lovelace
+Ripple - Clone Dashboard to Native HA Lovelace
 ========================================================
 Creates (or updates) a native Home Assistant Lovelace dashboard populated
 with modern, visually appealing cards that mirror the Flux irrigation system.
@@ -28,7 +28,7 @@ router = APIRouter(
 )
 
 DASHBOARD_URL_PATH = "flux-irrigation"
-DASHBOARD_TITLE = "Flux Irrigation"
+DASHBOARD_TITLE = "Ripple Irrigation"
 DASHBOARD_ICON = "mdi:sprinkler-variant"
 
 # Day-of-week ordering for schedule day switches
@@ -265,7 +265,7 @@ def _build_overview_view(
     cards.append({
         "type": "markdown",
         "content": (
-            "# 💧 Flux Irrigation\n"
+            "# 💧 Ripple Irrigation\n"
             "Your irrigation system at a glance. Tap any zone tile to toggle it.\n\n"
             "*For advanced features (moisture probes, schedule sync, run history, "
             "weather multipliers), use the **Flux UI**.*"

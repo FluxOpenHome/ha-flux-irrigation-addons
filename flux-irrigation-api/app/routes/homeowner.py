@@ -1,5 +1,5 @@
 """
-Flux Open Home - Homeowner Dashboard API
+Ripple - Homeowner Dashboard API
 ==========================================
 Unauthenticated endpoints for the homeowner dashboard UI.
 These run behind HA ingress (already authenticated) and only work in homeowner mode.
@@ -1826,7 +1826,7 @@ async def upload_report_logo_base64(request: Request):
 
 @router.delete("/report_settings/logo", summary="Remove custom report logo")
 async def delete_report_logo(request: Request):
-    """Remove the custom logo, reverting to default Flux Open Home logo."""
+    """Remove the custom logo, reverting to default Ripple logo."""
     _require_homeowner_mode()
     import report_settings
     report_settings.delete_logo()
@@ -2015,8 +2015,8 @@ async def test_homeowner_ha_notification():
 
     service_name = settings["ha_notify_service"]
     success = await ha_client.call_service("notify", service_name, {
-        "message": "🧪 Test notification from Flux Open Home — HA notifications are working!",
-        "title": "Flux Open Home Test",
+        "message": "🧪 Test notification from Ripple — HA notifications are working!",
+        "title": "Ripple Test",
     })
     if not success:
         raise HTTPException(
